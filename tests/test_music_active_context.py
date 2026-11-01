@@ -183,3 +183,232 @@ def test_feature_is_dark_by_default(monkeypatch):
     monkeypatch.setenv(ac.ENV_MODE, "local")
     assert isinstance(ac.get_store(), ac.LocalFileActiveContextStore)
 
+
+
+# ----------------------------------------------------------- semantic-delta hardening
+
+WAVE = "Pop\x1fWave — Antonio Carlos Jobim"
+CUSTOM = "custom::My Progression"
+COMP = "composition::My Composition"
+
+
+def seed(store, pick=WAVE, inst="Guitar", page="backing", key="D", device="phone"):
+    s = session(pick=pick, inst=inst, page=page, key=key)
+    ac.mark_intent(s, "song_selected")
+    assert flush(s, store, device) == "published"
+    return s
+
+
+def stale_dell():
+    """Dell still shows Blue Bossa / Practice / Saxophone from before the phone moved on."""
+    return session(pick=BOSSA, inst="Saxophone", page="practice", key="C")
+
+
+def content(store):
+    r = store.read(ACC, WS)
+    return r.resource_id, r.page, r.instrument, r.practice_key, r.revision
+
+
+def test_stale_instrument_change_does_not_resurrect_song_or_page(store):
+    seed(store)
+    dell = stale_dell()
+    dell["instrument"] = "Flute"
+    ac.mark_intent(dell, "instrument_changed")
+    assert flush(dell, store, "dell") == "published"
+    assert content(store) == (WAVE, "backing", "Flute", "D", 2)
+
+
+def test_stale_practice_key_change_merges_onto_newest_resource_and_workflow(store):
+    seed(store)
+    dell = stale_dell()
+    dell["display_key"] = "Eb"
+    ac.mark_intent(dell, "practice_key_changed")
+    assert flush(dell, store, "dell") == "published"
+    assert content(store) == (WAVE, "backing", "Guitar", "Eb", 2)
+
+
+def test_standalone_practice_key_change_publishes_and_peer_adopts_canonical_key(store):
+    phone = seed(store)
+    phone["display_key"] = "F"
+    ac.mark_intent(phone, "key")  # legacy alias used by mark_display_key_changed
+    assert flush(phone, store, "phone") == "published"
+    rec = adoptable(session(pick=SAY), store)
+    assert ac.payload_for_adoption(rec)["display_key"] == "F"
+    assert ac.payload_for_adoption(rec)["key_kind"] == "concert"
+
+
+def test_key_cycling_sounding_key_never_enters_the_record(store):
+    s = seed(store)
+    s.update(backing_key_cycle_sounding_key="G", key_cycle_current_key="G", backing_sounding_key="G")
+    ac.mark_intent(s, "instrument_changed")
+    flush(s, store)
+    assert store.read(ACC, WS).practice_key == "D"
+
+
+def test_explicit_stale_song_selection_legitimately_wins(store):
+    seed(store)
+    dell = stale_dell()
+    ac.mark_intent(dell, "song_selected")
+    assert flush(dell, store, "dell") == "published"
+    assert content(store)[0] == BOSSA and content(store)[2] == "Guitar"  # instrument stays the latest
+
+
+def test_stale_workflow_change_for_a_replaced_resource_is_discarded(store):
+    seed(store)  # shared: Wave / backing
+    dell = stale_dell()
+    dell["studio_page"] = "creative"
+    ac.mark_intent(dell, "workflow_selected")
+    assert flush(dell, store, "dell") == "discarded"
+    assert content(store) == (WAVE, "backing", "Guitar", "D", 1)
+    assert "_music_ctx_intent" not in dell
+
+
+def test_workflow_change_on_the_current_resource_publishes(store):
+    seed(store)
+    phone = session(pick=WAVE, inst="Guitar", page="practice", key="D")
+    ac.mark_intent(phone, "workflow_selected")
+    assert flush(phone, store, "phone") == "published"
+    assert content(store) == (WAVE, "practice", "Guitar", "D", 2)
+
+
+def test_historical_resume_wins_and_becomes_the_new_revision(store):
+    seed(store)
+    old = session(pick=BOSSA, inst="Saxophone", page="practice", key="C")
+    ac.mark_intent(old, "resume")
+    assert flush(old, store, "phone") == "published"
+    assert content(store) == (BOSSA, "practice", "Saxophone", "C", 2)
+    assert store.read(ACC, WS).cause == "resume"
+
+
+def test_earlier_conflicting_resource_choice_loses_to_later_one(store):
+    a, b = session(pick=BOSSA), session(pick=SAY)
+    ac.mark_intent(a, "song_selected")
+    ac.mark_intent(b, "song_selected")
+    assert flush(b, store, "b") == "published"
+    assert flush(a, store, "a") == "superseded"
+    assert content(store)[0] == SAY and content(store)[4] == 1
+
+
+def test_independent_compatible_deltas_both_survive_in_either_order(store):
+    for order in ((0, 1), (1, 0)):
+        st = ac.LocalFileActiveContextStore(store.root / f"o{order[0]}")
+        seed(st)
+        a = session(pick=WAVE, inst="Guitar", page="backing", key="D")
+        b = session(pick=WAVE, inst="Guitar", page="backing", key="D")
+        a["instrument"], b["display_key"] = "Flute", "Eb"
+        ac.mark_intent(a, "instrument_changed")
+        ac.mark_intent(b, "practice_key_changed")
+        for i in order:
+            assert flush((a, b)[i], st, f"d{i}") == "published"
+        assert content(st)[:4] == (WAVE, "backing", "Flute", "Eb")
+        assert content(st)[4] == 3
+
+
+def test_instrument_intent_older_than_a_newer_instrument_change_is_superseded(store):
+    seed(store)
+    a, b = session(pick=WAVE), session(pick=WAVE)
+    a["instrument"], b["instrument"] = "Flute", "Trumpet"
+    ac.mark_intent(a, "instrument_changed")
+    ac.mark_intent(b, "instrument_changed")
+    assert flush(b, store, "b") == "published"
+    assert flush(a, store, "a") == "superseded"
+    assert content(store)[2] == "Trumpet"
+
+
+def test_cas_race_reevaluates_against_the_winner(store):
+    seed(store)
+    dell = stale_dell()
+    dell["instrument"] = "Flute"
+    ac.mark_intent(dell, "instrument_changed")
+
+    class Racing:
+        """Another device wins the first CAS between our read and our write."""
+        def __init__(self, inner):
+            self.inner, self.raced = inner, False
+
+        def read(self, *a):
+            return self.inner.read(*a)
+
+        def compare_and_set(self, expected, record):
+            if not self.raced:
+                self.raced = True
+                phone = session(pick=SAY, inst="Guitar", page="practice", key="G")
+                ac.mark_intent(phone, "song_selected")
+                assert ac.flush_intent(phone, self.inner, account_id=ACC, workspace_id=WS,
+                                       device_id="phone") == "published"
+            return self.inner.compare_and_set(expected, record)
+
+    assert flush(dell, Racing(store), "dell") == "published"
+    assert content(store) == (SAY, "practice", "Flute", "G", 3)  # winner's song kept, our delta added
+
+
+def test_passive_initialisation_publishes_nothing_and_first_intent_creates_revision_1(store):
+    fresh = session(pick=SAY, page="practice")  # default Songs init, no intent
+    assert flush(fresh, store) == "no_intent" and store.read(ACC, WS) is None
+    ac.mark_intent(fresh, "bogus")  # unknown causes are never inferred into intent
+    assert flush(fresh, store) == "no_intent" and store.read(ACC, WS) is None
+    for cause in ("workflow_selected", "instrument_changed", "practice_key_changed"):
+        ac.mark_intent(fresh, cause)  # Songs nav / instrument change on a default song
+    assert flush(fresh, store) == "discarded" and store.read(ACC, WS) is None
+    ac.mark_intent(fresh, "song_selected")  # first deliberate resource choice
+    assert flush(fresh, store) == "published" and store.read(ACC, WS).revision == 1
+
+
+def test_adopting_never_marks_intent(store):
+    seed(store)
+    dell = stale_dell()
+    rec = adoptable(dell, store)
+
+    def apply(payload):
+        for cause in ("song_selected", "workflow_selected", "instrument_changed", "practice_key_changed"):
+            ac.mark_intent(dell, cause)
+        return True
+
+    assert ac.adopt(dell, rec, apply)
+    assert flush(dell, store) == "no_intent" and store.read(ACC, WS).revision == 1
+
+
+def test_newer_context_available_is_non_mutating_and_does_not_redirect(store):
+    kw = dict(account_id=ACC, workspace_id=WS)
+    dell = stale_dell()
+    assert ac.newer_context_available(dell, store, **kw) is None  # nothing shared yet
+    seed(store)
+    before = dict(dell)
+    rec = ac.newer_context_available(dell, store, **kw)
+    assert rec is not None and rec.resource_id == WAVE
+    assert dict(dell) == before and store.read(ACC, WS).revision == 1  # read-only
+    assert ac.newer_context_available(dell, None, **kw) is None
+    in_sync = session(pick=WAVE, inst="Guitar", page="backing", key="D")
+    assert ac.newer_context_available(in_sync, store, **kw) is None
+
+
+def test_stale_merge_publish_leaves_the_tab_reporting_a_newer_shared_context(store):
+    seed(store)
+    dell = stale_dell()
+    dell["instrument"] = "Flute"
+    ac.mark_intent(dell, "instrument_changed")
+    flush(dell, store, "dell")
+    rec = ac.newer_context_available(dell, store, account_id=ACC, workspace_id=WS)
+    assert rec is not None and rec.resource_id == WAVE  # Dell still shows Blue Bossa
+
+
+def test_custom_and_composition_identities_round_trip(store):
+    for pick, kind in ((CUSTOM, "custom"), (COMP, "composition"), (BOSSA, "catalog")):
+        s = session(pick=pick, page="creative" if kind != "catalog" else "practice")
+        ac.mark_intent(s, "song_selected")
+        flush(s, store, "p")
+        rec = store.read(ACC, WS)
+        assert (rec.source_type, rec.resource_id) == (kind, pick)
+        payload = ac.payload_for_adoption(rec)
+        assert payload["source_type"] == kind and payload["pick_key"] == pick
+
+
+def test_failed_publish_does_not_rewrite_unrelated_context(store):
+    seed(store)
+    dell = stale_dell()
+    dell["instrument"] = "Flute"
+    ac.mark_intent(dell, "instrument_changed")
+    assert flush(dell, Boom()) == "store_error"
+    assert content(store) == (WAVE, "backing", "Guitar", "D", 1)
+    assert flush(dell, store) == "published"  # retry merges, still without stale song
+    assert content(store) == (WAVE, "backing", "Flute", "D", 2)

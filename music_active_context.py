@@ -40,6 +40,8 @@ _SUPPRESS_KEY = "_music_ctx_suppress"
 _ACCEPTED_KEY = "_music_ctx_accepted_revision"
 _ADOPT_CHECKED_KEY = "_music_ctx_adopt_checked"
 _REJECTED_KEY = "_music_ctx_rejected_revision"
+_SEEN_KEY = "_music_ctx_seen_revision"
+_CHOSEN_KEY = "_music_ctx_resource_chosen"
 
 # Fields that define "the same context" (everything else is bookkeeping).
 CONTENT_FIELDS = ("source_type", "resource_id", "page", "instrument", "practice_key")
@@ -57,7 +59,10 @@ class ActiveContext:
     practice_key: str = ""    # canonical Practice Key (concert pitch)
     intentional_at: str = ""  # ISO-8601 UTC of the user's action
     device_id: str = ""
-    cause: str = ""           # select | resume | instrument | key | page
+    cause: str = ""           # last applied intent type
+    # Per-field time of the intent that last set that field. Lets a later intent
+    # tell whether the field it owns was changed more recently by someone else.
+    field_at: dict = field(default_factory=dict)
     schema_version: int = SCHEMA_VERSION
 
     def content(self) -> tuple:
@@ -130,7 +135,8 @@ class LocalFileActiveContextStore:
         while fd is None:
             try:
                 fd = os.open(str(lock), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-            except FileExistsError:
+            except (FileExistsError, PermissionError):
+                # Windows reports a lock file that is pending delete as PermissionError.
                 try:  # break a lock left by a crashed writer
                     if time.time() - lock.stat().st_mtime > 10:
                         lock.unlink()
@@ -189,13 +195,49 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="microseconds")
 
 
-def mark_intent(session: Any, cause: str = "select") -> None:
-    """Record that the USER just made a context-defining choice. Cheap and
-    side-effect free apart from one session key; a no-op while adopting."""
+# Intent types -> (fields the intent owns, field whose newer change supersedes it,
+# whether it is only meaningful for the resource it was made on).
+#   song_selected       a deliberate resource choice; takes its page/key with it
+#   workflow_selected   page only; meaningless once the resource changed elsewhere
+#   instrument_changed  instrument only
+#   practice_key_changed  Practice Key only (never a Key Cycling sounding key)
+#   resume              a deliberate Resume (incl. a historical card): all fields
+INTENT_SPECS: dict[str, dict[str, Any]] = {
+    "song_selected": dict(owns=("source_type", "resource_id", "page", "practice_key"),
+                          conflicts="resource_id", needs_resource=False),
+    "workflow_selected": dict(owns=("page",), conflicts="page", needs_resource=True),
+    "instrument_changed": dict(owns=("instrument",), conflicts="instrument", needs_resource=False),
+    "practice_key_changed": dict(owns=("practice_key",), conflicts="practice_key", needs_resource=False),
+    "resume": dict(owns=CONTENT_FIELDS, conflicts="resource_id", needs_resource=False),
+}
+_CAUSE_ALIASES = {"select": "song_selected", "page": "workflow_selected",
+                  "instrument": "instrument_changed", "key": "practice_key_changed"}
+
+
+def mark_intent(session: Any, cause: str = "song_selected") -> None:
+    """Record that the USER just made a context-defining choice, as an intent
+    delta: its type, the fields it owns, the revision this device had accepted and
+    the resource it was made on. Side-effect free apart from one session key; a
+    no-op while adopting. Unknown causes are ignored (never inferred)."""
     try:
         if session.get(_SUPPRESS_KEY):
             return
-        session[_INTENT_KEY] = {"cause": str(cause or "select"), "at": _now_iso()}
+        kind = _CAUSE_ALIASES.get(str(cause or ""), str(cause or ""))
+        spec = INTENT_SPECS.get(kind)
+        if spec is None:
+            return
+        snap = snapshot_from_session(session) or {}
+        entry = {"type": kind, "owns": list(spec["owns"]), "at": _now_iso(),
+                 "base_revision": accepted_revision(session),
+                 "base_resource": snap.get("resource_id", "")}
+        pending = session.get(_INTENT_KEY)
+        items = list(pending["items"]) if isinstance(pending, dict) else []
+        if kind == "resume":
+            items = []  # a Resume replaces everything marked earlier in the same run
+        items.append(entry)
+        if "resource_id" in spec["owns"]:
+            session[_CHOSEN_KEY] = True  # the user deliberately picked this session's resource
+        session[_INTENT_KEY] = {"cause": kind, "at": entry["at"], "items": items}
     except Exception:
         pass
 
@@ -218,9 +260,26 @@ def clear_intent(session: Any) -> None:
     session.pop(_INTENT_KEY, None)
 
 
+def relabel_pending_as_resume(session: Any) -> None:
+    """A completed Resume transaction: whatever was marked during it is one resume."""
+    pending = session.get(_INTENT_KEY)
+    if isinstance(pending, dict):
+        at = pending.get("at") or _now_iso()
+        session[_INTENT_KEY] = {"cause": "resume", "at": at, "items": [
+            {"type": "resume", "owns": list(CONTENT_FIELDS), "at": at,
+             "base_revision": accepted_revision(session), "base_resource": ""}]}
+
+
 def accepted_revision(session: Any) -> int:
     try:
         return int(session.get(_ACCEPTED_KEY) or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def seen_revision(session: Any) -> int:
+    try:
+        return int(session.get(_SEEN_KEY) or 0)
     except (TypeError, ValueError):
         return 0
 
@@ -235,7 +294,9 @@ def _source_type(pick_key: str) -> str:
 
 def snapshot_from_session(session: Any) -> dict[str, str] | None:
     """The CURRENT resolved context fields, or None when no song is active.
-    Reuses the Resume payload builder so there is one definition of the fields."""
+    Reuses the Resume payload builder so there is one definition of the fields.
+    ``display_key`` is the Practice Key (concert); a Key Cycling sounding key is
+    never read here."""
     from music_resume_payload import build_music_resume_payload
 
     payload = build_music_resume_payload(session)
@@ -263,6 +324,53 @@ def _status(session: Any, value: str) -> str:
     return value
 
 
+def merge_intents(
+    latest: ActiveContext | None, snap: dict[str, str], items: list[dict[str, Any]],
+    resource_chosen: bool = False,
+) -> tuple[dict[str, str], dict[str, str], str, str]:
+    """Pure merge of intent deltas onto the LATEST record.
+
+    Returns (content, field_at, last_cause, outcome) where outcome is "apply" (some
+    delta survived), "superseded" (every delta lost to a later change of a field it
+    owns) or "discarded" (every delta no longer fits the newer resource). Only the
+    fields an applied intent owns are taken from ``snap``; every other field keeps
+    the latest record's value, so a stale device can never resurrect an old
+    song/page/instrument/key. With no record yet the snapshot seeds the content."""
+    if latest is None:
+        content = dict(snap)
+        field_at: dict[str, str] = {}
+    else:
+        content = {f: getattr(latest, f) for f in CONTENT_FIELDS}
+        field_at = dict(latest.field_at or {})
+    applied, lost_race, lost_fit, last_cause = 0, 0, 0, ""
+    for item in items:
+        spec = INTENT_SPECS.get(item.get("type"))
+        if spec is None:
+            continue
+        at = str(item.get("at") or "")
+        if latest is None and not resource_chosen and "resource_id" not in spec["owns"]:
+            # No shared record and the resource was never deliberately chosen (it is
+            # the safe default / hydrated state): a page, instrument or key change
+            # alone must not create revision 1 around a default song.
+            lost_fit += 1
+            continue
+        if latest is not None:
+            if field_at.get(spec["conflicts"], "") > at:
+                lost_race += 1  # a later intentional change already owns that field
+                continue
+            if spec["needs_resource"] and snap["resource_id"] != content["resource_id"]:
+                lost_fit += 1  # e.g. Practice->Backing for a song that is no longer current
+                continue
+        for f in spec["owns"]:
+            content[f] = snap[f]
+            field_at[f] = at
+        applied += 1
+        last_cause = item["type"]
+    if applied:
+        return content, field_at, last_cause, "apply"
+    return content, field_at, last_cause, "discarded" if lost_fit and not lost_race else "superseded"
+
+
 def flush_intent(
     session: Any,
     store: ActiveContextStore | None,
@@ -271,48 +379,82 @@ def flush_intent(
     workspace_id: str,
     device_id: str,
 ) -> str:
-    """Publish ONE newer revision iff an explicit intent is pending and the
-    resolved context differs from the stored one. Returns a status string.
+    """Publish ONE newer revision iff an explicit intent is pending and merging it
+    onto the latest record changes the content. Returns a status string.
 
-    Conflict rule (last intentional activity wins): on a CAS conflict our write is
-    retried once on top of the newer record only when our intent is later than the
-    stored record's intentional_at; otherwise the newer intent stands and we drop.
-    Any store failure leaves durable Music state untouched and keeps the intent so
-    a later run retries."""
+    Algorithm: read latest -> merge only the fields the pending intents own
+    (merge_intents) -> compare-and-set. On a CAS loss, reread and re-evaluate against
+    the winner. Intents that no longer fit are dropped (``superseded`` /
+    ``discarded``), never widened into a full-snapshot write. A store failure keeps
+    the intent for a later retry and leaves durable Music state untouched."""
     intent = session.get(_INTENT_KEY)
     if not isinstance(intent, dict) or store is None:
         return _status(session, "no_intent")
+    items = [i for i in intent.get("items") or [] if isinstance(i, dict)]
     snap = snapshot_from_session(session)
-    if snap is None:
+    if snap is None or not items:
         clear_intent(session)
         return _status(session, "no_context")
     try:
         current = store.read(account_id, workspace_id)
-        for attempt in range(2):
-            if current is not None and tuple(snap[f] for f in CONTENT_FIELDS) == current.content():
-                session[_ACCEPTED_KEY] = max(accepted_revision(session), current.revision)
+        for _attempt in range(4):
+            content, field_at, cause, outcome = merge_intents(current, snap, items, bool(session.get(_CHOSEN_KEY)))
+            if outcome != "apply":
+                if current is not None:
+                    session[_SEEN_KEY] = max(seen_revision(session), current.revision)
+                clear_intent(session)
+                return _status(session, outcome)
+            if current is not None and tuple(content[f] for f in CONTENT_FIELDS) == current.content():
+                _note_synced(session, snap, current)
                 clear_intent(session)
                 return _status(session, "unchanged")
-            if current is not None and str(intent.get("at") or "") <= current.intentional_at:
-                # A later intentional action elsewhere already won (last intent wins).
-                session[_ACCEPTED_KEY] = max(accepted_revision(session), current.revision)
-                clear_intent(session)
-                return _status(session, "superseded")
             expected = current.revision if current else 0
             record = ActiveContext(
                 account_id=account_id, workspace_id=workspace_id, revision=expected + 1,
-                intentional_at=str(intent.get("at") or _now_iso()), device_id=device_id,
-                cause=str(intent.get("cause") or ""), **snap,
+                intentional_at=max(str(i.get("at") or "") for i in items), device_id=device_id,
+                cause=cause, field_at=field_at, **content,
             )
             result = store.compare_and_set(expected, record)
             if result.ok:
-                session[_ACCEPTED_KEY] = record.revision
+                _note_synced(session, snap, record)
                 clear_intent(session)
                 return _status(session, "published")
             current = result.current  # lost the CAS race: re-evaluate against the winner
         return _status(session, "conflict")  # keep intent; retry on a later run
     except Exception:
         return _status(session, "store_error")  # intent kept; durable state untouched
+
+
+def _note_synced(session: Any, snap: dict[str, str], record: ActiveContext) -> None:
+    """Remember the revision this device has SEEN; it counts as in sync (accepted)
+    only when the device's own resolved context equals the record. After a merged
+    publish that differs from what this tab shows, the tab stays "behind" so
+    newer_context_available() keeps reporting the shared context."""
+    session[_SEEN_KEY] = max(seen_revision(session), record.revision)
+    if tuple(snap[f] for f in CONTENT_FIELDS) == record.content():
+        session[_ACCEPTED_KEY] = max(accepted_revision(session), record.revision)
+
+
+def newer_context_available(
+    session: Any, store: ActiveContextStore | None, *, account_id: str, workspace_id: str,
+) -> ActiveContext | None:
+    """Non-mutating: the shared record when it is newer than what this tab last
+    accepted AND differs from what this tab currently shows, else None. Reads the
+    store only; writes nothing and never touches session state or the UI. A future
+    "Workspace changed on another device -- Sync" affordance can call this; nothing
+    redirects an active tab."""
+    if store is None:
+        return None
+    try:
+        record = store.read(account_id, workspace_id)
+        if record is None or record.revision <= accepted_revision(session):
+            return None
+        snap = snapshot_from_session(session)
+        if snap is not None and tuple(snap[f] for f in CONTENT_FIELDS) == record.content():
+            return None
+        return record
+    except Exception:
+        return None
 
 
 def pending_adoption(
