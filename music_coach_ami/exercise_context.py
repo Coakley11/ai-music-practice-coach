@@ -166,6 +166,16 @@ def exercise_authority_signature(session_ref: Any, question: str = "") -> str:
     base = (
         f"mission|{m.get('surface', '')}|{m.get('key', '')}|{m.get('chord', '')}" if m.get("active") else "none"
     )
+    try:  # "undo that" twice, or "make it more syncopated" twice, act on a different version each time: they are different requests
+        from music_coach_ami import conversation_state as _conv
+        from music_coach_ami.exercise_revision import is_revision_request
+
+        if is_revision_request(question):
+            ver = _conv.current_version(session_ref)
+            if ver is not None:
+                return f"revision|vid={ver.get('vid')}|cursor={_conv.history(session_ref).get('cursor')}|{base}"
+    except Exception:
+        pass
     try:  # a follow-up acts on the last exercise, so "another one" twice is two different requests
         from music_coach_ami.exercise_followup import is_exercise_followup, last_exercise
 

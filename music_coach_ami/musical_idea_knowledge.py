@@ -982,6 +982,9 @@ def compose_musical_idea_suggestion(req: CoachRequest) -> dict[str, Any]:
         direct = f"{direct}\n\n{pattern_limit}"
     if sp_ex is not None and pattern_kind == "key_based" and pattern_note:
         direct = f"{direct}\n\n{pattern_note}"
+    if sp_ex is not None and re.search(r"chromatic|approach|syncopat|off-?beats?|anticipat|displac|enclosure|bebop", q_text, re.I):
+        direct = (f"{direct}\n\n_I built the plain pattern first. Say “add chromatic approaches”, “make the rhythm more syncopated” or "
+                  "“add anticipations of the next chord” and I'll revise this same exercise._")
     if pattern_kind and sp_ex is None and "scale_pattern_exercise_failed" in scale_pattern_diag and "scale_pattern_exercise_skipped" not in scale_pattern_diag:
         direct = (
             f"{direct}\n\n_I can't verify the written pitch and range for {notation_inst} yet, so this pattern is shown as it is but I can't "
