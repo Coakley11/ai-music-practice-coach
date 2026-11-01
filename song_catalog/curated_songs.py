@@ -7464,55 +7464,71 @@ def _core_chart_overrides() -> dict[tuple[str, str], dict[str, Any]]:
         ),
         ("So Nice (Summer Samba)", "Marcos Valle"): pack(
             "F",
+            # Published 32-bar form (Guitar Composer's Toolbox "So Nice (Summer
+            # Samba)" in F, 32 bars; its Real Book variant agrees on the A
+            # changes and on the ending C7b9 Fmaj7 Bb7 F).  Bars 1-16 = "Chorus";
+            # bars 17-32 repeat 1-11 and then take the closing ending.  The
+            # Intro is the catalog's existing 8-bar F vamp (no source found).
             {
                 "Intro": ["F", "F", "F", "F", "F", "F", "F", "F"],
-                "Verse": [
-                    "F", "F", "F", "F",
-                    "Bm", "E7", "Bm", "E7",
-                    "Bb", "Bb", "Bb", "Bb",
-                    "Bbm", "Bbm", "Bbm", "Bbm",
-                ],
                 "Chorus": [
-                    "Am", "D7", "Gm", "C7",
-                    "Em", "A7", "Dm",
-                    "G7", "Gm", "C7", "C7",
+                    "F", "F", "Bdim", "E7",
+                    "Bb", "Bb", "Eb7", "Eb7",
+                    "Am", "D7", "Gm", "Edim|A7",
+                    "Dm", "G7", "Gm", "C7",
                 ],
                 "Chorus (alternate)": [
+                    "F", "F", "Bdim", "E7",
+                    "Bb", "Bb", "Eb7", "Eb7",
                     "Am", "D7", "Gm", "C7",
-                    "F", "Bb", "F",
+                    "F", "Bb7", "F", "Gm|C7",
                 ],
             },
             {
                 "Intro": ["Fmaj7", "F6", "Fmaj7", "F6", "Fmaj7", "F6", "Fmaj7", "F6"],
-                "Verse": [
-                    "Fmaj7", "F6", "Fmaj7", "F6",
-                    "Bm7", "E9", "Bm7", "E9",
-                    "Bbmaj7", "Bb6", "Bbmaj7", "Bb6",
-                    "Bbm7", "Bbm6", "Bbm7", "Bbm6",
-                ],
                 "Chorus": [
-                    "Am7", "D7b9", "Gm7", "C7b9",
-                    "Em7b5", "A7#5", "Dm9",
-                    "G13", "Gm7", "C#9", "C9",
+                    "Fmaj7", "Fmaj7", "Bm7b5", "E7",
+                    "Bbmaj7", "Bbmaj7", "Eb7", "Eb7",
+                    "Am7", "D7b9", "Gm7", "Em7b5|A7",
+                    "Dm7", "G7", "Gm7", "C#7|C7",
                 ],
                 "Chorus (alternate)": [
+                    "Fmaj7", "Fmaj7", "Bm7b5", "E7",
+                    "Bbmaj7", "Bbmaj7", "Eb7", "Eb7",
                     "Am7", "D7b9", "Gm7", "C7b9",
-                    "Fmaj7", "Bb7", "Fmaj7",
+                    "Fmaj7", "Bb7", "F6", "Gm7|C7",
+                ],
+            },
+            {
+                "Intro": ["Fmaj7", "F6", "Fmaj7", "F6", "Fmaj7", "F6", "Fmaj7", "F6"],
+                "Chorus": [
+                    "Fmaj7", "Fmaj7", "Bm7b5", "E7b13",
+                    "Bbmaj7", "Bbmaj7", "Eb7", "Eb7",
+                    "Am7", "D7b9", "Gm7", "Em7b5|A7b13",
+                    "Dm9", "G7", "Gm7", "C#7|C7",
+                ],
+                "Chorus (alternate)": [
+                    "Fmaj7", "Fmaj7", "Bm7b5", "E7b13",
+                    "Bbmaj7", "Bbmaj7", "Eb7", "Eb7",
+                    "Am7", "D7b9", "Gm7", "C7b9",
+                    "Fmaj7", "Bb7", "F6", "Gm7|C7",
                 ],
             },
             status="practice_level_verified",
             lyric_cues={
                 "Intro": ["samba pickup — keep Fmaj7/F6 bounce light"],
-                "Verse": ["lyric entrance over I–VI–bVII–iv color"],
-                "Chorus": ["lift into ii–V–I minor then back to F"],
-                "Chorus (alternate)": ["shorter tag — resolve on Fmaj7"],
+                "Chorus": ["first 16 bars — Bm7b5 · E7 and Eb7 color, then ii–V turnaround"],
+                "Chorus (alternate)": ["second 16 bars — same first 11 bars, then C7b9 · Fmaj7 · Bb7 · F6 ending"],
             },
             extensions=_ext(
                 default_bpm=135,
                 default_groove="Bossa nova",
+                full_form_levels=["Beginner", "Intermediate"],
                 arrangement_notes=(
-                    "Bossa/samba form in **F** — one chord per bar. "
-                    "Use **Chorus (alternate)** for later passes; default groove ~135 BPM."
+                    "Bossa/samba form in **F** — published 32 bars: **Chorus** (16) then "
+                    "**Chorus (alternate)** (16) with the closing ending; two-bar chords "
+                    "are listed once per bar and the turnaround bars split "
+                    "(**Em7b5|A7**, **C#7|C7**). Default groove ~135 BPM."
                 ),
             ),
         ),
