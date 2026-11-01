@@ -1076,6 +1076,14 @@ def render_custom_progression_lab_page() -> None:
                     apply_cpl_session_progression(
                         st.session_state, loaded, reset_display_key=True
                     )
+                    try:
+                        # The Custom identity memory must follow the song just loaded, or a later
+                        # "restore last Custom" puts the previous song's chords back under this title.
+                        from songs.music_source import snapshot_last_custom_state
+
+                        snapshot_last_custom_state(st.session_state)
+                    except Exception:
+                        pass
                     st.rerun()
         with st.expander("Jazz chart demos", expanded=False):
             st.caption("Load a full jazz-standard chart with measure bars and repeat (%) notation.")

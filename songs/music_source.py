@@ -1793,6 +1793,19 @@ def install_last_custom_into_live_cpl(
         return True
     # Explicit SBI Custom / prefer_last_custom: a named LAST_CUSTOM Trial Song
     # outranks a chord-bearing My Progression shell (Original D alone is not identity).
+    live_is_named_song = bool(
+        live_name and live_name not in generic_live and live_chords > 0 and cpl_active_is_substantive(live)
+    )
+    if prefer_last_custom and not same_identity and live_is_named_song:
+        # The live draft is a real, named song (e.g. a saved song just loaded with Load
+        # selected). LAST_CUSTOM is only identity memory and is stale until the next snapshot:
+        # re-installing it would put the previous song's chords under the loaded song's
+        # title. The live song wins and becomes the new memory.
+        try:
+            snapshot_last_custom_state(session_state)
+        except Exception:
+            pass
+        return True
     if prefer_last_custom and not same_identity and (snap_chords > 0 or snap_is_named):
         clear_cpl_intentional_new_song(session_state)
         apply_cpl_session_progression(
