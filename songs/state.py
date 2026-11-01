@@ -57,6 +57,15 @@ def queue_pending_catalog_pick(st: Any, pick_key: str) -> None:
     pk = str(pick_key or "").strip()
     if pk:
         st.session_state[PENDING_CATALOG_PICK_KEY] = pk
+        # A Songs-page pick is queued here and applied on the next run by a path
+        # that never goes through begin_explicit_catalog_selection, so this is
+        # where the explicit intent has to be recorded.
+        try:
+            from music_active_context import mark_intent as _ctx_intent
+
+            _ctx_intent(st.session_state, "select")
+        except Exception:
+            pass
 
 
 def apply_explicit_catalog_dropdown_pick(

@@ -182,3 +182,16 @@ def test_feature_is_dark_by_default(monkeypatch):
     assert ac.get_store() is None
     monkeypatch.setenv(ac.ENV_MODE, "local")
     assert isinstance(ac.get_store(), ac.LocalFileActiveContextStore)
+
+
+def test_songs_page_queued_pick_records_intent_but_hydration_apply_does_not():
+    from types import SimpleNamespace
+
+    from songs.state import queue_pending_catalog_pick
+
+    st = SimpleNamespace(session_state={})
+    queue_pending_catalog_pick(st, SAY)
+    assert st.session_state["_music_ctx_intent"]["cause"] == "select"
+    quiet = SimpleNamespace(session_state={})
+    queue_pending_catalog_pick(quiet, "")  # nothing queued -> no intent
+    assert "_music_ctx_intent" not in quiet.session_state
