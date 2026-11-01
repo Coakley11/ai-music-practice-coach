@@ -2651,6 +2651,18 @@ def last_authoritative_catalog_snapshot(session_state: dict[str, Any]) -> dict[s
     return None
 
 
+def load_last_song_snapshot(session_state: dict[str, Any], *, on_catalog_page: bool) -> dict[str, Any] | None:
+    """What the "Load Last Song" shortcut offers.
+
+    On the Catalog page the current song is itself the last Catalog selection, so the
+    shortcut offers the previous *distinct* Catalog song (None until one exists). From the
+    Custom / Composition hubs no Catalog song is current, so the last Catalog song is the way back.
+    """
+    if on_catalog_page:
+        return previous_catalog_snapshot(session_state)
+    return last_authoritative_catalog_snapshot(session_state)
+
+
 def queue_last_catalog_restore(st: Any) -> None:
     """Freeze the canonical identity at click time for the existing pre-widget queue."""
     snap = last_authoritative_catalog_snapshot(st.session_state)

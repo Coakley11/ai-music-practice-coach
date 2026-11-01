@@ -11372,11 +11372,13 @@ def _render_last_catalog_song_shortcut(
     key_prefix: str = "catalog",
 ) -> None:
     """Restore the last authoritative Catalog selection."""
-    from songs.music_source import (
-        last_authoritative_catalog_snapshot,
-    )
+    from songs.music_source import load_last_song_snapshot
 
-    snap = last_authoritative_catalog_snapshot(st.session_state)
+    # On the Catalog page the current song IS the last Catalog selection, so "last" there
+    # means the previous *distinct* Catalog song (none yet -> no button). From the Custom /
+    # Composition hubs no Catalog song is current, so the last Catalog song is the way back.
+    _on_catalog = key_prefix == "catalog_hub"
+    snap = load_last_song_snapshot(st.session_state, on_catalog_page=_on_catalog)
     if not snap:
         return
     sel = snap.get("selected_song") or {}
@@ -11410,9 +11412,12 @@ def _render_last_catalog_song_shortcut(
         help="Restore the last Catalog song as the global active / Now Editing song.",
     ):
         from songs.key_state import invalidate_backing_cache
-        from songs.music_source import queue_last_catalog_restore
+        from songs.music_source import PENDING_PREVIOUS_CATALOG_RESTORE_KEY, queue_last_catalog_restore
 
-        queue_last_catalog_restore(st)
+        if _on_catalog:
+            st.session_state[PENDING_PREVIOUS_CATALOG_RESTORE_KEY] = dict(snap)
+        else:
+            queue_last_catalog_restore(st)
         invalidate_backing_cache(st)
         st.rerun()
 
