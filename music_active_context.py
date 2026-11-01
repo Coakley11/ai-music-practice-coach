@@ -110,10 +110,17 @@ class LocalFileActiveContextStore:
 
     def read(self, account_id: str, workspace_id: str) -> ActiveContext | None:
         path = self._path(account_id, workspace_id)
-        try:
-            return ActiveContext.from_dict(json.loads(path.read_text(encoding="utf-8")))
-        except (OSError, ValueError):
-            return None
+        for attempt in range(20):
+            try:
+                return ActiveContext.from_dict(json.loads(path.read_text(encoding="utf-8")))
+            except FileNotFoundError:
+                return None
+            except PermissionError:
+                # Windows: a concurrent atomic replace briefly locks the file.
+                time.sleep(0.005 * (attempt + 1))
+            except (OSError, ValueError):
+                return None
+        raise OSError(f"active-context record unreadable: {path}")
 
     @contextmanager
     def _locked(self, path: Path) -> Iterator[None]:
@@ -152,7 +159,14 @@ class LocalFileActiveContextStore:
                 return CasResult(False, current)
             tmp = path.with_suffix(f".{os.getpid()}.tmp")
             tmp.write_text(json.dumps(record.to_dict(), sort_keys=True), encoding="utf-8")
-            os.replace(tmp, path)
+            for attempt in range(20):
+                try:
+                    os.replace(tmp, path)
+                    break
+                except PermissionError:  # a reader briefly holds the file (Windows)
+                    if attempt == 19:
+                        raise
+                    time.sleep(0.005 * (attempt + 1))
             return CasResult(True, record)
 
 
