@@ -218,13 +218,63 @@ def test_stale_instrument_change_does_not_resurrect_song_or_page(store):
     assert content(store) == (WAVE, "backing", "Flute", "D", 2)
 
 
-def test_stale_practice_key_change_merges_onto_newest_resource_and_workflow(store):
-    seed(store)
-    dell = stale_dell()
-    dell["display_key"] = "Eb"
+def test_stale_practice_key_intent_against_a_replaced_resource_is_discarded(store):
+    seed(store)  # shared: Wave / backing / Guitar / D
+    dell = stale_dell()  # Blue Bossa, C minor
+    dell["display_key"] = "Ebm"
     ac.mark_intent(dell, "practice_key_changed")
+    assert flush(dell, store, "dell") == "discarded"
+    assert content(store) == (WAVE, "backing", "Guitar", "D", 1)  # no translation, no guess
+    assert "_music_ctx_intent" not in dell
+
+
+def test_stale_practice_key_intent_on_the_same_resource_merges(store):
+    seed(store, pick=BOSSA, key="Cm")
+    other = session(pick=BOSSA, inst="Saxophone", page="practice", key="Cm")
+    other["display_key"] = "Dm"
+    ac.mark_intent(other, "practice_key_changed")
+    assert flush(other, store, "dell") == "published"
+    assert content(store) == (BOSSA, "backing", "Guitar", "Dm", 2)  # newest page/instrument kept
+
+
+def test_older_practice_key_intent_is_superseded_by_a_newer_one(store):
+    seed(store)
+    a, b = session(pick=WAVE), session(pick=WAVE)
+    a["display_key"], b["display_key"] = "E", "F"
+    ac.mark_intent(a, "practice_key_changed")
+    ac.mark_intent(b, "practice_key_changed")
+    assert flush(b, store, "b") == "published"
+    assert flush(a, store, "a") == "superseded"
+    assert content(store)[3] == "F"
+
+
+def test_song_selected_carries_its_own_practice_key(store):
+    seed(store)
+    dell = session(pick=BOSSA, inst="Saxophone", page="practice", key="Cm")
+    ac.mark_intent(dell, "song_selected")
     assert flush(dell, store, "dell") == "published"
-    assert content(store) == (WAVE, "backing", "Guitar", "Eb", 2)
+    assert content(store)[0] == BOSSA and content(store)[3] == "Cm"
+
+
+def test_resume_owns_and_restores_the_practice_key(store):
+    seed(store)
+    old = session(pick=BOSSA, inst="Saxophone", page="practice", key="Cm")
+    ac.mark_intent(old, "resume")
+    flush(old, store, "phone")
+    assert content(store)[3] == "Cm"
+    assert ac.payload_for_adoption(store.read(ACC, WS))["display_key"] == "Cm"
+
+
+@pytest.mark.parametrize("a_pick,b_pick", [(CUSTOM, WAVE), (COMP, CUSTOM), (WAVE, COMP), (CUSTOM, COMP)])
+def test_practice_key_resource_dependency_holds_for_custom_and_composition(store, a_pick, b_pick):
+    seed(store, pick=b_pick)
+    stale = session(pick=a_pick, page="creative", key="Ebm")
+    ac.mark_intent(stale, "practice_key_changed")
+    assert flush(stale, store, "dell") == "discarded"
+    assert content(store)[3] == "D"
+    same = session(pick=b_pick, key="G")
+    ac.mark_intent(same, "practice_key_changed")
+    assert flush(same, store, "dell") == "published" and content(store)[3] == "G"
 
 
 def test_standalone_practice_key_change_publishes_and_peer_adopts_canonical_key(store):

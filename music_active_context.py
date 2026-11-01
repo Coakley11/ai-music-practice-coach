@@ -200,14 +200,16 @@ def _now_iso() -> str:
 #   song_selected       a deliberate resource choice; takes its page/key with it
 #   workflow_selected   page only; meaningless once the resource changed elsewhere
 #   instrument_changed  instrument only
-#   practice_key_changed  Practice Key only (never a Key Cycling sounding key)
+#   practice_key_changed  Practice Key only; resource-dependent (a key chosen against song A
+#                         is never merged onto song B -- no respelling or mode guessing);
+#                         never a Key Cycling sounding key
 #   resume              a deliberate Resume (incl. a historical card): all fields
 INTENT_SPECS: dict[str, dict[str, Any]] = {
     "song_selected": dict(owns=("source_type", "resource_id", "page", "practice_key"),
                           conflicts="resource_id", needs_resource=False),
     "workflow_selected": dict(owns=("page",), conflicts="page", needs_resource=True),
     "instrument_changed": dict(owns=("instrument",), conflicts="instrument", needs_resource=False),
-    "practice_key_changed": dict(owns=("practice_key",), conflicts="practice_key", needs_resource=False),
+    "practice_key_changed": dict(owns=("practice_key",), conflicts="practice_key", needs_resource=True),
     "resume": dict(owns=CONTENT_FIELDS, conflicts="resource_id", needs_resource=False),
 }
 _CAUSE_ALIASES = {"select": "song_selected", "page": "workflow_selected",
