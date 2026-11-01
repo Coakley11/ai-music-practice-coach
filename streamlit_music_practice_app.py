@@ -14564,10 +14564,14 @@ try:
                     ):
                         _ctx_refresh = True
                         _studio_page = str(st.session_state.get("studio_page") or _studio_page)
+                # Only a completed Resume is final at this point in the run. Every other
+                # intent (a Songs-page pick is marked before it is applied) is published
+                # by the end-of-run flush, once the resolved context is final; flushing
+                # here would see the not-yet-applied context and discard the intent.
                 _ctx_intent_now = st.session_state.get("_music_ctx_intent")
                 if _entry_finalized and isinstance(_ctx_intent_now, dict):
                     _ctx_intent_now["cause"] = "resume"
-                _ctx_flush(st.session_state, _ctx_store, device_id=str(get_music_device_id(st)), **_ctx_ids)
+                    _ctx_flush(st.session_state, _ctx_store, device_id=str(get_music_device_id(st)), **_ctx_ids)
     except Exception:
         pass
     if _ctx_refresh:
