@@ -1347,6 +1347,25 @@ def generate_piano_section_improvisation(
     return replace(comp, validation_ok=ok, validation_errors=tuple(errs))
 
 
+def _abc_pitch_in_bar(spelled: str, octave: int, key_field: str, state: dict[tuple[str, int], int]) -> str:
+    """ABC pitch token for ``spelled`` that reads back as exactly that pitch under ABC's accidental rules.
+
+    ABC accidentals are *absolute* (``^`` is a sharp, ``=`` a natural, whatever the key signature says) and last to the end of the bar for the same
+    pitch in the same octave. ``state`` holds what is in force in the current bar for each (letter, octave); an accidental is written whenever the
+    note's own alteration differs from what is in force (the key signature until a note in this bar changes it). Without this a note that relies
+    on the key signature after an explicit natural (or sharp/flat) earlier in the bar is displayed one semitone off.
+    """
+    from music_theory import abc_key_signature_letter_alterations, abc_pitch_for_spelled_note, spelled_note_letter_alteration
+
+    letter, alter = spelled_note_letter_alteration(spelled)
+    slot = (letter, int(octave))
+    in_force = state.get(slot, abc_key_signature_letter_alterations(key_field).get(letter, 0))
+    body = abc_pitch_for_spelled_note(spelled, octave=octave, k_field=key_field).lstrip("_^=")
+    prefix = "" if alter == in_force else {0: "=", 1: "^", -1: "_", 2: "^^", -2: "__"}.get(alter, ("^" if alter > 0 else "_") * abs(alter))
+    state[slot] = alter
+    return prefix + body
+
+
 def composition_to_abc(
     composition: MusicalIdeaComposition,
     *,
@@ -1372,6 +1391,8 @@ def composition_to_abc(
     q = int(bpm or 96)
     key_field = _abc_key_field(tonic, tonality)
 
+    bar_accidentals: dict[tuple[str, int], int] = {}      # the accidentals in force in the bar being written (see _abc_pitch_in_bar)
+
     def _event_token(ev: MusicalEvent, *, with_chord: bool, slur_start: bool = False, slur_end: bool = False) -> str:
         dur_l = str(ev.duration).lower()
         rest = dur_l.startswith("rest") or not str(ev.spelled or "").strip()
@@ -1388,7 +1409,7 @@ def composition_to_abc(
             else:
                 tok = "z"
         else:
-            tok = _note_to_abc(ev.spelled, ev.octave, key_field=key_field)
+            tok = _abc_pitch_in_bar(ev.spelled, ev.octave, key_field, bar_accidentals)
             if dur_l in ("half", "minim"):
                 suffix = "2"
             elif dur_l in ("eighth", "quaver", "triplet_eighth"):
@@ -1428,6 +1449,7 @@ def composition_to_abc(
             by_bar.setdefault(ev.bar_index, []).append((ev, start, end))
         lines: list[str] = []
         for bar_i in range(composition.bars):
+            bar_accidentals.clear()
             evs = by_bar.get(bar_i) or []
             parts: list[str] = []
             for idx, (ev, start, end) in enumerate(evs):

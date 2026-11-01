@@ -502,6 +502,8 @@ def test_an_explanation_without_an_exercise_does_not_invent_one():
     s = session("Flute")
     r = run_coach_submit("Show me the guide tones", s, ami_ctx=ctx())[1]
     assert not (r and r.diagnostics.get("exercise_explanation"))
+    r2 = run_coach_submit("Explain the musical reasoning behind that last change", s, ami_ctx=ctx())[1]
+    assert r2 is not None and "no exercise" in r2.direct_answer.lower() and failed(r2)
 
 
 def test_a_stale_exercise_is_not_explained_for_another_song():

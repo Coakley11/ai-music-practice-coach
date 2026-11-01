@@ -521,6 +521,10 @@ def handle_revision(question: str, session_ref: Any, ami_ctx: dict[str, Any] | N
         return pattern, ""
     has = cs.current_version(session_ref) is not None
     if not has:
+        from music_coach_ami.exercise_explain import LAST_CHANGE, parse_explanation
+
+        if parse_explanation(question) == LAST_CHANGE:          # "what did that change do?" with nothing changed yet
+            return no_exercise_response(question, kind="change"), ""
         from music_coach_ami.scale_pattern_recipe import parse_pattern_change
 
         change = parse_pattern_change(question)
