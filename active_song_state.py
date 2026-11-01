@@ -1240,10 +1240,10 @@ def _apply_context_to_session_keys(
             from songs.chart_provenance import reconcile_payload_chart_copies
 
             reconcile_payload_chart_copies(
-                {"selected_song": selected}, where="active_song_state.apply_context"
+                {"selected_song": selected}, where="active_song_state.apply_context", session=session
             )
-        except Exception:
-            pass
+        except Exception as exc:
+            _chart_prov_failure(session, "active_song_state.apply_context", exc)
     if selected and not stale_ctx:
         if pick_key:
             selected.setdefault("pick_key", master_pick or pick_key)
@@ -2198,3 +2198,13 @@ def render_active_song_state_debug(st: Any, session: dict[str, Any]) -> None:
             f"canonical=`{trace.get('active_song_state', {})}` "
             f"overwrite=`{trace.get('overwrite_source') or ''}`"
         )
+
+
+def _chart_prov_failure(session: Any, where: str, exc: BaseException) -> None:
+    """Log a swallowed chart-provenance failure (bounded _chart_provenance_log); never raises."""
+    try:
+        from songs.chart_provenance import log_failure
+
+        log_failure(session, where, exc)
+    except Exception:
+        pass

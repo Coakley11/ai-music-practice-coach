@@ -241,8 +241,8 @@ def _hydrate_from_canonical_pick(
             sel, canon, where="chart_bundle_startup.hydrate", pick_key=pk,
             session=st.session_state, stamp=False,
         )
-    except Exception:
-        pass
+    except Exception as exc:
+        _chart_prov_failure(st.session_state, "chart_bundle_startup.hydrate", exc)
     merged = _merge_chart_song_overlay(canon, overlay)
     if isinstance(sel, dict) and sel:
         merged = _merge_chart_song_overlay(merged, sel)
@@ -369,3 +369,13 @@ def stash_chart_bundle_recovery_context(
     session_state["_chart_bundle_recovery_genre"] = genre
     session_state["_chart_bundle_recovery_song"] = song
     session_state["_chart_bundle_recovery_song_data"] = dict(song_data or {})
+
+
+def _chart_prov_failure(session: Any, where: str, exc: BaseException) -> None:
+    """Log a swallowed chart-provenance failure (bounded _chart_provenance_log); never raises."""
+    try:
+        from songs.chart_provenance import log_failure
+
+        log_failure(session, where, exc)
+    except Exception:
+        pass
