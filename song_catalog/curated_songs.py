@@ -9913,9 +9913,53 @@ def curated_song_records() -> list[dict[str, Any]]:
             "B Section": ["Bm7b5", "E7", "Am7", "Am7", "Dm7", "G7", "Cmaj7", "E7"],
         }, composer="Antonio Carlos Jobim"),
         _s("How Insensitive", "Antonio Carlos Jobim", "Jazz", "Dm", {
-            "A Section": ["Dm9", "Dm9/C", "Bdim7", "Bbmaj7", "A7", "A7", "Dm", "Dm"],
-            "B Section": ["Gm7", "C7", "Fmaj7", "Bbmaj7", "Em7b5", "A7", "Dm", "A7"],
-        }, composer="Antonio Carlos Jobim"),
+            # Published 32-bar AB form (standardrepertoire.com: 32 bars; Guitar
+            # Composer's Toolbox "How Insensitive" in D, two charts agree on the
+            # A section; jazzguitar.be player chart Dm9 C#dim7 Cm6 G/B Bbmaj7).
+            # The descending bass D-C#-C-B-Bb moves in two-bar chords; one list
+            # item = one bar, so each two-bar chord is listed twice.
+            "A Section": [
+                "Dm7", "Dm7", "C#dim7", "C#dim7", "Cm6", "Cm6", "G7/B", "G7/B",
+                "Bbmaj7", "Bbmaj7", "Ebmaj7", "Ebmaj7", "Em7b5", "A7b9", "Dm7", "C#7",
+            ],
+            "B Section": [
+                "Cm6", "Cm6", "Bdim7", "Bdim7", "Bbmaj7", "Em7b5|A7b9", "Dm7", "C#7",
+                "Cm7", "F7", "Bm7", "E7b9", "Bbmaj7", "A7b9", "Dm7", "Dm7",
+            ],
+        }, composer="Antonio Carlos Jobim",
+          extensions=_ext(full_form_levels=["Beginner", "Intermediate"]),
+          chart_versions={
+              "Beginner": {
+                  "A Section": [
+                      "Dm", "Dm", "C#dim", "C#dim", "Cm", "Cm", "G7", "G7",
+                      "Bb", "Bb", "Eb", "Eb", "Em", "A7", "Dm", "C#7",
+                  ],
+                  "B Section": [
+                      "Cm", "Cm", "Bdim", "Bdim", "Bb", "Em|A7", "Dm", "C#7",
+                      "Cm", "F7", "Bm", "E7", "Bb", "A7", "Dm", "Dm",
+                  ],
+              },
+              "Intermediate": {
+                  "A Section": [
+                      "Dm7", "Dm7", "C#dim7", "C#dim7", "Cm6", "Cm6", "G7/B", "G7/B",
+                      "Bbmaj7", "Bbmaj7", "Ebmaj7", "Ebmaj7", "Em7b5", "A7b9", "Dm7", "C#7",
+                  ],
+                  "B Section": [
+                      "Cm6", "Cm6", "Bdim7", "Bdim7", "Bbmaj7", "Em7b5|A7b9", "Dm7", "C#7",
+                      "Cm7", "F7", "Bm7", "E7b9", "Bbmaj7", "A7b9", "Dm7", "Dm7",
+                  ],
+              },
+              "Advanced": {
+                  "A Section": [
+                      "Dm9", "Dm9", "C#dim7", "C#dim7", "Cm6", "Cm6", "G7/B", "G7/B",
+                      "Bbmaj7", "Bbmaj7", "Ebmaj7#11", "Ebmaj7#11", "Em7b5", "A7b9", "Dm9", "C#7",
+                  ],
+                  "B Section": [
+                      "Cm6", "Cm6", "Bdim7", "Bdim7", "Bbmaj7", "Em7b5|A7b9", "Dm9", "C#7",
+                      "Cm7", "F7", "Bm7", "E7b9", "Bbmaj7", "A7b9", "Dm9", "Dm9",
+                  ],
+              },
+          }),
         _s("So Nice (Summer Samba)", "Marcos Valle", "Jazz", "F", {
             "Intro": ["Fmaj7", "F6", "Fmaj7", "F6", "Fmaj7", "F6", "Fmaj7", "F6"],
             "Verse": [
