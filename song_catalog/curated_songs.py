@@ -7432,24 +7432,43 @@ def _core_chart_overrides() -> dict[tuple[str, str], dict[str, Any]]:
         ("Wave", "Antonio Carlos Jobim"): _wave_chart_pack(),
         ("Blue Bossa", "Kenny Dorham"): _blue_bossa_chart_pack(),
         ("Fly Me to the Moon", "Bart Howard"): pack("C",
+            # 32-bar form A (1-8), B (9-16), A' (17-24), B' (25-32): lead sheet
+            # (Cleary/UVM, C major) + 8notes + Learn Jazz Standards. The old
+            # chart invented A2 (A7 Dm7 G7 Cmaj7 E7 Am7 A7 Dm7) and a Final A
+            # that repeated A1; the real second half is B (Dm7 G7 Cmaj7 Am7 |
+            # Dm7 G7 Cmaj7 Bm7|E7) and B' (Dm7 G7 Em7b5 A7 | Dm7 G7 C6 Bm7|E7).
             {
                 "A1": ["Am", "Dm", "G7", "C", "F", "Bm7b5", "E7", "Am"],
-                "A2": ["A7", "Dm", "G7", "C", "E7", "Am", "A7", "Dm"],
-                "Bridge": ["Dm", "G7", "C", "Am", "Dm", "G7", "C", "E7"],
-                "Final A / Tag": ["Am", "Dm", "G7", "C", "F", "Bm7b5", "E7", "Am"],
+                "B1": ["Dm", "G7", "C", "Am", "Dm", "G7", "C", "Bm|E7"],
+                "A2": ["Am", "Dm", "G7", "C", "F", "Bm7b5", "E7", "Am"],
+                "B2": ["Dm", "G7", "Em7b5", "A7", "Dm", "G7", "C", "Bm|E7"],
             },
             {
                 "A1": ["Am7", "Dm7", "G7", "Cmaj7", "Fmaj7", "Bm7b5", "E7", "Am7"],
-                "A2": ["A7", "Dm7", "G7", "Cmaj7", "E7", "Am7", "A7", "Dm7"],
-                "Bridge": ["Dm7", "G7", "Cmaj7", "Am7", "Dm7", "G7", "Cmaj7", "E7"],
-                "Final A / Tag": ["Am7", "Dm7", "G7", "Cmaj7", "Fmaj7", "Bm7b5", "E7", "Am7"],
+                "B1": ["Dm7", "G7", "Cmaj7", "Am7", "Dm7", "G7", "Cmaj7", "Bm7|E7"],
+                "A2": ["Am7", "Dm7", "G7", "Cmaj7", "Fmaj7", "Bm7b5", "E7", "Am7"],
+                "B2": ["Dm7", "G7", "Em7b5", "A7", "Dm7", "G7", "C6", "Bm7|E7"],
             },
             {
                 "A1": ["Am9", "Dm9", "G13", "Cmaj9", "Fmaj9", "Bm7b5", "E7b9", "Am9"],
-                "A2": ["A7b9", "Dm9", "G13", "Cmaj9", "E7b9", "Am9", "A7b9", "Dm9"],
-                "Bridge": ["Dm9", "G13", "Cmaj9", "Am9", "Dm9", "G13", "Cmaj9", "E7b9"],
-                "Final A / Tag": ["Am9", "Dm9", "G13", "Cmaj9", "Fmaj9", "Bm7b5", "E7b9", "Am9"],
+                "B1": ["Dm9", "G13", "Cmaj9", "Am9", "Dm9", "G13", "Cmaj9", "Bm7|E7"],
+                "A2": ["Am9", "Dm9", "G13", "Cmaj9", "Fmaj9", "Bm7b5", "E7b9", "Am9"],
+                "B2": ["Dm9", "G13", "Em7b5", "A7b9", "Dm9", "G7b9", "C6", "Bm7|E7"],
             },
+            extensions=_ext(
+                arrangement_notes=(
+                    "**32-bar AB-A'B'** in C. A: **Am7 - Dm7 - G7 - Cmaj7 - "
+                    "Fmaj7 - Bm7b5 - E7 - Am7**. B: Dm7 - G7 - Cmaj7 - Am7 - "
+                    "Dm7 - G7 - Cmaj7 - Bm7|E7. A repeats; the last 8 swap the "
+                    "B turn for **Em7b5 - A7** then Dm7 - G7 - C6 - Bm7|E7. "
+                    "All levels play the complete form. Charts also print "
+                    "A7b9 on the last beat of bars 8/24, Fdim7 in bar 15, "
+                    "and a coda (Fm7 - Bb7 - B7 - C6/9 Basie tag); those are "
+                    "single-source or beat-placement-uncertain and are not "
+                    "encoded."
+                ),
+                full_form_levels=["Beginner", "Intermediate"],
+            ),
         ),
         ("So Nice (Summer Samba)", "Marcos Valle"): pack(
             "F",
