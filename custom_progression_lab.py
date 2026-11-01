@@ -3341,7 +3341,7 @@ _STYLE_DEFAULTS: dict[str, dict] = {
         },
     },
     "Blues": {
-        "groove_style": "Rock groove",
+        "groove_style": "Blues groove",
         "sections": {
             "Verse": [
                 {"chord": "C7", "bars": 1},
@@ -3454,7 +3454,7 @@ _CPL_STYLE_GROOVE_FALLBACK: dict[str, str] = {
     "Soul/R&B": "Funk groove",
     "Jazz": "Jazz swing",
     "Bossa": "Bossa nova",
-    "Blues": "Rock groove",
+    "Blues": "Blues groove",
     "Funk": "Funk groove",
     "Rock": "Rock groove",
 }
