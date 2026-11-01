@@ -1235,6 +1235,15 @@ def _apply_context_to_session_keys(
                     _log_widget_bound_session_mutation_blocked(key, global_control_source, exc)
                     raise
     selected = _normalize_selected_song(ctx.get("selected_song"))
+    if selected:
+        try:
+            from songs.chart_provenance import reconcile_payload_chart_copies
+
+            reconcile_payload_chart_copies(
+                {"selected_song": selected}, where="active_song_state.apply_context"
+            )
+        except Exception:
+            pass
     if selected and not stale_ctx:
         if pick_key:
             selected.setdefault("pick_key", master_pick or pick_key)

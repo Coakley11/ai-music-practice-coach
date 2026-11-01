@@ -2469,6 +2469,16 @@ def get_song_context(
             return True
 
     def _merge_sel_onto_canonical(canon: dict, overlay: dict) -> dict:
+        try:
+            from songs.chart_provenance import reconcile_snapshot
+
+            overlay = reconcile_snapshot(
+                overlay, canon, where="songs.state._merge_sel_onto_canonical",
+                pick_key=str(overlay.get("pick_key") or "").strip(),
+                session=st.session_state, stamp=False,
+            )
+        except Exception:
+            pass
         merged = dict(canon)
         for key, val in overlay.items():
             if key == "key":

@@ -3123,6 +3123,14 @@ def build_music_disk_state(st: Any) -> dict[str, Any]:
         audit_payload_global_keys(ss, state, save_reason=save_reason)
     except ImportError:
         pass
+    try:
+        # Record chart provenance (chart_origin/catalog_revision) on catalog snapshots and
+        # never persist a stale copy of a corrected catalog chart.
+        from songs.chart_provenance import reconcile_payload_chart_copies
+
+        reconcile_payload_chart_copies(state, where="build_music_disk_state")
+    except Exception:
+        pass
     return state
 
 
@@ -3136,6 +3144,14 @@ def apply_music_disk_state(
 ) -> None:
     """Apply disk/cloud payload with studio_page ownership protection."""
     ss = st.session_state
+    try:
+        # Cold restore / cloud hydration: an old saved copy of a catalog chart is
+        # refreshed from the current catalog before any restore path reads it.
+        from songs.chart_provenance import reconcile_payload_chart_copies
+
+        reconcile_payload_chart_copies(payload, where="apply_music_disk_state")
+    except Exception:
+        pass
     if not authoritative_restore and ss.pop("_music_authoritative_cloud_apply", False):
         authoritative_restore = True
     if authoritative_restore:

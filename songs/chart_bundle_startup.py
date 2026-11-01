@@ -230,6 +230,19 @@ def _hydrate_from_canonical_pick(
         return None
     genre, title, canon = loaded
     sel = st.session_state.get("selected_song") if isinstance(st.session_state.get("selected_song"), dict) else {}
+    try:
+        from songs.chart_provenance import reconcile_snapshot
+
+        overlay = reconcile_snapshot(
+            overlay, canon, where="chart_bundle_startup.hydrate", pick_key=pk,
+            session=st.session_state, stamp=False,
+        )
+        sel = reconcile_snapshot(
+            sel, canon, where="chart_bundle_startup.hydrate", pick_key=pk,
+            session=st.session_state, stamp=False,
+        )
+    except Exception:
+        pass
     merged = _merge_chart_song_overlay(canon, overlay)
     if isinstance(sel, dict) and sel:
         merged = _merge_chart_song_overlay(merged, sel)
