@@ -13266,6 +13266,36 @@ def _studio_page_header(
         pass
 
 
+def _render_backing_return_to_practice_action() -> None:
+    """Return to Practice for the ordinary song sources (Catalog, Custom, Composition).
+
+    Pure navigation: it never loads a song, so the active song, its Practice Key, instrument and
+    section context are exactly what Backing showed. Mission / Creative Backing keep their own
+    return actions (workflow ownership), and a Practice-loop handoff already has this button.
+    """
+    try:
+        from backing_context import get_backing_context
+        from backing_source_navigation import practice_loop_backing_is_active
+        from studio_page_persistence import save_page_snapshot
+
+        ctx = get_backing_context(st.session_state)
+        src = str(getattr(ctx, "source", "") or "") if ctx is not None else ""
+        if src not in {"", "regular_song", "custom_progression", "composition_song"}:
+            return
+        if practice_loop_backing_is_active(st.session_state):
+            return
+        if st.button(
+            feature_label("practice", "Return to Practice"),
+            key="backing_return_to_practice_card",
+            use_container_width=False,
+        ):
+            save_page_snapshot(st.session_state, "backing")
+            navigate_studio_page(st.session_state, "practice")
+            st.rerun()
+    except Exception:
+        pass
+
+
 def _render_backing_return_source_action() -> None:
     """Backing-only return action — separate from floating Back/Forward history."""
     try:
@@ -20881,6 +20911,7 @@ elif _studio_page == "backing":
         if _developer_mode_enabled():
             st.caption(f"Developer · mission lick panel: {_mission_lick_err}")
     _render_backing_return_source_action()
+    _render_backing_return_to_practice_action()
     if _developer_mode_enabled() and _creative_backing_ctx is not None:
         try:
             from backing_context_ui import render_backing_context_dev_diagnostics
