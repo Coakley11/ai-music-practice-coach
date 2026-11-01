@@ -462,3 +462,17 @@ def test_failed_publish_does_not_rewrite_unrelated_context(store):
     assert content(store) == (WAVE, "backing", "Guitar", "D", 1)
     assert flush(dell, store) == "published"  # retry merges, still without stale song
     assert content(store) == (WAVE, "backing", "Flute", "D", 2)
+
+
+def test_records_are_scoped_by_account_and_workspace_and_never_cross(store):
+    """6c898773 can change WHICH workspace a restarted device resolves; the record stays keyed by
+    (account, resolved workspace), so a different workspace or account never sees or adopts it."""
+    seed(store)
+    assert store.read(ACC, "ariel") is None and store.read("acct-2", WS) is None
+    other_ws = session(pick=SAY)
+    other_ws["_suite_active_workspace_id"] = "ariel"
+    assert ac.pending_adoption(other_ws, store, account_id=ACC, workspace_id="ariel",
+                               explicit_resume_present=False) is None
+    ac.mark_intent(other_ws, "song_selected")
+    assert ac.flush_intent(other_ws, store, account_id=ACC, workspace_id="ariel", device_id="d") == "published"
+    assert store.read(ACC, WS).resource_id == WAVE and store.read(ACC, "ariel").resource_id == SAY
