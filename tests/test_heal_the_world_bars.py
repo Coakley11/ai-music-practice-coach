@@ -11,8 +11,8 @@ class TestHealTheWorldBars(unittest.TestCase):
     def test_chorus_merges_e_over_g_sharp_into_a_bar(self) -> None:
         pack = pop_extension_chart_overrides()[("Heal The World", "Michael Jackson")]
         chorus = pack["sections"]["Chorus 1"]
-        self.assertIn("A|A|A|E/G#", chorus)
-        idx = chorus.index("A|A|A|E/G#")
+        self.assertIn("A:3|E/G#:1", chorus)
+        idx = chorus.index("A:3|E/G#:1")
         self.assertEqual(chorus[idx + 1], "F#m7")
         self.assertNotIn("E/G#", chorus)
 
