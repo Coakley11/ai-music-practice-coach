@@ -2799,80 +2799,43 @@ def _day_tripper_chart_pack() -> dict[str, Any]:
 
 
 def _autumn_leaves_chart_pack() -> dict[str, Any]:
-    """Autumn Leaves — jazz standard in B minor (4/4).
+    """Autumn Leaves -- 32-bar AABC head in B minor (4/4).
 
-    Classic **ii–V–I–IV** (Em7–A7–Dmaj7–Gmaj7) then **iiø–V7–i**
-    (C#m7b5–F#7–Bm). Matches the common Eric Clapton / jazz-ballad
-    reading; one list item = one bar in 4/4.
+    Published form (Kosma/Mercer; Real Book + printed G-minor lead sheets,
+    transposed here from G minor to the catalog key Bm, +4 semitones):
+    A  = ii-V-I-IV then iiø-V-i   (Em7 A7 Dmaj7 Gmaj7 | C#m7b5 F#7 Bm Bm)
+    A2 = repeat of A
+    B  = minor ii-V-i then ii-V-I-IV (C#m7b5 F#7 Bm Bm | Em7 A7 Dmaj7 Gmaj7)
+    C  = iiø-V-i with the chromatic walk-down
+         (C#m7b5 F#7 | Bm7|Bb7 Am7|G#7 | Gmaj7 F#7 | Bm Bm).
+    The earlier chart invented an Intro/Verse/Pre-Chorus/Chorus layout, ended
+    B at Dmaj7 Dmaj7 and replaced C by a second iiø-V-i; one list item = one
+    bar in 4/4.  Both catalog entries (Jazz Standard, Eric Clapton) share it.
     """
-    cycle = ["Em7", "A7", "Dmaj7", "Gmaj7", "C#m7b5", "F#7", "Bm", "Bm"]
-    pre_chorus = [
-        "C#m7b5",
-        "F#7",
-        "Bm",
-        "Bm",
-        "Em7",
-        "A7",
-        "Dmaj7",
-        "Dmaj7",
-    ]
-    chorus = [
-        "C#m7b5",
-        "F#7",
-        "Bm",
-        "Bm",
-        "C#m7b5",
-        "F#7",
-        "Bm",
-        "Bm",
-    ]
-
+    a = ["Em7", "A7", "Dmaj7", "Gmaj7", "C#m7b5", "F#7", "Bm", "Bm"]
+    b = ["C#m7b5", "F#7", "Bm", "Bm", "Em7", "A7", "Dmaj7", "Gmaj7"]
+    c = ["C#m7b5", "F#7", "Bm7|Bb7", "Am7|G#7", "Gmaj7", "F#7", "Bm", "Bm"]
     intermediate = {
-        "Intro": ["Bm", "Bm"],
-        "Verse 1": list(cycle),
-        "Verse 2": list(cycle),
-        "Pre-Chorus": list(pre_chorus),
-        "Chorus": list(chorus),
-        "Instrumental": list(cycle) * 2,
-        "Pre-Chorus 2": list(pre_chorus),
-        "Chorus 2": list(chorus),
-        "Final Chorus": list(chorus),
-        "Outro Solo": list(cycle) * 4,
+        "A Section": list(a),
+        "A2": list(a),
+        "B Section": list(b),
+        "C Section": list(c),
     }
-
-    def _beg(ch: str) -> str:
-        return (
-            ch.replace("C#m7b5", "C#dim")
-            .replace("Dmaj7", "D")
-            .replace("Gmaj7", "G")
-            .replace("Em7", "Em")
-            .replace("m7b5", "dim")
-            .replace("maj7", "")
-            .replace("m7", "m")
-        )
-
     beginner = {
-        name: [_beg(c) for c in chords]
-        for name, chords in intermediate.items()
+        # Triads/dyads but the dominants stay dominants (F#7, A7, Bb7, G#7) and
+        # the iiø bars read as C#dim like the previous Beginner chart.
+        "A Section": ["Em", "A7", "D", "G", "C#dim", "F#7", "Bm", "Bm"],
+        "A2": ["Em", "A7", "D", "G", "C#dim", "F#7", "Bm", "Bm"],
+        "B Section": ["C#dim", "F#7", "Bm", "Bm", "Em", "A7", "D", "G"],
+        "C Section": ["C#dim", "F#7", "Bm|Bb7", "Am|G#7", "G", "F#7", "Bm", "Bm"],
     }
-
-    def _adv(ch: str) -> str:
-        mapping = {
-            "Em7": "Em9",
-            "A7": "A13",
-            "Dmaj7": "Dmaj9",
-            "Gmaj7": "Gmaj9",
-            "C#m7b5": "C#m7b5",
-            "F#7": "F#7b9",
-            "Bm": "Bm9",
-        }
-        return mapping.get(ch, ch)
-
+    adv_a = ["Em9", "A13", "Dmaj9", "Gmaj9", "C#m7b5", "F#7b9", "Bm9", "Bm9"]
     advanced = {
-        name: [_adv(c) for c in chords]
-        for name, chords in intermediate.items()
+        "A Section": list(adv_a),
+        "A2": list(adv_a),
+        "B Section": ["C#m7b5", "F#7b9", "Bm9", "Bm9", "Em9", "A13", "Dmaj9", "Gmaj9"],
+        "C Section": ["C#m7b5", "F#7b9", "Bm7|Bb7", "Am7|G#7", "Gmaj9", "F#7b9", "Bm9", "Bm9"],
     }
-
     section_order = list(intermediate.keys())
     scale_hints = {
         "Em7": ["E Dorian"],
@@ -2895,30 +2858,24 @@ def _autumn_leaves_chart_pack() -> dict[str, Any]:
         "section_order": section_order,
         "composer": "Joseph Kosma · Johnny Mercer",
         "lyric_cues": {
-            "Intro": ["Piano intro — Bm vamp"],
-            "Verse 1": ["The falling leaves drift by the window…"],
-            "Verse 2": ["Second verse — same A section harmony"],
-            "Pre-Chorus": ["Bridge into tonic — C#ø · F#7 · Bm"],
-            "Chorus": ["Chorus turnaround — iiø–V7–i twice"],
-            "Instrumental": ["Head / instrumental — full 8-bar cycle ×2"],
-            "Pre-Chorus 2": ["Second bridge"],
-            "Chorus 2": ["Second chorus"],
-            "Final Chorus": ["Final chorus — hold on Bm"],
-            "Outro Solo": [
-                "Outro solo — repeat Em7–A7–Dmaj7–Gmaj7 · C#ø–F#7–Bm"
-            ],
+            "A Section": ["The falling leaves drift by the window…", "ii-V-I-IV then iiø-V-i"],
+            "A2": ["Second A — same harmony (the A section repeats)"],
+            "B Section": ["Bridge starts in the minor: iiø-V-i, then ii-V-I-IV"],
+            "C Section": ["Last 8 — chromatic walk-down Bm7 Bb7 Am7 G#7 to Gmaj7, then F#7 to Bm"],
         },
         "extensions": _ext(
             arrangement_notes=(
-                "**B minor** jazz ballad (**4/4**, ~80–85 BPM). Default feel is "
-                "a straight **jazz ballad** (even eighths); **Jazz swing** is "
-                "available in the groove picker for a light swing. Preserve "
-                "qualities: **Em7 · A7 · Dmaj7 · Gmaj7 · C#m7b5 · F#7 · Bm**. "
-                "Core motion: **ii–V–I–IV** then **iiø–V7–i**. Backing: piano, "
-                "upright bass, brushed drums; optional jazz-guitar comping. "
-                "**Advanced** tier adds rootless extensions and **F#7b9**. "
-                "Tags: Jazz Standard · Improvisation Standard · Essential Jazz "
-                "Repertoire."
+                "**B minor** jazz ballad (**4/4**, ~80–85 BPM). The **32-bar "
+                "AABC** head (A, A2, B, C; 8 bars each), transposed from the "
+                "usual G minor. A: **Em7 · A7 · Dmaj7 · Gmaj7 · C#m7b5 · F#7 · "
+                "Bm**. B: minor ii–V–i then ii–V–I–IV. C: **C#m7b5 · F#7 · "
+                "Bm7|Bb7 · Am7|G#7 · Gmaj7 · F#7 · Bm** (the Real Book "
+                "chromatic walk-down; some charts use Bm7|E7 Am7|D7 or open the "
+                "last bars differently). Default feel is a straight **jazz "
+                "ballad**; **Jazz swing** is in the groove picker. All three "
+                "levels play the complete form. Both the Jazz Standard and "
+                "Eric Clapton entries use this chart. Tags: Jazz Standard · "
+                "Improvisation Standard · Essential Jazz Repertoire."
             ),
             default_bpm=82,
             default_groove="Ballad",
@@ -2931,11 +2888,13 @@ def _autumn_leaves_chart_pack() -> dict[str, Any]:
             harmonic_analysis={
                 "progression_summary": (
                     "ii–V–I–IV (Em7–A7–Dmaj7–Gmaj7) then "
-                    "iiø–V7–i (C#m7b5–F#7–Bm)"
+                    "iiø–V7–i (C#m7b5–F#7–Bm); chromatic walk-down "
+                    "Bm7–Bb7–Am7–G#7–Gmaj7 in the last section"
                 ),
                 "scale_suggestions": scale_hints,
             },
             jazz_ballad=True,
+            full_form_levels=["Beginner", "Intermediate"],
         ),
     }
 
