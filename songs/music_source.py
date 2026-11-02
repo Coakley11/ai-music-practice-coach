@@ -6509,6 +6509,12 @@ def _build_composition_chart_bundle(
             "chart_status": "composition",
             "trusted_core": False,
             "source_type": SOURCE_COMPOSITION,
+            # The Composition's own time signature is the song default for
+            # Backing / Practice / follow-along (default_time_signature_for_record
+            # reads extensions.time_signature before any title heuristic).
+            "extensions": {
+                "time_signature": str(projected.get("time_signature") or "4/4"),
+            },
         },
         "original_key": home_key,
         "level_source_sections": level_source_sections,

@@ -95,6 +95,11 @@ def default_time_signature_for_record(
     if ext.get("default_time_signature"):
         return normalize_time_signature(str(ext["default_time_signature"]))
 
+    # Composition projections carry their own time signature (never guess it
+    # from title/section names). Missing => 4/4 for pre-existing documents.
+    if record.get("is_composition") or str(record.get("source") or "") in ("composition", "composition_song"):
+        return normalize_time_signature(str(record.get("time_signature") or "4/4"))
+
     title = (record.get("title") or song_title or "").lower()
     keys = " ".join((sections or {}).keys()).lower()
     text = f"{title} {keys}"
