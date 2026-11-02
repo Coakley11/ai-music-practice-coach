@@ -67,6 +67,8 @@ BACKING_VOLUME_DEFAULT = 0.75
 # Live Streamlit widget keys — must match gather_backing_filters + envelope fields.
 BACKING_METER_WIDGET_KEY = "backing_time_signature"
 BACKING_METER_OVERRIDE_WIDGET_KEY = "backing_time_signature_override"
+# Song (sync_id) a genuine override was chosen for; persisted with the override flag.
+BACKING_METER_OVERRIDE_SONG_KEY = "backing_time_signature_override_song"
 BACKING_SCOPE_WIDGET_KEY = "backing_track_scope"
 BACKING_SINGLE_SECTION_WIDGET_KEY = "backing_track_single_section"
 BACKING_MULTI_SECTIONS_WIDGET_KEY = "backing_track_multi_sections"
@@ -612,6 +614,10 @@ def _normalize_filters(raw: dict[str, Any] | None) -> dict[str, Any]:
         "backing_volume": normalize_backing_volume(src.get("backing_volume")),
         "backing_time_signature": meter_norm,
         "backing_time_signature_override": bool(override_raw),
+        # Only meaningful with a genuine override; never derived from the meter.
+        BACKING_METER_OVERRIDE_SONG_KEY: (
+            str(src.get(BACKING_METER_OVERRIDE_SONG_KEY) or "").strip() if override_raw else ""
+        ),
         "backing_quick_section": str(src.get("backing_quick_section") or "").strip(),
         "backing_autoplay": bool(src.get("backing_autoplay")),
         "backing_transport_status": str(src.get("backing_transport_status") or "").strip(),
@@ -958,6 +964,7 @@ def bind_backing_rendered_widgets_from_canonical(
     if meter:
         session[BACKING_METER_WIDGET_KEY] = meter
     session[BACKING_METER_OVERRIDE_WIDGET_KEY] = canon_meter_override
+    _seed_meter_override_song(session, canonical, canon_meter_override)
     session[BACKING_WIDGETS_SEEDED_KEY] = True
     session.pop(BACKING_RESTORED_KEY, None)
     session["_backing_render_bind_reason"] = bind_reason
@@ -1017,6 +1024,7 @@ def gather_backing_filters(session: dict[str, Any]) -> dict[str, Any]:
             "backing_time_signature_override": bool(
                 session.get(BACKING_METER_OVERRIDE_WIDGET_KEY, False)
             ),
+            BACKING_METER_OVERRIDE_SONG_KEY: session.get(BACKING_METER_OVERRIDE_SONG_KEY),
             "backing_autoplay": bool(session.get("_backing_autoplay", False)),
             "backing_transport_status": str(session.get("backing_transport_status") or "").strip(),
         }
@@ -1152,6 +1160,14 @@ def _resolve_backing_filters_for_envelope(
     return normalized, "widget_fallback"
 
 
+def _seed_meter_override_song(session: dict[str, Any], filters: dict[str, Any], override: bool) -> None:
+    tag = str(filters.get(BACKING_METER_OVERRIDE_SONG_KEY) or "").strip() if override else ""
+    if tag:
+        session[BACKING_METER_OVERRIDE_SONG_KEY] = tag
+    else:
+        session.pop(BACKING_METER_OVERRIDE_SONG_KEY, None)
+
+
 def _apply_filters_to_session_keys(session: dict[str, Any], filters: dict[str, Any]) -> None:
     scope = normalize_backing_scope(filters.get("backing_track_scope"))
     session["backing_track_scope"] = scope
@@ -1191,6 +1207,7 @@ def _apply_filters_to_session_keys(session: dict[str, Any], filters: dict[str, A
         # the active catalog song's own time signature wins on the next apply.
         session.pop("backing_time_signature", None)
     session["backing_time_signature_override"] = meter_override
+    _seed_meter_override_song(session, filters, meter_override)
     quick = str(filters.get("backing_quick_section") or "").strip()
     if scope == "Full song":
         session[BACKING_QUICK_SECTION_WIDGET_KEY] = "Full song"
@@ -1475,6 +1492,7 @@ def prepare_backing_meter_for_widget(session: dict[str, Any], *, default_meter: 
             meter = normalize_backing_meter(meter_raw or default_meter)
             session["backing_time_signature"] = meter
             session["backing_time_signature_override"] = override
+            _seed_meter_override_song(session, canonical, override)
             session[BACKING_WIDGETS_SEEDED_KEY] = True
             session.pop(BACKING_RESTORED_KEY, None)
             return meter, override
@@ -1674,7 +1692,11 @@ def _backing_filters_from_blob(state: dict[str, Any]) -> dict[str, Any] | None:
     session_extra = state.get("session") if isinstance(state.get("session"), dict) else {}
     if isinstance(session_extra, dict):
         filters = _normalize_filters(
-            {key: session_extra.get(key) for key in BACKING_SCALAR_KEYS if key in session_extra}
+            {
+                key: session_extra.get(key)
+                for key in (*BACKING_SCALAR_KEYS, BACKING_METER_OVERRIDE_SONG_KEY)
+                if key in session_extra
+            }
         )
         if _filters_have_content(filters):
             return filters

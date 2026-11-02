@@ -1079,7 +1079,25 @@ def capture_backing_play_session_overrides(
     meter = str(session.get("backing_time_signature") or "").strip()
     prev_meter = str(overrides.get("meter") or "").strip()
     meter_override_flag = bool(session.get("backing_time_signature_override"))
-    if meter:
+    # ``default_meter`` is the transport default ("4/4") unless a Creative
+    # (Jam / Mission / SBI) context owns the meter; for a plain Catalog / Custom
+    # song it is NOT the song's meter, so ``meter != default_meter`` would turn
+    # every 3/4 or 6/8 song into a fake user override. There the live flag (set
+    # only by the Time signature radio) is the sole evidence of a user choice.
+    try:
+        from backing_context import active_creative_backing_context
+
+        _creative_meter_owner = active_creative_backing_context(session) is not None
+    except Exception:
+        _creative_meter_owner = False
+    if meter and not _creative_meter_owner:
+        if meter_override_flag:
+            overrides["meter"] = meter
+            overrides["meter_override"] = True
+        else:
+            overrides.pop("meter", None)
+            overrides.pop("meter_override", None)
+    elif meter:
         if meter == default_meter and not meter_override_flag:
             if prev_meter and prev_meter != meter:
                 overrides["meter"] = prev_meter
