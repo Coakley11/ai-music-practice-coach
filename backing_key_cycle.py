@@ -6936,6 +6936,8 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
     parentWin.__kcHardStop = function () {{
       const t0 = Number(parentWin.__kcClickT0 || kcNow());
       abortTransportPlayback({{ seekZero: false }});
+      // Commands up to this epoch were built before the Stop (see applyCmd).
+      state.stoppedEpoch = Number(state.epoch);
       parentWin.__kcLastStopMs = kcNow() - t0;
       try {{
         const act = activeAudio();
@@ -10561,6 +10563,25 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
 
     parentWin.__kcApplyCmd = function applyCmd(cmd) {{
       if (!cmd) return;
+      // A command built before the musician's Stop is stale: it must not start the
+      // take again or move the key highlight back. Stop publishes no new player
+      // command, so a stale player frame that Streamlit re-creates during the Stop
+      // run replays its Play (same epoch, so the stale check below lets it through).
+      // Python bumps the epoch on Stop / Pause / Resume / Play, so every later
+      // command is newer and applies normally.
+      if (cmd.epoch != null && state.stoppedEpoch != null) {{
+        if (Number(cmd.epoch) > Number(state.stoppedEpoch)) {{
+          state.stoppedEpoch = null;
+        }} else if (cmd.enabled && state.userPaused && !cmd.hardStop) {{
+          try {{
+            const bag = parentWin.__kcApplyTrace || (parentWin.__kcApplyTrace = []);
+            bag.push({{ t: Date.now(), reason: 'before_stop', epoch: cmd.epoch, stoppedEpoch: state.stoppedEpoch }});
+            if (bag.length > 40) bag.shift();
+          }} catch (eBs) {{}}
+          cancelPendingPlays();
+          return;
+        }}
+      }}
       // A command built before Python learned of the user's latest Next/Previous
       // describes a key the browser has already left. Applying it would pull the
       // player (and highlight) back to that older key. Explicit Play / stop / off
@@ -10714,6 +10735,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         state.cycleId = '';
         state.passId = 0;
         state.epoch = -1;
+        state.stoppedEpoch = null;
         state.handoffSettledToken = null;
         try {{ parentWin.sessionStorage.setItem('kc_user_paused', '0'); }} catch (eSS0) {{}}
         teardownKeyCycleWatchers();
