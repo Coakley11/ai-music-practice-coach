@@ -73,7 +73,10 @@ _ASK_VERB = re.compile(r"\b(?:give|make|create|build|design|write|put\s+together
                        r"i[’']?d\s+like|can\s+(?:i|you|we)|could\s+(?:i|you|we)|would\s+you|please|let[’']?s|start|build\s+me|do)\b", re.I)
 _QUESTION_START = re.compile(r"^\s*(?:why|what(?:\s+is|[’']s)?|how\s+(?:do|does|long|often|should)|is\s+it|should\s+i|do\s+i|does)\b", re.I)
 _EXERCISE_NOUN = re.compile(r"\b(?:exercises?|drills?|routine|patterns?|practice|work)\b", re.I)
-_DRILL_PHRASE = re.compile(r"\b(?:long[\s-]?tones?|two[\s-]?note|articulation|tonguing|slurs?)\b", re.I)
+_DRILL_PHRASE = re.compile(r"\b(?:long[\s-]?tones?|two[\s-]?note|articulation|tonguing)\b", re.I)
+_DRILL_NOUN = re.compile(r"\b(?:exercises?|drills?|routine)\b", re.I)
+_NOT_WARMUP_TOPIC = re.compile(r"\b(?:guide[\s-]?tones?|chords?|chord\s+tones?|over\s+[a-g][#b]?\d?|over\s+(?:the|a|an|this|that)\b|patterns?|licks?|lines?|pentatonic|blues|"
+                               r"the\s+same|same\s+\w+\s+with|progressions?|arpeggios?|bass|melody|solo|song)\b", re.I)
 _UNVERIFIED_WORD = re.compile(r"\b(trombone|violin|viola|cello|guitar|bass|oboe|horn|bassoon|ukulele|banjo|recorder|voice|vocals?|singing|harp|tuba|"
                               r"euphonium|flugelhorn|piccolo|mandolin|harmonica|accordion|organ|keyboard|drums?)\b", re.I)
 _INSTRUMENT = re.compile(r"\b(?:(soprano|alto|tenor|bari(?:tone)?)\s+sax(?:ophone)?|(sax(?:ophone)?)|(flute)|(piano)|(trumpet)|(clarinet))\b", re.I)
@@ -132,7 +135,8 @@ def is_warmup_request(question: str) -> bool:
         if re.search(r"\b(?:why|benefits?|should\s+i|is\s+it\s+(?:good|important|necessary)|what\s+is)\b", low) and not re.search(r"\b(?:give|make|create|build|plan|need|want)\b", low):
             return False
         return asks or bool(_EXERCISE_NOUN.search(low)) or bool(_MINUTES.search(low))
-    if _DRILL_PHRASE.search(low) and _EXERCISE_NOUN.search(low) and re.search(r"\b(?:give|make|create|build|write|need|want|show|get|generate|i[’']?d\s+like)\b", low):
+    if _DRILL_PHRASE.search(low) and _DRILL_NOUN.search(low) and not _NOT_WARMUP_TOPIC.search(low) \
+            and re.search(r"\b(?:give|make|create|build|write|need|want|show|get|generate|i[’']?d\s+like)\b", low):
         return not _QUESTION_START.match(low)
     return False
 
@@ -841,12 +845,12 @@ def _page_values(question: str, session_ref: Any, ami_ctx: dict[str, Any] | None
     return req.context, {"entities": req.entities}
 
 
-def create(question: str, session_ref: Any, ami_ctx: dict[str, Any] | None = None) -> CoachResponse:
+def create(question: str, session_ref: Any, ami_ctx: dict[str, Any] | None = None, request: dict[str, Any] | None = None) -> CoachResponse:
     session = _mutable(session_ref)
     if session is None:
         return _simple("I can't keep a warmup in this session.", failed="no_session")
     ctx, _ = _page_values(question, session, ami_ctx)
-    req = parse_request(question)
+    req = request if request is not None else parse_request(question)       # ``request``: the rules' reading, completed by a validated interpretation
     assumptions: list[str] = []
     # length
     minutes = req["minutes"]
@@ -909,7 +913,7 @@ def create(question: str, session_ref: Any, ami_ctx: dict[str, Any] | None = Non
     spec: dict[str, Any] = {
         "instrument": player.key, "level": level, "level_source": l_source, "minutes": minutes, "minutes_source": m_source, "concert_key": concert,
         "key_source": k_source, "families": families, "explicit": explicit, "excluded": list(req["excluded"]), "focus": focus,
-        "intervals": [i for i in req["intervals"] if i in we.INTERVALS], "artic": list(req["artic"]), "more": {}, "tempo_scale": 1.0, "size": "full",
+        "intervals": [i for i in req["intervals"] if i in we.INTERVALS], "artic": list(req["artic"]), "more": dict(req.get("more") or {}), "tempo_scale": 1.0, "size": "full",
         "items": [], "uid_counter": 0, "song_aware_requested": bool(req["song_aware"]), "source_question": _clean(question)[:200],
     }
     initial_items(spec)

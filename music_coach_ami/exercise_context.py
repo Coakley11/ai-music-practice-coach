@@ -169,7 +169,7 @@ def exercise_authority_signature(session_ref: Any, question: str = "") -> str:
     try:  # a warmup revision or "next exercise" acts on the warmup's current version and view, so sending it twice is two different requests
         from music_coach_ami import warmup_plan as _warmup
 
-        if _warmup.is_warmup_message(question):
+        if _warmup.is_warmup_request(question) or (_warmup.is_active(session_ref) and _warmup.is_warmup_message(question)):
             h = _warmup.history(session_ref)
             return f"warmup|v={h.get('versions')}|cursor={h.get('cursor')}|view={h.get('view')}|{base}"
     except Exception:
