@@ -27,7 +27,7 @@ def run_coach_submit(
 
     revised, rewrite = stale_song_response(question, session_state, ami_ctx), ""
     if revised is None:
-        revised, rewrite = handle_revision(question, session_state)
+        revised, rewrite = handle_revision(question, session_state, ami_ctx)
     if revised is not None:
         req = route_question(question, session_state, ami_ctx=ami_ctx)
         _conv.record_turn(session_state, question, revised.direct_answer, exercise_id=str(revised.diagnostics.get("generated_exercise_id") or ""))
