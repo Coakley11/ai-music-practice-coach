@@ -4714,6 +4714,7 @@ def _stash_missions_generate_context(
             "level": improv_ctx.level,
             "focus": improv_ctx.focus,
             "bpm": improv_ctx.bpm,
+            "style_label": str(improv_ctx.style_label or ""),
             "sections": _normalize_section_map_for_generate(section_map),
         },
     }
@@ -4751,7 +4752,7 @@ def _improv_ctx_from_generate_context(session_state: dict) -> ImprovSessionConte
         focus=str(snap.get("live_focus") or raw.get("focus") or "Improvisation"),
         sections={str(k): list(v) for k, v in sections.items() if isinstance(v, list)},
         bpm=int(snap.get("bpm") or raw.get("bpm") or 100),
-        style_label="",
+        style_label=str(raw.get("style_label") or ""),
         progression_flat=[],
         section_order=list(sections.keys()),
     )
@@ -4782,7 +4783,11 @@ def _mission_improv_ctx_from_session(session_state: dict) -> ImprovSessionContex
         focus=str(session_state.get("focus") or "Improvisation"),
         sections={},
         bpm=int(session_state.get("backing_track_bpm") or 100),
-        style_label="",
+        style_label=str(
+            session_state.get("genre")
+            or (session_state.get("selected_song") if isinstance(session_state.get("selected_song"), dict) else {}).get("genre")
+            or ""
+        ),
         progression_flat=[],
     )
     home = session_state.get("home_sections")
@@ -6100,6 +6105,14 @@ def _tab_missions(
             f"**Notes:** `{notes_txt}` · "
             f"**Rhythm:** `{rhythm_txt}`"
         )
+        try:
+            from improvisation_missions import mission_scale_label
+
+            _scale_label, _scale_reason = mission_scale_label(example)
+        except Exception:
+            _scale_label, _scale_reason = "", ""
+        if _scale_label:
+            st.markdown(f"**Scale:** {html.escape(_scale_label)}", help=_scale_reason or None)
         st.markdown(f"**Why it works:** {example.why}")
         steps = list(example.practice_steps or [])
         live_steps = _practice_steps(

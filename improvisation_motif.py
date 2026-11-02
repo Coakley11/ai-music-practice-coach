@@ -3011,7 +3011,10 @@ def sync_motif_midi(motif: dict[str, Any]) -> dict[str, Any]:
     if pcs_ok:
         # Planned register (pattern / sequence) is authoritative. Never nearest-wrap
         # an individual note to the previous MIDI — that jumps octaves mid-phrase.
-        motif["midi"] = _shift_phrase_into_bounds([int(m) for m in existing[: len(notes)]])
+        if motif.get("_register_pinned"):
+            motif["midi"] = [int(m) for m in existing[: len(notes)]]
+        else:
+            motif["midi"] = _shift_phrase_into_bounds([int(m) for m in existing[: len(notes)]])
     else:
         compact = _compact_midis_from_notes(notes)
         motif["midi"] = _shift_phrase_into_bounds(compact)

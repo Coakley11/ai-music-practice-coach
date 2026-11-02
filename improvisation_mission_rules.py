@@ -142,7 +142,7 @@ def _guide_tone_musical_line(
     level_norm = _normalize_motif_level(level)
     # How wide a register the line is allowed to roam — Advanced gets the
     # widest arch, Intermediate a modest one.
-    span_semitones = {"Beginner": 5, "Intermediate": 8, "Advanced": 14}.get(level_norm, 8)
+    span_semitones = {"Beginner": 5, "Intermediate": 8, "Advanced": 10}.get(level_norm, 8)
     center = 69  # A4 — comfortable middle register for any instrument.
     center += rng.choice([-2, 0, 0, 2])  # small, idea-to-idea register shift
     descending_first = rng.random() < 0.5

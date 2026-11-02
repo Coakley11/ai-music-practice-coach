@@ -583,6 +583,9 @@ def rebuild_mission_outputs(
             motif = dict(fit_motif_to_instrument(motif, instrument))
         except Exception:
             pass
+        # The score is drawn from ``sync_motif_midi`` (staff bounds); store exactly that, so the staff,
+        # Notes to Play and playback always read the same octave.
+        motif = sync_motif_midi(dict(motif))
     spell_ref = str(key_center or song_display_key or song_concert_key or "C")
     staff_key = str(song_display_key or key_center or song_concert_key or "C")
     try:
@@ -999,7 +1002,14 @@ def _move_mission_by_degree(
             direction=direction,
         )
         new_display = [m + steps for m in new_concert]
-        if _shift_phrase_into_bounds(list(new_display)) != new_display:
+        if motif.get("_register_pinned"):
+            # The instrument's own register owns the octave: refuse only what the instrument cannot play.
+            from instrument_register_fit import comfortable_written_range
+
+            _rng = comfortable_written_range(example.instrument, "Advanced")
+            if _rng and (min(new_display) < _rng[0] or max(new_display) > _rng[1]):
+                raise MoveRefused("that would take the phrase outside the instrument's range")
+        elif _shift_phrase_into_bounds(list(new_display)) != new_display:
             raise MoveRefused("that would take the phrase outside the staff range")
         ok, reason = validate_mission_motif(
             example.mission, dict(motif, notes=notes, midi=new_concert), chord=concert_chord, key_center=ref_key
@@ -1060,6 +1070,18 @@ def apply_mission_motif_transform(
             key_center=concert or str(improv_ctx.display_key or "C"),
         )
         motif = sync_motif_midi(motif)
+        for _keep in ("mission_scale_key", "mission_scale_reason", "pentatonic_relationship", "spelling_reference"):
+            # The Mission's own collection must survive Reverse Order (and any later Sequence move).
+            if _keep in (example.motif or {}) and _keep not in motif:
+                motif[_keep] = example.motif[_keep]
+        if operation == "invert":
+            # Reverse Order is a pure re-ordering. The concert-pitch notes own the pitches (the written
+            # chart is a projection of them), so they must be reversed too; otherwise the refresh below
+            # re-projects the stale concert notes and every press shifts the phrase by the instrument's
+            # transposition.
+            _concert_before = list((example.motif or {}).get("_concert_notes") or [])
+            if _concert_before and len(_concert_before) == len((example.motif or {}).get("notes") or []):
+                motif["_concert_notes"] = _concert_before[::-1]
     if isinstance(motif, dict):
         motif = dict(motif, _register_fitted=True)
     example.motif = motif
@@ -1100,6 +1122,110 @@ def instrument_family(instrument: str) -> str:
 
 def _instrument_family(instrument: str) -> str:
     return instrument_family(instrument)
+
+
+def _next_chord_in_section(improv_ctx: ImprovSessionContext, section: str, chord: str, session_state: dict | None) -> str:
+    chords = [str(c) for c in ((getattr(improv_ctx, "sections", None) or {}).get(section) or [])]
+    if not chords:
+        return ""
+    idx = -1
+    try:
+        guess = int((session_state or {}).get("ii_selected_chord_index"))
+        if 0 <= guess < len(chords) and chords[guess] == chord:
+            idx = guess
+    except (TypeError, ValueError):
+        pass
+    if idx < 0 and chord in chords:
+        idx = chords.index(chord)
+    if idx < 0:
+        return ""
+    return chords[(idx + 1) % len(chords)]
+
+
+def _apply_mission_scale(
+    motif: dict[str, Any],
+    *,
+    mission: str,
+    chord: str,
+    improv_ctx: ImprovSessionContext,
+    section: str,
+    level: str,
+    session_state: dict | None,
+    rng: random.Random,
+) -> dict[str, Any]:
+    """Scale-based Mission ("Only scalar runs"): build the run from ONE deliberately chosen chord scale
+    (Issue 39) and keep that choice in the Mission state so Sequence Up/Down step through the same collection.
+    Chord-tone / guide-tone / pentatonic / blues Missions keep their own collections and are untouched."""
+    low = str(mission or "").lower()
+    if not ("scalar" in low and "only" in low):
+        return motif
+    try:
+        from chord_scale_selection import SCALES, select_mission_scale
+
+        sel = select_mission_scale(
+            chord,
+            key_center=str(improv_ctx.key_center or "C"),
+            next_chord=_next_chord_in_section(improv_ctx, section, chord, session_state),
+            level=level,
+            style=str(getattr(improv_ctx, "style_label", "") or ""),
+            mission=mission,
+        )
+        n = len([x for x in (motif.get("notes") or []) if str(x).strip()])
+        if not sel or n < 2:
+            return motif
+        names = {}
+        from music_theory import pitch_class_from_spelled_note
+
+        ordered = list(sel["notes"])
+        steps = SCALES[sel["key"]]
+        root_pc = pitch_class_from_spelled_note(sel["root"]) % 12
+        base = 60 + root_pc
+        if base > 66:
+            base -= 12
+        ladder = [(base + 12 * octv + st, ordered[i]) for octv in (0, 1) for i, st in enumerate(steps)]
+        arch = rng.random() < 0.5
+        start = rng.randrange(len(steps))
+        idxs, pos, direction = [], start, 1
+        for i in range(n):
+            idxs.append(pos)
+            if arch and i + 1 == n // 2:
+                direction = -1
+            pos = max(0, min(len(ladder) - 1, pos + direction))
+            if pos in (0, len(ladder) - 1):
+                direction = -direction
+        out = dict(motif)
+        out["notes"] = [ladder[i][1] for i in idxs]
+        out["midi"] = [ladder[i][0] for i in idxs]
+        out["mission_scale_key"] = sel["key"]
+        out["mission_scale_reason"] = sel["reason"]
+        out["variation_prompt"] = f"Scalar run on **{sel['label']}** — {sel['reason']}."
+        return sync_motif_midi(out)
+    except Exception:
+        return motif
+
+
+def mission_scale_label(example: "MissionExample") -> tuple[str, str]:
+    """(label, reason) of the scale a scale-based Mission example is built on, in the player-facing chart
+    (written) domain; ("", "") for chord-tone Missions."""
+    motif = dict(getattr(example, "motif", None) or {})
+    chord = str(motif.get("chord") or getattr(example, "chord", "") or "")
+    key = str(motif.get("mission_scale_key") or "").strip()
+    if key and chord:
+        from chord_scale_selection import scale_label_for
+
+        return scale_label_for(key, chord), str(motif.get("mission_scale_reason") or "")
+    low = str(getattr(example, "mission", "") or "").lower()
+    if chord and ("pentatonic" in low or "blues" in low) and motif.get("pentatonic_relationship"):
+        try:
+            from mission_degree_shift import resolve_framework
+
+            label, _names = resolve_framework(
+                example.mission, motif, chord=chord, key_center=str(example.display_key or example.concert_key or "C")
+            )
+            return label, ""
+        except Exception:
+            return "", ""
+    return "", ""
 
 
 def generate_mission_example(
@@ -1163,6 +1289,17 @@ def generate_mission_example(
             variant=variant,
             rng=rng,
             idea_variant=(nonce if variant == "new" else (seed % 1000)),
+        )
+    if motif_override is None:
+        motif = _apply_mission_scale(
+            motif,
+            mission=mission,
+            chord=chord,
+            improv_ctx=improv_ctx,
+            section=section,
+            level=level,
+            session_state=session_state,
+            rng=rng,
         )
     motif = sync_motif_midi(motif)
     if session_state is not None and motif_override is None:

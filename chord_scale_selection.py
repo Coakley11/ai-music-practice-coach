@@ -144,4 +144,157 @@ def blue_note_pcs(chord: str, style: str = "") -> list[int]:
     return []
 
 
-__all__ = ["SCALES", "blue_note_pcs", "chord_family", "chord_scale_name", "chord_scale_pcs"]
+
+
+# ---------------------------------------------------------------------------------------------
+# Mission scale selection (Issue 39): a deliberate, explainable choice of ONE pitch collection per
+# Mission example, from chord quality + alterations, the next chord (resolution), the song's key and
+# mode, genre/feel, player level, and the Mission's own focus. Level never forces a "fancier" scale.
+# ---------------------------------------------------------------------------------------------
+
+_LETTERS = "CDEFGAB"
+_LETTER_PC = {"C": 0, "D": 2, "E": 4, "F": 5, "G": 7, "A": 9, "B": 11}
+_SCALE_LABEL = {
+    "ionian": "major", "lydian": "Lydian", "mixolydian": "Mixolydian", "dorian": "Dorian", "aeolian": "natural minor",
+    "phrygian": "Phrygian", "locrian": "Locrian", "locrian_natural_2": "Locrian natural 2", "melodic_minor": "melodic minor",
+    "harmonic_minor": "harmonic minor", "lydian_dominant": "Lydian dominant", "altered": "altered",
+    "phrygian_dominant": "Phrygian dominant", "whole_tone": "whole-tone", "diminished_half_whole": "half-whole diminished",
+    "diminished_whole_half": "whole-half diminished",
+}
+_JAZZ_STYLES = ("jazz", "bebop", "swing", "bossa", "fusion", "latin", "samba", "gypsy")
+_BLUESY_STYLES = ("blues", "rock", "funk", "country", "gospel", "soul", "r&b", "shuffle", "boogie")
+# Missions whose line is chord tones only: no scale is ever introduced for them.
+_CHORD_TONE_MISSIONS = ("chord tone", "guide tone", "5 notes", "motif", "silence", "beat 1")
+
+
+def _spell_collection(root_name: str, scale_key: str) -> list[str]:
+    """Spell a scale on ``root_name``: 7-note scales get one letter per degree (B altered = B C D Eb F G A);
+    others are spelled by the root's accidental preference."""
+    steps = SCALES[scale_key]
+    root_name = str(root_name or "C").strip()
+    root_letter = root_name[0].upper()
+    root_pc = pitch_class_from_spelled_note(root_name) % 12
+    if len(steps) == 7:
+        out = []
+        base = _LETTERS.index(root_letter)
+        for i, st in enumerate(steps):
+            letter = _LETTERS[(base + i) % 7]
+            diff = ((root_pc + st) % 12 - _LETTER_PC[letter] + 6) % 12 - 6
+            if -2 <= diff <= 2:
+                out.append(letter + {-2: "bb", -1: "b", 0: "", 1: "#", 2: "##"}[diff])
+            else:
+                out.append("")
+        if all(out):
+            return out
+    from music_theory import spell_note_in_key
+
+    flat = "b" in root_name[1:] or root_name in ("F",)
+    ref = root_name + ("" if True else "")
+    return [spell_note_in_key((root_pc + st) % 12, ref) for st in steps]
+
+
+def _style_class(style: str) -> str:
+    low = str(style or "").lower()
+    if any(t in low for t in _BLUESY_STYLES):
+        return "bluesy"
+    if any(t in low for t in _JAZZ_STYLES):
+        return "jazz"
+    return "other"
+
+
+def _resolves_to_minor(chord: str, next_chord: str, key_center: str) -> bool:
+    """A dominant whose next chord is the minor chord a fifth below (a perfect-fourth up), or, with no next
+    chord known, the V of a minor key."""
+    if next_chord:
+        try:
+            nq = chord_family(next_chord)
+            if nq in ("minor", "m7", "m6", "mmaj7") and (_root_pc(next_chord) - _root_pc(chord)) % 12 == 5:
+                return True
+            return False
+        except Exception:
+            return False
+    tonic, mode = split_key_center(key_center or "C")
+    return mode == "minor" and (pitch_class_from_spelled_note(tonic) - _root_pc(chord)) % 12 == 5
+
+
+def select_mission_scale(
+    chord: str,
+    *,
+    key_center: str = "C",
+    next_chord: str = "",
+    level: str = "Intermediate",
+    style: str = "",
+    mission: str = "",
+) -> dict | None:
+    """Choose the pitch collection for a scale-based Mission example, or None for chord-tone Missions.
+
+    Returns ``{"key", "label", "root", "notes", "pcs", "reason"}``. The reason says WHY (shown to the player).
+    Conservative by design: plain dominants stay Mixolydian unless the context (resolution to a minor chord,
+    jazz feel, level >= Intermediate/Advanced) justifies Phrygian dominant / altered; Blues-family styles never
+    turn altered from level alone; a chord symbol that asks for an alteration always wins.
+    """
+    low = str(mission or "").lower()
+    if any(t in low for t in _CHORD_TONE_MISSIONS):
+        return None
+    base = chord_scale_name(chord, key_center, style=style)
+    fam = chord_family(chord)
+    lvl = str(level or "Intermediate").strip().title()
+    cls = _style_class(style)
+    reason = f"fits the {chord} chord tones"
+    pick = base
+    if fam == "dom" and base == "mixolydian":
+        minor_target = _resolves_to_minor(chord, next_chord, key_center)
+        tension = "tension" in low or "dominant" in low
+        if cls == "bluesy":
+            reason = f"{chord} is a bluesy dominant: Mixolydian keeps it conventional"
+        elif cls == "jazz" and lvl == "Advanced" and (minor_target or tension):
+            pick = "altered"
+            reason = f"Advanced jazz: {chord} resolves to a minor chord, so altered tensions lead into it" if minor_target else f"Advanced jazz dominant tension on {chord}"
+        elif minor_target and lvl in ("Intermediate", "Advanced"):
+            pick = "phrygian_dominant"
+            reason = f"{chord} resolves to a minor chord: the b9 and b13 of Phrygian dominant point at it"
+        else:
+            reason = f"{chord} is an ordinary dominant: Mixolydian"
+    elif base != "mixolydian" and fam == "dom":
+        reason = f"the {chord} symbol asks for {_SCALE_LABEL[base]} colour"
+    root_name = _spelled_root(chord)
+    notes = _spell_collection(root_name, pick)
+    pcs = sorted({(pitch_class_from_spelled_note(root_name) + st) % 12 for st in SCALES[pick]})
+    return {
+        "key": pick,
+        "label": f"{root_name} {_SCALE_LABEL[pick]}",
+        "root": root_name,
+        "notes": notes,
+        "pcs": pcs,
+        "reason": reason,
+    }
+
+
+def scale_pcs_for(scale_key: str, chord: str) -> set[int]:
+    """Pitch classes of ``scale_key`` built on ``chord``'s root (empty for an unknown scale)."""
+    if scale_key not in SCALES:
+        return set()
+    root = pitch_class_from_spelled_note(_spelled_root(chord)) % 12
+    return {(root + st) % 12 for st in SCALES[scale_key]}
+
+
+def scale_names_for(scale_key: str, chord: str) -> dict[int, str]:
+    """{pitch class: spelled note} of ``scale_key`` on ``chord``'s root."""
+    if scale_key not in SCALES:
+        return {}
+    notes = _spell_collection(_spelled_root(chord), scale_key)
+    return {pitch_class_from_spelled_note(n) % 12: n for n in notes}
+
+
+def scale_label_for(scale_key: str, chord: str) -> str:
+    if scale_key not in SCALES:
+        return ""
+    return f"{_spelled_root(chord)} {_SCALE_LABEL[scale_key]}"
+
+
+def _spelled_root(chord: str) -> str:
+    tones = spell_chord_tones(chord)
+    return tones[0] if tones else "C"
+
+
+__all__ = ["SCALES", "blue_note_pcs", "chord_family", "chord_scale_name", "chord_scale_pcs", "select_mission_scale", "scale_pcs_for", "scale_names_for", "scale_label_for"]

@@ -74,8 +74,9 @@ def fit_motif_to_instrument(motif: dict[str, Any], instrument: str, level: str =
     if rng is None:
         return motif
     fitted = fit_midis_to_register(midis, *rng)
-    if fitted == [int(m) for m in midis]:
-        return motif
     out = dict(motif)
     out["midi"] = fitted
+    # The instrument's register now owns the octave: ``sync_motif_midi`` must not re-raise the phrase to its
+    # generic staff floor afterwards (that left the score and the stored pitches an octave apart).
+    out["_register_pinned"] = True
     return out
