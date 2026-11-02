@@ -7706,3 +7706,105 @@ def ensure_custom_progression_for_backing(
             "key": home,
         }
     return home
+
+
+# --- Explicit Backing source switch: Catalog / Composition -> last Custom song ------------------
+
+
+def last_custom_song_for_backing_switch(session_state: dict[str, Any]) -> dict[str, Any] | None:
+    """The saved Custom song an explicit "Use Custom Progression Backing" would restore.
+
+    Only a real saved record qualifies (never invented or substituted): the last-active Custom
+    memory, resolved against the saved library so title, chords, key and style come from one
+    record. Returns None when there is nothing valid to restore.
+    """
+    snap = session_state.get(LAST_CUSTOM_STATE_KEY)
+    active = snap.get("active") if isinstance(snap, dict) else None
+    if not isinstance(active, dict):
+        return None
+    name = str(active.get("name") or "").strip()
+    if not name:
+        return None
+    try:
+        from custom_progression_lab import CPL_SAVED_KEY
+
+        library = session_state.get(CPL_SAVED_KEY)
+    except ImportError:
+        return None
+    if not isinstance(library, dict):
+        return None
+    record = None
+    for key, rec in library.items():
+        if not isinstance(rec, dict):
+            continue
+        if (active.get("id") and rec.get("id") == active.get("id")) or str(rec.get("name") or key).strip() == name:
+            record = rec
+            break
+    if record is None:
+        return None
+    sections = record.get("original_sections") or record.get("sections")
+    if not isinstance(sections, dict) or not any(sections.values()):
+        return None
+    return record
+
+
+def protect_composition_before_source_switch(session_state: dict[str, Any]) -> bool:
+    """Persist the active Composition to its library record before another source takes Backing.
+
+    The document itself is never altered; this only makes sure the library copy equals the live
+    one so nothing is lost. Returns True when the library copy was refreshed.
+    """
+    try:
+        from composition_session_state import (
+            COMPOSER_LIBRARY_KEY,
+            get_active_document,
+            save_document_to_library,
+        )
+    except ImportError:
+        return False
+    doc = get_active_document(session_state)
+    if not isinstance(doc, dict) or not doc.get("id"):
+        return False
+    lib = session_state.get(COMPOSER_LIBRARY_KEY) or {}
+    if isinstance(lib, dict) and lib.get(doc.get("id")) == doc:
+        return False
+    save_document_to_library(session_state, doc, reason="source_switch_protect")
+    return True
+
+
+def switch_backing_source_to_custom(
+    st: Any,
+    *,
+    invalidate_backing,
+    song_picker_catalog: dict | None = None,
+    song_library: dict | None = None,
+) -> str:
+    """Explicit Catalog/Composition -> Custom switch, through the Songs Music-source path.
+
+    Returns "switched", or "no_custom" when no valid saved Custom song exists (nothing changes).
+    """
+    session = st.session_state
+    if last_custom_song_for_backing_switch(session) is None:
+        return "no_custom"
+    protect_composition_before_source_switch(session)
+    # An explicit click, not widget lag: drop the post-"Use catalog" echo guards.
+    for key in ("_block_stale_custom_radio_reclaim", "_force_catalog_backing_after_use_catalog",
+                CATALOG_SWITCH_APPLIED_THIS_RUN_KEY, "_backing_released_specialized_context"):
+        session.pop(key, None)
+    session.pop(USER_CATALOG_SOURCE_CHOICE_KEY, None)
+    _assign_song_picker_source_widget(session, SONG_PICKER_SOURCE_CUSTOM, widget_safe=False)
+    try:
+        from backing_context import BACKING_PREF_CUSTOM, clear_backing_context, set_backing_source_preference
+
+        clear_backing_context(session)
+        set_backing_source_preference(session, BACKING_PREF_CUSTOM)
+    except ImportError:
+        session.pop("backing_context", None)
+    on_song_picker_source_change(
+        st,
+        song_picker_catalog=song_picker_catalog or {},
+        song_library=song_library,
+        invalidate_backing=invalidate_backing,
+        in_callback=True,  # the caller reruns once; avoid a second st.rerun inside
+    )
+    return "switched"

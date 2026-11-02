@@ -20228,12 +20228,14 @@ elif _studio_page == "backing":
             from backing_context_ui import (
                 render_backing_context_dev_diagnostics,
                 render_backing_context_reset,
+                render_backing_use_custom_action,
             )
 
             # Placeholder: banner is filled after Quick BPM so same-run Current matches the slider.
             # A container (not st.empty) keeps the last banner up until then.
             _backing_banner_slot = st.container()
             render_backing_context_reset(st, st.session_state)
+            render_backing_use_custom_action(st, st.session_state)
         except Exception:
             pass
         try:
