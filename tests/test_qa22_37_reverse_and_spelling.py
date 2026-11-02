@@ -79,3 +79,17 @@ class TestWrittenChordToneSpelling(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestMissionBackingProgressionIsConcert(unittest.TestCase):
+    """Backing audio reads ``progression`` as concert chords; a written-key chart must only change the label."""
+
+    def test_alto_written_single_chord_backing_keeps_concert_chord(self):
+        from backing_context import build_mission_context
+
+        s, _ctx = _setup(CHORD_TONES, "B7", "Em", level="Advanced", instrument="Saxophone", transposing="Alto saxophone (Eb)")
+        s["ii_selected_chord"] = "B7"
+        bc = build_mission_context(s)
+        self.assertEqual(bc.progression, ["B7"])                     # concert harmony is what sounds
+        self.assertIn("G#7", bc.progression_label)                   # the written chord is only the label
+        self.assertEqual(bc.concert_key, "Em")
