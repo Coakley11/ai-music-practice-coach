@@ -149,6 +149,8 @@ def _pitch_token_to_abc(
         if reference_spelling_mode(key) in {"flat", "sharp"}:
             name = respell_note_for_key(name, key)
     k_field = composition_abc_key_field(key)
+    if musical_spelling:
+        name, octave = _diatonic_respell(name, octave, k_field)
     if musical_spelling and bar_state is not None:
         try:
             return _abc_note_with_bar_state(name, octave, k_field, bar_state)
@@ -161,6 +163,42 @@ def _pitch_token_to_abc(
         from improvisation_motif import _note_name_to_abc_pitch
 
         return _note_name_to_abc_pitch(name, octave=octave)
+
+
+_NATURAL_PC = {"C": 0, "D": 2, "E": 4, "F": 5, "G": 7, "A": 9, "B": 11}
+
+
+def _diatonic_respell(name: str, octave: int, k_field: str) -> tuple[str, int]:
+    """Spell a note the way the key's own scale spells it (E# in F# major, Cb in E-flat minor).
+
+    The sharp/flat family respelling cannot produce E#, B#, Cb or Fb, so in keys with six or
+    seven accidentals the leading tone / sixth degree came out as the enharmonic natural with a
+    cautionary natural sign (``=f``). A pitch that belongs to the key's scale takes the scale's
+    spelling; every other pitch keeps its family spelling. The sounding pitch never changes,
+    so the octave number follows the new letter (Cb5 sounds as B4).
+    """
+    try:
+        from music_theory import abc_key_signature_letter_alterations, spelled_note_letter_alteration
+
+        letter, alter = spelled_note_letter_alteration(name)
+        if letter not in _NATURAL_PC:
+            return name, octave
+        sounding = 12 * (int(octave) + 1) + _NATURAL_PC[letter] + alter
+        pc = sounding % 12
+        scale = {
+            (_NATURAL_PC[ltr] + alt) % 12: (ltr, alt)
+            for ltr, alt in ((ltr, abc_key_signature_letter_alterations(k_field).get(ltr, 0)) for ltr in _NATURAL_PC)
+        }
+        if pc not in scale:
+            return name, octave
+        new_letter, new_alter = scale[pc]
+        if (new_letter, new_alter) == (letter, alter):
+            return name, octave
+        new_octave = (sounding - _NATURAL_PC[new_letter] - new_alter) // 12 - 1
+        accidental = "#" * new_alter if new_alter > 0 else "b" * (-new_alter)
+        return f"{new_letter}{accidental}", new_octave
+    except Exception:
+        return name, octave
 
 
 def composition_abc_key_field(key: str) -> str:

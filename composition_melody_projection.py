@@ -26,7 +26,26 @@ def signed_semitone_delta(original_key: str, practice_key: str) -> int:
     if not orig or not practice:
         return 0
     up = int(semitone_distance(orig, practice) or 0) % 12
+    if up == 6:
+        # A tritone is equally far both ways. Pick the direction from the two key roots so the
+        # shift is antisymmetric: A->B-flat and B-flat->A move by opposite amounts and a
+        # round trip lands on the original octave instead of drifting by one.
+        pc_orig, pc_practice = _root_pitch_class(orig), _root_pitch_class(practice)
+        if pc_orig is not None and pc_practice is not None and pc_orig > pc_practice:
+            return -6
+        return 6
     return ((up - _KEY_SHIFT_LOW) % 12) + _KEY_SHIFT_LOW
+
+
+def _root_pitch_class(key: str) -> int | None:
+    try:
+        from music_theory import CHROMATIC, normalize_root, split_chord
+
+        root, _ = split_chord(str(key or "").strip())
+        nr = normalize_root(root)
+        return CHROMATIC.index(nr) if nr in CHROMATIC else None
+    except Exception:
+        return None
 
 
 def clef_for_instrument(instrument: str) -> str:
