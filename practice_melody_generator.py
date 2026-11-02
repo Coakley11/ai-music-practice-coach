@@ -64,6 +64,40 @@ _LEVEL_RANGE: dict[str, tuple[int, int]] = {
     "Intermediate": (57, 77),   # A3 - F5
     "Advanced": (55, 81),       # G3 - A5
 }
+
+
+def register_window(level: str, instrument: str = "", written_offset: int = 0) -> tuple[int, int]:
+    """(low, high) MIDI for a Practice Melody: the level's comfortable window, placed inside the instrument's
+    own comfortable register.
+
+    ``instrument`` is the selected instrument / saxophone type (``"Alto saxophone (Eb)"``, ``"Flute"`` ...).
+    ``written_offset`` is how far the melody's pitch domain sits BELOW written pitch: 0 when the melody is in the
+    written chart (or the instrument does not transpose), the transposition (e.g. 9 for an Eb saxophone, 2 for a Bb
+    one) when the chart is in concert pitch - so a concert-pitch range check never compares against written pitch.
+    Only melodic wind families are constrained; piano, guitar and bass keep the level window.
+    """
+    lo, hi = _LEVEL_RANGE.get(level, _LEVEL_RANGE["Intermediate"])
+    if not instrument:
+        return lo, hi
+    try:
+        from instrument_register_fit import comfortable_written_range
+
+        rng = comfortable_written_range(instrument, level)
+    except Exception:
+        rng = None
+    if rng is None:
+        return lo, hi
+    ilo, ihi = int(rng[0]) - int(written_offset), int(rng[1]) - int(written_offset)
+    nlo, nhi = max(lo, ilo), min(hi, ihi)
+    if nhi - nlo >= 12:
+        return nlo, nhi
+    # The level window and the instrument's comfortable register barely overlap (e.g. a baritone saxophone
+    # is far below a generic C4-D5): follow the instrument, keeping the level's width.
+    width = max(12, hi - lo)
+    nlo = max(ilo, min(lo, ihi - 12))
+    return nlo, min(ihi, nlo + width)
+
+
 _MAX_LEAP_SEMITONES: dict[str, int] = {
     "Beginner": 7,        # perfect 5th ceiling
     "Intermediate": 9,    # major 6th
@@ -366,8 +400,9 @@ def _generate_section_events(
     start_midi: int,
     style: str = "",
     focus_key: str = "",
+    register: tuple[int, int] | None = None,
 ) -> tuple[list[MelodyEvent], int]:
-    low, high = _LEVEL_RANGE[level]
+    low, high = register if register else _LEVEL_RANGE[level]
     max_leap = _MAX_LEAP_SEMITONES[level]
     key_scale_pcs = _diatonic_scale_pcs(key_center)
     jazz_advanced = level == "Advanced" and _is_jazz_style(style)
@@ -597,6 +632,8 @@ def generate_practice_melody(
     seed: int | None = None,
     alt_index: int = 0,
     focus: str = "",
+    instrument: str = "",
+    written_offset: int = 0,
 ) -> PracticeMelody:
     """Generate a structured Practice Melody for one song, level and alternative.
 
@@ -622,7 +659,8 @@ def generate_practice_melody(
     resolved_seed = _seed_for(song_id, level, alt_index, seed)
     rng = random.Random(resolved_seed)
     beats_per_measure = float(meter[0]) if meter and meter[0] else 4.0
-    prev_end_midi = _START_MIDI[level]
+    window = register_window(level, instrument, written_offset)
+    prev_end_midi = min(max(_START_MIDI[level], window[0]), window[1])
     focus_key = _normalize_focus(focus)
 
     generated_by_chords: dict[tuple[str, ...], MelodySection] = {}
@@ -656,6 +694,7 @@ def generate_practice_melody(
             start_midi=prev_end_midi,
             style=style,
             focus_key=focus_key,
+            register=window,
         )
         events = _apply_notation_markings(events, level=level, focus_key=focus_key, n_measures=len(chords))
         section = MelodySection(

@@ -19167,6 +19167,7 @@ elif _studio_page == "practice":
                                     meter=parse_meter(_time_sig),
                                     regenerate=regenerate,
                                     focus=focus,
+                                    instrument=str(instrument or ""),
                                 )
 
                             _pm_melody = _pm_resolve()

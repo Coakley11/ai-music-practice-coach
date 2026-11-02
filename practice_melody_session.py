@@ -51,7 +51,31 @@ ALT_INDEX_KEY = "practice_melody_alt_index"
 _OWNED_KEYS = (RESULT_KEY, IDENTITY_KEY, ALT_INDEX_KEY)
 
 
-def identity_token(song_identity: str, level: str, focus: str = "") -> str:
+def instrument_register_args(session_state: Mapping[str, Any], instrument: str) -> dict[str, Any]:
+    """``instrument`` / ``written_offset`` for the generator, from the canonical transposition state
+    (selected saxophone type + whether the chart is in the instrument's written key)."""
+    name = str(instrument or "").strip()
+    if not name:
+        return {}
+    offset = 0
+    try:
+        from instrument_transposition import (
+            TRANSPOSING_INSTRUMENTS,
+            chart_in_instrument_key,
+            is_transposing_instrument,
+            selected_transposing_type,
+        )
+
+        if is_transposing_instrument(name):
+            name = selected_transposing_type(dict(session_state), name) or name
+            if not chart_in_instrument_key(session_state):
+                offset = int(TRANSPOSING_INSTRUMENTS.get(name, 0))      # concert chart: pitches sit below written
+    except Exception:
+        pass
+    return {"instrument": name, "written_offset": offset}
+
+
+def identity_token(song_identity: str, level: str, focus: str = "", register: str = "") -> str:
     """Identity for the cached melody -- song + level + Practice Focus.
 
     Focus is part of identity (not a separate state owner -- the canonical
@@ -60,7 +84,7 @@ def identity_token(song_identity: str, level: str, focus: str = "") -> str:
     to a fresh baseline for the new context, the same way a level change
     already does, instead of silently keeping an unconditioned melody on
     screen."""
-    return f"{song_identity}::{level}::{focus}"
+    return f"{song_identity}::{level}::{focus}" + (f"::{register}" if register else "")
 
 
 def clear_practice_melody_state(session_state: MutableMapping[str, Any]) -> None:
@@ -88,6 +112,7 @@ def resolve_practice_melody(
     meter: tuple[int, int] = (4, 4),
     regenerate: bool = False,
     focus: str = "",
+    instrument: str = "",
 ) -> PracticeMelody | None:
     """Return the Practice Melody to display for the current live context.
 
@@ -100,7 +125,9 @@ def resolve_practice_melody(
         clear_practice_melody_state(session_state)
         return None
 
-    token = identity_token(song_identity, level, focus)
+    register_args = instrument_register_args(session_state, instrument)
+    register_tag = f"{register_args['instrument']}@{register_args['written_offset']}" if register_args else ""
+    token = identity_token(song_identity, level, focus, register_tag)
     cached_token = session_state.get(IDENTITY_KEY)
     cached_melody = current_cached_melody(session_state)
     identity_matches = cached_token == token and cached_melody is not None
@@ -115,6 +142,7 @@ def resolve_practice_melody(
             style=style,
             meter=meter,
             focus=focus,
+            **register_args,
         )
         session_state[RESULT_KEY] = next_melody
         session_state[IDENTITY_KEY] = token
@@ -149,6 +177,7 @@ def resolve_practice_melody(
         meter=meter,
         alt_index=0,
         focus=focus,
+        **register_args,
     )
     session_state[RESULT_KEY] = melody
     session_state[IDENTITY_KEY] = token
