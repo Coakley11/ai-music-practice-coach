@@ -57,9 +57,10 @@ def families(plan):
 def abc_beats(abc: str) -> Fraction:
     """Total length in quarter-note beats of the notes and rests in an ABC tune (L:1/4)."""
     body = " ".join(line for line in abc.splitlines() if line and not re.match(r"^[A-Za-z]:", line))
-    body = re.sub(r'"[^"]*"|!\w+!|!>!|[().]', "", body)
+    body = re.sub(r'"[^"]*"|!\w+!|!>!|[()]', "", body)
     total = Fraction(0)
-    for m in re.finditer(r"[_^=]*[A-Ga-gz][,']*(\d*)(/*)(\d*)", body):
+    # a staccato dot is a decoration BEFORE the note (".c/2"); a dot after the note ("c./2") would make abcjs drop the duration, so it is not accepted here
+    for m in re.finditer(r"\.?[_^=]*[A-Ga-gz][,']*(\d*)(/*)(\d*)", body):
         num, slashes, den = m.group(1), m.group(2), m.group(3)
         value = Fraction(int(num) if num else 1)
         if slashes:
@@ -331,6 +332,36 @@ class TestTranspositionAndKeys:
         s = session("Saxophone")
         resp = ask(s, "Give me a saxophone scale warmup", instrument="Saxophone")
         assert plan_of(s)["player"]["key"] == "alto" and ("from your app setting" in resp.direct_answer or "Alto — choose your saxophone" in resp.direct_answer)
+
+
+class TestStaccatoIsWrittenBeforeTheNote:
+    """abcjs reads ".c/2" as a staccato eighth but ignores the "/2" in "c./2" (a staccato eighth drawn as a quarter, an overfull bar)."""
+
+    def test_no_note_is_followed_by_a_dot_and_every_staccato_note_has_one_before_it(self):
+        player = we.make_player("flute", "C")
+        for pattern in we.ARTIC_PATTERNS:
+            built = we.build_articulation(player, "Intermediate", "C", "major", pattern=pattern)
+            abc, _ = we.render(player, built, "C", "major", title="x")
+            body = abc.split("K:", 1)[1]
+            assert not re.search(r"[A-Ga-gz][,']*\.", body), (pattern, body[:200])
+            staccato = sum(1 for n in built.notes if not n.rest and n.art == "staccato")
+            assert body.count(".") == staccato, (pattern, staccato, body.count("."))
+
+    def test_the_notated_length_is_right_with_staccato_eighths_and_sixteenths(self):
+        player = we.make_player("flute", "C")
+        built = we.build_articulation(player, "Advanced", "C", "major", pattern="slur_tongue")
+        abc, _ = we.render(player, built, "C", "major", title="x")
+        assert abc_beats(abc) == we.total_beats(built.notes) and abc_beats(abc) % 4 == 0
+
+    def test_a_dot_goes_before_the_note_after_a_slur_mark_and_next_to_an_accent(self):
+        from music_coach_ami.musical_idea_engine import MusicalEvent, MusicalIdeaComposition, composition_to_abc
+        from music_coach_ami.notation_profile import notation_profile_for_instrument
+
+        ev = [MusicalEvent("C", 5, "eighth", 0, 1.0, "staccato", slur_group=1), MusicalEvent("D", 5, "eighth", 0, 1.5, "", slur_group=1),
+              MusicalEvent("E", 5, "eighth", 0, 2.0, "staccato accent"), MusicalEvent("F", 5, "eighth", 0, 2.5, "staccato"), MusicalEvent("G", 5, "half", 0, 3.0, "staccato")]
+        comp = MusicalIdeaComposition(tuple(ev), "C", "4/4", 1, "pattern", "x", notation_profile_for_instrument("Flute"), tonic="C", tonality="major")
+        abc, _ = composition_to_abc(comp, title="x", bpm=80)
+        assert "(.c/2 d/2)" in abc and "!>!.e/2" in abc and ".f/2" in abc and ".g2" in abc, abc
 
 
 class TestDifficultyIsGenuine:
