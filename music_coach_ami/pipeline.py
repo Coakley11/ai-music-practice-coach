@@ -23,7 +23,14 @@ def run_coach_submit(
     from music_coach_ami.session_scope import ensure_owner
 
     ensure_owner(session_state)   # state remembered for another account / workspace is dropped before anything reads it
+    from music_coach_ami import warmup_plan as _warmup
     from music_coach_ami.exercise_revision import stale_song_response
+
+    warm = _warmup.handle(question, session_state, ami_ctx)   # an adaptive warmup request, or a change to the warmup the conversation is about
+    if warm is not None:
+        req = route_question(question, session_state, ami_ctx=ami_ctx)
+        _conv.record_turn(session_state, question, warm.direct_answer)
+        return req, warm
 
     revised, rewrite = stale_song_response(question, session_state, ami_ctx), ""
     if revised is None:
@@ -71,6 +78,9 @@ def _remember(question: str, session_state: Any, response: CoachResponse | None)
         ex = diag.get("generated_exercise")
         ex_id = ""
         if isinstance(ex, dict) and ex.get("id") and diag.get("last_exercise_stored") and not diag.get("exercise_followup_failed"):
+            from music_coach_ami import warmup_plan as _warmup
+
+            _warmup.deactivate(session_state)   # a new exercise is what the conversation is about now, so "undo that" belongs to it
             ex_id = str(ex["id"])
             tempo = _conv.tempo_of_abc(response.notation_abc) or int(ex.get("tempo_bpm") or 0) or _conv.DEFAULT_BPM
             ex["tempo_bpm"] = tempo   # the structured exercise carries the tempo its notation was rendered at
