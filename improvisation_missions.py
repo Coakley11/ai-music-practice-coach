@@ -574,6 +574,12 @@ def rebuild_mission_outputs(
 ) -> dict[str, Any]:
     """Rebuild ABC, TAB, and piano HTML from the current motif (no stale displays)."""
     motif = sync_motif_midi(dict(motif))
+    try:
+        from instrument_register_fit import fit_motif_to_instrument
+
+        motif = fit_motif_to_instrument(motif, instrument)
+    except Exception:
+        pass
     spell_ref = str(key_center or song_display_key or song_concert_key or "C")
     staff_key = str(song_display_key or key_center or song_concert_key or "C")
     try:
