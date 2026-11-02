@@ -467,6 +467,8 @@ def _relative_major_tonic(minor_root: str) -> str:
     idx = CHROMATIC.index(nr)
     rel_pc = (idx + 3) % 12
     ref = f"{str(minor_root or 'A').strip() or 'A'}m"
+    if str(minor_root or "").strip() in ("Ab", "A♭"):
+        return "Cb"      # A-flat minor has seven flats (relative major C-flat), not the five sharps of the enharmonic G-sharp minor / B major
     return spell_note_in_key(rel_pc, ref)
 
 
