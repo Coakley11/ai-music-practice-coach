@@ -16,16 +16,19 @@ create table if not exists public.suite_active_context (
   revision        bigint      not null check (revision >= 1),
   source_type     text        not null check (source_type in ('catalog', 'custom', 'composition')),
   resource_id     text        not null check (length(resource_id) > 0),   -- stable pick key
-  page            text        not null,                                    -- studio page / workflow
+  page            text        not null,                                    -- studio page
+  workflow        text        not null default '',                         -- destination within the page: practice | backing | mission | song_aware_coaching | creative | <page id>
+  mission_id      text        not null default '',                         -- stable Mission identity (PRACTICE_MISSIONS key); only when workflow = 'mission'
   instrument      text        not null default '',
   practice_key    text        not null default '',                         -- canonical (concert) key; never a Key Cycling sounding key
   intentional_at  timestamptz not null,                                    -- when the USER acted
   device_id       text        not null default '',
   cause           text        not null default '',                         -- last applied intent type
   schema_version  integer     not null default 1,
-  field_at        jsonb       not null default '{}'::jsonb check (jsonb_typeof(field_at) = 'object'),
+  field_at        jsonb       not null default '{}'::jsonb check (jsonb_typeof(field_at) = 'object'),  -- per-field intent time; must cover workflow + mission_id
   updated_at      timestamptz not null default now(),
-  primary key (user_id, workspace_id)
+  primary key (user_id, workspace_id),
+  check (workflow <> 'mission' and mission_id = '' or workflow = 'mission')   -- a Mission id only accompanies workflow 'mission'
 );
 
 alter table public.suite_active_context disable row level security;   -- matches 001-003 (QA only)
@@ -59,11 +62,12 @@ begin
 
   if p_expected_revision = 0 then
     insert into public.suite_active_context as c (
-      user_id, workspace_id, revision, source_type, resource_id, page, instrument,
-      practice_key, intentional_at, device_id, cause, schema_version, field_at
+      user_id, workspace_id, revision, source_type, resource_id, page, workflow, mission_id,
+      instrument, practice_key, intentional_at, device_id, cause, schema_version, field_at
     ) values (
       p_user_id, p_workspace_id, 1,
       p_record->>'source_type', p_record->>'resource_id', p_record->>'page',
+      coalesce(p_record->>'workflow', p_record->>'page'), coalesce(p_record->>'mission_id', ''),
       coalesce(p_record->>'instrument', ''), coalesce(p_record->>'practice_key', ''),
       (p_record->>'intentional_at')::timestamptz, coalesce(p_record->>'device_id', ''),
       coalesce(p_record->>'cause', ''), coalesce((p_record->>'schema_version')::int, 1),
@@ -77,6 +81,8 @@ begin
       source_type    = p_record->>'source_type',
       resource_id    = p_record->>'resource_id',
       page           = p_record->>'page',
+      workflow       = coalesce(p_record->>'workflow', p_record->>'page'),
+      mission_id     = coalesce(p_record->>'mission_id', ''),
       instrument     = coalesce(p_record->>'instrument', ''),
       practice_key   = coalesce(p_record->>'practice_key', ''),
       intentional_at = (p_record->>'intentional_at')::timestamptz,

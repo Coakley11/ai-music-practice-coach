@@ -476,3 +476,152 @@ def test_records_are_scoped_by_account_and_workspace_and_never_cross(store):
     ac.mark_intent(other_ws, "song_selected")
     assert ac.flush_intent(other_ws, store, account_id=ACC, workspace_id="ariel", device_id="d") == "published"
     assert store.read(ACC, WS).resource_id == WAVE and store.read(ACC, "ariel").resource_id == SAY
+
+
+# ------------------------------------------------- Mission / Song-Aware Coaching destinations
+
+MISSION_A = "Focus on rhythm over note choice"
+MISSION_B = "Use only 5 notes in one register"
+
+
+def creative(pick=WAVE, tab="Missions", mission=MISSION_A, inst="Guitar", key="D"):
+    s = session(pick=pick, inst=inst, page="creative", key=key)
+    s.update(creative_lab_analysis_mode="Improvisation Intelligence",
+             improv_intelligence_tab=tab, creative_improv_intelligence_tab=tab)
+    if mission:
+        s.update(improv_active_mission=mission, improv_mission_pick=mission)
+    return s
+
+
+def wf(store):
+    r = store.read(ACC, WS)
+    return r.resource_id, r.page, r.workflow, r.mission_id, r.revision
+
+
+def test_mission_round_trips_with_its_identity_and_adoption_payload(store):
+    s = creative(tab="Missions")
+    ac.mark_intent(s, "song_selected")
+    assert flush(s, store, "phone") == "published"
+    assert wf(store) == (WAVE, "creative", "mission", MISSION_A, 1)
+    payload = ac.payload_for_adoption(store.read(ACC, WS))
+    assert (payload["activity_destination"], payload["mission"], payload["studio_page"]) == \
+        ("missions", MISSION_A, "creative")
+    assert payload["progress_activity_id"] and payload["pick_key"] == WAVE
+
+
+def test_song_aware_coaching_round_trips_and_is_distinct_from_mission(store):
+    s = creative(tab="Song-Aware Coaching", mission="")
+    ac.mark_intent(s, "song_selected")
+    flush(s, store, "phone")
+    assert wf(store) == (WAVE, "creative", "song_aware_coaching", "", 1)
+    payload = ac.payload_for_adoption(store.read(ACC, WS))
+    assert payload["activity_destination"] == "coaching" and "mission" not in payload
+    mission = ac.snapshot_from_session(creative(tab="Missions"))
+    coaching = ac.snapshot_from_session(creative(tab="Song-Aware Coaching"))
+    assert mission["workflow"] != coaching["workflow"]
+
+
+def test_generic_creative_is_distinct_from_mission_and_coaching(store):
+    for tab in ("Entry & Jam", "Harmony Map", ""):
+        snap = ac.snapshot_from_session(creative(tab=tab, mission=""))
+        assert (snap["page"], snap["workflow"], snap["mission_id"]) == ("creative", "creative", "")
+    other_mode = creative(tab="Song-Aware Coaching", mission="")
+    other_mode["creative_lab_analysis_mode"] = "Deep Harmonic Analyzer"  # a stale tab key must not leak
+    assert ac.snapshot_from_session(other_mode)["workflow"] == "creative"
+    forced = creative(tab="Missions")
+    forced["creative_lab_analysis_mode"] = "Deep Harmonic Analyzer"  # the page forces II when the tab is Missions
+    assert ac.snapshot_from_session(forced)["workflow"] == "mission"
+    payload = ac.payload_for_adoption(ac.ActiveContext(
+        account_id=ACC, workspace_id=WS, revision=1, source_type="catalog", resource_id=WAVE,
+        page="creative", workflow="creative"))
+    assert "activity_destination" not in payload and "progress_activity_id" not in payload
+
+
+def test_non_creative_pages_use_the_page_as_workflow():
+    for page in ("practice", "backing"):
+        snap = ac.snapshot_from_session(session(pick=WAVE, page=page))
+        assert (snap["page"], snap["workflow"], snap["mission_id"]) == (page, page, "")
+
+
+def test_mission_to_coaching_to_mission_publishes_each_switch_and_keeps_identity(store):
+    s = creative(tab="Missions")
+    ac.mark_intent(s, "song_selected")
+    flush(s, store, "phone")
+    s.update(improv_intelligence_tab="Song-Aware Coaching", creative_improv_intelligence_tab="Song-Aware Coaching")
+    ac.mark_intent(s, "workflow_selected")
+    assert flush(s, store, "phone") == "published" and wf(store) == (WAVE, "creative", "song_aware_coaching", "", 2)
+    s.update(improv_intelligence_tab="Missions", creative_improv_intelligence_tab="Missions",
+             improv_active_mission=MISSION_B, improv_mission_pick=MISSION_B)
+    ac.mark_intent(s, "workflow_selected")
+    assert flush(s, store, "phone") == "published" and wf(store) == (WAVE, "creative", "mission", MISSION_B, 3)
+
+
+def test_changing_the_mission_inside_missions_publishes_the_new_identity(store):
+    s = creative(tab="Missions")
+    ac.mark_intent(s, "song_selected")
+    flush(s, store, "phone")
+    s.update(improv_active_mission=MISSION_B, improv_mission_pick=MISSION_B)
+    ac.mark_intent(s, "workflow_selected")
+    assert flush(s, store, "phone") == "published" and wf(store)[3] == MISSION_B
+
+
+@pytest.mark.parametrize("tab,mission", [("Missions", MISSION_A), ("Song-Aware Coaching", "")])
+def test_stale_mission_or_coaching_intent_cannot_overwrite_a_newer_resource(store, tab, mission):
+    seed(store)  # shared: Wave / backing
+    stale = creative(pick=BOSSA, tab=tab, mission=mission, inst="Saxophone", key="Cm")
+    ac.mark_intent(stale, "workflow_selected")
+    assert flush(stale, store, "dell") == "discarded"
+    assert wf(store) == (WAVE, "backing", "backing", "", 1)
+
+
+def test_explicit_mission_resume_wins_and_restores_exact_mission(store):
+    seed(store)
+    old = creative(pick=BOSSA, tab="Missions", mission=MISSION_B, inst="Saxophone", key="Cm")
+    ac.mark_intent(old, "resume")
+    assert flush(old, store, "phone") == "published"
+    assert wf(store) == (BOSSA, "creative", "mission", MISSION_B, 2)
+    assert store.read(ACC, WS).cause == "resume"
+
+
+def test_explicit_coaching_resume_wins(store):
+    seed(store, pick=BOSSA, page="practice")
+    old = creative(pick=WAVE, tab="Song-Aware Coaching", mission="")
+    ac.mark_intent(old, "resume")
+    assert flush(old, store, "phone") == "published"
+    assert wf(store) == (WAVE, "creative", "song_aware_coaching", "", 2)
+
+
+def test_adoption_of_a_mission_record_does_not_bump_the_revision(store):
+    s = creative(tab="Missions")
+    ac.mark_intent(s, "song_selected")
+    flush(s, store, "phone")
+    dell = session(pick=BOSSA, page="practice", key="Cm")
+    rec = adoptable(dell, store)
+    assert rec is not None and rec.workflow == "mission"
+
+    def apply(payload):
+        assert payload["activity_destination"] == "missions" and payload["mission"] == MISSION_A
+        for cause in ("song_selected", "workflow_selected"):
+            ac.mark_intent(dell, cause)  # the Resume owner does this for real; adoption suppresses it
+        dell.update(active_catalog_pick_key=payload["pick_key"], studio_page="creative",
+                    creative_lab_analysis_mode="Improvisation Intelligence",
+                    improv_intelligence_tab="Missions", creative_improv_intelligence_tab="Missions",
+                    improv_active_mission=payload["mission"])
+        return True
+
+    assert ac.adopt(dell, rec, apply)
+    assert flush(dell, store, "dell") == "no_intent" and wf(store)[4] == 1
+    assert ac.snapshot_from_session(dell)["workflow"] == "mission"
+
+
+def test_legacy_record_without_workflow_reads_as_its_page():
+    rec = ac.ActiveContext.from_dict({"account_id": ACC, "workspace_id": WS, "revision": 1,
+                                       "source_type": "catalog", "resource_id": WAVE, "page": "backing"})
+    assert (rec.workflow, rec.mission_id) == ("backing", "")
+
+
+def test_workflow_field_at_is_tracked_with_the_other_owned_fields(store):
+    s = creative(tab="Missions")
+    ac.mark_intent(s, "song_selected")
+    flush(s, store, "phone")
+    assert {"workflow", "mission_id", "page", "resource_id"} <= set(store.read(ACC, WS).field_at)

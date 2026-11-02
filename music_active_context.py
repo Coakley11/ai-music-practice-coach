@@ -44,7 +44,15 @@ _SEEN_KEY = "_music_ctx_seen_revision"
 _CHOSEN_KEY = "_music_ctx_resource_chosen"
 
 # Fields that define "the same context" (everything else is bookkeeping).
-CONTENT_FIELDS = ("source_type", "resource_id", "page", "instrument", "practice_key")
+CONTENT_FIELDS = ("source_type", "resource_id", "page", "workflow", "mission_id", "instrument", "practice_key")
+
+# ``workflow`` is the meaningful destination inside ``page``. It is read from authoritative
+# session state, never inferred from labels:
+#   practice | backing | <other page id>   workflow == page
+#   creative page: "mission" | "song_aware_coaching" | "creative" (any other Creative tool)
+WORKFLOW_MISSION = "mission"
+WORKFLOW_COACHING = "song_aware_coaching"
+WORKFLOW_CREATIVE = "creative"
 
 
 @dataclass(frozen=True)
@@ -54,7 +62,9 @@ class ActiveContext:
     revision: int
     source_type: str          # catalog | custom | composition
     resource_id: str          # stable pick key
-    page: str                 # studio page / workflow
+    page: str                 # studio page
+    workflow: str = ""        # destination within the page (see WORKFLOW_*); "" in legacy records == page
+    mission_id: str = ""      # stable Mission identity (PRACTICE_MISSIONS key); only when workflow == mission
     instrument: str = ""
     practice_key: str = ""    # canonical Practice Key (concert pitch)
     intentional_at: str = ""  # ISO-8601 UTC of the user's action
@@ -79,6 +89,7 @@ class ActiveContext:
         data = {k: v for k, v in raw.items() if k in known}
         try:
             data["revision"] = int(data.get("revision"))
+            data["workflow"] = str(data.get("workflow") or data.get("page") or "")
             return cls(**data)
         except (TypeError, ValueError):
             return None
@@ -198,16 +209,17 @@ def _now_iso() -> str:
 # Intent types -> (fields the intent owns, field whose newer change supersedes it,
 # whether it is only meaningful for the resource it was made on).
 #   song_selected       a deliberate resource choice; takes its page/key with it
-#   workflow_selected   page only; meaningless once the resource changed elsewhere
+#   workflow_selected   page + workflow (+ Mission identity); meaningless once the resource
+#                       changed elsewhere (a stale Mission/Coaching/page change never moves a newer song)
 #   instrument_changed  instrument only
 #   practice_key_changed  Practice Key only; resource-dependent (a key chosen against song A
 #                         is never merged onto song B -- no respelling or mode guessing);
 #                         never a Key Cycling sounding key
 #   resume              a deliberate Resume (incl. a historical card): all fields
 INTENT_SPECS: dict[str, dict[str, Any]] = {
-    "song_selected": dict(owns=("source_type", "resource_id", "page", "practice_key"),
+    "song_selected": dict(owns=("source_type", "resource_id", "page", "workflow", "mission_id", "practice_key"),
                           conflicts="resource_id", needs_resource=False),
-    "workflow_selected": dict(owns=("page",), conflicts="page", needs_resource=True),
+    "workflow_selected": dict(owns=("page", "workflow", "mission_id"), conflicts="workflow", needs_resource=True),
     "instrument_changed": dict(owns=("instrument",), conflicts="instrument", needs_resource=False),
     "practice_key_changed": dict(owns=("practice_key",), conflicts="practice_key", needs_resource=True),
     "resume": dict(owns=CONTENT_FIELDS, conflicts="resource_id", needs_resource=False),
@@ -294,6 +306,33 @@ def _source_type(pick_key: str) -> str:
     return "catalog"
 
 
+def _workflow_from_session(session: Any, page: str) -> tuple[str, str]:
+    """(workflow, mission_id) from authoritative Creative-tab state; never from labels."""
+    if page != "creative":
+        return page, ""
+    mode = str(session.get("creative_lab_analysis_mode") or "").strip()
+    tab = str(session.get("creative_improv_intelligence_tab")
+              or session.get("improv_intelligence_tab") or "").strip()
+    # The Creative page forces the Analysis mode to Improvisation Intelligence whenever the
+    # tab is Missions, so Missions wins; any other tab only counts under that mode.
+    if mode and mode != "Improvisation Intelligence" and tab != "Missions":
+        return WORKFLOW_CREATIVE, ""
+    if tab == "Song-Aware Coaching":
+        return WORKFLOW_COACHING, ""
+    if tab == "Missions":
+        mission = ""
+        try:
+            from mission_practice_context import authoritative_mission_type
+
+            mission = str(authoritative_mission_type(session) or "").strip()
+        except Exception:
+            pass
+        mission = mission or str(session.get("improv_active_mission")
+                                 or session.get("improv_mission_pick") or "").strip()
+        return WORKFLOW_MISSION, mission
+    return WORKFLOW_CREATIVE, ""
+
+
 def snapshot_from_session(session: Any) -> dict[str, str] | None:
     """The CURRENT resolved context fields, or None when no song is active.
     Reuses the Resume payload builder so there is one definition of the fields.
@@ -305,10 +344,14 @@ def snapshot_from_session(session: Any) -> dict[str, str] | None:
     pick = str(payload.get("pick_key") or "").strip()
     if not pick:
         return None
+    page = str(payload.get("studio_page") or "").strip() or "practice"
+    workflow, mission_id = _workflow_from_session(session, page)
     return {
         "source_type": _source_type(pick),
         "resource_id": pick,
-        "page": str(payload.get("studio_page") or "").strip() or "practice",
+        "page": page,
+        "workflow": workflow,
+        "mission_id": mission_id,
         "instrument": str(payload.get("instrument") or "").strip(),
         "practice_key": str(payload.get("display_key") or "").strip(),
     }
@@ -502,6 +545,17 @@ def payload_for_adoption(record: ActiveContext) -> dict[str, Any]:
     }
     if record.practice_key:
         payload["key_kind"] = "concert"
+    if record.page == "creative" and record.workflow in (WORKFLOW_MISSION, WORKFLOW_COACHING):
+        # The Resume owner restores Missions / Song-Aware Coaching through its activity branch.
+        # The id is only that branch's flag; adoption never writes an activity record.
+        payload["resume_kind"] = "creative"
+        payload["progress_activity_id"] = "active-context"
+        if record.workflow == WORKFLOW_MISSION:
+            payload["activity_destination"] = "missions"
+            if record.mission_id:
+                payload["mission"] = record.mission_id
+        else:
+            payload["activity_destination"] = "coaching"
     return payload
 
 
