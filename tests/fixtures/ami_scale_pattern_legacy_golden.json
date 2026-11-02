@@ -1,6 +1,6 @@
 {
  "Flute|Beginner|Give me a C major scale pattern": {
-  "abc": "X:1\nT:4-Bar Major Pattern\nM:4/4\nL:1/4\nQ:1/4=120\nK:C clef=treble\nc' d' e' f' | d' e' f' g' | e' f' g' a' | f' g' a' b |",
+  "abc": "X:1\nT:4-Bar Major Pattern\nM:4/4\nL:1/4\nQ:1/4=120\nK:C clef=treble\nc d e f | d e f g | e f g a | f g a B |",
   "steps": [
    "**Pattern** — read the staff notation below.",
    "Use a comfortable register on **Flute**.",
@@ -13,7 +13,7 @@
   "direct": "**Try this 4-bar major pattern in C:**"
  },
  "Flute|Advanced|Give me a C major scale pattern": {
-  "abc": "X:1\nT:4-Bar Major Pattern\nM:4/4\nL:1/4\nQ:1/4=120\nK:C clef=treble\nc'/2 d'/2 e'/2 f'/2 d'/2 e'/2 f'/2 g'/2 | e'/2 f'/2 g'/2 a'/2 f'/2 g'/2 a'/2 b'/2 | g'/2 a'/2 b'/2 c''/2 a'/2 b'/2 c''/2 d''/2 | b'/2 c''/2 d''/2 e'/2 c'/2 d'/2 e'/2 f'/2 |",
+  "abc": "X:1\nT:4-Bar Major Pattern\nM:4/4\nL:1/4\nQ:1/4=120\nK:C clef=treble\nc/2 d/2 e/2 f/2 d/2 e/2 f/2 g/2 | e/2 f/2 g/2 a/2 f/2 g/2 a/2 b/2 | g/2 a/2 b/2 c'/2 a/2 b/2 c'/2 d'/2 | b/2 c'/2 d'/2 e/2 c/2 d/2 e/2 f/2 |",
   "steps": [
    "**Pattern** — read the staff notation below.",
    "Use a comfortable register on **Flute**.",
@@ -52,7 +52,7 @@
   "direct": "**Try this 4-bar dorian pattern:**"
  },
  "Flute|Beginner|Give me a 2-bar G major scale pattern in thirds": {
-  "abc": "X:1\nT:2-Bar Major Pattern\nM:4/4\nL:1/4\nQ:1/4=120\nK:G clef=treble\ng b a c' | b d' c' e' |",
+  "abc": "X:1\nT:2-Bar Major Pattern\nM:4/4\nL:1/4\nQ:1/4=120\nK:G clef=treble\nG B A c | B d c e |",
   "steps": [
    "**Pattern** — read the staff notation below.",
    "Use a comfortable register on **Flute**.",
@@ -63,7 +63,7 @@
   "direct": "**Try this 2-bar major pattern in G:**"
  },
  "Flute|Advanced|Give me a 2-bar G major scale pattern in thirds": {
-  "abc": "X:1\nT:2-Bar Major Pattern\nM:4/4\nL:1/4\nQ:1/4=120\nK:G clef=treble\ng/2 b/2 a/2 c'/2 b/2 d'/2 c'/2 e'/2 | d'/2 f'/2 e'/2 g'/2 f'/2 a'/2 g/2 b/2 |",
+  "abc": "X:1\nT:2-Bar Major Pattern\nM:4/4\nL:1/4\nQ:1/4=120\nK:G clef=treble\nG/2 B/2 A/2 c/2 B/2 d/2 c/2 e/2 | d/2 f/2 e/2 g/2 f/2 a/2 G/2 B/2 |",
   "steps": [
    "**Pattern** — read the staff notation below.",
    "Use a comfortable register on **Flute**.",
@@ -74,7 +74,7 @@
   "direct": "**Try this 2-bar major pattern in G:**"
  },
  "Flute|Beginner|Give me an Eb harmonic minor scale pattern": {
-  "abc": "X:1\nT:4-Bar Harmonic Minor Pattern\nM:4/4\nL:1/4\nQ:1/4=120\nK:Ebm clef=treble\ne' f' g' a' | f' g' a' b' | g' a' b' c' | a' b' c' =d' |",
+  "abc": "X:1\nT:4-Bar Harmonic Minor Pattern\nM:4/4\nL:1/4\nQ:1/4=120\nK:Ebm clef=treble\ne f g a | f g a b | g a b c | a b c =d |",
   "steps": [
    "**Pattern** — read the staff notation below.",
    "Use a comfortable register on **Flute**.",
@@ -87,7 +87,7 @@
   "direct": "**Try this 4-bar harmonic minor pattern in Eb:**"
  },
  "Flute|Advanced|Give me an Eb harmonic minor scale pattern": {
-  "abc": "X:1\nT:4-Bar Harmonic Minor Pattern\nM:4/4\nL:1/4\nQ:1/4=120\nK:Ebm clef=treble\ne'/2 f'/2 g'/2 a'/2 f'/2 g'/2 a'/2 b'/2 | g'/2 a'/2 b'/2 c''/2 a'/2 b'/2 c''/2 =d''/2 | b'/2 c''/2 =d''/2 e''/2 c''/2 =d''/2 e''/2 f'/2 | =d''/2 e''/2 f'/2 g'/2 e'/2 f'/2 g'/2 a'/2 |",
+  "abc": "X:1\nT:4-Bar Harmonic Minor Pattern\nM:4/4\nL:1/4\nQ:1/4=120\nK:Ebm clef=treble\ne/2 f/2 g/2 a/2 f/2 g/2 a/2 b/2 | g/2 a/2 b/2 c'/2 a/2 b/2 c'/2 =d'/2 | b/2 c'/2 =d'/2 e'/2 c'/2 =d'/2 e'/2 f/2 | =d'/2 e'/2 f/2 g/2 e/2 f/2 g/2 a/2 |",
   "steps": [
    "**Pattern** — read the staff notation below.",
    "Use a comfortable register on **Flute**.",
@@ -100,7 +100,7 @@
   "direct": "**Try this 4-bar harmonic minor pattern in Eb:**"
  },
  "Violin|Beginner|Give me a C major scale pattern": {
-  "abc": "X:1\nT:4-Bar Major Pattern\nM:4/4\nL:1/4\nQ:1/4=120\nK:C clef=bass\nC D E F | D E F G | E F G A, | F G A, B, |",
+  "abc": "X:1\nT:4-Bar Major Pattern\nM:4/4\nL:1/4\nQ:1/4=120\nK:C clef=bass\nC, D, E, F, | D, E, F, G, | E, F, G, A,, | F, G, A,, B,, |",
   "steps": [
    "**Pattern** — read the staff notation below.",
    "Use a comfortable register on **Violin**.",
@@ -113,7 +113,7 @@
   "direct": "**Try this 4-bar major pattern in C:**"
  },
  "Violin|Advanced|Give me a C major scale pattern": {
-  "abc": "X:1\nT:4-Bar Major Pattern\nM:4/4\nL:1/4\nQ:1/4=120\nK:C clef=bass\nC,/2 D,/2 E,/2 F,/2 D,/2 E,/2 F,/2 G,/2 | E,/2 F,/2 G,/2 A,/2 F,/2 G,/2 A,/2 B,/2 | G,/2 A,/2 B,/2 C/2 A,/2 B,/2 C/2 D/2 | B,/2 C/2 D/2 E/2 C,/2 D,/2 E,/2 F,/2 |",
+  "abc": "X:1\nT:4-Bar Major Pattern\nM:4/4\nL:1/4\nQ:1/4=120\nK:C clef=bass\nC,,/2 D,,/2 E,,/2 F,,/2 D,,/2 E,,/2 F,,/2 G,,/2 | E,,/2 F,,/2 G,,/2 A,,/2 F,,/2 G,,/2 A,,/2 B,,/2 | G,,/2 A,,/2 B,,/2 C,/2 A,,/2 B,,/2 C,/2 D,/2 | B,,/2 C,/2 D,/2 E,/2 C,,/2 D,,/2 E,,/2 F,,/2 |",
   "steps": [
    "**Pattern** — read the staff notation below.",
    "Use a comfortable register on **Violin**.",
@@ -152,7 +152,7 @@
   "direct": "**Try this 4-bar dorian pattern:**"
  },
  "Violin|Beginner|Give me a 2-bar G major scale pattern in thirds": {
-  "abc": "X:1\nT:2-Bar Major Pattern\nM:4/4\nL:1/4\nQ:1/4=120\nK:G clef=bass\nG, B, A, C | B, D C E |",
+  "abc": "X:1\nT:2-Bar Major Pattern\nM:4/4\nL:1/4\nQ:1/4=120\nK:G clef=bass\nG,, B,, A,, C, | B,, D, C, E, |",
   "steps": [
    "**Pattern** — read the staff notation below.",
    "Use a comfortable register on **Violin**.",
@@ -163,7 +163,7 @@
   "direct": "**Try this 2-bar major pattern in G:**"
  },
  "Violin|Advanced|Give me a 2-bar G major scale pattern in thirds": {
-  "abc": "X:1\nT:2-Bar Major Pattern\nM:4/4\nL:1/4\nQ:1/4=120\nK:G clef=bass\nG,/2 B,/2 A,/2 C/2 B,/2 D/2 C/2 E/2 | D/2 F/2 E/2 G/2 F/2 A/2 G,/2 B,/2 |",
+  "abc": "X:1\nT:2-Bar Major Pattern\nM:4/4\nL:1/4\nQ:1/4=120\nK:G clef=bass\nG,,/2 B,,/2 A,,/2 C,/2 B,,/2 D,/2 C,/2 E,/2 | D,/2 F,/2 E,/2 G,/2 F,/2 A,/2 G,,/2 B,,/2 |",
   "steps": [
    "**Pattern** — read the staff notation below.",
    "Use a comfortable register on **Violin**.",
@@ -174,7 +174,7 @@
   "direct": "**Try this 2-bar major pattern in G:**"
  },
  "Violin|Beginner|Give me an Eb harmonic minor scale pattern": {
-  "abc": "X:1\nT:4-Bar Harmonic Minor Pattern\nM:4/4\nL:1/4\nQ:1/4=120\nK:Ebm clef=bass\nE F G A, | F G A, B, | G A, B, C | A B, C =D |",
+  "abc": "X:1\nT:4-Bar Harmonic Minor Pattern\nM:4/4\nL:1/4\nQ:1/4=120\nK:Ebm clef=bass\nE, F, G, A,, | F, G, A,, B,, | G, A,, B,, C, | A, B,, C, =D, |",
   "steps": [
    "**Pattern** — read the staff notation below.",
    "Use a comfortable register on **Violin**.",
@@ -187,7 +187,7 @@
   "direct": "**Try this 4-bar harmonic minor pattern in Eb:**"
  },
  "Violin|Advanced|Give me an Eb harmonic minor scale pattern": {
-  "abc": "X:1\nT:4-Bar Harmonic Minor Pattern\nM:4/4\nL:1/4\nQ:1/4=120\nK:Ebm clef=bass\nE,/2 F,/2 G,/2 A,/2 F,/2 G,/2 A,/2 B,/2 | G,/2 A,/2 B,/2 C/2 A,/2 B,/2 C/2 =D/2 | B,/2 C/2 =D/2 E/2 C/2 =D/2 E/2 F/2 | =D/2 E/2 F/2 G/2 E,/2 F,/2 G,/2 A,/2 |",
+  "abc": "X:1\nT:4-Bar Harmonic Minor Pattern\nM:4/4\nL:1/4\nQ:1/4=120\nK:Ebm clef=bass\nE,,/2 F,,/2 G,,/2 A,,/2 F,,/2 G,,/2 A,,/2 B,,/2 | G,,/2 A,,/2 B,,/2 C,/2 A,,/2 B,,/2 C,/2 =D,/2 | B,,/2 C,/2 =D,/2 E,/2 C,/2 =D,/2 E,/2 F,/2 | =D,/2 E,/2 F,/2 G,/2 E,,/2 F,,/2 G,,/2 A,,/2 |",
   "steps": [
    "**Pattern** — read the staff notation below.",
    "Use a comfortable register on **Violin**.",
@@ -200,7 +200,7 @@
   "direct": "**Try this 4-bar harmonic minor pattern in Eb:**"
  },
  "Guitar|Beginner|Give me a C major scale pattern": {
-  "abc": "X:1\nT:4-Bar Major Pattern\nM:4/4\nL:1/4\nQ:1/4=120\nK:C clef=treble\nc d e f | d e f G | e f G A | f G A B |",
+  "abc": "X:1\nT:4-Bar Major Pattern\nM:4/4\nL:1/4\nQ:1/4=120\nK:C clef=treble\nC D E F | D E F G, | E F G, A, | F G, A, B, |",
   "steps": [
    "**Pattern** — read the staff notation below.",
    "Use a comfortable register on **Guitar**.",
@@ -213,7 +213,7 @@
   "direct": "**Try this 4-bar major pattern in C:**"
  },
  "Guitar|Advanced|Give me a C major scale pattern": {
-  "abc": "X:1\nT:4-Bar Major Pattern\nM:4/4\nL:1/4\nQ:1/4=120\nK:C clef=treble\nc/2 d/2 e/2 f/2 d/2 e/2 f/2 g/2 | e/2 f/2 g/2 A/2 f/2 g/2 A/2 B/2 | g/2 A/2 B/2 c/2 a/2 B/2 c/2 d/2 | B/2 c/2 d/2 e/2 c/2 d/2 e/2 f/2 |",
+  "abc": "X:1\nT:4-Bar Major Pattern\nM:4/4\nL:1/4\nQ:1/4=120\nK:C clef=treble\nC/2 D/2 E/2 F/2 D/2 E/2 F/2 G/2 | E/2 F/2 G/2 A,/2 F/2 G/2 A,/2 B,/2 | G/2 A,/2 B,/2 C/2 A/2 B,/2 C/2 D/2 | B,/2 C/2 D/2 E/2 C/2 D/2 E/2 F/2 |",
   "steps": [
    "**Pattern** — read the staff notation below.",
    "Use a comfortable register on **Guitar**.",
@@ -252,7 +252,7 @@
   "direct": "**Try this 4-bar dorian pattern:**"
  },
  "Guitar|Beginner|Give me a 2-bar G major scale pattern in thirds": {
-  "abc": "X:1\nT:2-Bar Major Pattern\nM:4/4\nL:1/4\nQ:1/4=120\nK:G clef=treble\nG B A c | B d c e |",
+  "abc": "X:1\nT:2-Bar Major Pattern\nM:4/4\nL:1/4\nQ:1/4=120\nK:G clef=treble\nG, B, A, C | B, D C E |",
   "steps": [
    "**Pattern** — read the staff notation below.",
    "Use a comfortable register on **Guitar**.",
@@ -263,7 +263,7 @@
   "direct": "**Try this 2-bar major pattern in G:**"
  },
  "Guitar|Advanced|Give me a 2-bar G major scale pattern in thirds": {
-  "abc": "X:1\nT:2-Bar Major Pattern\nM:4/4\nL:1/4\nQ:1/4=120\nK:G clef=treble\nG/2 B/2 A/2 c/2 B/2 d/2 c/2 e/2 | d/2 f/2 e/2 g/2 f/2 A/2 G/2 B/2 |",
+  "abc": "X:1\nT:2-Bar Major Pattern\nM:4/4\nL:1/4\nQ:1/4=120\nK:G clef=treble\nG,/2 B,/2 A,/2 C/2 B,/2 D/2 C/2 E/2 | D/2 F/2 E/2 G/2 F/2 A,/2 G,/2 B,/2 |",
   "steps": [
    "**Pattern** — read the staff notation below.",
    "Use a comfortable register on **Guitar**.",
@@ -274,7 +274,7 @@
   "direct": "**Try this 2-bar major pattern in G:**"
  },
  "Guitar|Beginner|Give me an Eb harmonic minor scale pattern": {
-  "abc": "X:1\nT:4-Bar Harmonic Minor Pattern\nM:4/4\nL:1/4\nQ:1/4=120\nK:Ebm clef=treble\ne f G A | f G A B | G A B c | A B c =d |",
+  "abc": "X:1\nT:4-Bar Harmonic Minor Pattern\nM:4/4\nL:1/4\nQ:1/4=120\nK:Ebm clef=treble\nE F G, A, | F G, A, B, | G, A, B, C | A, B, C =D |",
   "steps": [
    "**Pattern** — read the staff notation below.",
    "Use a comfortable register on **Guitar**.",
@@ -287,7 +287,7 @@
   "direct": "**Try this 4-bar harmonic minor pattern in Eb:**"
  },
  "Guitar|Advanced|Give me an Eb harmonic minor scale pattern": {
-  "abc": "X:1\nT:4-Bar Harmonic Minor Pattern\nM:4/4\nL:1/4\nQ:1/4=120\nK:Ebm clef=treble\ne/2 f/2 g/2 a/2 f/2 g/2 a/2 B/2 | g/2 a/2 B/2 c/2 a/2 B/2 c/2 =d/2 | B/2 c/2 =d/2 e/2 c/2 =d/2 e/2 f/2 | =d/2 e/2 f/2 g/2 e/2 f/2 g/2 a/2 |",
+  "abc": "X:1\nT:4-Bar Harmonic Minor Pattern\nM:4/4\nL:1/4\nQ:1/4=120\nK:Ebm clef=treble\nE/2 F/2 G/2 A/2 F/2 G/2 A/2 B,/2 | G/2 A/2 B,/2 C/2 A/2 B,/2 C/2 =D/2 | B,/2 C/2 =D/2 E/2 C/2 =D/2 E/2 F/2 | =D/2 E/2 F/2 G/2 E/2 F/2 G/2 A/2 |",
   "steps": [
    "**Pattern** — read the staff notation below.",
    "Use a comfortable register on **Guitar**.",
@@ -300,7 +300,7 @@
   "direct": "**Try this 4-bar harmonic minor pattern in Eb:**"
  },
  "Voice|Beginner|Give me a C major scale pattern": {
-  "abc": "X:1\nT:4-Bar Major Pattern\nM:4/4\nL:1/4\nQ:1/4=120\nK:C clef=bass\nC D E F | D E F G | E F G A, | F G A, B, |",
+  "abc": "X:1\nT:4-Bar Major Pattern\nM:4/4\nL:1/4\nQ:1/4=120\nK:C clef=bass\nC, D, E, F, | D, E, F, G, | E, F, G, A,, | F, G, A,, B,, |",
   "steps": [
    "**Pattern** — read the staff notation below.",
    "Use a comfortable register on **Voice**.",
@@ -313,7 +313,7 @@
   "direct": "**Try this 4-bar major pattern in C:**"
  },
  "Voice|Advanced|Give me a C major scale pattern": {
-  "abc": "X:1\nT:4-Bar Major Pattern\nM:4/4\nL:1/4\nQ:1/4=120\nK:C clef=bass\nC,/2 D,/2 E,/2 F,/2 D,/2 E,/2 F,/2 G,/2 | E,/2 F,/2 G,/2 A,/2 F,/2 G,/2 A,/2 B,/2 | G,/2 A,/2 B,/2 C/2 A,/2 B,/2 C/2 D/2 | B,/2 C/2 D/2 E/2 C,/2 D,/2 E,/2 F,/2 |",
+  "abc": "X:1\nT:4-Bar Major Pattern\nM:4/4\nL:1/4\nQ:1/4=120\nK:C clef=bass\nC,,/2 D,,/2 E,,/2 F,,/2 D,,/2 E,,/2 F,,/2 G,,/2 | E,,/2 F,,/2 G,,/2 A,,/2 F,,/2 G,,/2 A,,/2 B,,/2 | G,,/2 A,,/2 B,,/2 C,/2 A,,/2 B,,/2 C,/2 D,/2 | B,,/2 C,/2 D,/2 E,/2 C,,/2 D,,/2 E,,/2 F,,/2 |",
   "steps": [
    "**Pattern** — read the staff notation below.",
    "Use a comfortable register on **Voice**.",
@@ -352,7 +352,7 @@
   "direct": "**Try this 4-bar dorian pattern:**"
  },
  "Voice|Beginner|Give me a 2-bar G major scale pattern in thirds": {
-  "abc": "X:1\nT:2-Bar Major Pattern\nM:4/4\nL:1/4\nQ:1/4=120\nK:G clef=bass\nG, B, A, C | B, D C E |",
+  "abc": "X:1\nT:2-Bar Major Pattern\nM:4/4\nL:1/4\nQ:1/4=120\nK:G clef=bass\nG,, B,, A,, C, | B,, D, C, E, |",
   "steps": [
    "**Pattern** — read the staff notation below.",
    "Use a comfortable register on **Voice**.",
@@ -363,7 +363,7 @@
   "direct": "**Try this 2-bar major pattern in G:**"
  },
  "Voice|Advanced|Give me a 2-bar G major scale pattern in thirds": {
-  "abc": "X:1\nT:2-Bar Major Pattern\nM:4/4\nL:1/4\nQ:1/4=120\nK:G clef=bass\nG,/2 B,/2 A,/2 C/2 B,/2 D/2 C/2 E/2 | D/2 F/2 E/2 G/2 F/2 A/2 G,/2 B,/2 |",
+  "abc": "X:1\nT:2-Bar Major Pattern\nM:4/4\nL:1/4\nQ:1/4=120\nK:G clef=bass\nG,,/2 B,,/2 A,,/2 C,/2 B,,/2 D,/2 C,/2 E,/2 | D,/2 F,/2 E,/2 G,/2 F,/2 A,/2 G,,/2 B,,/2 |",
   "steps": [
    "**Pattern** — read the staff notation below.",
    "Use a comfortable register on **Voice**.",
@@ -374,7 +374,7 @@
   "direct": "**Try this 2-bar major pattern in G:**"
  },
  "Voice|Beginner|Give me an Eb harmonic minor scale pattern": {
-  "abc": "X:1\nT:4-Bar Harmonic Minor Pattern\nM:4/4\nL:1/4\nQ:1/4=120\nK:Ebm clef=bass\nE F G A, | F G A, B, | G A, B, C | A B, C =D |",
+  "abc": "X:1\nT:4-Bar Harmonic Minor Pattern\nM:4/4\nL:1/4\nQ:1/4=120\nK:Ebm clef=bass\nE, F, G, A,, | F, G, A,, B,, | G, A,, B,, C, | A, B,, C, =D, |",
   "steps": [
    "**Pattern** — read the staff notation below.",
    "Use a comfortable register on **Voice**.",
@@ -387,7 +387,7 @@
   "direct": "**Try this 4-bar harmonic minor pattern in Eb:**"
  },
  "Voice|Advanced|Give me an Eb harmonic minor scale pattern": {
-  "abc": "X:1\nT:4-Bar Harmonic Minor Pattern\nM:4/4\nL:1/4\nQ:1/4=120\nK:Ebm clef=bass\nE,/2 F,/2 G,/2 A,/2 F,/2 G,/2 A,/2 B,/2 | G,/2 A,/2 B,/2 C/2 A,/2 B,/2 C/2 =D/2 | B,/2 C/2 =D/2 E/2 C/2 =D/2 E/2 F/2 | =D/2 E/2 F/2 G/2 E,/2 F,/2 G,/2 A,/2 |",
+  "abc": "X:1\nT:4-Bar Harmonic Minor Pattern\nM:4/4\nL:1/4\nQ:1/4=120\nK:Ebm clef=bass\nE,,/2 F,,/2 G,,/2 A,,/2 F,,/2 G,,/2 A,,/2 B,,/2 | G,,/2 A,,/2 B,,/2 C,/2 A,,/2 B,,/2 C,/2 =D,/2 | B,,/2 C,/2 =D,/2 E,/2 C,/2 =D,/2 E,/2 F,/2 | =D,/2 E,/2 F,/2 G,/2 E,,/2 F,,/2 G,,/2 A,,/2 |",
   "steps": [
    "**Pattern** — read the staff notation below.",
    "Use a comfortable register on **Voice**.",

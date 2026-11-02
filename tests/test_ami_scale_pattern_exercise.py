@@ -544,7 +544,7 @@ def test_unsupported_followups_get_a_clear_answer_and_leave_the_exercise_alone(q
 
 def test_the_list_of_what_can_change_is_specific_to_scale_patterns():
     s, _ = start()
-    msg = " ".join(ask(s, "Make it suitable for alto saxophone").practice_steps)
+    msg = " ".join(ask(s, "Add slurs to it").practice_steps)          # still unsupported (instrument changes are M1b: tests/test_ami_m1b.py)
     assert "harder or easier" in msg and "accents" in msg and "moving or sequencing" not in msg and "new notes" not in msg
 
 

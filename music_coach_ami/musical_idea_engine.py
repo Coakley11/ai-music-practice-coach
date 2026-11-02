@@ -1347,6 +1347,12 @@ def generate_piano_section_improvisation(
     return replace(comp, validation_ok=ok, validation_errors=tuple(errs))
 
 
+# ``abc_pitch_for_spelled_note`` writes scientific C4 (middle C) as ABC ``c``, but ABC (and abcjs, which draws the coach's staff) reads ``c`` as the C *above* middle
+# C. Written as-is, every coach note is drawn one octave above the pitch AMI stored (measured: all 64 notes of every supported instrument, +7 diatonic steps).
+# Composition makes the same correction with COMPOSITION_ABC_OCTAVE_SHIFT; the coach's writer applies it here, once, for the notes it writes.
+COACH_ABC_OCTAVE_SHIFT = -1
+
+
 def _abc_pitch_in_bar(spelled: str, octave: int, key_field: str, state: dict[tuple[str, int], int]) -> str:
     """ABC pitch token for ``spelled`` that reads back as exactly that pitch under ABC's accidental rules.
 
@@ -1414,7 +1420,7 @@ def composition_to_abc(
             else:
                 tok = "z"
         else:
-            tok = _abc_pitch_in_bar(ev.spelled, ev.octave, key_field, bar_accidentals)
+            tok = _abc_pitch_in_bar(ev.spelled, int(ev.octave) + COACH_ABC_OCTAVE_SHIFT, key_field, bar_accidentals)
             if dur_l in ("half", "minim"):
                 suffix = "2"
             elif dur_l in ("eighth", "quaver", "triplet_eighth"):
