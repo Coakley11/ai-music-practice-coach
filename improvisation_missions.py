@@ -574,12 +574,15 @@ def rebuild_mission_outputs(
 ) -> dict[str, Any]:
     """Rebuild ABC, TAB, and piano HTML from the current motif (no stale displays)."""
     motif = sync_motif_midi(dict(motif))
-    try:
-        from instrument_register_fit import fit_motif_to_instrument
+    if not motif.get("_register_fitted"):
+        # Fit generated material (idempotent). A student's own Sequence / Reverse move marks the motif
+        # ``_register_fitted`` so later rebuilds follow it exactly - a move is never silently re-octaved.
+        try:
+            from instrument_register_fit import fit_motif_to_instrument
 
-        motif = fit_motif_to_instrument(motif, instrument)
-    except Exception:
-        pass
+            motif = dict(fit_motif_to_instrument(motif, instrument))
+        except Exception:
+            pass
     spell_ref = str(key_center or song_display_key or song_concert_key or "C")
     staff_key = str(song_display_key or key_center or song_concert_key or "C")
     try:
@@ -1057,6 +1060,8 @@ def apply_mission_motif_transform(
             key_center=concert or str(improv_ctx.display_key or "C"),
         )
         motif = sync_motif_midi(motif)
+    if isinstance(motif, dict):
+        motif = dict(motif, _register_fitted=True)
     example.motif = motif
     example = refresh_mission_example(example, instrument=example.instrument, bpm=bpm)
     idx = int(session_state.get("ii_selected_chord_index") or 0)
