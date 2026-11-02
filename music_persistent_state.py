@@ -669,6 +669,7 @@ _PERSIST_KEYS: tuple[str, ...] = (
     "backing_track_bpm",
     "backing_time_signature",
     "backing_time_signature_override",
+    "backing_time_signature_override_song",
     "backing_quick_section",
     "_backing_play_session",
     "_backing_play_session_expired",
@@ -2605,6 +2606,7 @@ def _backing_filters_for_envelope(st: Any, state: dict[str, Any], *, save_reason
             "backing_volume": backing_meta.get("backing_volume"),
             "backing_time_signature": backing_meta.get("backing_time_signature"),
             "backing_time_signature_override": backing_meta.get("backing_time_signature_override"),
+            "backing_time_signature_override_song": backing_meta.get("backing_time_signature_override_song"),
             "backing_quick_section": backing_meta.get("backing_quick_section"),
         }
 

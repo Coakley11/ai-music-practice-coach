@@ -2808,6 +2808,7 @@ def build_composition_song_context(
         groove=groove,
         scope=str(session.get("backing_track_scope") or "Full song"),
         loops=int(projected.get("loops") or session.get("backing_track_loops") or 2),
+        meter=str(projected.get("time_signature") or "4/4"),
         progression=progression,
         progression_label=label,
         loop=True,
@@ -3585,6 +3586,37 @@ def apply_backing_context_to_session(
         multi = session.get("backing_track_multi_sections")
         if isinstance(multi, list) and multi:
             canonical["backing_track_multi_sections"] = list(multi)
+        if ctx.source in {"regular_song", "composition_song"}:
+            # ``ctx.meter`` is the transport "4/4", not the song's meter, and this
+            # rebuild (Load Last Song / song re-pick) must not erase the
+            # musician's saved override for this very song.
+            try:
+                from backing_play_session import _catalog_song_meter_from_session
+                from songs.meter_state import genuine_saved_meter_override
+
+                _pick = str(
+                    getattr(ctx, "bound_pick_key", "")
+                    or getattr(ctx, "active_song_id", "")
+                    or session.get("active_catalog_pick_key")
+                    or ""
+                ).strip()
+                kept = genuine_saved_meter_override(
+                    session,
+                    # Same id the override is tagged with (active_song_sync_id for a catalog pick).
+                    sync_id=f"pk::{_pick}" if _pick else "",
+                    song_default_meter=(
+                        str(ctx.meter or "4/4")
+                        if ctx.source == "composition_song"
+                        else _catalog_song_meter_from_session(session, fallback=str(ctx.meter or "4/4"))
+                    ),
+                    untagged_ok=False,
+                )
+            except Exception:
+                kept = None
+            if kept:
+                canonical["backing_time_signature"] = kept["meter"]
+                canonical["backing_time_signature_override"] = True
+                canonical["backing_time_signature_override_song"] = kept["song"]
         write_canonical_backing_state(
             session,
             canonical,
