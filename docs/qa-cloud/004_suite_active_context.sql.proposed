@@ -1,0 +1,117 @@
+-- PROPOSAL ONLY -- NOT APPLIED. Do not run against production or the Baseball QA project.
+-- Intended for a dedicated, isolated Suite QA Supabase project. Migrations live in the repo that
+-- owns supabase/migrations (Command Center today); copy this there as 004_suite_active_context.sql
+-- when the QA project is provisioned and approved.
+--
+-- Access model (QA-development decision, NOT a production security approval):
+--   same server-side Suite access path as 001-003 ([suite_activity] server key, RLS off).
+--   Ownership is enforced by the store contract: every read/write is keyed by exactly
+--   (user_id, workspace_id); the store never accepts either from the browser.
+--   Because RLS is off, table/function GRANTS are the only database-level guard: anon/authenticated
+--   are explicitly revoked so the public anon key cannot reach these objects.
+
+create table if not exists public.suite_active_context (
+  user_id         uuid        not null references public.suite_users (id) on delete cascade,
+  workspace_id    text        not null,
+  revision        bigint      not null check (revision >= 1),
+  source_type     text        not null check (source_type in ('catalog', 'custom', 'composition')),
+  resource_id     text        not null check (length(resource_id) > 0),   -- stable pick key
+  page            text        not null,                                    -- studio page
+  workflow        text        not null default '',                         -- destination within the page: practice | backing | mission | song_aware_coaching | creative | <page id>
+  mission_id      text        not null default '',                         -- stable Mission identity (PRACTICE_MISSIONS key); only when workflow = 'mission'
+  instrument      text        not null default '',
+  practice_key    text        not null default '',                         -- canonical (concert) key; never a Key Cycling sounding key
+  intentional_at  timestamptz not null,                                    -- when the USER acted
+  device_id       text        not null default '',
+  cause           text        not null default '',                         -- last applied intent type
+  schema_version  integer     not null default 1,
+  field_at        jsonb       not null default '{}'::jsonb check (jsonb_typeof(field_at) = 'object'),  -- per-field intent time; must cover workflow + mission_id
+  updated_at      timestamptz not null default now(),
+  primary key (user_id, workspace_id),
+  check (workflow <> 'mission' and mission_id = '' or workflow = 'mission')   -- a Mission id only accompanies workflow 'mission'
+);
+
+alter table public.suite_active_context disable row level security;   -- matches 001-003 (QA only)
+revoke all on table public.suite_active_context from anon, authenticated;
+
+-- Atomic compare-and-set. One statement decides the outcome; there is no
+-- SELECT -> client compare -> unconditional UPDATE anywhere.
+--   p_expected_revision = 0 : INSERT revision 1 only if no (user_id, workspace_id) row exists.
+--                             The primary key makes a concurrent insert lose (ON CONFLICT DO NOTHING).
+--   p_expected_revision > 0 : UPDATE ... WHERE revision = p_expected_revision (row lock; one winner).
+-- Returns {"ok": true,  "current": <new row>}                       on success, or
+--         {"ok": false, "current": <winning row> | null}            on a lost race / stale expectation.
+-- The caller then rereads/re-evaluates its semantic intent against "current" (the client already
+-- implements this loop); the function never merges and never widens an intent.
+create or replace function public.suite_active_context_cas(
+  p_user_id           uuid,
+  p_workspace_id      text,
+  p_expected_revision bigint,
+  p_record            jsonb
+) returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_row public.suite_active_context;
+begin
+  if p_expected_revision is null or p_expected_revision < 0 then
+    raise exception 'invalid expected revision';
+  end if;
+
+  if p_expected_revision = 0 then
+    insert into public.suite_active_context as c (
+      user_id, workspace_id, revision, source_type, resource_id, page, workflow, mission_id,
+      instrument, practice_key, intentional_at, device_id, cause, schema_version, field_at
+    ) values (
+      p_user_id, p_workspace_id, 1,
+      p_record->>'source_type', p_record->>'resource_id', p_record->>'page',
+      coalesce(p_record->>'workflow', p_record->>'page'), coalesce(p_record->>'mission_id', ''),
+      coalesce(p_record->>'instrument', ''), coalesce(p_record->>'practice_key', ''),
+      (p_record->>'intentional_at')::timestamptz, coalesce(p_record->>'device_id', ''),
+      coalesce(p_record->>'cause', ''), coalesce((p_record->>'schema_version')::int, 1),
+      coalesce(p_record->'field_at', '{}'::jsonb)
+    )
+    on conflict (user_id, workspace_id) do nothing
+    returning * into v_row;
+  else
+    update public.suite_active_context as c set
+      revision       = p_expected_revision + 1,
+      source_type    = p_record->>'source_type',
+      resource_id    = p_record->>'resource_id',
+      page           = p_record->>'page',
+      workflow       = coalesce(p_record->>'workflow', p_record->>'page'),
+      mission_id     = coalesce(p_record->>'mission_id', ''),
+      instrument     = coalesce(p_record->>'instrument', ''),
+      practice_key   = coalesce(p_record->>'practice_key', ''),
+      intentional_at = (p_record->>'intentional_at')::timestamptz,
+      device_id      = coalesce(p_record->>'device_id', ''),
+      cause          = coalesce(p_record->>'cause', ''),
+      schema_version = coalesce((p_record->>'schema_version')::int, 1),
+      field_at       = coalesce(p_record->'field_at', '{}'::jsonb),
+      updated_at     = now()
+    where c.user_id = p_user_id
+      and c.workspace_id = p_workspace_id
+      and c.revision = p_expected_revision
+    returning * into v_row;
+  end if;
+
+  if v_row.user_id is not null then
+    return jsonb_build_object('ok', true, 'current', to_jsonb(v_row));
+  end if;
+
+  select * into v_row from public.suite_active_context
+   where user_id = p_user_id and workspace_id = p_workspace_id;
+  return jsonb_build_object('ok', false,
+                            'current', case when v_row.user_id is null then null else to_jsonb(v_row) end);
+end;
+$$;
+
+revoke all on function public.suite_active_context_cas(uuid, text, bigint, jsonb)
+  from public, anon, authenticated;
+grant execute on function public.suite_active_context_cas(uuid, text, bigint, jsonb) to service_role;
+
+-- Rollback (QA project only):
+--   drop function if exists public.suite_active_context_cas(uuid, text, bigint, jsonb);
+--   drop table if exists public.suite_active_context;

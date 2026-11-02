@@ -12540,6 +12540,15 @@ def _render_catalog_song_picker_block(
         )
         if not resolved_pick:
             return
+        # The one place a Songs-page click, Enter, tap or dropdown change commits a
+        # Catalog pick. It never goes through begin_explicit_catalog_selection, so
+        # the active-context intent has to be recorded here.
+        try:
+            from music_active_context import mark_intent as _ctx_intent
+
+            _ctx_intent(st.session_state, "select")
+        except Exception:
+            pass
         st.session_state[PENDING_MATCHING_SONG_DROPDOWN] = resolved_pick
         from songs.music_source import (
             SOURCE_CATALOG,
@@ -14515,8 +14524,88 @@ try:
         song_picker_catalog=SONG_PICKER_CATALOG,
         song_library=SONG_LIBRARY,
     )
+    _ctx_refresh = bool(_entry_finalized)
     if _entry_finalized:
         _studio_page = str(st.session_state.get("studio_page") or _studio_page)
+    # Account-level active Music context (dark unless MUSIC_ACTIVE_CONTEXT=local).
+    # Explicit user intent publishes one newer revision; a cold session adopts a
+    # newer record through the normal Resume owner checks. Hydration, reruns and
+    # adoption never publish, and a store failure never touches Music state.
+    try:
+        from music_active_context import (
+            adopt as _ctx_adopt,
+            clear_intent as _ctx_clear,
+            flush_intent as _ctx_flush,
+            get_store as _ctx_get_store,
+            pending_adoption as _ctx_pending,
+        )
+
+        _ctx_store = _ctx_get_store()
+        if _ctx_store is not None:
+            from music_persistent_state import get_music_device_id
+            from music_resume_payload import apply_music_resume_payload, _resolve_workspace_id
+            from suite_resume_launch import _qp_get
+            from suite_user import get_account_user_id
+
+            _ctx_ids = dict(
+                account_id=str(get_account_user_id() or "local"),
+                workspace_id=str(_resolve_workspace_id(st=st, session=st.session_state)),
+            )
+            _ctx_url_resume = any(
+                _qp_get(st, _k) for _k in ("suite_resume", "suite_resume_payload", "suite_page", "suite_pick_key")
+            )
+            _ctx_first_url_run = _ctx_url_resume and not st.session_state.get("_music_ctx_url_seen")
+            if _ctx_url_resume:
+                st.session_state["_music_ctx_url_seen"] = True
+            if _ctx_first_url_run and not _entry_finalized:
+                _ctx_clear(st.session_state)  # failed Resume transaction: never publish it
+            else:
+                if not _ctx_url_resume:
+                    _ctx_rec = _ctx_pending(
+                        st.session_state, _ctx_store, explicit_resume_present=False, **_ctx_ids)
+                    if _ctx_rec is not None and _ctx_adopt(
+                        st.session_state,
+                        _ctx_rec,
+                        lambda _p: apply_music_resume_payload(
+                            st.session_state, _p,
+                            song_picker_catalog=SONG_PICKER_CATALOG,
+                            song_library=SONG_LIBRARY, st=st),
+                    ):
+                        _ctx_refresh = True
+                        _studio_page = str(st.session_state.get("studio_page") or _studio_page)
+                # Only a completed Resume is final at this point in the run. Every other
+                # intent (a Songs-page pick is marked before it is applied) is published
+                # by the end-of-run flush, once the resolved context is final; flushing
+                # here would see the not-yet-applied context and discard the intent.
+                _ctx_intent_now = st.session_state.get("_music_ctx_intent")
+                if _entry_finalized and isinstance(_ctx_intent_now, dict):
+                    from music_active_context import relabel_pending_as_resume as _ctx_relabel
+
+                    _ctx_relabel(st.session_state)
+                    _ctx_flush(st.session_state, _ctx_store, device_id=str(get_music_device_id(st)), **_ctx_ids)
+    except Exception:
+        pass
+    if _ctx_refresh:
+        # The Resume / adoption just activated the requested song, but the song
+        # context was snapshotted earlier in this run. Rebuild it so the sidebar
+        # Active Song and banner show it on the first render. Read-only: no save
+        # and no persistence change.
+        _resumed_genre, _resumed_song, _resumed_data = get_song_context(
+            st,
+            song_library=SONG_LIBRARY,
+            song_picker_catalog=SONG_PICKER_CATALOG,
+        )
+        _global_catalog_genre = _resumed_genre
+        _global_catalog_song = _resumed_song
+        _global_catalog_song_data = _resumed_data
+        if not (
+            km.is_voice_mode(st.session_state)
+            and km.is_karaoke_session_active(st.session_state)
+            and str(st.session_state.get("studio_page") or "").strip().lower() != "picker"
+        ):
+            _catalog_genre, _catalog_song, _catalog_song_data = (
+                _resumed_genre, _resumed_song, _resumed_data,
+            )
 except Exception:
     pass
 render_music_resume_failure(st)
@@ -16732,6 +16821,12 @@ def _on_global_instrument_change() -> None:
     except ImportError:
         pass
     mark_active_song_local_edit(st.session_state)
+    try:
+        from music_active_context import mark_intent as _ctx_intent
+
+        _ctx_intent(st.session_state, "instrument")
+    except Exception:
+        pass
     previous = st.session_state.get("_activity_last_logged_instrument") or st.session_state.get(
         "instrument"
     )
@@ -27599,6 +27694,26 @@ except Exception as _startup_readiness_exc:
 
 # A run that left Backing before its card still renders the Practice Key widget.
 _render_pending_sidebar_practice_key()
+# Intents marked while the page rendered (e.g. a Songs-page pick) publish in this
+# same run, after the pick has been applied. Flush only: never adopts.
+try:
+    from music_active_context import flush_intent as _ctx_flush_end, get_store as _ctx_get_store_end
+
+    _ctx_store_end = _ctx_get_store_end()
+    if _ctx_store_end is not None and st.session_state.get("_music_ctx_intent"):
+        from music_persistent_state import get_music_device_id as _ctx_dev_end
+        from music_resume_payload import _resolve_workspace_id as _ctx_ws_end
+        from suite_user import get_account_user_id as _ctx_acct_end
+
+        _ctx_flush_end(
+            st.session_state,
+            _ctx_store_end,
+            account_id=str(_ctx_acct_end() or "local"),
+            workspace_id=str(_ctx_ws_end(st=st, session=st.session_state)),
+            device_id=str(_ctx_dev_end(st)),
+        )
+except Exception:
+    pass
 try:
     from music_run_lifecycle import complete_script_run_lifecycle
 

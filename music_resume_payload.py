@@ -252,14 +252,27 @@ def _tone_bits(session: dict[str, Any]) -> dict[str, Any]:
 
 
 def _upload_bits(session: dict[str, Any]) -> dict[str, Any]:
-    song_bits = _song_bits(session)
+    """An upload is its own resource; never inherit the active song's identity."""
     label = str(session.get("last_analysis_source_label") or "").strip()
-    return {
-        "song": song_bits.get("song") or "",
-        "pick_key": song_bits.get("pick_key") or "",
+    upload_id = ""
+    try:
+        from media_upload_catalog import active_catalog_recording_id
+
+        upload_id = active_catalog_recording_id(session)
+    except Exception:
+        upload_id = ""
+    bits: dict[str, Any] = {
+        # Blank the song-owned fields that build_music_resume_payload seeded.
+        "song": "", "artist": "", "pick_key": "", "instrument": "",
+        "display_key": "", "practice_focus_section": "", "bpm": None,
         "upload_label": label,
         "studio_page": "analysis",
     }
+    if upload_id:
+        bits["upload_id"] = upload_id
+        bits["source_type"] = "upload"
+        bits["source_id"] = upload_id
+    return bits
 
 
 def build_music_resume_payload(
@@ -321,6 +334,10 @@ def build_music_resume_payload(
     else:
         payload["studio_page"] = "practice"
 
+    if payload.get("display_key"):
+        # display_key is the canonical Practice Key, i.e. concert pitch; the
+        # written key for transposing instruments is derived elsewhere.
+        payload["key_kind"] = "concert"
     return payload
 
 
@@ -344,6 +361,13 @@ def resume_key_for_payload(payload: dict[str, Any]) -> str:
     if kind == "backing":
         base = pick or str(payload.get("song") or "backing")
         return f"music:backing:{base}"
+    if kind == "creative" and payload.get("activity_destination") in {"missions", "coaching"} and pick:
+        # Workflow + resource identity (never just "creative"), so a Mission and
+        # Song-Aware Coaching for the same song are separate historical items.
+        if payload.get("activity_destination") == "missions":
+            mission = re.sub(r"[^a-zA-Z0-9]+", "_", str(payload.get("mission") or "")).strip("_")[:48]
+            return f"music:mission:{pick}:{mission}" if mission else f"music:mission:{pick}"
+        return f"music:coaching:{pick}"
     if kind == "creative":
         entry = str(payload.get("improv_entry_mode") or payload.get("backing_source") or "creative")
         style = str(payload.get("improv_style_key") or payload.get("style") or "")
@@ -357,7 +381,8 @@ def resume_key_for_payload(payload: dict[str, Any]) -> str:
         dk = str(payload.get("display_key") or "key")
         return f"music:tone:{inst}:{dk}"
     if kind in {"upload", "analysis"}:
-        base = pick or str(payload.get("upload_label") or payload.get("song") or "upload")
+        base = str(payload.get("upload_id") or "") or pick or str(
+            payload.get("upload_label") or payload.get("song") or "upload")
         return f"music:upload:{base}"
     base = pick or str(payload.get("song") or "practice")
     if ws != "daniel":
@@ -376,88 +401,131 @@ def legacy_resume_key_for_payload(payload: dict[str, Any]) -> str:
     return str(resume_key_for_payload(payload))
 
 
-def continue_card_title(payload: dict[str, Any]) -> str:
-    kind = normalize_resume_kind(str(payload.get("resume_kind") or ""))
-    song = str(payload.get("song") or "").strip()
-    if kind == "backing":
-        style = str(payload.get("style") or payload.get("backing_groove_style") or "Backing").strip()
-        mood = str(payload.get("mood") or "").strip()
-        intensity = str(payload.get("intensity") or "").strip()
-        parts = [p for p in (style, mood, intensity) if p]
-        label = " ".join(parts) if parts else "Backing Track"
-        sections = _section_summary(payload)
-        if sections:
-            return f"Continue Backing Track — {label} — {sections}"
-        return f"Continue Backing Track — {label}"
-    if kind == "multitrack":
-        title = str(payload.get("multitrack_title") or song or "Session").strip()
-        return f"Continue Multitrack Recording — {title}"
-    if kind == "tone":
-        dk = str(payload.get("display_key") or "Concert key").strip()
-        return f"Continue Tone Practice — {dk}"
-    if kind == "creative":
-        style = str(payload.get("improv_style_key") or payload.get("style") or "Creative").strip()
-        prog = str(payload.get("progression_label") or "").strip()
-        if prog:
-            return f"Continue Creative Lab — {style} — {prog}"
-        return f"Continue Creative Lab — {style}"
-    if kind in {"upload", "analysis"}:
-        label = str(payload.get("upload_label") or song or "Upload").strip()
-        return f"Continue Upload — {label}"
+_JAM_ENTRY_LABELS = {
+    "jam session generator": "Jam Session",
+    "style jam mode": "Style Jam",
+    "style jam": "Style Jam",
+}
 
-    inst = str(payload.get("instrument") or "").strip()
-    dk = str(payload.get("display_key") or "").strip()
-    bpm = payload.get("bpm")
-    head = f"Continue {song}" if song else "Continue Practice"
-    bits: list[str] = []
-    if inst:
-        bits.append(inst)
-    if dk:
-        bits.append(f"Key: {dk}")
-    if bpm:
-        bits.append(f"{int(bpm)} BPM")
-    if bits:
-        return f"{head} — {' — '.join(bits)}"
-    return head
+
+def _text(payload: dict[str, Any], *keys: str) -> str:
+    for key in keys:
+        value = str(payload.get(key) or "").strip()
+        if value:
+            return value
+    return ""
+
+
+def _real_style(payload: dict[str, Any]) -> str:
+    """A concrete groove/style name; ``Auto`` is a selector, not a style."""
+    style = _text(payload, "improv_style_key", "backing_groove_style", "style")
+    return "" if style.lower() == "auto" else style
+
+
+def _source_label(payload: dict[str, Any]) -> str:
+    if str(payload.get("source_type") or "") == "upload" and payload.get("upload_id"):
+        return "Upload"
+    pick = str(payload.get("pick_key") or "")
+    if not pick:
+        return ""
+    if pick.startswith(("composition::", "composition")):
+        return "Composition"
+    if pick.startswith(("custom::", "custom")):
+        return "Custom"
+    return "Catalog"
+
+
+def _key_text(payload: dict[str, Any], *keys: str) -> str:
+    key = _text(payload, *keys)
+    if not key:
+        return ""
+    # Only the producer's explicit key_kind may claim "Concert".
+    if str(payload.get("key_kind") or "").strip().lower() == "concert":
+        return f"Concert {key}"
+    return f"Practice Key: {key}"
+
+
+def _bpm_text(*values: Any) -> str:
+    for value in values:
+        try:
+            bpm = int(float(value))
+        except (TypeError, ValueError):
+            continue
+        if bpm > 0:
+            return f"{bpm} BPM"
+    return ""
+
+
+def _jam_label(payload: dict[str, Any]) -> str:
+    return _JAM_ENTRY_LABELS.get(_text(payload, "improv_entry_mode").lower(), "")
+
+
+def _workflow_label(payload: dict[str, Any], kind: str) -> str:
+    destination = payload.get("activity_destination")
+    if destination == "missions":
+        return "Mission"
+    if destination == "coaching":
+        return "Song-Aware Coaching"
+    if str(payload.get("studio_page") or "").strip().lower() in {"composer", "composition"}:
+        return "Composition"
+    return {
+        "backing": "Backing",
+        "creative": "Creative Lab",
+        "multitrack": "Multitrack",
+        "tone": "Tone Practice",
+        "upload": "Upload",
+        "analysis": "Upload",
+    }.get(kind, "Practice")
+
+
+def continue_card_title(payload: dict[str, Any]) -> str:
+    """Resource first, workflow second. Never invents a song for generated contexts."""
+    kind = normalize_resume_kind(str(payload.get("resume_kind") or ""))
+    song = _text(payload, "song")
+    workflow = _workflow_label(payload, kind)
+    if kind == "multitrack":
+        resource = _text(payload, "multitrack_title", "song")
+        return f"Continue {resource} — {workflow}" if resource else "Continue Multitrack Recording"
+    if kind in {"upload", "analysis"}:
+        resource = _text(payload, "upload_label", "song")
+        return f"Continue {resource} — {workflow}" if resource else "Continue Upload"
+    jam = _jam_label(payload) if kind == "creative" and not payload.get("activity_destination") else ""
+    if jam:
+        style = _real_style(payload)
+        return f"Continue {jam} — {style}" if style else f"Continue {jam}"
+    if song:
+        return f"Continue {song} — {workflow}"
+    style = _real_style(payload)
+    generic = {"backing": "Backing Track", "creative": "Creative Lab",
+               "tone": "Tone Practice"}.get(kind, "Practice")
+    return f"Continue {generic} — {style}" if style and kind in {"backing", "creative"} else f"Continue {generic}"
 
 
 def continue_card_subtitle(payload: dict[str, Any]) -> str:
+    """Setup metadata, only from fields present in the payload."""
     kind = normalize_resume_kind(str(payload.get("resume_kind") or ""))
-    page = str(payload.get("studio_page") or "").strip()
-    focus = str(payload.get("practice_focus_section") or "").strip()
+    jam = bool(_jam_label(payload)) and kind == "creative"
+    parts: list[str] = [] if jam else [_source_label(payload)]
+    parts.append(_text(payload, "instrument"))
+    parts.append(_key_text(payload, "display_key", "concert_key"))
     if kind == "backing":
-        scope = str(payload.get("backing_track_scope") or "Full song")
-        loops = payload.get("backing_track_loops")
-        bpm = payload.get("backing_track_bpm") or payload.get("bpm")
-        parts = [scope]
-        sec = _section_summary(payload)
-        if sec:
-            parts.append(sec)
-        if bpm:
-            parts.append(f"{int(bpm)} BPM")
-        if loops:
-            parts.append(f"{int(loops)} loops")
-        if page:
-            parts.append(page)
-        return " · ".join(str(p) for p in parts if p)
-    if kind == "creative":
-        entry = str(payload.get("improv_entry_mode") or "").strip()
-        dk = str(payload.get("display_key") or payload.get("concert_key") or "").strip()
-        parts = [p for p in (entry, dk, page or "creative") if p]
-        return " · ".join(parts) or "Creative Lab"
-    if kind == "multitrack":
-        song = str(payload.get("song") or "").strip()
-        return song or "Multitrack session"
-    if kind == "tone":
-        inst = str(payload.get("instrument") or "").strip()
-        return inst or "Tone / tuner"
-    if kind in {"upload", "analysis"}:
-        return str(payload.get("upload_label") or payload.get("song") or "Upload workflow")
-    parts = [p for p in (focus, page or "practice") if p]
-    artist = str(payload.get("artist") or "").strip()
-    if artist and not parts:
-        return artist
-    return " · ".join(parts) if parts else str(payload.get("artist") or "Practice")
+        parts.append(_bpm_text(payload.get("backing_track_bpm"), payload.get("bpm")))
+        scope = _text(payload, "backing_track_scope")
+        sections = _section_summary(payload)
+        if sections:
+            parts.append(sections)
+        elif scope and scope.lower() != "full song":
+            parts.append(scope)
+    elif kind == "creative":
+        parts.append(_text(payload, "progression_label"))
+        if payload.get("activity_destination") == "missions":
+            parts.append(_text(payload, "mission").replace("_", " "))
+    elif kind in {"upload", "analysis", "multitrack", "tone"}:
+        pass
+    else:
+        parts.append(_bpm_text(payload.get("bpm")))
+        parts.append(_text(payload, "practice_focus_section"))
+    return " · ".join(x for x in parts if x)
 
 
 def _section_summary(payload: dict[str, Any]) -> str:

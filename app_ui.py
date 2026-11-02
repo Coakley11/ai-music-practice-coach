@@ -10573,6 +10573,12 @@ def navigate_studio_page(session_state: Any, page_id: str) -> bool:
     changed = _nav(session_state, page_id)
     if changed:
         try:
+            from music_active_context import mark_intent as _ctx_intent
+
+            _ctx_intent(session_state, "page")
+        except Exception:
+            pass
+        try:
             from studio_nav_state import mark_studio_nav_local_edit
 
             mark_studio_nav_local_edit(session_state)

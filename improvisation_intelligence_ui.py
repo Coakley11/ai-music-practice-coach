@@ -1097,6 +1097,12 @@ def render_improvisation_intelligence_lab(
             prev_dest = str(session_state.get("_history_live_creative_dest") or "").strip()
             mark_improv_tab_user_touched(session_state)
             try:
+                from music_active_context import mark_intent as _ctx_intent
+
+                _ctx_intent(session_state, "workflow_selected")
+            except Exception:
+                pass
+            try:
                 from studio_nav_history import record_creative_workspace_change
 
                 record_creative_workspace_change(
@@ -4398,6 +4404,12 @@ def render_mission_practice_lick_on_backing(
 def _on_mission_pick_change() -> None:
     import streamlit as st
 
+    try:
+        from music_active_context import mark_intent as _ctx_intent
+
+        _ctx_intent(st.session_state, "workflow_selected")
+    except Exception:
+        pass
     try:
         from creative_mission_config_persistence import handle_user_mission_pick_change
 

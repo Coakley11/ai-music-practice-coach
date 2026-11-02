@@ -178,6 +178,12 @@ def begin_explicit_catalog_selection(session_state: dict[str, Any]) -> None:
     # kept treating the previous owner as authoritative -- Say resolving My
     # Progression's C, and Say resolving the Composition's C.
     session_state[EXPLICIT_MUSIC_SOURCE_CHOICE_KEY] = SOURCE_CATALOG
+    try:
+        from music_active_context import mark_intent as _ctx_intent
+
+        _ctx_intent(session_state, "select")
+    except Exception:
+        pass
     # Choosing a global Catalog song ends any Creative-local Custom preview.
     # Leaving that stamp in place let the preview keep owning the sidebar
     # Practice Key after the switch, so Say showed the Custom progression's key.
@@ -5875,6 +5881,13 @@ def queue_custom_active_song_activation(
     if toast_title:
         payload["toast_title"] = str(toast_title).strip()
     session[PENDING_CUSTOM_ACTIVE_SONG_KEY] = payload
+    # "Set as Active Song" is a deliberate Custom selection: report it so another device can follow.
+    try:
+        from music_active_context import mark_intent as _ctx_intent
+
+        _ctx_intent(session, "song_selected")
+    except Exception:
+        pass
 
 
 def begin_explicit_custom_selection(session_state: dict[str, Any]) -> None:
@@ -5891,6 +5904,12 @@ def begin_explicit_custom_selection(session_state: dict[str, Any]) -> None:
     except Exception:
         session_state[EXPLICIT_CUSTOM_ACTIVATION_EPOCH_KEY] = 1.0
     session_state.pop(EXPLICIT_CATALOG_SELECTION_EPOCH_KEY, None)
+    try:
+        from music_active_context import mark_intent as _ctx_intent
+
+        _ctx_intent(session_state, "select")
+    except Exception:
+        pass
 
 
 def queue_custom_library_action(
@@ -7807,4 +7826,11 @@ def switch_backing_source_to_custom(
         invalidate_backing=invalidate_backing,
         in_callback=True,  # the caller reruns once; avoid a second st.rerun inside
     )
+    # A deliberate click that changes the active song: report it so another device can follow.
+    try:
+        from music_active_context import mark_intent as _ctx_intent
+
+        _ctx_intent(session, "song_selected")
+    except Exception:
+        pass
     return "switched"

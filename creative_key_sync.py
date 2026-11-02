@@ -5081,6 +5081,12 @@ def persist_creative_analysis_mode(session_state: dict[str, Any]) -> str:
 def on_creative_analysis_mode_change() -> None:
     import streamlit as st
 
+    try:  # a user-chosen Analysis mode can change the derived workflow (Mission/Coaching vs generic)
+        from music_active_context import mark_intent as _ctx_intent
+
+        _ctx_intent(st.session_state, "workflow_selected")
+    except Exception:
+        pass
     try:
         from creative_tab_tool_persistence import handle_user_creative_selector_change
 

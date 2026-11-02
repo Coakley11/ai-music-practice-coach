@@ -76,6 +76,9 @@ def _emit(session: Any, event: str, metrics: dict, *, identity: Any, destination
                        pick_key=metrics['source_id'], source_type=metrics['source_type'],
                        source_id=metrics['source_id'], song=metrics.get('song', ''),
                        instrument=metrics.get('instrument', ''), display_key=metrics.get('practice_key', ''))
+        if payload['display_key']:
+            # practice_key here is get_practice_concert_key(): concert pitch.
+            payload['key_kind'] = 'concert'
         if destination == 'missions':
             payload['mission'] = metrics['mission']
         metrics['resume_payload'] = payload
