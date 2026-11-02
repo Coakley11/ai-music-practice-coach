@@ -36,6 +36,7 @@ class ClaudeSettings:
     budget_usd: float
     session_call_cap: int
     timeout_s: float
+    interpret_enabled: bool = False      # M1b-4 experiment (claude_interpret): its own switch, off unless AMI_CLAUDE_INTERPRET_ENABLED is true
 
     @property
     def model_priced(self) -> bool:
@@ -100,6 +101,7 @@ def load_claude_settings() -> ClaudeSettings:
             _secret_value("AMI_CLAUDE_SESSION_CALL_CAP"), 10, 0, HARD_SESSION_CALL_CEILING
         ),
         timeout_s=_as_float(_secret_value("AMI_CLAUDE_TIMEOUT_S"), 20.0, 5.0, 60.0),
+        interpret_enabled=_as_bool(_secret_value("AMI_CLAUDE_INTERPRET_ENABLED")),
     )
 
 
