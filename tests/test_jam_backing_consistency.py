@@ -37,7 +37,9 @@ def test_minor_key_jam_uses_minor_harmony_and_major_is_unchanged() -> None:
     assert first_cm[:4] == ["Cm", "Fm", "Bb7", "Eb"]
     assert first_c[:4] == ["Am", "Dm", "G7", "C"]
     bm = generate_style_progression(style="Jazz Swing", key_center="B minor", mood="Mellow", seed=7)
-    assert next(iter(bm.values()))[:3] == ["Em7", "A7", "Dmaj7"]       # ii-V-I of D (Bm's relative major)
+    assert next(iter(bm.values()))[:3] == ["Bm7", "Em7", "F#7"]       # B minor is the tonal centre (i - iv - V7)
+    legacy = generate_style_progression(style="Jazz Swing", key_center="B minor", mood="Mellow", seed=7, tonality="relative_major")
+    assert next(iter(legacy.values()))[:3] == ["Em7", "A7", "Dmaj7"]  # relative-major frame stays an explicit option
 
 
 def test_every_jam_style_maps_to_a_matching_backing_groove() -> None:

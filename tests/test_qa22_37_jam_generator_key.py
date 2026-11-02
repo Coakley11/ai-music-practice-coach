@@ -44,3 +44,39 @@ class TestJamGeneratorKey(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestMinorKeyJamIsTonicCentred(unittest.TestCase):
+    """Issue 31 follow-up: a minor Concert Key is the session's tonal centre, not a relative-major ii-V-I."""
+
+    def _first(self, **kw):
+        from improvisation_intelligence import generate_style_progression
+
+        return list(generate_style_progression(seed=1, mood="Mellow", **kw).values())[0]
+
+    def test_e_minor_jazz_is_em_am_b7_em(self):
+        self.assertEqual(self._first(style="Jazz Swing", key_center="Em")[:4], ["Em7", "Am7", "B7", "Em7"])
+
+    def test_every_style_starts_and_resolves_on_the_minor_tonic(self):
+        from improvisation_intelligence import MINOR_STYLE_PROGRESSIONS, STYLE_PROGRESSIONS
+
+        self.assertEqual(set(MINOR_STYLE_PROGRESSIONS), set(STYLE_PROGRESSIONS))
+        for style in STYLE_PROGRESSIONS:
+            for key, tonic in (("Em", "E"), ("Cm", "C"), ("F#m", "F#"), ("Bbm", "Bb")):
+                with self.subTest(style=style, key=key):
+                    first = self._first(style=style, key_center=key)[0]
+                    self.assertTrue(first.startswith(tonic), (style, key, first))
+
+    def test_relative_major_remains_an_explicit_option_and_major_keys_are_unchanged(self):
+        from improvisation_intelligence import generate_style_progression
+
+        rel = list(generate_style_progression(style="Jazz Swing", key_center="Em", seed=1, mood="Mellow", tonality="relative_major").values())[0]
+        self.assertEqual(rel[:3], ["Am7", "D7", "Gmaj7"])
+        major = list(generate_style_progression(style="Jazz Swing", key_center="C", seed=1, mood="Mellow").values())[0]
+        self.assertEqual(major[:4], ["Dm7", "G7", "Cmaj7", "A7"])
+
+    def test_chosen_key_is_not_overwritten(self):
+        from improvisation_intelligence import generate_jam_session
+
+        jam = generate_jam_session(style="Jazz Swing", key_center="Em", seed=1)
+        self.assertEqual(jam["key"], "Em")

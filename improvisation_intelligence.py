@@ -303,6 +303,42 @@ def flatten_sections(
     return out
 
 
+# Tonic-centred MINOR templates, written in A minor. A minor key plays these (E minor: Em7 - Am7 - B7 - Em7 ...),
+# so the displayed Concert Key, the chords and the audio share one tonal centre. The older relative-major frame
+# (a minor key borrowing its relative major's ii-V-I) remains available as ``tonality="relative_major"``.
+MINOR_STYLE_PROGRESSIONS: dict[str, list[tuple[str, list[str]]]] = {
+    "Bossa Nova": [
+        ("A", ["Am7", "Bm7b5", "E7", "Am7"]),
+        ("B", ["Dm7", "G7", "Cmaj7", "E7"]),
+        ("A'", ["Am7", "Bm7b5", "E7", "Am7"]),
+    ],
+    "Jazz Swing": [
+        ("Head", ["Am7", "Dm7", "E7", "Am7"]),
+        ("Bridge", ["Bm7b5", "E7", "Am7", "Am7", "Dm7", "G7", "Cmaj7", "E7"]),
+    ],
+    "Blues": [
+        ("12-bar", ["Am7", "Am7", "Am7", "Am7", "Dm7", "Dm7", "Am7", "Am7", "F7", "E7", "Am7", "E7"]),
+    ],
+    "Funk": [("Groove", ["Am7", "Am7", "Dm7", "Dm7", "E7", "E7", "Am7", "Am7"])],
+    "Pop": [("Verse", ["Am", "F", "C", "G"]), ("Chorus", ["F", "G", "Am", "Am"])],
+    "Rock": [("Riff", ["Am", "Am", "G", "F"]), ("Chorus", ["Am", "F", "G", "Am"])],
+    "Neo Soul": [("Vamp", ["Am9", "Dm9", "E7#9", "Am9"])],
+    "Fusion": [
+        ("A", ["Am7", "Bm7b5", "E7alt", "Am7"]),
+        ("B", ["Dm7", "G7", "Cmaj7", "E7alt"]),
+    ],
+    "Modal Vamp": [("Vamp", ["Am7", "Am7", "Am7", "Am7"])],
+    "Lo-fi": [("Loop", ["Am7", "Fmaj7", "Cmaj7", "G7"])],
+    "Latin": [("A", ["Am", "Dm", "G7", "C"]), ("B", ["F", "Fm", "C", "G"])],
+}
+
+
+def _is_minor_key(key_center: str) -> bool:
+    root, suffix = split_chord(str(key_center or "C"))
+    low = suffix.lower()
+    return ("m" in low and "maj" not in low) or "minor" in str(key_center or "").lower()
+
+
 def generate_style_progression(
     *,
     style: str,
@@ -310,10 +346,19 @@ def generate_style_progression(
     difficulty: str = "Intermediate",
     mood: str = "Mellow",
     seed: int | None = None,
+    tonality: str = "tonic",
 ) -> dict[str, list[str]]:
-    """Build section dict for a style jam in the requested key."""
+    """Build section dict for a style jam in the requested key.
+
+    A minor Concert Key is the tonal centre of the session (``tonality="tonic"``, the default). Pass
+    ``tonality="relative_major"`` for the legacy ii-V-I-in-the-relative-major frame.
+    """
     rng = random.Random(seed)
-    template = STYLE_PROGRESSIONS.get(style, STYLE_PROGRESSIONS["Pop"])
+    minor_tonic = _is_minor_key(key_center) and str(tonality or "tonic") != "relative_major"
+    if minor_tonic:
+        template = MINOR_STYLE_PROGRESSIONS.get(style, MINOR_STYLE_PROGRESSIONS["Pop"])
+    else:
+        template = STYLE_PROGRESSIONS.get(style, STYLE_PROGRESSIONS["Pop"])
     steps = _key_steps_to_center(key_center)
     sections: dict[str, list[str]] = {}
     for label, chords in template:
@@ -321,7 +366,7 @@ def generate_style_progression(
         if difficulty == "Beginner" and style == "Modal Vamp":
             root = _chord_root(transposed[0])
             transposed = [f"{root}m7"] * len(transposed)
-        if mood == "Dark" and _chord_quality(transposed[0]) == "major":
+        if mood == "Dark" and not minor_tonic and _chord_quality(transposed[0]) == "major":
             transposed[0] = transpose_chord(transposed[0], -3, reference_key=key_center)
         sections[f"{label} ({style})"] = transposed
     if rng.random() < 0.3 and len(sections) >= 1:
