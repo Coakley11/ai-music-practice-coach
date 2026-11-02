@@ -2658,7 +2658,7 @@ def _tab_motif(
         transforms = [
             (t1, "sequence_up", "Sequence Up ↑", "improv_xform_up"),
             (t2, "sequence_down", "Sequence Down ↓", "improv_xform_down"),
-            (t3, "invert", "Invert ↓↑", "improv_xform_invert"),
+            (t3, "invert", "Reverse Order ⇄", "improv_xform_invert"),
             (t4, "rhythmic", "Change Rhythm", "improv_xform_rhythm"),
         ]
         for col, op, label, key in transforms:
@@ -3337,11 +3337,11 @@ def _render_span_motif_panel(
                 state["current"] = current
                 session_state[SPAN_MOTIF_STATE_KEY] = state
         t0, t1, t2 = st.columns(3)
-        for col, label, key in ((t0, "Sequence Up ↑", "improv_span_seq_up"), (t1, "Sequence Down ↓", "improv_span_seq_down"), (t2, "Invert ↓↑", "improv_span_invert")):
+        for col, label, key in ((t0, "Sequence Up ↑", "improv_span_seq_up"), (t1, "Sequence Down ↓", "improv_span_seq_down"), (t2, "Reverse Order ⇄", "improv_span_invert")):
             with col:
                 st.button(label, key=key, disabled=True, use_container_width=True)
         st.caption(
-            "Sequence and Invert are single-chord transforms: across a span they would move notes "
+            "Sequence and Reverse Order are single-chord transforms: across a span they would move notes "
             "off the later chords, so they are off in multi-chord scope for now."
         )
         if current.get("span_length") != "seed":
@@ -6120,7 +6120,7 @@ def _tab_missions(
                     )
                     transform_clicked = True
             with t3:
-                if st.button("Invert ↓↑", key="improv_mission_invert", use_container_width=True):
+                if st.button("Reverse Order ⇄", key="improv_mission_invert", use_container_width=True):
                     apply_mission_motif_transform(
                         session_state, improv_ctx, "invert", bpm=bpm, key_center=practice_key
                     )

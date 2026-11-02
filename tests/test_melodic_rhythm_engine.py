@@ -308,10 +308,16 @@ class TestPhraseMotifRhythm(unittest.TestCase):
         from motif_engine import transform_motif
 
         p = _auto("Dm", "A7", "Intermediate", 2)
-        for op in ("sequence_up", "sequence_down", "invert"):
+        for op in ("sequence_up", "sequence_down"):
             t = transform_motif(p, op, key_center="Dm")
             self.assertEqual(t["rhythm_events"], p["rhythm_events"], op)
             self.assertEqual(len(t["notes"]), len(p["notes"]))
+        # Reverse Order (retrograde) mirrors pitch AND duration together; total length is unchanged and
+        # reversing twice restores the exact events.
+        r = transform_motif(p, "invert", key_center="Dm")
+        self.assertEqual(len(r["notes"]), len(p["notes"]))
+        self.assertEqual(r["notes"], list(reversed(p["notes"])))
+        self.assertEqual(transform_motif(r, "invert", key_center="Dm")["rhythm_events"], p["rhythm_events"])
 
     def test_explicit_pattern_types_keep_legacy_rhythm(self) -> None:
         import random

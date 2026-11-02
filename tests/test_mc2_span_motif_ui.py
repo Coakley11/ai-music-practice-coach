@@ -110,7 +110,7 @@ class TestSpanPanel(unittest.TestCase):
         ss: dict = {}
         st = _render(ss, {"improv_span_gen"})
         self.assertEqual(st.disabled, {"improv_span_seq_up", "improv_span_seq_down", "improv_span_invert"})
-        self.assertTrue(any("Sequence and Invert are single-chord transforms" in t for t in st.text))
+        self.assertTrue(any("Sequence and Reverse Order are single-chord transforms" in t for t in st.text))
 
     def test_new_easier_harder_stay_in_level_and_span(self) -> None:
         ss: dict = {}
