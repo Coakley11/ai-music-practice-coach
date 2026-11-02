@@ -10343,7 +10343,7 @@ def _picker_navigate(
 _DEBUG_V2_CHART_TITLES: dict[tuple[str, str], str] = {
     # Temporary debug confirmation that the updated v2 charts are actually
     # loaded. Safe to delete once both pages are visually verified.
-    ("Don't Stop Believin'", "Journey"): "v2 chart - 10 sections / 239 bars / E major / arena-rock pacing",
+    ("Don't Stop Believin'", "Journey"): "v2 chart - 10 sections / 125 bars / E major / arena-rock pacing",
     ("Shallow", "Lady Gaga / Bradley Cooper"): "v2 chart - 10 sections / 173 bars / G major / cinematic ballad pacing",
 }
 
