@@ -3174,7 +3174,7 @@ def _chart_grid_html(chords, current_bar=None, section_name="", *, beats_per_bar
             subdivided_cell = False
             cell_has_push = False
         else:
-            display_token = str(chord)
+            display_token = chord_subdivisions.bare_chord_token(chord) if not is_sub else str(chord)
             if is_sub:
                 subs = chord_subdivisions.parse_subdivisions(chord, beats_per_bar=bpb)
                 total_weight = sum(max(0.0, float(s.weight)) for s in subs) or 1.0
@@ -4372,7 +4372,7 @@ def build_chord_event_timeline(events, bpm, loops, time_signature="4/4", beats_p
                 "section": section_name,
                 "bar_in_section": bar_in_section,
                 "section_bars": section_bars,
-                "chord": sub.chord if sub_count > 1 else chord_token,
+                "chord": sub.chord if sub_count > 1 else chord_subdivisions.bare_chord_token(chord_token),
                 "start_time": start_time,
                 "duration": duration,
                 "end_time": end_time,
@@ -10343,7 +10343,7 @@ def _picker_navigate(
 _DEBUG_V2_CHART_TITLES: dict[tuple[str, str], str] = {
     # Temporary debug confirmation that the updated v2 charts are actually
     # loaded. Safe to delete once both pages are visually verified.
-    ("Don't Stop Believin'", "Journey"): "v2 chart - 10 sections / 239 bars / E major / arena-rock pacing",
+    ("Don't Stop Believin'", "Journey"): "v2 chart - 10 sections / 125 bars / E major / arena-rock pacing",
     ("Shallow", "Lady Gaga / Bradley Cooper"): "v2 chart - 10 sections / 173 bars / G major / cinematic ballad pacing",
 }
 
@@ -20062,6 +20062,7 @@ elif _studio_page == "backing":
             active_creative_backing_context,
             backing_page_sync_id,
             backing_page_transport_defaults,
+            backing_source_default_meter,
         )
 
         _creative_backing_ctx = active_creative_backing_context(st.session_state)
@@ -20107,7 +20108,11 @@ elif _studio_page == "backing":
         # Current session tempo (slider / play-session) — may differ from source.
         _backing_current_bpm = int(_td_bpm) if int(_td_bpm or 0) > 0 else _backing_source_default_bpm
         _backing_source_default_groove = str(_td_groove)
-        _backing_source_default_meter = str(_td_meter)
+        _backing_source_default_meter = backing_source_default_meter(
+            creative_ctx=_creative_backing_ctx,
+            transport_meter=_td_meter,
+            song_meter=_default_meter,
+        )
     except Exception:
         _bpm_sync_id = _song_bpm_sync_id
         _backing_catalog_default_bpm = int(_default_bpm)

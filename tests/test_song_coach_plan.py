@@ -72,7 +72,7 @@ CASES = {
     "perfect": (lambda: _catalog("Perfect", style="ballad"), "verse-1", 1, 8),
     "ipanema": (lambda: _catalog("The Girl from Ipanema", style="bossa"), "a-section", None, None),
     "hotel": (lambda: _catalog("Hotel California", style="rock"), "verse-1a", 1, 8),
-    "autumn": (lambda: _catalog("Autumn Leaves", style="jazz"), "verse-1", None, None),
+    "autumn": (lambda: _catalog("Autumn Leaves", style="jazz"), "a-section", None, None),
     "blues": (lambda: _custom(BLUES, "C", style="blues"), "blues", None, None),
     "vamp": (lambda: _custom(VAMP, "Dm", style="funk"), "vamp", None, None),
     "split": (lambda: _custom(SPLIT, "G", style="pop"), "verse", None, None),
@@ -356,7 +356,7 @@ class TestIdentityAndJson(unittest.TestCase):
             build_coaching_plan(ctx, scope, level="Advanced", focus=FOCUS_MOTIF, instrument="Tenor Saxophone").plan_id,
         )
         moved_ctx = _catalog("Autumn Leaves", key="Am", style="jazz")
-        moved = build_coaching_plan(moved_ctx, build_scope(moved_ctx, "verse-1"), level="Advanced", focus=FOCUS_MOTIF)
+        moved = build_coaching_plan(moved_ctx, build_scope(moved_ctx, "a-section"), level="Advanced", focus=FOCUS_MOTIF)
         self.assertNotEqual(a.plan_id, moved.plan_id)
 
     def test_json_round_trip(self) -> None:

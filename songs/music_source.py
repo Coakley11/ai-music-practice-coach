@@ -4941,6 +4941,15 @@ def on_active_song_identity_changed(
             session[PRACTICE_SOURCE_PICK_KEY] = pick_key
         except ImportError:
             pass
+        # A genuine saved meter override belongs to its song: capture it before the
+        # song-change reset wipes it so re-activating the SAME song ("Load Last
+        # Song", restore) can put it back; a different song never inherits it.
+        try:
+            from songs.meter_state import capture_saved_meter_override
+
+            _saved_meter_override = capture_saved_meter_override(session)
+        except ImportError:
+            _saved_meter_override = None
         reset_playback_song_tracking(st)
         # Backing tempo ownership follows the active song -- retarget before the
         # Backing invalidation below can read or persist the previous song's tempo.
@@ -4971,7 +4980,7 @@ def on_active_song_identity_changed(
         except Exception:
             pass
         prime_active_song_bpm(st, sync_id=sync_id, active_song_bpm=int(default_bpm))
-        canonicalize_backing_defaults_for_song(
+        _canon_result = canonicalize_backing_defaults_for_song(
             st,
             sync_id=sync_id,
             active_song_bpm=int(default_bpm),
@@ -5085,6 +5094,21 @@ def on_active_song_identity_changed(
                 )
         except ImportError:
             pass
+        # Last: the song-change resets above (playback defaults, regular-song
+        # backing reset) have all run; now put back this song's own override.
+        if not (_canon_result or {}).get("skipped_for_creative_context"):
+            try:
+                from songs.meter_state import restore_saved_meter_override
+
+                restore_saved_meter_override(
+                    session,
+                    _saved_meter_override,
+                    sync_id=sync_id,
+                    song_default_meter=str(default_meter),
+                    untagged_ok=prev_identity == new_identity,
+                )
+            except ImportError:
+                pass
         try:
             from workflow_musical_authority import sync_song_improv_sections_to_practice_key
 
@@ -6529,6 +6553,12 @@ def _build_composition_chart_bundle(
             "chart_status": "composition",
             "trusted_core": False,
             "source_type": SOURCE_COMPOSITION,
+            # The Composition's own time signature is the song default for
+            # Backing / Practice / follow-along (default_time_signature_for_record
+            # reads extensions.time_signature before any title heuristic).
+            "extensions": {
+                "time_signature": str(projected.get("time_signature") or "4/4"),
+            },
         },
         "original_key": home_key,
         "level_source_sections": level_source_sections,

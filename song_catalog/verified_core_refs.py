@@ -405,7 +405,7 @@ _REFERENCE_BY_KEY: dict[tuple[str, str], dict[str, Any]] = {
     ("Uptown Girl", "Billy Joel"): {
         "key": "D",
         "genre": "Pop",
-        "default_bpm": 172,
+        "default_bpm": 128,
         "sections": _UPTOWN_SECTIONS,
         "beginner": _UPTOWN_BEGINNER,
         "lyric_cues": _UPTOWN_LYRIC_CUES,
@@ -432,7 +432,7 @@ _REFERENCE_BY_KEY: dict[tuple[str, str], dict[str, Any]] = {
     ("Kiss Me", "Sixpence None the Richer"): {
         "key": "D",
         "genre": "Pop",
-        "default_bpm": 124,
+        "default_bpm": 100,
         "default_groove": "Folk Pop",
         "time_signature": "4/4",
         "sections": _KISS_SECTIONS,
@@ -463,7 +463,7 @@ _REFERENCE_BY_KEY: dict[tuple[str, str], dict[str, Any]] = {
             "A7sus4": "x02030",
         },
         "arrangement_notes": (
-            "Folk-pop ballad in D, ~124 BPM, 4/4. Form: "
+            "Folk-pop ballad in D, ~100 BPM, 4/4. Form: "
             "**Intro → Verse 1 → Chorus 1 → Interlude → Verse 2 → Chorus 2 "
             "→ Harmonica / Accordion → Guitar Section → Chorus 3 → Outro**. "
             "Intro / Interlude / Harmonica all share the same 4-chord cycle "

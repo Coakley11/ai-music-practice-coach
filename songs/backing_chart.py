@@ -8,6 +8,7 @@ from typing import Any
 
 from chord_subdivisions import (
     is_hit_token as _sub_is_hit_token,
+    bare_chord_token as _sub_bare_chord_token,
     is_subdivided_bar as _sub_is_subdivided_bar,
     hit_underlying_chord as _sub_hit_underlying_chord,
     parse_subdivisions as _sub_parse_subdivisions,
@@ -407,7 +408,7 @@ def _render_chord_symbol_html(
     "push" caption underneath the chord symbol.
     """
     if not _sub_is_subdivided_bar(token):
-        return html.escape(str(token)), False, False
+        return html.escape(_sub_bare_chord_token(token)), False, False
     subs = _sub_parse_subdivisions(token, beats_per_bar=beats_per_bar)
     if not subs:
         return html.escape(str(token)), False, False
@@ -481,7 +482,7 @@ def chart_grid_html(
             subdivided_cell = False
             cell_has_push = False
         else:
-            display_token = str(chord)
+            display_token = _sub_bare_chord_token(chord) if not is_subdivided else str(chord)
             symbol_html, subdivided_cell, cell_has_push = _render_chord_symbol_html(
                 display_token,
                 beats_per_bar=float(beats_per_bar),

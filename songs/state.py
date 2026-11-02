@@ -2469,6 +2469,16 @@ def get_song_context(
             return True
 
     def _merge_sel_onto_canonical(canon: dict, overlay: dict) -> dict:
+        try:
+            from songs.chart_provenance import reconcile_snapshot
+
+            overlay = reconcile_snapshot(
+                overlay, canon, where="songs.state._merge_sel_onto_canonical",
+                pick_key=str(overlay.get("pick_key") or "").strip(),
+                session=st.session_state, stamp=False,
+            )
+        except Exception as exc:
+            _chart_prov_failure(st.session_state, "songs.state._merge_sel_onto_canonical", exc)
         merged = dict(canon)
         for key, val in overlay.items():
             if key == "key":
@@ -2639,3 +2649,13 @@ def get_song_context(
         fallback,
         notice=f'Previous song "{old}" is no longer in the catalog; switched to a default song.',
     )
+
+
+def _chart_prov_failure(session: Any, where: str, exc: BaseException) -> None:
+    """Log a swallowed chart-provenance failure (bounded _chart_provenance_log); never raises."""
+    try:
+        from songs.chart_provenance import log_failure
+
+        log_failure(session, where, exc)
+    except Exception:
+        pass

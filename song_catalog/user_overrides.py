@@ -199,7 +199,18 @@ def apply_user_override_to_record(record: dict[str, Any]) -> dict[str, Any]:
             out["sections"] = copy.deepcopy(merged_versions[entry["edited_level"]])
 
     out["chart_status"] = entry.get("override_status", USER_CORRECTED)
+    # Provenance: flag (never remove) a saved edit made against an older catalog chart,
+    # so the UI/tests can tell the user their pinned chart predates a catalog correction.
+    snap = entry.get("catalog_snapshot")
+    catalog_changed = False
+    if isinstance(snap, dict) and snap.get("sections") and record.get("sections"):
+        from songs.chart_provenance import chart_fingerprint
+
+        catalog_changed = chart_fingerprint(snap.get("sections")) != chart_fingerprint(
+            record.get("sections")
+        )
     out["user_override"] = {
+        "catalog_changed_since_edit": catalog_changed,
         "status": entry.get("override_status", USER_CORRECTED),
         "saved_at": entry.get("saved_at"),
         "edited_level": entry.get("edited_level"),

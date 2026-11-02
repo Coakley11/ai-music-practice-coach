@@ -901,6 +901,15 @@ def canonicalize_backing_defaults_for_song(
 
     previous_id = st.session_state.get(_CANONICAL_BACKING_ID_KEY)
     did_reset = force_reset or previous_id != sync_id
+    # A genuine saved meter override belongs to its song: remember it before the
+    # reset below wipes it. First Backing render after a cold start / Load Last
+    # Song has previous_id None and would otherwise erase a persisted override.
+    _saved_meter_override = None
+    _song_default_meter = norm_meter
+    if did_reset:
+        from .meter_state import capture_saved_meter_override
+
+        _saved_meter_override = capture_saved_meter_override(st.session_state)
     if did_reset and previous_id is None and _cloud_refresh_has_canonical_backing(st):
         did_reset = False
         st.session_state[_CANONICAL_BACKING_ID_KEY] = sync_id
@@ -1011,6 +1020,22 @@ def canonicalize_backing_defaults_for_song(
             pass
         if live_bpm > 0:
             norm_bpm = live_bpm
+
+    if did_reset and _saved_meter_override:
+        from .meter_state import restore_saved_meter_override
+
+        # Only this song's own (tagged) override comes back; another song never
+        # inherits it, and an untagged legacy flag cannot be told from an old-bug
+        # leftover on a cold start, so it stays cleared here (first-load logic in
+        # prepare_backing_meter_for_widget still honours it when it differs).
+        if restore_saved_meter_override(
+            st.session_state,
+            _saved_meter_override,
+            sync_id=sync_id,
+            song_default_meter=_song_default_meter,
+            untagged_ok=previous_id == sync_id,
+        ):
+            norm_meter = normalize_time_signature(st.session_state.get(BACKING_METER_KEY) or norm_meter)
 
     return {
         "sync_id": sync_id,
