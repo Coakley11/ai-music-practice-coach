@@ -2936,13 +2936,22 @@ section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] .stButton
 }
 .cpl-pick-roman {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 0.72rem;
-  font-weight: 600;
-  color: #6366f1;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #4f46e5;
   text-align: center;
-  margin-top: -0.35rem;
-  margin-bottom: 0.25rem;
-  line-height: 1.1;
+  margin: 0.15rem 0 0 0;
+  min-height: 1.1rem;
+  line-height: 1.2;
+  overflow: visible;
+}
+/* Each chord button and its numeral are one cell: the cell reserves the numeral's height so the
+   next row of buttons can never sit on top of it (phones, large accessibility font sizes). */
+div[class*="st-key-cpl_chord_pick_grid"] [data-testid="stColumn"] {
+  padding-bottom: 1.35rem;
+}
+div[class*="st-key-cpl_chord_pick_grid"] [data-testid="stColumn"] > div {
+  gap: 0.1rem;
 }
 .cpl-roman-label {
   margin-left: 0.4em;
@@ -9527,46 +9536,39 @@ def render_multitrack_session_setup_header(st: Any) -> None:
     )
 
 
-def _multitrack_active_source_badge_parts(session_state: Any | None = None) -> tuple[str, str, str]:
-    """Canonical Composition / Custom / Catalog icon + CSS class for MT song badge.
+def song_source_icon_parts(source_type: str) -> tuple[str, str, str]:
+    """``(icon_html, css_class, title)`` for a canonical song-source type.
 
-    Returns ``(icon_html, source_css_class, title)``. Catalog uses the purple
-    music-note (🎵) from Song Selection; Custom/Composition reuse FEATURE_ICONS.
+    The one mapping every surface uses: Composition -> the quill, Custom Progression -> the
+    writing pen, Catalog -> the purple music note. It is keyed on the resolved source identity,
+    never on a song title or a stale widget.
     """
-    icon_html = "🎵"
-    source_cls = "source-catalog"
-    title = "Catalog song"
+    low = str(source_type or "").strip().lower()
+    if "compos" in low:
+        return format_icon_html(FEATURE_ICONS["composition"]), "source-composition", "Composition song"
+    if "custom" in low:
+        return format_icon_html(FEATURE_ICONS["custom"]), "source-custom", "Custom Progression song"
+    return "🎵", "source-catalog", "Catalog song"
+
+
+def _multitrack_active_source_badge_parts(session_state: Any | None = None) -> tuple[str, str, str]:
+    """Canonical Composition / Custom / Catalog icon + CSS class for the MT song badge.
+
+    ``resolve_active_song_source`` reports the source under ``song_source_type`` (the badge once
+    read ``source_type``, which is never set, so every song showed the Catalog note).
+    """
     try:
         ss = session_state
         if ss is None:
             import streamlit as st
 
             ss = st.session_state
-        from recording_analysis_context import (
-            SONG_SOURCE_CATALOG,
-            SONG_SOURCE_COMPOSED,
-            SONG_SOURCE_CUSTOM,
-            resolve_active_song_source,
-        )
+        from recording_analysis_context import resolve_active_song_source
 
-        resolved = resolve_active_song_source(ss)
-        stype = str((resolved or {}).get("source_type") or SONG_SOURCE_CATALOG).strip()
-        if stype == SONG_SOURCE_COMPOSED or "compos" in stype.lower():
-            icon_html = format_icon_html(FEATURE_ICONS["composition"])
-            source_cls = "source-composition"
-            title = "Composition song"
-        elif stype == SONG_SOURCE_CUSTOM or "custom" in stype.lower():
-            icon_html = format_icon_html(FEATURE_ICONS["custom"])
-            source_cls = "source-custom"
-            title = "Custom song"
-        else:
-            # Purple catalog music-note — same glyph as Song Selection radio.
-            icon_html = "🎵"
-            source_cls = "source-catalog"
-            title = "Catalog song"
+        resolved = resolve_active_song_source(ss) or {}
+        return song_source_icon_parts(str(resolved.get("song_source_type") or ""))
     except Exception:
-        pass
-    return icon_html, source_cls, title
+        return song_source_icon_parts("")
 
 
 def render_multitrack_session_context_strip(

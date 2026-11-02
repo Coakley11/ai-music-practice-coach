@@ -11372,11 +11372,13 @@ def _render_last_catalog_song_shortcut(
     key_prefix: str = "catalog",
 ) -> None:
     """Restore the last authoritative Catalog selection."""
-    from songs.music_source import (
-        last_authoritative_catalog_snapshot,
-    )
+    from songs.music_source import load_last_song_snapshot
 
-    snap = last_authoritative_catalog_snapshot(st.session_state)
+    # On the Catalog page the current song IS the last Catalog selection, so "last" there
+    # means the previous *distinct* Catalog song (none yet -> no button). From the Custom /
+    # Composition hubs no Catalog song is current, so the last Catalog song is the way back.
+    _on_catalog = key_prefix == "catalog_hub"
+    snap = load_last_song_snapshot(st.session_state, on_catalog_page=_on_catalog)
     if not snap:
         return
     sel = snap.get("selected_song") or {}
@@ -11410,9 +11412,12 @@ def _render_last_catalog_song_shortcut(
         help="Restore the last Catalog song as the global active / Now Editing song.",
     ):
         from songs.key_state import invalidate_backing_cache
-        from songs.music_source import queue_last_catalog_restore
+        from songs.music_source import PENDING_PREVIOUS_CATALOG_RESTORE_KEY, queue_last_catalog_restore
 
-        queue_last_catalog_restore(st)
+        if _on_catalog:
+            st.session_state[PENDING_PREVIOUS_CATALOG_RESTORE_KEY] = dict(snap)
+        else:
+            queue_last_catalog_restore(st)
         invalidate_backing_cache(st)
         st.rerun()
 
@@ -13257,6 +13262,36 @@ def _studio_page_header(
         from instrument_aware import render_instrument_context_strip
 
         render_instrument_context_strip(st, instrument, _studio_page, st.session_state)
+    except Exception:
+        pass
+
+
+def _render_backing_return_to_practice_action() -> None:
+    """Return to Practice for the ordinary song sources (Catalog, Custom, Composition).
+
+    Pure navigation: it never loads a song, so the active song, its Practice Key, instrument and
+    section context are exactly what Backing showed. Mission / Creative Backing keep their own
+    return actions (workflow ownership), and a Practice-loop handoff already has this button.
+    """
+    try:
+        from backing_context import get_backing_context
+        from backing_source_navigation import practice_loop_backing_is_active
+        from studio_page_persistence import save_page_snapshot
+
+        ctx = get_backing_context(st.session_state)
+        src = str(getattr(ctx, "source", "") or "") if ctx is not None else ""
+        if src not in {"", "regular_song", "custom_progression", "composition_song"}:
+            return
+        if practice_loop_backing_is_active(st.session_state):
+            return
+        if st.button(
+            feature_label("practice", "Return to Practice"),
+            key="backing_return_to_practice_card",
+            use_container_width=False,
+        ):
+            save_page_snapshot(st.session_state, "backing")
+            navigate_studio_page(st.session_state, "practice")
+            st.rerun()
     except Exception:
         pass
 
@@ -20193,12 +20228,14 @@ elif _studio_page == "backing":
             from backing_context_ui import (
                 render_backing_context_dev_diagnostics,
                 render_backing_context_reset,
+                render_backing_use_custom_action,
             )
 
             # Placeholder: banner is filled after Quick BPM so same-run Current matches the slider.
             # A container (not st.empty) keeps the last banner up until then.
             _backing_banner_slot = st.container()
             render_backing_context_reset(st, st.session_state)
+            render_backing_use_custom_action(st, st.session_state)
         except Exception:
             pass
         try:
@@ -20876,6 +20913,7 @@ elif _studio_page == "backing":
         if _developer_mode_enabled():
             st.caption(f"Developer · mission lick panel: {_mission_lick_err}")
     _render_backing_return_source_action()
+    _render_backing_return_to_practice_action()
     if _developer_mode_enabled() and _creative_backing_ctx is not None:
         try:
             from backing_context_ui import render_backing_context_dev_diagnostics

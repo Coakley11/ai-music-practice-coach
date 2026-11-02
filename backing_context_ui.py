@@ -1193,6 +1193,63 @@ def render_backing_edit_source_action(
         on_navigate()
 
 
+def render_backing_use_custom_action(st: Any, session: dict[str, Any]) -> None:
+    """Explicit "Use Custom Progression Backing" from Catalog or Composition Backing.
+
+    Reuses the Songs Music-source path (``switch_backing_source_to_custom``); never substitutes
+    a song when no saved Custom exists -- it offers the existing Custom song picker instead.
+    """
+    ctx = get_backing_context(session)
+    if ctx is None:
+        return
+    try:
+        from songs.music_source import (
+            composition_song_is_active,
+            last_custom_song_for_backing_switch,
+            switch_backing_source_to_custom,
+        )
+    except ImportError:
+        return
+    on_composition = bool(composition_song_is_active(session))
+    if ctx.source != "regular_song" and not (on_composition and ctx.source == "composition_song"):
+        return
+    record = last_custom_song_for_backing_switch(session)
+    try:
+        from music_feature_icons import FEATURE_ICONS
+
+        icon = FEATURE_ICONS.get("custom", "✍️")
+    except ImportError:
+        icon = "✍️"
+    if record is None:
+        st.caption("No saved Custom Progression yet.")
+        if st.button(f"{icon} Choose a Custom Progression", key="backing_choose_custom_btn"):
+            from studio_nav_history import navigate_studio_page
+
+            navigate_studio_page(session, "picker")
+            st.rerun()
+        return
+    name = str(record.get("name") or "").strip()
+    if st.button(f"{icon} Use Custom Progression Backing", key="backing_use_custom_btn",
+                 help=f"Switch Backing to your Custom song: {name}"):
+        try:
+            from songs.key_state import invalidate_backing_cache
+            from songs.music_source import ensure_song_library, ensure_song_picker_catalog
+
+            catalog = ensure_song_picker_catalog(session)
+            library = ensure_song_library(session) or catalog
+        except ImportError:
+            invalidate_backing_cache, catalog, library = (lambda *a, **k: None), {}, {}
+        outcome = switch_backing_source_to_custom(
+            st,
+            invalidate_backing=invalidate_backing_cache,
+            song_picker_catalog=catalog if isinstance(catalog, dict) else {},
+            song_library=library if isinstance(library, dict) else None,
+        )
+        if outcome == "switched":
+            st.rerun()
+    st.caption(f"Custom song: {name}")
+
+
 def render_backing_context_reset(st: Any, session: dict[str, Any]) -> None:
     """Reset Creative/custom backing to catalog or custom active song."""
     try:
