@@ -316,7 +316,7 @@ class TestPhraseMotifRhythm(unittest.TestCase):
         # reversing twice restores the exact events.
         r = transform_motif(p, "invert", key_center="Dm")
         self.assertEqual(len(r["notes"]), len(p["notes"]))
-        self.assertEqual(r["notes"], list(reversed(p["notes"])))
+        self.assertEqual(r["midi"], list(reversed(p["midi"])))
         self.assertEqual(transform_motif(r, "invert", key_center="Dm")["rhythm_events"], p["rhythm_events"])
 
     def test_explicit_pattern_types_keep_legacy_rhythm(self) -> None:
