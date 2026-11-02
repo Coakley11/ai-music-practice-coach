@@ -2,34 +2,43 @@
 
 from __future__ import annotations
 
-import inspect
+import ast
 import unittest
+from pathlib import Path
 from unittest import mock
+
+# The function is exercised from its *source*, not by importing streamlit_music_practice_app: importing
+# that module executes the whole Streamlit script against whatever bare-mode session_state earlier tests
+# left behind, which made these tests order-dependent (TypeError at the chart-bundle gate).
+APP_SOURCE = (Path(__file__).resolve().parents[1] / "streamlit_music_practice_app.py").read_text(encoding="utf-8")
+FUNC_NAME = "_render_backing_return_to_practice_action"
+
+
+def _function_source() -> str:
+    for node in ast.parse(APP_SOURCE).body:
+        if isinstance(node, ast.FunctionDef) and node.name == FUNC_NAME:
+            return ast.get_source_segment(APP_SOURCE, node)
+    raise AssertionError(FUNC_NAME + " not found")
 
 
 class TestReturnToPractice(unittest.TestCase):
-    def _fn(self):
-        import streamlit_music_practice_app as app
-
-        return app._render_backing_return_to_practice_action
-
     def _run(self, source: str, practice_loop: bool = False):
-        import streamlit_music_practice_app as app
-
+        st = mock.MagicMock()
+        nav = mock.Mock()
+        ns = {"st": st, "navigate_studio_page": nav, "feature_label": lambda _k, default: default}
+        exec(compile(_function_source(), "<return_to_practice>", "exec"), ns)  # noqa: S102 - our own source
         ctx = mock.Mock(source=source)
         with mock.patch("backing_context.get_backing_context", return_value=ctx), mock.patch(
             "backing_source_navigation.practice_loop_backing_is_active", return_value=practice_loop
-        ), mock.patch.object(app, "st") as st, mock.patch.object(app, "navigate_studio_page") as nav, mock.patch(
-            "studio_page_persistence.save_page_snapshot"
-        ):
+        ), mock.patch("studio_page_persistence.save_page_snapshot"):
             st.session_state = {}
             st.button.return_value = True
             st.rerun.side_effect = RuntimeError("rerun")
             try:
-                self._fn()()
+                ns[FUNC_NAME]()
             except RuntimeError:
                 pass
-            return st, nav
+        return st, nav
 
     def test_ordinary_song_sources_get_the_button_and_navigate_without_loading_a_song(self) -> None:
         for source in ("regular_song", "custom_progression", "composition_song", ""):
@@ -45,15 +54,12 @@ class TestReturnToPractice(unittest.TestCase):
             nav.assert_not_called()
 
     def test_it_is_navigation_only(self) -> None:
-        src = inspect.getsource(self._fn())
+        src = _function_source()
         for forbidden in ("apply_cpl_session_progression", "activate_catalog_song", "restore_last_custom", "set_composition_source"):
             self.assertNotIn(forbidden, src)
 
     def test_it_is_rendered_on_the_backing_page(self) -> None:
-        import streamlit_music_practice_app as app
-
-        text = inspect.getsource(app)
-        self.assertIn("_render_backing_return_source_action()\n    _render_backing_return_to_practice_action()", text)
+        self.assertIn("_render_backing_return_source_action()" + chr(10) + "    _render_backing_return_to_practice_action()", APP_SOURCE)
 
 
 if __name__ == "__main__":
