@@ -24,32 +24,66 @@ def reset_backing_meter_tracking(st: Any) -> None:
 
 
 def capture_saved_meter_override(session: dict[str, Any]) -> dict[str, str] | None:
-    """The user's meter override as currently held (live session, else canonical blob).
+    """The user's meter override as currently held (live session or canonical blob).
 
     Used by a song (re)activation such as "Load Last Song" BEFORE the song-change
-    reset wipes it. Returns ``{"meter", "song"}`` or ``None`` when no override
-    flag is set. The live session wins when it carries the flag key (it is what
-    the radio last wrote); the persisted blob is only the fallback.
+    reset wipes it. Returns ``{"meter", "song"}`` or ``None`` when neither holds
+    an override. The live session wins when its flag is True; otherwise the
+    persisted blob is consulted, because leaving the Backing page resets the
+    live widget keys to the play-session defaults (flag False) while the saved
+    blob keeps the musician's choice. The meter radio key is also dropped by
+    Streamlit while another page is shown, so a missing live meter falls back to
+    the blob's.
     """
-    if BACKING_METER_OVERRIDE_KEY in session:
-        if not bool(session.get(BACKING_METER_OVERRIDE_KEY)):
-            return None
-        return {
-            "meter": str(session.get(BACKING_METER_KEY) or ""),
-            "song": str(session.get(BACKING_METER_OVERRIDE_SONG_KEY) or ""),
-        }
     try:
         from backing_track_state import canonical_backing_filters
 
         blob = canonical_backing_filters(session) or {}
     except ImportError:
         blob = {}
-    if not blob.get(BACKING_METER_OVERRIDE_KEY):
+    live_flag = bool(session.get(BACKING_METER_OVERRIDE_KEY))
+    if not live_flag and not blob.get(BACKING_METER_OVERRIDE_KEY):
         return None
-    return {
-        "meter": str(blob.get(BACKING_METER_KEY) or ""),
-        "song": str(blob.get(BACKING_METER_OVERRIDE_SONG_KEY) or ""),
-    }
+    blob_has = bool(blob.get(BACKING_METER_OVERRIDE_KEY))
+    meter = str(session.get(BACKING_METER_KEY) or "") if live_flag else ""
+    song = str(session.get(BACKING_METER_OVERRIDE_SONG_KEY) or "") if live_flag else ""
+    if not meter and blob_has:
+        meter = str(blob.get(BACKING_METER_KEY) or "")
+    if not song and blob_has:
+        song = str(blob.get(BACKING_METER_OVERRIDE_SONG_KEY) or "")
+    return {"meter": meter, "song": song}
+
+
+def genuine_saved_meter_override(
+    session: dict[str, Any],
+    *,
+    sync_id: str,
+    song_default_meter: str,
+    untagged_ok: bool = False,
+    saved: dict[str, str] | None = None,
+) -> dict[str, str] | None:
+    """The saved override if it is a genuine user choice for THIS song, else ``None``.
+
+    Genuine = flag set AND the saved meter differs from this song's own meter (an
+    override equal to the song meter has no effect) AND it was chosen for this
+    same song (tag == ``sync_id``). A legacy blob without a song tag cannot be
+    told apart from an old-bug ``(4/4, True)`` leftover (documented residual
+    ambiguity); it is accepted only when ``untagged_ok`` (re-activating the very
+    same song), never on a cold start or when leaving another song for this one.
+    """
+    saved = capture_saved_meter_override(session) if saved is None else saved
+    if not saved:
+        return None
+    song_default = normalize_time_signature(song_default_meter)
+    meter = normalize_time_signature(saved.get("meter") or "")
+    if not str(saved.get("meter") or "").strip() or meter not in BACKING_TIME_SIGNATURES or meter == song_default:
+        return None
+    tag = str(saved.get("song") or "").strip()
+    if tag and tag != str(sync_id or "").strip():
+        return None
+    if not tag and not untagged_ok:
+        return None
+    return {"meter": meter, "song": str(sync_id or "")}
 
 
 def restore_saved_meter_override(
@@ -60,28 +94,17 @@ def restore_saved_meter_override(
     song_default_meter: str,
     untagged_ok: bool = True,
 ) -> bool:
-    """Re-apply a genuine saved override right after a song (re)activation reset.
-
-    Genuine = the flag was set AND the saved meter differs from this song's own
-    meter (an override equal to the song meter has no effect) AND it was chosen
-    for this same song (tag == ``sync_id``). A legacy blob without a song tag is
-    accepted only under the first two conditions: it cannot be told apart from an
-    old-bug ``(4/4, True)`` leftover, which is documented residual ambiguity; it
-    is only accepted when ``untagged_ok`` (cold start or re-activating the very
-    same song), never when the user is leaving another song for this one.
-    Anything else (another song's override, equal meter) stays cleared.
-    """
-    if not saved:
+    """Re-apply a genuine saved override right after a song (re)activation reset."""
+    genuine = genuine_saved_meter_override(
+        session,
+        sync_id=sync_id,
+        song_default_meter=song_default_meter,
+        untagged_ok=untagged_ok,
+        saved=saved or {},
+    )
+    if not genuine:
         return False
-    song_default = normalize_time_signature(song_default_meter)
-    meter = normalize_time_signature(saved.get("meter") or "")
-    if meter not in BACKING_TIME_SIGNATURES or meter == song_default:
-        return False
-    tag = str(saved.get("song") or "").strip()
-    if tag and tag != str(sync_id or "").strip():
-        return False
-    if not tag and not untagged_ok:
-        return False
+    meter = genuine["meter"]
     session[BACKING_METER_KEY] = meter
     session[BACKING_METER_OVERRIDE_KEY] = True
     session[BACKING_METER_OVERRIDE_SONG_KEY] = str(sync_id or "")
@@ -116,7 +139,16 @@ def apply_backing_meter_for_song(
     song_default = normalize_time_signature(default_time_signature)
     ss = st.session_state
     if bool(ss.get(BACKING_METER_OVERRIDE_KEY, False)):
-        applied = normalize_time_signature(ss.get(BACKING_METER_KEY, song_default))
+        raw_meter = ss.get(BACKING_METER_KEY)
+        if raw_meter is None:
+            # Streamlit drops the radio's key while another page is shown; the
+            # override flag survives, so recover the chosen meter from the saved
+            # blob instead of silently falling back to the song meter (which the
+            # post-render sync would then turn into "override cleared").
+            saved = capture_saved_meter_override(ss) or {}
+            raw_meter = saved.get("meter") or song_default
+            ss[BACKING_METER_KEY] = normalize_time_signature(raw_meter)
+        applied = normalize_time_signature(raw_meter)
         if applied not in BACKING_TIME_SIGNATURES:
             applied = song_default
             ss[BACKING_METER_KEY] = applied

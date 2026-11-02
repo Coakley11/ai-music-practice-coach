@@ -5074,7 +5074,7 @@ def on_active_song_identity_changed(
                     _saved_meter_override,
                     sync_id=sync_id,
                     song_default_meter=str(default_meter),
-                    untagged_ok=prev_identity is None or prev_identity == new_identity,
+                    untagged_ok=prev_identity == new_identity,
                 )
             except ImportError:
                 pass

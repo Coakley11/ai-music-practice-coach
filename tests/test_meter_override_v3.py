@@ -169,12 +169,225 @@ class LoadLastSongKeepsExplicitOverride(unittest.TestCase):
         self.assertNotIn(BACKING_METER_OVERRIDE_SONG_KEY, session)
 
 
+class CanonicalizeOnFirstBackingRender(unittest.TestCase):
+    """The browser path: after Load Last Song the FIRST Backing render runs
+    canonicalize_backing_defaults_for_song with no previous canonical id."""
+
+    def _canon(self, session, sync_id, meter):
+        from songs.playback_defaults import canonicalize_backing_defaults_for_song
+
+        canonicalize_backing_defaults_for_song(
+            types.SimpleNamespace(session_state=session),
+            sync_id=sync_id,
+            active_song_bpm=88,
+            active_song_groove="Pop groove",
+            active_song_meter=meter,
+            force_reset=True,
+        )
+        prepare_backing_meter_for_widget(session, default_meter=meter)
+        return apply_backing_meter_for_song(
+            types.SimpleNamespace(session_state=session), song_id=sync_id, default_time_signature=meter
+        )
+
+    def test_cold_first_render_keeps_this_songs_override(self) -> None:
+        session = _hydrated("4/4", True, PM)
+        applied, override, _ = self._canon(session, PM, "3/4")
+        self.assertEqual((applied, override), ("4/4", True))
+        self.assertEqual(session[BACKING_STATE_KEY]["backing_time_signature_override_song"], PM)
+
+    def test_live_switch_from_overridden_song_clears_it(self) -> None:
+        session = _hydrated("4/4", True, PM)
+        self._canon(session, PM, "3/4")  # PM is now the canonical (previous) id
+        applied, override, _ = self._canon(session, PERFECT, "6/8")
+        self.assertEqual((applied, override), ("6/8", False))
+        applied, override, _ = self._canon(session, PM, "3/4")  # and back: gone
+        self.assertEqual((applied, override), ("3/4", False))
+
+    def test_live_switch_never_carries_an_untagged_legacy_override(self) -> None:
+        session = _hydrated("4/4", True, None)
+        session["_canonical_active_backing_song_id"] = PM
+        applied, override, _ = self._canon(session, PERFECT, "6/8")
+        self.assertEqual((applied, override), ("6/8", False))
+
+
+class LeavingTheBackingPageResetsLiveKeysButNotTheSavedChoice(unittest.TestCase):
+    """Browser path: new context -> Songs page (expire_backing_play_session ->
+    _apply_defaults_to_widgets sets the live flag False, meter popped/default)
+    -> Load Last Song. The blob still holds the choice and must win."""
+
+    def test_load_last_song_after_live_keys_were_reset(self) -> None:
+        session = _hydrated("4/4", True, PM)
+        session[BACKING_METER_OVERRIDE_KEY] = False  # live widget keys reset on page exit
+        session.pop(BACKING_METER_KEY, None)
+        applied, override, _ = _load_song(session, sync_id=PM, title="Piano Man", meter="3/4")
+        self.assertEqual((applied, override), ("4/4", True))
+
+    def test_live_reset_then_other_song_still_clears(self) -> None:
+        session = _hydrated("4/4", True, PM)
+        session[BACKING_METER_OVERRIDE_KEY] = False
+        applied, override, _ = _load_song(session, sync_id=PERFECT, title="Perfect", meter="6/8")
+        self.assertEqual((applied, override), ("6/8", False))
+
+
+class LeavingBackingPageKeepsTheOverride(unittest.TestCase):
+    """Root cause seen in the browser: Songs click while on Backing runs
+    expire_backing_play_session, which reset the live knobs to the source
+    defaults AND saved them (write_canonical_backing_state), erasing the choice."""
+
+    def _session(self, meter, flag, tag):
+        import backing_play_session as bps
+
+        session = {
+            "active_catalog_pick_key": "PopPiano Man",
+            "selected_song": {"title": "Piano Man", "pick_key": "PopPiano Man", "extensions": {"time_signature": "3/4"}},
+            "_canonical_active_backing_song_id": PM,
+            BACKING_METER_KEY: meter,
+            BACKING_METER_OVERRIDE_KEY: flag,
+            "backing_track_loops": 2,
+        }
+        if tag:
+            session[BACKING_METER_OVERRIDE_SONG_KEY] = tag
+        bps.capture_backing_play_session_overrides(session, bpm=88)
+        return bps, session
+
+    def test_override_survives_page_exit_and_is_what_gets_saved(self) -> None:
+        bps, session = self._session("4/4", True, PM)
+        bps.expire_backing_play_session(session)
+        self.assertEqual((session[BACKING_METER_KEY], session[BACKING_METER_OVERRIDE_KEY]), ("4/4", True))
+        blob = session[BACKING_STATE_KEY]
+        self.assertEqual(
+            (blob["backing_time_signature"], blob["backing_time_signature_override"], blob[BACKING_METER_OVERRIDE_SONG_KEY]),
+            ("4/4", True, PM),
+        )
+
+    def test_no_override_page_exit_saves_the_song_meter_without_override(self) -> None:
+        bps, session = self._session("3/4", False, None)
+        bps.expire_backing_play_session(session)
+        self.assertFalse(session[BACKING_METER_OVERRIDE_KEY])
+        self.assertIn(session.get(BACKING_METER_KEY), (None, "3/4"))  # never a fake 4/4 override
+        self.assertFalse(session[BACKING_STATE_KEY]["backing_time_signature_override"])
+
+    def test_reentering_backing_after_exit_keeps_the_override(self) -> None:
+        bps, session = self._session("4/4", True, PM)
+        bps.expire_backing_play_session(session)
+        session.pop(BACKING_METER_KEY, None)  # Streamlit drops the radio key off-page
+        bps.sync_backing_play_session_on_backing_page(session)
+        self.assertTrue(session[BACKING_METER_OVERRIDE_KEY])
+        self.assertEqual(session.get(BACKING_METER_KEY), "4/4")
+
+    def test_projecting_a_fresh_play_session_keeps_the_override(self) -> None:
+        # apply_backing_play_session_to_widgets wrote the bag's default meter + flag False.
+        bps, session = self._session("4/4", True, PM)
+        bps.expire_backing_play_session(session)
+        bps.sync_backing_play_session_on_backing_page(session)
+        session[BACKING_METER_OVERRIDE_KEY] = True
+        session[BACKING_METER_KEY] = "4/4"
+        bps.apply_backing_play_session_to_widgets(session)
+        self.assertEqual((session[BACKING_METER_KEY], session[BACKING_METER_OVERRIDE_KEY]), ("4/4", True))
+
+    def test_projecting_without_an_override_still_uses_the_song_meter(self) -> None:
+        bps, session = self._session("3/4", False, None)
+        bps.expire_backing_play_session(session)
+        bps.sync_backing_play_session_on_backing_page(session)
+        bps.apply_backing_play_session_to_widgets(session)
+        self.assertFalse(session[BACKING_METER_OVERRIDE_KEY])
+        self.assertEqual(session.get(BACKING_METER_KEY), "3/4")
+
+    def test_reentering_backing_does_not_carry_another_songs_override(self) -> None:
+        bps, session = self._session("4/4", True, PM)
+        bps.expire_backing_play_session(session)
+        session["_canonical_active_backing_song_id"] = PERFECT  # a different song became active
+        session[BACKING_METER_OVERRIDE_KEY] = False
+        session.pop(BACKING_METER_KEY, None)
+        bps.sync_backing_play_session_on_backing_page(session)
+        self.assertFalse(session[BACKING_METER_OVERRIDE_KEY])
+
+    def test_page_exit_then_load_last_song_end_to_end(self) -> None:
+        bps, session = self._session("4/4", True, PM)
+        bps.expire_backing_play_session(session)
+        applied, override, _ = _load_song(session, sync_id=PM, title="Piano Man", meter="3/4")
+        self.assertEqual((applied, override), ("4/4", True))
+
+
+class GenuineSavedOverrideHelper(unittest.TestCase):
+    def test_meter_radio_key_dropped_by_streamlit_falls_back_to_blob_meter(self) -> None:
+        from songs.meter_state import capture_saved_meter_override, genuine_saved_meter_override
+
+        session = _hydrated("4/4", True, PM)
+        session.pop(BACKING_METER_KEY, None)  # radio key vanishes while another page is shown
+        self.assertEqual(capture_saved_meter_override(session), {"meter": "4/4", "song": PM})
+        self.assertEqual(
+            genuine_saved_meter_override(session, sync_id=PM, song_default_meter="3/4"),
+            {"meter": "4/4", "song": PM},
+        )
+
+    def test_other_song_equal_meter_and_untagged_rules(self) -> None:
+        from songs.meter_state import genuine_saved_meter_override
+
+        tagged = _hydrated("4/4", True, PM)
+        self.assertIsNone(genuine_saved_meter_override(tagged, sync_id=PERFECT, song_default_meter="6/8"))
+        self.assertIsNone(genuine_saved_meter_override(tagged, sync_id=PM, song_default_meter="4/4"))
+        legacy = _hydrated("4/4", True, None)
+        self.assertIsNone(genuine_saved_meter_override(legacy, sync_id=PM, song_default_meter="3/4"))
+        self.assertEqual(
+            genuine_saved_meter_override(legacy, sync_id=PM, song_default_meter="3/4", untagged_ok=True),
+            {"meter": "4/4", "song": PM},
+        )
+        self.assertIsNone(genuine_saved_meter_override(_hydrated("3/4", False, None), sync_id=PM, song_default_meter="4/4", untagged_ok=True))
+
+    def test_regular_song_rebuild_keeps_the_override_in_the_blob(self) -> None:
+        # backing_context.apply_backing_context_to_session wrote ctx.meter ("4/4") with no
+        # override over the saved choice (reason 'backing_context_regular_song').
+        import inspect
+
+        import backing_context
+
+        src = inspect.getsource(backing_context.apply_backing_context_to_session)
+        self.assertIn("genuine_saved_meter_override", src)
+        self.assertIn('canonical["backing_time_signature_override"] = True', src)
+
+
+class DroppedRadioKeyDoesNotClearTheOverride(unittest.TestCase):
+    def test_override_flag_without_meter_key_recovers_saved_meter(self) -> None:
+        # Streamlit drops the radio key while the Songs page is shown; the flag survives.
+        session = _hydrated("4/4", True, PM)
+        session.pop(BACKING_METER_KEY, None)
+        session["_last_backing_meter_song"] = PM
+        applied, override, default = apply_backing_meter_for_song(
+            types.SimpleNamespace(session_state=session), song_id=PM, default_time_signature="3/4"
+        )
+        self.assertEqual((applied, override, default), ("4/4", True, "3/4"))
+        self.assertEqual(session[BACKING_METER_KEY], "4/4")
+        # the post-render sync must now keep the override (4/4 != 3/4)
+        self.assertEqual(sync_backing_meter_override_from_widget(session, "3/4"), ("4/4", True))
+
+    def test_override_flag_without_any_saved_meter_falls_back_to_song_meter(self) -> None:
+        session = {BACKING_METER_OVERRIDE_KEY: True}
+        applied, override, _ = apply_backing_meter_for_song(
+            types.SimpleNamespace(session_state=session), song_id=PM, default_time_signature="3/4"
+        )
+        self.assertEqual(applied, "3/4")
+
+
 class LegacyBlobs(unittest.TestCase):
     def test_untagged_true_that_differs_from_song_meter_is_kept_for_same_song(self) -> None:
         # Cannot tell a real v2 override from an old-bug (4/4, True) leftover: kept, as in v2.
+        from songs.music_source import ACTIVE_SONG_IDENTITY_KEY, compute_active_song_identity
+
         session = _hydrated("4/4", True, None)
+        session[ACTIVE_SONG_IDENTITY_KEY] = compute_active_song_identity(
+            pick_key="PopPiano Man", title="Piano Man", artist="X", original_key="C", is_custom=False, custom_revision=""
+        )
         applied, override, _ = _load_song(session, sync_id=PM, title="Piano Man", meter="3/4")
         self.assertEqual((applied, override), ("4/4", True))
+
+    def test_untagged_true_on_cold_start_is_not_restored_by_song_reset(self) -> None:
+        # No previous identity: indistinguishable from an old-bug leftover -> cleared
+        # by the song reset (the first-load path in prepare_backing_meter_for_widget
+        # is unchanged from v2).
+        session = _hydrated("4/4", True, None)
+        applied, override, _ = _load_song(session, sync_id=PM, title="Piano Man", meter="3/4")
+        self.assertEqual((applied, override), ("3/4", False))
 
     def test_untagged_true_equal_to_song_meter_has_no_effect_and_heals(self) -> None:
         for meter in ("3/4", "6/8", "4/4"):
@@ -229,6 +442,28 @@ class WriterNeverInventsAnOverride(unittest.TestCase):
                 prepare_backing_meter_for_widget(session, default_meter=meter)
                 self.assertFalse(session[BACKING_METER_OVERRIDE_KEY])
                 self.assertFalse(gather_backing_filters(session)["backing_time_signature_override"])
+
+    def test_play_session_source_default_meter_is_the_catalog_song_meter(self) -> None:
+        # Otherwise the "default" (4/4) is written over the song meter and the
+        # post-render sync then derives a fake override from 4/4 != 3/4.
+        import backing_play_session as bps
+
+        for meter, title in (("3/4", "Piano Man"), ("6/8", "Perfect"), ("4/4", "Photograph")):
+            with self.subTest(song=title):
+                session = {
+                    "active_catalog_pick_key": f"Pop{title}",
+                    "selected_song": {"title": title, "pick_key": f"Pop{title}", "extensions": {"time_signature": meter}},
+                }
+                self.assertEqual(bps._source_defaults_from_session(session)["meter"], meter)
+
+    def test_stale_selected_song_does_not_leak_its_meter(self) -> None:
+        import backing_play_session as bps
+
+        session = {
+            "active_catalog_pick_key": "PopPhotograph",
+            "selected_song": {"title": "Piano Man", "pick_key": "PopPiano Man", "extensions": {"time_signature": "3/4"}},
+        }
+        self.assertEqual(bps._source_defaults_from_session(session)["meter"], "4/4")
 
     def test_catalog_meter_with_radio_flag_is_an_override(self) -> None:
         session, overrides = self._play_session_meter("4/4", True)
