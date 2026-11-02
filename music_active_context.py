@@ -234,6 +234,8 @@ def mark_intent(session: Any, cause: str = "song_selected") -> None:
     the resource it was made on. Side-effect free apart from one session key; a
     no-op while adopting. Unknown causes are ignored (never inferred)."""
     try:
+        if not active_context_enabled():
+            return  # feature unset: a complete no-op (no snapshot, no session keys)
         if session.get(_SUPPRESS_KEY):
             return
         kind = _CAUSE_ALIASES.get(str(cause or ""), str(cause or ""))

@@ -40,6 +40,11 @@ def flush(s, store, dev):
     return ac.flush_intent(s, store, account_id=ACC, workspace_id=WS, device_id=dev)
 
 
+@pytest.fixture(autouse=True)
+def _feature_on(monkeypatch):
+    monkeypatch.setenv("MUSIC_ACTIVE_CONTEXT", "local")  # the state machine is opt-in; tests opt in
+
+
 @pytest.fixture
 def store(tmp_path):
     return ac.LocalFileActiveContextStore(tmp_path)
