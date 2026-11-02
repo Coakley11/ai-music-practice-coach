@@ -1917,7 +1917,7 @@ def _render_compact_song_settings(session_state: dict, doc: dict[str, Any], *, k
             session_state[genre_key] = genre_now if genre_now in COMPOSITION_GENRES else "Other"
         if session_state.get(genre_key) not in COMPOSITION_GENRES:
             session_state[genre_key] = "Other"
-        st.selectbox("Genre / style", COMPOSITION_GENRES, key=genre_key)
+        st.selectbox(_field_label("style", "Genre / Style"), COMPOSITION_GENRES, key=genre_key)
         genre_picked = str(session_state.get(genre_key) or "Pop")
         if genre_picked == "Jewish":
             jd_key = f"{key_prefix}_jewish_direction"
@@ -1939,14 +1939,14 @@ def _render_compact_song_settings(session_state: dict, doc: dict[str, Any], *, k
         if key_widget not in session_state or session_state.get(key_widget) not in key_labels:
             session_state[key_widget] = current_label
         picked = st.selectbox(
-            "Key",
+            _field_label("original_key", "Original Key"),
             key_labels,
             key=key_widget,
             help=f"This song is {mode_family} — Song Settings only offer {mode_family} keys.",
         )
         st.caption(f"Original tonal family: **{mode_family}** (locked for this Composition).")
         bpm_val = st.number_input(
-            "Tempo (BPM)",
+            _field_label("bpm", "Tempo (BPM)"),
             min_value=40,
             max_value=240,
             value=coerce_composition_bpm(g.get("bpm")),
@@ -1964,7 +1964,7 @@ def _render_compact_song_settings(session_state: dict, doc: dict[str, Any], *, k
             else:
                 session_state[meter_key] = COMPOSITION_METER_CUSTOM
                 session_state[custom_key] = stored_meter
-        st.selectbox("Meter", meter_options, key=meter_key)
+        st.selectbox(_field_label("meter", "Meter"), meter_options, key=meter_key)
         if str(session_state.get(meter_key) or "") == COMPOSITION_METER_CUSTOM:
             st.text_input("Custom meter", key=custom_key, placeholder="11/8")
         if st.button("⚙️ Apply song settings", key=f"{key_prefix}_apply"):
@@ -5003,7 +5003,7 @@ def _render_rhythm_lane(session_state: dict, doc: dict[str, Any]) -> None:
     with c1:
         g["bpm"] = coerce_composition_bpm(
             st.number_input(
-                "BPM",
+                _field_label("bpm", "BPM"),
                 min_value=40,
                 max_value=240,
                 value=coerce_composition_bpm(g.get("bpm")),
@@ -5020,7 +5020,7 @@ def _render_rhythm_lane(session_state: dict, doc: dict[str, Any]) -> None:
             else:
                 session_state["composer_rhythm_meter"] = COMPOSITION_METER_CUSTOM
                 session_state["composer_rhythm_meter_custom"] = stored_meter
-        meter_choice = st.selectbox("Meter", meter_options, key="composer_rhythm_meter")
+        meter_choice = st.selectbox(_field_label("meter", "Meter"), meter_options, key="composer_rhythm_meter")
         if meter_choice == COMPOSITION_METER_CUSTOM:
             custom = st.text_input("Custom meter", key="composer_rhythm_meter_custom", placeholder="11/8")
             g["time_signature"] = coerce_composition_meter(custom)

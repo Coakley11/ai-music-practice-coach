@@ -1055,6 +1055,12 @@ def activate_composition_song_from_library(
         return False
     session = st.session_state
     try:
+        from music_active_context import mark_intent as _ctx_intent
+
+        _ctx_intent(session, "select")
+    except Exception:
+        pass
+    try:
         from songs.music_source import (
             SOURCE_COMPOSITION,
             USER_CATALOG_SOURCE_CHOICE_KEY,

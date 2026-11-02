@@ -2093,6 +2093,31 @@ def import_cpl_widget_state(session_state: dict, blob: dict[str, Any]) -> None:
         session_state[sk] = copy.deepcopy(val)
 
 
+def _own_saved_practice_key(session_state: dict, active: dict, home_key: str) -> str:
+    """This song's own explicitly saved Practice Key, if it is valid for it; else ``""``.
+
+    Keyed by the song's pick (``custom::<id>``), so one song's key can never be read for another.
+    Valid means the same tonal family (major/minor) as the song's Original Key; a key of the other
+    mode is ignored rather than converted, and the song opens at its Original Key.
+    """
+    try:
+        from music_theory import key_is_minor
+        from songs.music_source import custom_pick_key_for
+        from songs.practice_key_state import catalog_pick_has_user_practice_key_override, get_practice_concert_key
+
+        pick = str(custom_pick_key_for(active) or "").strip()
+        if not pick.startswith("custom::") or not catalog_pick_has_user_practice_key_override(session_state, pick):
+            return ""
+        saved = str(get_practice_concert_key(session_state, pick) or "").strip()
+        if not saved or not home_key:
+            return ""
+        if bool(key_is_minor(saved)) != bool(key_is_minor(home_key)):
+            return ""
+        return saved
+    except Exception:
+        return ""
+
+
 def apply_cpl_session_progression(
     session_state: dict,
     active: dict,
@@ -2124,6 +2149,9 @@ def apply_cpl_session_progression(
     else:
         session_state.pop(PENDING_CPL_ORIGINAL_KEY, None)
         session_state.pop(CPL_ORIGINAL_KEY_COMMIT, None)
+    # The Practice Key this song opens at: its OWN explicitly chosen key (same tonal family as its
+    # Original Key), otherwise its Original Key. Never another song's key.
+    practice_target = _own_saved_practice_key(session_state, session_state[CPL_ACTIVE_KEY], home_key) or home_key
     if reset_display_key:
         try:
             from practice_setup_globals import DISPLAY_KEY_CHANGE_SOURCE_KEY
@@ -2150,7 +2178,7 @@ def apply_cpl_session_progression(
         # When sidebar PK widget is already live, defer via pending + force-home so the
         # next prepare snaps to Original Key even if disk sticky is stale.
         if widgets_locked:
-            session_state["_cpl_force_pk_to_home"] = home_key
+            session_state["_cpl_force_pk_to_home"] = practice_target
         else:
             session_state.pop("_cpl_force_pk_to_home", None)
         # Fresh Custom install starts at Original Key (not a prior song's sticky PK).
@@ -2163,7 +2191,7 @@ def apply_cpl_session_progression(
                 clear_practice_concert_key(session_state, pick_key)
             except Exception:
                 pass
-            set_practice_concert_key(session_state, home_key, pick_key=pick_key)
+            set_practice_concert_key(session_state, practice_target, pick_key=pick_key)
             # The SBI Custom Practice Key cache belongs to the Custom it was set
             # for, but the save hook replays it onto whichever Custom the SBI
             # identity resolves to now: a different Custom inherited the previous
@@ -2180,7 +2208,7 @@ def apply_cpl_session_progression(
             pass
         sync_custom_workspace_practice_key(
             session_state,
-            practice_key=home_key,
+            practice_key=practice_target,
             active=session_state[CPL_ACTIVE_KEY],
             source="cpl_install_original",
         )
@@ -3341,7 +3369,7 @@ _STYLE_DEFAULTS: dict[str, dict] = {
         },
     },
     "Blues": {
-        "groove_style": "Rock groove",
+        "groove_style": "Blues groove",
         "sections": {
             "Verse": [
                 {"chord": "C7", "bars": 1},
@@ -3454,7 +3482,7 @@ _CPL_STYLE_GROOVE_FALLBACK: dict[str, str] = {
     "Soul/R&B": "Funk groove",
     "Jazz": "Jazz swing",
     "Bossa": "Bossa nova",
-    "Blues": "Rock groove",
+    "Blues": "Blues groove",
     "Funk": "Funk groove",
     "Rock": "Rock groove",
 }

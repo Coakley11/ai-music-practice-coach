@@ -60,9 +60,9 @@ CATEGORY_TO_LOG_FOCUS_AREA: dict[str, str] = {
     CATEGORY_IMPROVISATION: "soloing/improv",
     CATEGORY_EAR_TRAINING: "ear training",
     CATEGORY_TECHNIQUE: "technical exercise",
-    CATEGORY_PHRASING: "melody",
-    CATEGORY_ARTICULATION: "tone",
-    CATEGORY_DYNAMICS: "tone",
+    CATEGORY_PHRASING: "phrasing",
+    CATEGORY_ARTICULATION: "articulation",
+    CATEGORY_DYNAMICS: "dynamics",
     CATEGORY_GENERAL: "general",
 }
 

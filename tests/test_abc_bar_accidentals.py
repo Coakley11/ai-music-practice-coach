@@ -29,7 +29,8 @@ from music_coach_ami.pipeline import run_coach_submit
 from music_coach_ami.scale_engine import _abc_key_field, _note_to_abc
 from tests.test_ami_scale_pattern_recipe import ASK, ASK_CHORDS, _no_live_api, begin, ctx  # noqa: F401  (autouse guard re-exported)
 
-WRITER_OCTAVE_OFFSET = -12          # the writer's current octave convention (see the module docstring); not changed here
+HELPER_OFFSET = -12                 # the token helpers take the engine's own octaves (the writer applies COACH_ABC_OCTAVE_SHIFT before calling them)
+WRITER_OCTAVE_OFFSET = 0            # standard ABC octaves: the coach writer applies COACH_ABC_OCTAVE_SHIFT, so ABC reads back at the stored pitch
 NOTE = re.compile(r'(?P<chord>"[^"]*")?(?P<deco>(?:!>!|!tenuto!|\.)*)(?P<acc>\^\^|__|[_^=])?(?P<note>[A-Ga-gz])(?P<oct>[,\']*)(?P<dur>\d*(?:/\d*)?)')
 BASE = {"c": 0, "d": 2, "e": 4, "f": 5, "g": 7, "a": 9, "b": 11}
 PC = {"C": 0, "D": 2, "E": 4, "F": 5, "G": 7, "A": 9, "B": 11}
@@ -107,7 +108,7 @@ def test_named_cases(key, seq, expected):
     assert got == expected, (key, seq)
     # and the tokens, read back as one bar, are the stored pitches
     abc = f"X:1\nK:{key_field}\n" + " ".join(got) + " |"
-    assert read_abc(abc) == [midi(n, o) for n, o in seq]
+    assert read_abc(abc, octave_offset=HELPER_OFFSET) == [midi(n, o) for n, o in seq]
 
 
 def test_a_new_bar_returns_to_the_key_signature():
@@ -144,9 +145,9 @@ def test_every_key_reads_back_as_stored_and_stays_identical_where_it_was_right(t
         state: dict = {}
         new = [_abc_pitch_in_bar(n, o, key_field, state) for n, o in seq]
         header = f"X:1\nK:{key_field}\n"
-        assert read_abc(header + " ".join(new) + " |") == stored, (tonic, tonality, seq, new)
+        assert read_abc(header + " ".join(new) + " |", octave_offset=HELPER_OFFSET) == stored, (tonic, tonality, seq, new)
         try:
-            legacy_right = read_abc(header + " ".join(legacy) + " |") == stored
+            legacy_right = read_abc(header + " ".join(legacy) + " |", octave_offset=HELPER_OFFSET) == stored
         except ValueError:
             legacy_right = False                          # the previous writer produced invalid ABC (for example a triple sharp)
         if legacy_right:
@@ -203,3 +204,17 @@ def test_the_writers_key_table_matches_the_abc_key_signature(tonic, tonality):
     k_field = _abc_key_field(tonic, tonality)
     table = {letter.lower(): alter for letter, alter in abc_key_signature_letter_alterations(k_field).items() if alter}
     assert table == key_signature(f"K:{k_field}\n"), (k_field, table)
+
+
+# ---------------------------------------------------------------- the octave: what the staff shows is what AMI stored, in the instrument's own written register
+@pytest.mark.parametrize("name", INSTRUMENTS)
+@pytest.mark.parametrize("q", [ASK, ASK_CHORDS])
+def test_the_staff_is_drawn_at_the_stored_octave_inside_the_instruments_written_range(name, q):
+    """Standard ABC reading (c = the C above middle C) equals the stored written pitch, and every displayed note is playable on the instrument."""
+    s, _resp, _ = begin(q, name)
+    ver = cs.current_version(s)
+    shown = read_abc(ver["abc"], octave_offset=0)
+    assert shown == _stored_written(ver["exercise"])
+    notation = ver["exercise"]["context"]["notation_instrument"]
+    playable = sph.playable_written_range(notation)
+    assert playable is not None and all(playable[0] <= m <= playable[1] for m in shown), (name, min(shown), max(shown), playable)

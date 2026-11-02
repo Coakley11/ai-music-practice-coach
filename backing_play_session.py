@@ -678,6 +678,19 @@ def _live_slider_bpm(session: dict[str, Any], *, sync_id: str = "") -> int:
     return 0
 
 
+def _leftover_slider_from_previous_custom_song(session: dict[str, Any]) -> bool:
+    """True for a Custom source with no live play session (nothing here can be a Current edit)."""
+    if _play_session_is_existing(session):
+        return False
+    try:
+        from backing_context import get_backing_context
+
+        ctx = get_backing_context(session)
+    except Exception:
+        return False
+    return ctx is not None and str(getattr(ctx, "source", "") or "").strip() == "custom_progression"
+
+
 def current_backing_play_bpm(session: dict[str, Any], *, default: int = 0, sync_id: str = "") -> int:
     """Authoritative Current BPM for card/banner/playback.
 
@@ -692,6 +705,11 @@ def current_backing_play_bpm(session: dict[str, Any], *, default: int = 0, sync_
     override_bpm = _play_session_current_bpm(session)
     slider_val = _live_slider_bpm(session, sync_id=sync_id)
     lock = _lock_bpm(session)
+    if slider_val > 0 and override_bpm <= 0 and _leftover_slider_from_previous_custom_song(session):
+        # Backing was left (play session expired) and a different Custom song is now
+        # active: the slider still holds the PREVIOUS song's tempo. That is not an
+        # edit of this song, so it must not outrank the song's own saved tempo (Issue 21).
+        slider_val = 0
 
     if override_bpm > 0:
         # Leftover source-default slider (98) must never outrank a real Current

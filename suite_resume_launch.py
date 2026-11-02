@@ -181,10 +181,15 @@ def _finalize_music_resume(
     song_picker_catalog: dict,
     song_library: dict | None,
 ) -> None:
-    pick = str(st.session_state.get("active_catalog_pick_key") or _qp_get(st, "suite_pick_key")).strip()
+    # Resume transaction precedence: explicit URL pick (suite_pick_key, then the
+    # song:/backing: token) > stale session pick. Saved display state never wins
+    # over what the user explicitly asked to resume.
     resume = _qp_get(st, "suite_resume")
+    pick = _qp_get(st, "suite_pick_key").strip()
     if not pick and resume.startswith(("song:", "backing:")):
         pick = resume.split(":", 1)[-1].strip()
+    if not pick:
+        pick = str(st.session_state.get("active_catalog_pick_key") or "").strip()
     if pick:
         try:
             from songs.state import apply_pick_key

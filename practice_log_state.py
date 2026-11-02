@@ -11,6 +11,9 @@ from zoneinfo import ZoneInfo
 PRACTICE_LOG_LOADED_WS_KEY = "_practice_log_loaded_workspace_id"
 PRACTICE_LOG_DEFERRED_EMPTY_KEY = "_practice_log_deferred_empty_load"
 
+# One registry for creating, editing, displaying and filtering log entries. The original
+# entries keep their position and spelling (stored entries match them case-insensitively);
+# new categories are only ever appended.
 FOCUS_AREAS: tuple[str, ...] = (
     "tone",
     "timing/rhythm",
@@ -24,7 +27,66 @@ FOCUS_AREAS: tuple[str, ...] = (
     "performance",
     "technical exercise",
     "general",
+    # appended
+    "intonation",
+    "articulation",
+    "tempo/metronome control",
+    "scales/modes",
+    "arpeggios",
+    "intervals",
+    "technique/dexterity",
+    "fingerings",
+    "phrasing",
+    "dynamics",
+    "expression/musicality",
+    "pattern development",
+    "sight-reading",
+    "repertoire/memorization",
+    "breath control",
+    "embouchure",
+    "register/range",
+    "vibrato",
+    "tonguing",
+    "picking/strumming",
+    "rhythm comping",
+    "bass lines",
+    "coordination",
+    "performance preparation",
+    "recording/take evaluation",
 )
+
+# Categories that only make sense for some instruments (entry form only; filters and stored
+# entries always use the full registry). Anything not listed applies to every instrument.
+_WIND_INSTRUMENTS = frozenset(
+    {"saxophone", "tenor saxophone", "alto saxophone", "soprano saxophone", "baritone saxophone",
+     "flute", "trumpet", "clarinet", "trombone", "voice"}
+)
+_FOCUS_AREA_INSTRUMENTS: dict[str, frozenset[str]] = {
+    "breath control": _WIND_INSTRUMENTS,
+    "embouchure": _WIND_INSTRUMENTS - {"voice"},
+    "tonguing": _WIND_INSTRUMENTS - {"voice"},
+    "picking/strumming": frozenset({"guitar", "bass", "ukulele"}),
+    "bass lines": frozenset({"bass", "guitar", "piano", "keyboard"}),
+    "rhythm comping": frozenset({"guitar", "piano", "keyboard", "ukulele"}),
+    "fingerings": frozenset({"guitar", "bass", "piano", "keyboard", "ukulele", "saxophone", "tenor saxophone",
+                              "alto saxophone", "soprano saxophone", "baritone saxophone", "flute", "trumpet",
+                              "clarinet", "trombone"}),
+}
+
+
+def focus_areas_for_instrument(instrument: str, *, keep: str = "") -> tuple[str, ...]:
+    """Registry filtered for the entry form. ``keep`` (a stored value being edited) is always kept."""
+    inst = str(instrument or "").strip().lower()
+    kept = str(keep or "").strip().lower()
+    if not inst:
+        return FOCUS_AREAS
+    out = []
+    for area in FOCUS_AREAS:
+        allowed = _FOCUS_AREA_INSTRUMENTS.get(area)
+        if allowed is None or inst in allowed or area.lower() == kept:
+            out.append(area)
+    return tuple(out)
+
 
 PRACTICE_TYPES: tuple[str, ...] = (
     "song practice",
@@ -39,6 +101,13 @@ PRACTICE_TYPES: tuple[str, ...] = (
     "performance prep",
     "warmup",
     "other",
+    # appended
+    "mission practice",
+    "composition practice",
+    "motif/pattern practice",
+    "key cycling",
+    "song-aware coaching",
+    "recording/multitrack",
 )
 
 SECTIONS_PRACTICED: tuple[str, ...] = (
@@ -72,6 +141,10 @@ _STUDIO_PAGE_TO_PRACTICE_TYPE: dict[str, str] = {
     "log": "song practice",
     "picker": "song practice",
     "creative": "custom progression",
+    "composer": "composition practice",
+    "composition": "composition practice",
+    "missions": "mission practice",
+    "mission": "mission practice",
 }
 
 DEFAULT_PRACTICE_LOG_TZ = "America/New_York"
@@ -553,6 +626,13 @@ def _normalize_focus_area(raw: Any, *, legacy_focus: Any = None) -> str:
         "scales": "technical exercise",
         "rhythm": "timing/rhythm",
         "improv": "soloing/improv",
+        "tempo": "tempo/metronome control",
+        "breath": "breath control",
+        "sight read": "sight-reading",
+        "sightread": "sight-reading",
+        "memoriz": "repertoire/memorization",
+        "strum": "picking/strumming",
+        "pick": "picking/strumming",
     }
     for key, val in legacy_map.items():
         if key in low:

@@ -9,6 +9,7 @@ from typing import Any, Callable
 from practice_log_state import (
     FOCUS_AREAS,
     PRACTICE_TYPES,
+    focus_areas_for_instrument,
     SECTIONS_PRACTICED,
     add_practice_log_entry,
     build_practice_log_prefill,
@@ -382,10 +383,13 @@ def _session_form_fields(
                 list(SECTIONS_PRACTICED),
                 index=_index_in(SECTIONS_PRACTICED, prefill.get("section_practiced"), default=0),
             )
+            _focus_opts = focus_areas_for_instrument(
+                str(prefill.get("instrument") or ""), keep=str(prefill.get("focus_area") or "")
+            )
             focus_area = st.selectbox(
                 "Focus area",
-                list(FOCUS_AREAS),
-                index=_index_in(FOCUS_AREAS, prefill.get("focus_area"), default=0),
+                list(_focus_opts),
+                index=_index_in(_focus_opts, prefill.get("focus_area"), default=0),
             )
             practice_type = st.selectbox(
                 "Practice type",
@@ -593,6 +597,17 @@ def _clear_practice_log_filters(session_state: dict[str, Any]) -> None:
         session_state.pop(key, None)
 
 
+PENDING_DELETE_KEY = "_plog_pending_delete_session_id"
+ICON_EDIT = "✏️"  # pencil, as on the Composition and Custom pages
+ICON_DELETE = "🗑️"  # trash, as on the Composition page
+
+_ACTION_ICON_CSS = '''<style>
+div[class*="st-key-plog_edit_"] button, div[class*="st-key-plog_delete_"] button {
+  min-height: 44px; min-width: 44px; font-size: 1.15rem; padding: 0 .5rem;
+}
+</style>'''
+
+
 def render_filters(st: Any, entries: list[dict[str, Any]]) -> dict[str, Any]:
     inst_opts = ["All instruments"] + sorted({str(e.get("instrument") or "") for e in entries if e.get("instrument")})
     focus_opts = ["All focus areas"] + list(FOCUS_AREAS)
@@ -628,6 +643,7 @@ def render_session_list(
     *,
     total_entries: int = 0,
 ) -> None:
+    st.markdown(_ACTION_ICON_CSS, unsafe_allow_html=True)
     if not entries:
         if total_entries > 0:
             st.info("No practice sessions match these filters.")
@@ -676,16 +692,40 @@ def render_session_list(
             if tags:
                 st.markdown("**Tags:** " + ", ".join(str(t) for t in tags))
 
-            bc1, bc2 = st.columns(2)
-            with bc1:
-                if st.button("Edit", key=f"plog_edit_{sid}"):
-                    session_state["_plog_edit_session_id"] = sid
-                    st.rerun()
-            with bc2:
-                if st.button("Delete", key=f"plog_delete_{sid}"):
-                    delete_practice_log_entry(session_state, sid)
-                    st.success("Session deleted.")
-                    st.rerun()
+            # Icon-only actions (the app's pencil / trash). The tooltip carries the full name and
+            # the touch target is at least 44px (see the CSS block above the list).
+            _pending_delete = str(session_state.get(PENDING_DELETE_KEY) or "")
+            if _pending_delete and _pending_delete == sid:
+                # Deleting is permanent: name the entry and ask before doing it.
+                st.warning(
+                    "Delete this session permanently?\n\n"
+                    f"**{date_label} · {song} · {mins} min · {instrument}**"
+                )
+                cc1, cc2 = st.columns(2)
+                with cc1:
+                    if st.button("Cancel", key=f"plog_delete_cancel_{sid}", use_container_width=True):
+                        session_state.pop(PENDING_DELETE_KEY, None)
+                        st.rerun()
+                with cc2:
+                    if st.button("Delete", key=f"plog_delete_confirm_{sid}", type="primary", use_container_width=True):
+                        session_state.pop(PENDING_DELETE_KEY, None)
+                        delete_practice_log_entry(session_state, sid)
+                        st.success("Session deleted.")
+                        st.rerun()
+            else:
+                bc1, bc2, _bc_gap = st.columns([1, 1, 6])
+                with bc1:
+                    if st.button(
+                        ICON_EDIT, key=f"plog_edit_{sid}", help="Edit this session", use_container_width=True
+                    ):
+                        session_state["_plog_edit_session_id"] = sid
+                        st.rerun()
+                with bc2:
+                    if st.button(
+                        ICON_DELETE, key=f"plog_delete_{sid}", help="Delete this session", use_container_width=True
+                    ):
+                        session_state[PENDING_DELETE_KEY] = sid
+                        st.rerun()
 
 
 def render_practice_log_page(
