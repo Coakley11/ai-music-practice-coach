@@ -1360,8 +1360,13 @@ def _abc_pitch_in_bar(spelled: str, octave: int, key_field: str, state: dict[tup
     letter, alter = spelled_note_letter_alteration(spelled)
     slot = (letter, int(octave))
     in_force = state.get(slot, abc_key_signature_letter_alterations(key_field).get(letter, 0))
-    body = abc_pitch_for_spelled_note(spelled, octave=octave, k_field=key_field).lstrip("_^=")
-    prefix = "" if alter == in_force else {0: "=", 1: "^", -1: "_", 2: "^^", -2: "__"}.get(alter, ("^" if alter > 0 else "_") * abs(alter))
+    legacy = abc_pitch_for_spelled_note(spelled, octave=octave, k_field=key_field)
+    body = legacy.lstrip("_^=")
+    legacy_prefix = legacy[: len(legacy) - len(body)]
+    want = {0: "=", 1: "^", -1: "_", 2: "^^", -2: "__"}.get(alter, ("^" if alter > 0 else "_") * abs(alter))
+    # An accidental is added (or corrected to its absolute form) whenever what is in force differs from the note; one the legacy writer already wrote
+    # correctly is kept even when redundant, so every answer that was already right stays byte-for-byte what it was.
+    prefix = want if (alter != in_force or legacy_prefix == want) else ""
     state[slot] = alter
     return prefix + body
 
