@@ -280,3 +280,21 @@ def test_capo_shape_charts_over_the_fixed_concert_key() -> None:
     assert state.chart_display_key == "Am"  # A-minor shapes, capo 3, sound C minor
     assert _raw(s, LEAVES) == "Dm"
     assert s["selected_song"]["key"] == "Gm"
+
+
+@pytest.mark.parametrize(
+    ("sax", "written"),
+    [("Alto saxophone (Eb)", "Am"), ("Tenor saxophone (Bb)", "Dm")],
+)
+def test_saxophones_read_the_fixed_concert_key(sax: str, written: str) -> None:
+    from instrument_transposition import CHART_IN_INSTRUMENT_KEY_KEY, SELECTED_TRANSPOSING_INSTRUMENT_KEY
+
+    s, state = _fixed_backing_state(
+        instrument="Saxophone",
+        **{SELECTED_TRANSPOSING_INSTRUMENT_KEY: sax, CHART_IN_INSTRUMENT_KEY_KEY: True},
+    )
+    assert state.practice_concert_key == "Cm"  # what sounds
+    assert state.written_key == written  # E♭ alto reads a major sixth up, B♭ tenor a whole step up
+    assert state.chart_display_key == written
+    assert _raw(s, LEAVES) == "Dm"
+    assert s["selected_song"]["key"] == "Gm"
