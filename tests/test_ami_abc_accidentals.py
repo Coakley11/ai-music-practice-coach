@@ -40,10 +40,9 @@ def key_signature(abc: str) -> dict[str, int]:
     return {(SHARP_ORDER if n > 0 else FLAT_ORDER)[i]: (1 if n > 0 else -1) for i in range(abs(n))}
 
 
-# The coach writes scientific C4 as ABC ``c`` (see ``abc_pitch_for_spelled_note``), and abcjs draws ``c`` as C5: the staff shows every coach pattern one
-# octave above the pitch AMI stored. Composition compensates (COMPOSITION_ABC_OCTAVE_SHIFT = -1); the coach writer does not. Reported, not changed here:
-# the accidental tests below read the ABC with the writer's own octave convention, and the xfail test pins the discrepancy until it is decided.
-WRITER_OCTAVE_OFFSET = -12
+# The coach writer compensates for abc_pitch_for_spelled_note's one-octave-high 'c' (COACH_ABC_OCTAVE_SHIFT = -1), so standard ABC reading (abcjs)
+# gives exactly the stored pitch and no offset is needed.
+WRITER_OCTAVE_OFFSET = 0
 
 
 def read_abc(abc: str, octave_offset: int = WRITER_OCTAVE_OFFSET) -> list[int]:
@@ -113,7 +112,6 @@ def test_the_staff_shows_the_stored_pitches_after_every_m1b_change(dst):
         assert read_abc(ver["abc"]) == stored_written(ver["exercise"]), (dst, q)
 
 
-@pytest.mark.xfail(strict=True, reason="KNOWN, REPORTED: the coach's staff notation is drawn one octave above the stored pitch (standard ABC reading); not changed in M1b")
 def test_the_staff_is_drawn_at_the_stored_octave():
     s = source("Flute", ASK_CHORDS)
     ver = cs.current_version(s)
