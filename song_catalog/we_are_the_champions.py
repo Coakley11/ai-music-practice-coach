@@ -1,4 +1,4 @@
-"""We Are the Champions — Queen (Cm verse, F-centered chorus, 4/4)."""
+"""We Are the Champions — Queen (Cm verse, F-centered chorus, 6/8)."""
 
 from __future__ import annotations
 
@@ -154,7 +154,7 @@ CHAMPIONS_LYRIC_CHART: list[dict[str, Any]] = [
 ]
 
 CHAMPIONS_ARRANGEMENT_NOTES = (
-    "**C minor** verse / **F major**-centered chorus (**4/4**, ~65 BPM). "
+    "**C minor** verse / **F major**-centered chorus (**6/8** slow ballad, ~65 BPM counted in dotted quarters = two pulses per bar; one chart cell = one 6/8 bar). "
     "Preserve Queen slash colors: **Gm7/C · Ab/Eb · Bb/D · Ab/Bb · "
     "Bbm7b5 · C7/G · Bbm6/Db · F#dim7 · Ebadd9/G · Cm7add4**. "
     "Chorus bar 4 uses **Bb|C7** (half-bar split). **Ending Tag** is "

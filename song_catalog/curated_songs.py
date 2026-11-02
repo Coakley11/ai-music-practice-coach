@@ -194,7 +194,7 @@ def _champions_chart_pack() -> dict[str, Any]:
             arrangement_notes=CHAMPIONS_ARRANGEMENT_NOTES,
             default_bpm=65,
             default_groove="Rock groove",
-            time_signature="4/4",
+            time_signature="6/8",
             vocal_showcase=True,
             queen_arena_anthem=True,
             repertoire_tags=[
@@ -290,14 +290,14 @@ def _thinking_out_loud_chart_pack() -> dict[str, Any]:
         "extensions": _ext(
             arrangement_notes=(
                 "**C-shape guitar chart** (concert/recording **D major**, "
-                "capo-friendly). **4/4**, ~75 BPM soul-pop ballad. Preserve "
+                "capo-friendly). **4/4**, ~79 BPM soul-pop ballad. Preserve "
                 "**C/E** for smooth bass movement — do not drop the slash. "
                 "Verse: intimate acoustic; pre-chorus: gradual build; chorus: "
                 "fuller rhythm. Backing: acoustic guitar, light percussion, "
                 "bass, subtle electric piano, warm pads — no heavy rock or "
                 "jazz reharm. Wedding / singer-songwriter practice friendly."
             ),
-            default_bpm=75,
+            default_bpm=79,
             default_groove="Ballad",
             time_signature="4/4",
             vocal_showcase=True,
@@ -2604,30 +2604,38 @@ def _come_together_chart_pack() -> dict[str, Any]:
     """
     riff4 = ["Dm7"] * 4
     riff2 = ["Dm7"] * 2
-    verse = ["Dm", "Dm", "A", "G", "N.C."]
-    chorus = ["Bm", "Bm/A", "G", "A", "N.C."]
+    # Wave 2 (W2-06): verse is 8 bars (Dm x4, A x2, G, N.C.); the refrain is 2
+    # bars (Bm|Bm/A, G|A) - see tests/test_come_together_chart.py for sources.
+    verse = ["Dm", "Dm", "Dm", "Dm", "A", "A", "G", "N.C."]
+    chorus = ["Bm|Bm/A", "G|A"]
     solo = ["Dm"] * 4 + ["A"] * 4
     outro_fade = ["Dm"] * 4
 
     intermediate = {
         "Intro": list(riff4),
         "Verse 1": list(verse),
+        "Instrumental 1": list(riff4),
         "Verse 2": list(verse),
         "Chorus 1": list(chorus),
-        "Instrumental 1": list(riff4),
+        "Instrumental 2": list(riff4),
         "Verse 3": list(verse),
         "Chorus 2": list(chorus),
-        "Instrumental 2": list(riff2),
-        "Solo": list(solo),
         "Instrumental 3": list(riff2),
+        "Solo": list(solo),
+        "Instrumental 4": list(riff2),
         "Verse 4": list(verse),
         "Final Chorus": list(chorus),
+        "Instrumental 5": list(riff4),
         "Outro (Fade)": list(outro_fade),
     }
 
     def _beg(ch: str) -> str:
         if ch == "N.C.":
             return "N.C."
+        if "|" in ch:
+            # Beginner: simplify each half-bar chord, collapse identical halves.
+            parts = [_beg(x) for x in ch.split("|")]
+            return parts[0] if len(set(parts)) == 1 else "|".join(parts)
         head = ch.split("/")[0].strip()
         return (
             head.replace("Dm7", "Dm")
@@ -2656,8 +2664,10 @@ def _come_together_chart_pack() -> dict[str, Any]:
             "Intro": ["Iconic Dm7 riff — bass and guitar groove"],
             "Verse 1": ["Here come old flat-top…"],
             "Chorus 1": ["Come together, right now, over me"],
-            "Instrumental 1": ["Intro riff ×4"],
-            "Solo": ["Lead-guitar solo — Dm then A vamp"],
+            "Verse 2": ["He wear no shoeshine…"],
+            "Instrumental 1": ["Intro riff ×4 (tag)"],
+            "Instrumental 5": ["Intro riff ×4 (tag) before the coda"],
+            "Solo": ["Keyboard + lead-guitar solo — Dm then A vamp"],
             "Final Chorus": ["Final chorus lift"],
             "Outro (Fade)": ["Fade on Dm riff"],
         },
@@ -2667,7 +2677,8 @@ def _come_together_chart_pack() -> dict[str, Any]:
                 "**Riff-driven** — bass riff and guitar riff carry the feel; "
                 "avoid piano-ballad comping. **N.C.** bars are intentional "
                 "stop-time pockets. Intro/instrumentals vamp **Dm7**; verses "
-                "**Dm–Dm–A–G–N.C.**; chorus **Bm–Bm/A–G–A–N.C.** Brushed "
+                "are **8 bars: Dm×4 · A×2 · G · N.C.**; the short refrain is "
+                "**2 bars: Bm|Bm/A · G|A**; Dm7 tags (4 bars) follow verse 1 and choruses 1 and 3 (2 bars after chorus 2). Brushed "
                 "drums, prominent bass, chorus slightly fuller than verses."
             ),
             default_bpm=82,
@@ -2816,80 +2827,43 @@ def _day_tripper_chart_pack() -> dict[str, Any]:
 
 
 def _autumn_leaves_chart_pack() -> dict[str, Any]:
-    """Autumn Leaves — jazz standard in B minor (4/4).
+    """Autumn Leaves -- 32-bar AABC head in B minor (4/4).
 
-    Classic **ii–V–I–IV** (Em7–A7–Dmaj7–Gmaj7) then **iiø–V7–i**
-    (C#m7b5–F#7–Bm). Matches the common Eric Clapton / jazz-ballad
-    reading; one list item = one bar in 4/4.
+    Published form (Kosma/Mercer; Real Book + printed G-minor lead sheets,
+    transposed here from G minor to the catalog key Bm, +4 semitones):
+    A  = ii-V-I-IV then iiø-V-i   (Em7 A7 Dmaj7 Gmaj7 | C#m7b5 F#7 Bm Bm)
+    A2 = repeat of A
+    B  = minor ii-V-i then ii-V-I-IV (C#m7b5 F#7 Bm Bm | Em7 A7 Dmaj7 Gmaj7)
+    C  = iiø-V-i with the chromatic walk-down
+         (C#m7b5 F#7 | Bm7|Bb7 Am7|G#7 | Gmaj7 F#7 | Bm Bm).
+    The earlier chart invented an Intro/Verse/Pre-Chorus/Chorus layout, ended
+    B at Dmaj7 Dmaj7 and replaced C by a second iiø-V-i; one list item = one
+    bar in 4/4.  Both catalog entries (Jazz Standard, Eric Clapton) share it.
     """
-    cycle = ["Em7", "A7", "Dmaj7", "Gmaj7", "C#m7b5", "F#7", "Bm", "Bm"]
-    pre_chorus = [
-        "C#m7b5",
-        "F#7",
-        "Bm",
-        "Bm",
-        "Em7",
-        "A7",
-        "Dmaj7",
-        "Dmaj7",
-    ]
-    chorus = [
-        "C#m7b5",
-        "F#7",
-        "Bm",
-        "Bm",
-        "C#m7b5",
-        "F#7",
-        "Bm",
-        "Bm",
-    ]
-
+    a = ["Em7", "A7", "Dmaj7", "Gmaj7", "C#m7b5", "F#7", "Bm", "Bm"]
+    b = ["C#m7b5", "F#7", "Bm", "Bm", "Em7", "A7", "Dmaj7", "Gmaj7"]
+    c = ["C#m7b5", "F#7", "Bm7|Bb7", "Am7|G#7", "Gmaj7", "F#7", "Bm", "Bm"]
     intermediate = {
-        "Intro": ["Bm", "Bm"],
-        "Verse 1": list(cycle),
-        "Verse 2": list(cycle),
-        "Pre-Chorus": list(pre_chorus),
-        "Chorus": list(chorus),
-        "Instrumental": list(cycle) * 2,
-        "Pre-Chorus 2": list(pre_chorus),
-        "Chorus 2": list(chorus),
-        "Final Chorus": list(chorus),
-        "Outro Solo": list(cycle) * 4,
+        "A Section": list(a),
+        "A2": list(a),
+        "B Section": list(b),
+        "C Section": list(c),
     }
-
-    def _beg(ch: str) -> str:
-        return (
-            ch.replace("C#m7b5", "C#dim")
-            .replace("Dmaj7", "D")
-            .replace("Gmaj7", "G")
-            .replace("Em7", "Em")
-            .replace("m7b5", "dim")
-            .replace("maj7", "")
-            .replace("m7", "m")
-        )
-
     beginner = {
-        name: [_beg(c) for c in chords]
-        for name, chords in intermediate.items()
+        # Triads/dyads but the dominants stay dominants (F#7, A7, Bb7, G#7) and
+        # the iiø bars read as C#dim like the previous Beginner chart.
+        "A Section": ["Em", "A7", "D", "G", "C#dim", "F#7", "Bm", "Bm"],
+        "A2": ["Em", "A7", "D", "G", "C#dim", "F#7", "Bm", "Bm"],
+        "B Section": ["C#dim", "F#7", "Bm", "Bm", "Em", "A7", "D", "G"],
+        "C Section": ["C#dim", "F#7", "Bm|Bb7", "Am|G#7", "G", "F#7", "Bm", "Bm"],
     }
-
-    def _adv(ch: str) -> str:
-        mapping = {
-            "Em7": "Em9",
-            "A7": "A13",
-            "Dmaj7": "Dmaj9",
-            "Gmaj7": "Gmaj9",
-            "C#m7b5": "C#m7b5",
-            "F#7": "F#7b9",
-            "Bm": "Bm9",
-        }
-        return mapping.get(ch, ch)
-
+    adv_a = ["Em9", "A13", "Dmaj9", "Gmaj9", "C#m7b5", "F#7b9", "Bm9", "Bm9"]
     advanced = {
-        name: [_adv(c) for c in chords]
-        for name, chords in intermediate.items()
+        "A Section": list(adv_a),
+        "A2": list(adv_a),
+        "B Section": ["C#m7b5", "F#7b9", "Bm9", "Bm9", "Em9", "A13", "Dmaj9", "Gmaj9"],
+        "C Section": ["C#m7b5", "F#7b9", "Bm7|Bb7", "Am7|G#7", "Gmaj9", "F#7b9", "Bm9", "Bm9"],
     }
-
     section_order = list(intermediate.keys())
     scale_hints = {
         "Em7": ["E Dorian"],
@@ -2912,30 +2886,24 @@ def _autumn_leaves_chart_pack() -> dict[str, Any]:
         "section_order": section_order,
         "composer": "Joseph Kosma · Johnny Mercer",
         "lyric_cues": {
-            "Intro": ["Piano intro — Bm vamp"],
-            "Verse 1": ["The falling leaves drift by the window…"],
-            "Verse 2": ["Second verse — same A section harmony"],
-            "Pre-Chorus": ["Bridge into tonic — C#ø · F#7 · Bm"],
-            "Chorus": ["Chorus turnaround — iiø–V7–i twice"],
-            "Instrumental": ["Head / instrumental — full 8-bar cycle ×2"],
-            "Pre-Chorus 2": ["Second bridge"],
-            "Chorus 2": ["Second chorus"],
-            "Final Chorus": ["Final chorus — hold on Bm"],
-            "Outro Solo": [
-                "Outro solo — repeat Em7–A7–Dmaj7–Gmaj7 · C#ø–F#7–Bm"
-            ],
+            "A Section": ["The falling leaves drift by the window…", "ii-V-I-IV then iiø-V-i"],
+            "A2": ["Second A — same harmony (the A section repeats)"],
+            "B Section": ["Bridge starts in the minor: iiø-V-i, then ii-V-I-IV"],
+            "C Section": ["Last 8 — chromatic walk-down Bm7 Bb7 Am7 G#7 to Gmaj7, then F#7 to Bm"],
         },
         "extensions": _ext(
             arrangement_notes=(
-                "**B minor** jazz ballad (**4/4**, ~80–85 BPM). Default feel is "
-                "a straight **jazz ballad** (even eighths); **Jazz swing** is "
-                "available in the groove picker for a light swing. Preserve "
-                "qualities: **Em7 · A7 · Dmaj7 · Gmaj7 · C#m7b5 · F#7 · Bm**. "
-                "Core motion: **ii–V–I–IV** then **iiø–V7–i**. Backing: piano, "
-                "upright bass, brushed drums; optional jazz-guitar comping. "
-                "**Advanced** tier adds rootless extensions and **F#7b9**. "
-                "Tags: Jazz Standard · Improvisation Standard · Essential Jazz "
-                "Repertoire."
+                "**B minor** jazz ballad (**4/4**, ~80–85 BPM). The **32-bar "
+                "AABC** head (A, A2, B, C; 8 bars each), transposed from the "
+                "usual G minor. A: **Em7 · A7 · Dmaj7 · Gmaj7 · C#m7b5 · F#7 · "
+                "Bm**. B: minor ii–V–i then ii–V–I–IV. C: **C#m7b5 · F#7 · "
+                "Bm7|Bb7 · Am7|G#7 · Gmaj7 · F#7 · Bm** (the Real Book "
+                "chromatic walk-down; some charts use Bm7|E7 Am7|D7 or open the "
+                "last bars differently). Default feel is a straight **jazz "
+                "ballad**; **Jazz swing** is in the groove picker. All three "
+                "levels play the complete form. Both the Jazz Standard and "
+                "Eric Clapton entries use this chart. Tags: Jazz Standard · "
+                "Improvisation Standard · Essential Jazz Repertoire."
             ),
             default_bpm=82,
             default_groove="Ballad",
@@ -2948,11 +2916,13 @@ def _autumn_leaves_chart_pack() -> dict[str, Any]:
             harmonic_analysis={
                 "progression_summary": (
                     "ii–V–I–IV (Em7–A7–Dmaj7–Gmaj7) then "
-                    "iiø–V7–i (C#m7b5–F#7–Bm)"
+                    "iiø–V7–i (C#m7b5–F#7–Bm); chromatic walk-down "
+                    "Bm7–Bb7–Am7–G#7–Gmaj7 in the last section"
                 ),
                 "scale_suggestions": scale_hints,
             },
             jazz_ballad=True,
+            full_form_levels=["Beginner", "Intermediate"],
         ),
     }
 
@@ -4882,99 +4852,82 @@ def _satin_doll_chart_pack() -> dict[str, Any]:
 def _wave_chart_pack() -> dict[str, Any]:
     """Wave — Antônio Carlos Jobim (D major, bossa nova, 4/4).
 
-    Full Jobim form with **Dm7 · G13** intro/outro turnaround, three verses,
-    two bridge passes, instrumental solo section, and gentle fade. Preserve
-    **Dmaj9**, **Bbdim7**, **D7b9**, **Gm6**, **F#7**, **B7b9**, **G13**,
-    **Am6**, **Ab6**, **Bb7b9**, and **A7#5** — do not simplify.
+    Published AABA form: a 12-bar A (10 bars of changes plus a two-bar
+    **Dm7 | G7** vamp) and an 8-bar bridge, played as a 4-bar **Dm7 | G7**
+    intro, three A passes around a bridge, an instrumental chorus and a
+    final A with the same bridge, and a 4-bar vamp outro. Preserve
+    **Bbdim7**, **D7b9**, **Gm6**, **F#7**, **B7b9** and the split bars.
     """
-    intro_outro = ["Dm7", "G13"] * 4
+    # Published form (AABA, 44 bars: A = 12, bridge = 8). Sources: Guitar
+    # Composer's Toolbox "Wave in D" (bar grid), guitartabs.cc Wave chords (10-bar
+    # A + Dm7|G7 vamp, 8-bar bridge), standardrepertoire.com (44 bars, AABA),
+    # PianoGroove (Real Book bar 24 beat 3 = B7b9).  One item = one bar; the
+    # Dm7|G7 vamp bars and bar 10 Bb7|A7 are split bars.
+    intro_outro_int = ["Dm7|G7"] * 4
+    intro_outro_beg = ["Dm|G7"] * 4
 
+    verse_adv = [
+        "Dmaj7", "Bbdim7", "Am7", "D7b9",
+        "Gmaj7", "Gm6", "F#13|F#7b13", "B9|B7b9",
+        "E9", "Bb7|A7", "Dm7|G7", "Dm7|G7",
+    ]
     verse = [
-        "Dmaj9",
-        "Bbdim7",
-        "Am7",
-        "D7b9",
-        "Gmaj7",
-        "Gm6",
-        "F#7",
-        "B7b9",
-        "Bm7",
-        "E7",
-        "Bb7",
-        "A7",
-        "Dm7",
-        "G7",
-        "Dm7",
-        "G7",
+        "Dmaj7", "Bbdim7", "Am7", "D7b9",
+        "Gmaj7", "Gm6", "F#7", "B7b9",
+        "E7", "Bb7|A7", "Dm7|G7", "Dm7|G7",
+    ]
+    verse_beg = [
+        "D", "Bbdim", "Am", "D7",
+        "G", "Gm", "F#7", "B7",
+        "E7", "Bb7|A7", "Dm|G7", "Dm|G7",
     ]
 
-    bridge = [
-        "Gm7",
-        "C7",
-        "Am7",
-        "Am6",
-        "Ab6",
-        "Bb7b9",
-        "Gm7",
-        "A7#5",
+    # Bridge: bars 1-6 agree in two charts (Gm7 C7 Fmaj7 Fmaj7 Fm7 Bb7, with the
+    # descending bass Bb-A-Ab in the Toolbox slash voicings); bars 7-8 Gm7 A7 per
+    # the Real Book-style chart (guitartabs prints Ebmaj7 for bar 7: MED, held).
+    bridge = ["Gm7", "C7", "Fmaj7", "Fmaj7", "Fm7", "Bb7", "Gm7", "A7"]
+    bridge_adv = [
+        "Gm7/Bb", "C7/Bb", "Fmaj7/A", "Fmaj7/A",
+        "Fm7/Ab", "Bb7/Ab", "Gm7", "A7",
+    ]
+    bridge_beg = ["Gm", "C7", "F", "F", "Fm", "Bb7", "Gm", "A7"]
+
+    order = [
+        "Intro", "Verse 1", "Verse 2", "Bridge", "Verse 3",
+        "Instrumental", "Bridge 2", "Final Verse", "Outro",
     ]
 
-    instrumental = [
-        "Dmaj7",
-        "Bbdim7",
-        "Am7",
-        "D7b9",
-        "Gmaj7",
-        "Gm6",
-        "F#7",
-        "B7b9",
-        "Bm7",
-        "E7",
-        "Bb7",
-        "A7",
-        "Dm7",
-        "G7",
-        "Dm7",
-        "G13",
-    ]
+    def _form(intro_outro, v, br):
+        return {
+            "Intro": list(intro_outro),
+            "Verse 1": list(v),
+            "Verse 2": list(v),
+            "Bridge": list(br),
+            "Verse 3": list(v),
+            "Instrumental": list(v),
+            "Bridge 2": list(br),
+            "Final Verse": list(v),
+            "Outro": list(intro_outro),
+        }
 
-    intermediate = {
-        "Intro": list(intro_outro),
-        "Verse 1": list(verse),
-        "Verse 2": list(verse),
-        "Bridge": list(bridge),
-        "Verse 3": list(verse),
-        "Instrumental": list(instrumental),
-        "Bridge 2": list(bridge),
-        "Final Verse": list(verse),
-        "Outro": list(intro_outro),
-    }
-
-    def _beg(ch: str) -> str:
-        head = ch.split("/")[0].strip()
-        return (
-            head.replace("maj9", "")
-            .replace("maj7", "")
-            .replace("dim7", "dim")
-            .replace("m7", "m")
-            .replace("m6", "m")
-            .replace("b9", "")
-            .replace("b5", "")
-            .replace("#5", "")
-            .replace("13", "7")
-            .replace("6", "")
-        )
-
-    beginner = {
-        name: [_beg(c) for c in chords]
-        for name, chords in intermediate.items()
-    }
-    advanced = {name: list(chords) for name, chords in intermediate.items()}
+    intermediate = _form(intro_outro_int, verse, bridge)
+    beginner = _form(intro_outro_beg, verse_beg, bridge_beg)
+    advanced = _form(intro_outro_int, verse_adv, bridge_adv)
 
     scale_hints = {
         "Dm7": ["D Dorian"],
-        "G13": ["G Mixolydian"],
-        "Dmaj9": ["D Ionian", "D Lydian"],
+        "G7": ["G Mixolydian", "G Altered"],
+        "F#13": ["F# Mixolydian"],
+        "F#7b13": ["F# Altered"],
+        "B9": ["B Mixolydian"],
+        "E9": ["E Mixolydian"],
+        "Fmaj7": ["F Ionian", "F Lydian"],
+        "Fm7": ["F Dorian"],
+        "Fmaj7/A": ["F Ionian", "F Lydian"],
+        "Gm7/Bb": ["G Dorian"],
+        "C7/Bb": ["C Mixolydian"],
+        "Fm7/Ab": ["F Dorian"],
+        "Bb7/Ab": ["Bb Mixolydian"],
         "Dmaj7": ["D Ionian", "D Lydian"],
         "Bbdim7": ["Whole-Half Diminished"],
         "Am7": ["A Dorian"],
@@ -4987,13 +4940,8 @@ def _wave_chart_pack() -> dict[str, Any]:
         "E7": ["E Mixolydian"],
         "Bb7": ["Bb Mixolydian"],
         "A7": ["A Mixolydian", "A Altered"],
-        "A7#5": ["A Whole Tone", "A Altered"],
         "Gm7": ["G Dorian"],
         "C7": ["C Mixolydian", "C Altered"],
-        "Am6": ["A Dorian", "A Melodic Minor"],
-        "Ab6": ["Ab Lydian", "Ab Ionian"],
-        "Bb7b9": ["Bb Phrygian Dominant", "Bb Half-Whole Diminished"],
-        "G7": ["G Mixolydian", "G Altered"],
     }
 
     section_order = list(intermediate.keys())
@@ -5009,15 +4957,15 @@ def _wave_chart_pack() -> dict[str, Any]:
         "section_order": section_order,
         "composer": "Antônio Carlos Jobim",
         "lyric_cues": {
-            "Intro": ["Bossa turnaround — Dm7 · G13 vamp (nylon guitar + brushes)"],
+            "Intro": ["Bossa turnaround — Dm7 | G7 vamp, one bar each (nylon guitar + brushes)"],
             "Verse 1": ["So close your eyes for that's a lovely way to be…"],
             "Verse 2": ["Second verse — same harmonic story, fuller bass movement"],
-            "Bridge": ["Richer harmony — Am6 · Ab6 · Bb7b9 tension"],
+            "Bridge": ["Richer harmony — Fmaj7 · Fm7 · Bb7 against a descending bass"],
             "Verse 3": ["Third verse before instrumental"],
             "Instrumental": ["Solo section — ideal for jazz improvisation over the form"],
-            "Bridge 2": ["Second bridge — A7#5 lift back toward D"],
+            "Bridge 2": ["Second bridge — Gm7 · A7 lift back toward D"],
             "Final Verse": ["Last vocal pass — gentle dynamic peak"],
-            "Outro": ["Dm7 · G13 fade — classic bossa ending"],
+            "Outro": ["Dm7 | G7 fade — classic bossa ending"],
         },
         "extensions": _ext(
             arrangement_notes=(
@@ -5027,7 +4975,7 @@ def _wave_chart_pack() -> dict[str, Any]:
                 "brushes, light percussion, piano, soft strings — **not** rock drums "
                 "or heavy strumming. Verse: light bossa groove; bridge: richer "
                 "harmony and tension; instrumental: solo-friendly; outro: gentle "
-                "fade on **Dm7 · G13**. Preserve all listed chord colors exactly. "
+                "fade on **Dm7 | G7**. Preserve all listed chord colors exactly. "
                 "Core Brazilian jazz repertoire alongside Girl from Ipanema, "
                 "Corcovado, One Note Samba, Desafinado."
             ),
@@ -5035,6 +4983,7 @@ def _wave_chart_pack() -> dict[str, Any]:
             default_groove="Bossa nova",
             time_signature="4/4",
             form="Intro · Verse ×3 · Bridge ×2 · Instrumental · Outro",
+            full_form_levels=["Beginner", "Intermediate"],
             repertoire_tags=[
                 "Jazz Standard",
                 "Bossa Nova",
@@ -5048,46 +4997,45 @@ def _wave_chart_pack() -> dict[str, Any]:
             harmonic_analysis={
                 "progression_summary": (
                     "D major bossa with chromatic diminished approach, "
-                    "Gm6/F#7 color, and Dm7–G13 turnaround bookends"
+                    "Gm6/F#7 color, and Dm7–G7 turnaround bookends"
                 ),
                 "key_centers": [
                     {
                         "section": "Intro / Outro",
                         "center": "D major (turnaround)",
-                        "progression": "Dm7 → G13 (ii–V in D)",
+                        "progression": "Dm7 | G7 (ii–V in D, one bar)",
                     },
                     {
                         "section": "Verse",
                         "center": "D major → G major",
                         "progression": (
-                            "Dmaj9 → Bbdim7 → Am7 → D7b9 → Gmaj7 → Gm6 → F#7 → "
-                            "B7b9 → Bm7 → E7 → Bb7 → A7 → Dm7 → G7"
+                            "Dmaj7 → Bbdim7 → Am7 → D7b9 → Gmaj7 → Gm6 → F#7 → "
+                            "B7b9 → E7 → Bb7|A7 → Dm7|G7 → Dm7|G7"
                         ),
                     },
                     {
                         "section": "Bridge",
                         "center": "F / D major approach",
-                        "progression": "Gm7 → C7 → Am7 → Am6 → Ab6 → Bb7b9 → Gm7 → A7#5",
+                        "progression": "Gm7 → C7 → Fmaj7 → Fmaj7 → Fm7 → Bb7 → Gm7 → A7",
                     },
                     {
                         "section": "Instrumental",
                         "center": "D major (solo form)",
-                        "progression": "Same verse changes; ends on G13 pickup to outro",
+                        "progression": "Same 12-bar A changes; ends on the Dm7 | G7 vamp into the outro",
                     },
                 ],
                 "ii_v_i_groupings": [
-                    "Intro/Outro: Dm7 → G13 (ii–V in D)",
-                    "Verse bars 3–4: Am7 → D7b9 → Gmaj7 (ii–V–I in G)",
-                    "Verse bars 13–14: Dm7 → G7 (ii–V in D)",
-                    "Bridge bars 1–2: Gm7 → C7 (ii–V in F)",
-                    "Bridge bars 7–8: Gm7 → A7#5 (ii–V toward D)",
+                    "Intro/Outro: Dm7 | G7 (ii–V in D, one bar)",
+                    "Verse bars 3–5: Am7 → D7b9 → Gmaj7 (ii–V–I in G)",
+                    "Verse bars 11–12: Dm7 | G7 (ii–V in D, one bar each)",
+                    "Bridge bars 1–3: Gm7 → C7 → Fmaj7 (ii–V–I in F)",
+                    "Bridge bars 7–8: Gm7 → A7 (back toward D)",
                 ],
                 "substitute_dominants": [
                     "D7b9: altered dominant resolving to Gmaj7",
                     "Bb7: tritone-sub color approaching A7 / D area",
-                    "B7b9: Phrygian-dominant tension before Bm7",
-                    "A7#5: altered dominant with #5 color into final verse/outro",
-                    "G13: extended dominant in turnaround and instrumental tag",
+                    "B7b9: Phrygian-dominant tension before E7",
+                    "Bb7|A7: chromatic approach into the Dm7 | G7 vamp",
                 ],
                 "guide_tone_notes": (
                     "Follow 3rds and 7ths through each Jobim change — e.g. "
@@ -5097,7 +5045,7 @@ def _wave_chart_pack() -> dict[str, Any]:
                 "improvisation_notes": (
                     "Instrumental section is the primary solo canvas — outline "
                     "guide tones, then use scale_suggestions per chord. Bossa "
-                    "eighths stay relaxed; save peak intensity for bridge A7#5 "
+                    "eighths stay relaxed; save peak intensity for the bridge "
                     "and final verse. Section-focus practice loops any verse or "
                     "bridge for isolated improvisation work."
                 ),
@@ -7484,76 +7432,111 @@ def _core_chart_overrides() -> dict[tuple[str, str], dict[str, Any]]:
         ("Wave", "Antonio Carlos Jobim"): _wave_chart_pack(),
         ("Blue Bossa", "Kenny Dorham"): _blue_bossa_chart_pack(),
         ("Fly Me to the Moon", "Bart Howard"): pack("C",
+            # 32-bar form A (1-8), B (9-16), A' (17-24), B' (25-32): lead sheet
+            # (Cleary/UVM, C major) + 8notes + Learn Jazz Standards. The old
+            # chart invented A2 (A7 Dm7 G7 Cmaj7 E7 Am7 A7 Dm7) and a Final A
+            # that repeated A1; the real second half is B (Dm7 G7 Cmaj7 Am7 |
+            # Dm7 G7 Cmaj7 Bm7|E7) and B' (Dm7 G7 Em7b5 A7 | Dm7 G7 C6 Bm7|E7).
             {
                 "A1": ["Am", "Dm", "G7", "C", "F", "Bm7b5", "E7", "Am"],
-                "A2": ["A7", "Dm", "G7", "C", "E7", "Am", "A7", "Dm"],
-                "Bridge": ["Dm", "G7", "C", "Am", "Dm", "G7", "C", "E7"],
-                "Final A / Tag": ["Am", "Dm", "G7", "C", "F", "Bm7b5", "E7", "Am"],
+                "B1": ["Dm", "G7", "C", "Am", "Dm", "G7", "C", "Bm|E7"],
+                "A2": ["Am", "Dm", "G7", "C", "F", "Bm7b5", "E7", "Am"],
+                "B2": ["Dm", "G7", "Em7b5", "A7", "Dm", "G7", "C", "Bm|E7"],
             },
             {
                 "A1": ["Am7", "Dm7", "G7", "Cmaj7", "Fmaj7", "Bm7b5", "E7", "Am7"],
-                "A2": ["A7", "Dm7", "G7", "Cmaj7", "E7", "Am7", "A7", "Dm7"],
-                "Bridge": ["Dm7", "G7", "Cmaj7", "Am7", "Dm7", "G7", "Cmaj7", "E7"],
-                "Final A / Tag": ["Am7", "Dm7", "G7", "Cmaj7", "Fmaj7", "Bm7b5", "E7", "Am7"],
+                "B1": ["Dm7", "G7", "Cmaj7", "Am7", "Dm7", "G7", "Cmaj7", "Bm7|E7"],
+                "A2": ["Am7", "Dm7", "G7", "Cmaj7", "Fmaj7", "Bm7b5", "E7", "Am7"],
+                "B2": ["Dm7", "G7", "Em7b5", "A7", "Dm7", "G7", "C6", "Bm7|E7"],
             },
             {
                 "A1": ["Am9", "Dm9", "G13", "Cmaj9", "Fmaj9", "Bm7b5", "E7b9", "Am9"],
-                "A2": ["A7b9", "Dm9", "G13", "Cmaj9", "E7b9", "Am9", "A7b9", "Dm9"],
-                "Bridge": ["Dm9", "G13", "Cmaj9", "Am9", "Dm9", "G13", "Cmaj9", "E7b9"],
-                "Final A / Tag": ["Am9", "Dm9", "G13", "Cmaj9", "Fmaj9", "Bm7b5", "E7b9", "Am9"],
+                "B1": ["Dm9", "G13", "Cmaj9", "Am9", "Dm9", "G13", "Cmaj9", "Bm7|E7"],
+                "A2": ["Am9", "Dm9", "G13", "Cmaj9", "Fmaj9", "Bm7b5", "E7b9", "Am9"],
+                "B2": ["Dm9", "G13", "Em7b5", "A7b9", "Dm9", "G7b9", "C6", "Bm7|E7"],
             },
+            extensions=_ext(
+                arrangement_notes=(
+                    "**32-bar AB-A'B'** in C. A: **Am7 - Dm7 - G7 - Cmaj7 - "
+                    "Fmaj7 - Bm7b5 - E7 - Am7**. B: Dm7 - G7 - Cmaj7 - Am7 - "
+                    "Dm7 - G7 - Cmaj7 - Bm7|E7. A repeats; the last 8 swap the "
+                    "B turn for **Em7b5 - A7** then Dm7 - G7 - C6 - Bm7|E7. "
+                    "All levels play the complete form. Charts also print "
+                    "A7b9 on the last beat of bars 8/24, Fdim7 in bar 15, "
+                    "and a coda (Fm7 - Bb7 - B7 - C6/9 Basie tag); those are "
+                    "single-source or beat-placement-uncertain and are not "
+                    "encoded."
+                ),
+                full_form_levels=["Beginner", "Intermediate"],
+            ),
         ),
         ("So Nice (Summer Samba)", "Marcos Valle"): pack(
             "F",
+            # Published 32-bar form (Guitar Composer's Toolbox "So Nice (Summer
+            # Samba)" in F, 32 bars; its Real Book variant agrees on the A
+            # changes and on the ending C7b9 Fmaj7 Bb7 F).  Bars 1-16 = "Chorus";
+            # bars 17-32 repeat 1-11 and then take the closing ending.  The
+            # Intro is the catalog's existing 8-bar F vamp (no source found).
             {
                 "Intro": ["F", "F", "F", "F", "F", "F", "F", "F"],
-                "Verse": [
-                    "F", "F", "F", "F",
-                    "Bm", "E7", "Bm", "E7",
-                    "Bb", "Bb", "Bb", "Bb",
-                    "Bbm", "Bbm", "Bbm", "Bbm",
-                ],
                 "Chorus": [
-                    "Am", "D7", "Gm", "C7",
-                    "Em", "A7", "Dm",
-                    "G7", "Gm", "C7", "C7",
+                    "F", "F", "Bdim", "E7",
+                    "Bb", "Bb", "Eb7", "Eb7",
+                    "Am", "D7", "Gm", "Edim|A7",
+                    "Dm", "G7", "Gm", "C7",
                 ],
                 "Chorus (alternate)": [
+                    "F", "F", "Bdim", "E7",
+                    "Bb", "Bb", "Eb7", "Eb7",
                     "Am", "D7", "Gm", "C7",
-                    "F", "Bb", "F",
+                    "F", "Bb7", "F", "Gm|C7",
                 ],
             },
             {
                 "Intro": ["Fmaj7", "F6", "Fmaj7", "F6", "Fmaj7", "F6", "Fmaj7", "F6"],
-                "Verse": [
-                    "Fmaj7", "F6", "Fmaj7", "F6",
-                    "Bm7", "E9", "Bm7", "E9",
-                    "Bbmaj7", "Bb6", "Bbmaj7", "Bb6",
-                    "Bbm7", "Bbm6", "Bbm7", "Bbm6",
-                ],
                 "Chorus": [
-                    "Am7", "D7b9", "Gm7", "C7b9",
-                    "Em7b5", "A7#5", "Dm9",
-                    "G13", "Gm7", "C#9", "C9",
+                    "Fmaj7", "Fmaj7", "Bm7b5", "E7",
+                    "Bbmaj7", "Bbmaj7", "Eb7", "Eb7",
+                    "Am7", "D7b9", "Gm7", "Em7b5|A7",
+                    "Dm7", "G7", "Gm7", "C#7|C7",
                 ],
                 "Chorus (alternate)": [
+                    "Fmaj7", "Fmaj7", "Bm7b5", "E7",
+                    "Bbmaj7", "Bbmaj7", "Eb7", "Eb7",
                     "Am7", "D7b9", "Gm7", "C7b9",
-                    "Fmaj7", "Bb7", "Fmaj7",
+                    "Fmaj7", "Bb7", "F6", "Gm7|C7",
+                ],
+            },
+            {
+                "Intro": ["Fmaj7", "F6", "Fmaj7", "F6", "Fmaj7", "F6", "Fmaj7", "F6"],
+                "Chorus": [
+                    "Fmaj7", "Fmaj7", "Bm7b5", "E7b13",
+                    "Bbmaj7", "Bbmaj7", "Eb7", "Eb7",
+                    "Am7", "D7b9", "Gm7", "Em7b5|A7b13",
+                    "Dm9", "G7", "Gm7", "C#7|C7",
+                ],
+                "Chorus (alternate)": [
+                    "Fmaj7", "Fmaj7", "Bm7b5", "E7b13",
+                    "Bbmaj7", "Bbmaj7", "Eb7", "Eb7",
+                    "Am7", "D7b9", "Gm7", "C7b9",
+                    "Fmaj7", "Bb7", "F6", "Gm7|C7",
                 ],
             },
             status="practice_level_verified",
             lyric_cues={
                 "Intro": ["samba pickup — keep Fmaj7/F6 bounce light"],
-                "Verse": ["lyric entrance over I–VI–bVII–iv color"],
-                "Chorus": ["lift into ii–V–I minor then back to F"],
-                "Chorus (alternate)": ["shorter tag — resolve on Fmaj7"],
+                "Chorus": ["first 16 bars — Bm7b5 · E7 and Eb7 color, then ii–V turnaround"],
+                "Chorus (alternate)": ["second 16 bars — same first 11 bars, then C7b9 · Fmaj7 · Bb7 · F6 ending"],
             },
             extensions=_ext(
                 default_bpm=135,
                 default_groove="Bossa nova",
+                full_form_levels=["Beginner", "Intermediate"],
                 arrangement_notes=(
-                    "Bossa/samba form in **F** — one chord per bar. "
-                    "Use **Chorus (alternate)** for later passes; default groove ~135 BPM."
+                    "Bossa/samba form in **F** — published 32 bars: **Chorus** (16) then "
+                    "**Chorus (alternate)** (16) with the closing ending; two-bar chords "
+                    "are listed once per bar and the turnaround bars split "
+                    "(**Em7b5|A7**, **C#7|C7**). Default groove ~135 BPM."
                 ),
             ),
         ),
@@ -9794,7 +9777,7 @@ def curated_song_records() -> list[dict[str, Any]]:
             extensions=_ext(
                 default_bpm=65,
                 default_groove="Rock groove",
-                time_signature="4/4",
+                time_signature="6/8",
                 vocal_showcase=True,
                 queen_arena_anthem=True,
                 repertoire_tags=[
@@ -10027,9 +10010,53 @@ def curated_song_records() -> list[dict[str, Any]]:
             "B Section": ["Bm7b5", "E7", "Am7", "Am7", "Dm7", "G7", "Cmaj7", "E7"],
         }, composer="Antonio Carlos Jobim"),
         _s("How Insensitive", "Antonio Carlos Jobim", "Jazz", "Dm", {
-            "A Section": ["Dm9", "Dm9/C", "Bdim7", "Bbmaj7", "A7", "A7", "Dm", "Dm"],
-            "B Section": ["Gm7", "C7", "Fmaj7", "Bbmaj7", "Em7b5", "A7", "Dm", "A7"],
-        }, composer="Antonio Carlos Jobim"),
+            # Published 32-bar AB form (standardrepertoire.com: 32 bars; Guitar
+            # Composer's Toolbox "How Insensitive" in D, two charts agree on the
+            # A section; jazzguitar.be player chart Dm9 C#dim7 Cm6 G/B Bbmaj7).
+            # The descending bass D-C#-C-B-Bb moves in two-bar chords; one list
+            # item = one bar, so each two-bar chord is listed twice.
+            "A Section": [
+                "Dm7", "Dm7", "C#dim7", "C#dim7", "Cm6", "Cm6", "G7/B", "G7/B",
+                "Bbmaj7", "Bbmaj7", "Ebmaj7", "Ebmaj7", "Em7b5", "A7b9", "Dm7", "C#7",
+            ],
+            "B Section": [
+                "Cm6", "Cm6", "Bdim7", "Bdim7", "Bbmaj7", "Em7b5|A7b9", "Dm7", "C#7",
+                "Cm7", "F7", "Bm7", "E7b9", "Bbmaj7", "A7b9", "Dm7", "Dm7",
+            ],
+        }, composer="Antonio Carlos Jobim",
+          extensions=_ext(full_form_levels=["Beginner", "Intermediate"]),
+          chart_versions={
+              "Beginner": {
+                  "A Section": [
+                      "Dm", "Dm", "C#dim", "C#dim", "Cm", "Cm", "G7", "G7",
+                      "Bb", "Bb", "Eb", "Eb", "Em", "A7", "Dm", "C#7",
+                  ],
+                  "B Section": [
+                      "Cm", "Cm", "Bdim", "Bdim", "Bb", "Em|A7", "Dm", "C#7",
+                      "Cm", "F7", "Bm", "E7", "Bb", "A7", "Dm", "Dm",
+                  ],
+              },
+              "Intermediate": {
+                  "A Section": [
+                      "Dm7", "Dm7", "C#dim7", "C#dim7", "Cm6", "Cm6", "G7/B", "G7/B",
+                      "Bbmaj7", "Bbmaj7", "Ebmaj7", "Ebmaj7", "Em7b5", "A7b9", "Dm7", "C#7",
+                  ],
+                  "B Section": [
+                      "Cm6", "Cm6", "Bdim7", "Bdim7", "Bbmaj7", "Em7b5|A7b9", "Dm7", "C#7",
+                      "Cm7", "F7", "Bm7", "E7b9", "Bbmaj7", "A7b9", "Dm7", "Dm7",
+                  ],
+              },
+              "Advanced": {
+                  "A Section": [
+                      "Dm9", "Dm9", "C#dim7", "C#dim7", "Cm6", "Cm6", "G7/B", "G7/B",
+                      "Bbmaj7", "Bbmaj7", "Ebmaj7#11", "Ebmaj7#11", "Em7b5", "A7b9", "Dm9", "C#7",
+                  ],
+                  "B Section": [
+                      "Cm6", "Cm6", "Bdim7", "Bdim7", "Bbmaj7", "Em7b5|A7b9", "Dm9", "C#7",
+                      "Cm7", "F7", "Bm7", "E7b9", "Bbmaj7", "A7b9", "Dm9", "Dm9",
+                  ],
+              },
+          }),
         _s("So Nice (Summer Samba)", "Marcos Valle", "Jazz", "F", {
             "Intro": ["Fmaj7", "F6", "Fmaj7", "F6", "Fmaj7", "F6", "Fmaj7", "F6"],
             "Verse": [
