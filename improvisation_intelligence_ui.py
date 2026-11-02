@@ -873,23 +873,38 @@ def _render_composition_melody_in_creative(st: Any, session_state: dict, practic
                     from instrument_transposition import written_key_for_instrument
 
                     display_key = written_key_for_instrument(display_key, instrument, session_state) or display_key
+                # Chord symbols above the measures, in the same key the notes are shown in
+                # (Practice Key, or the instrument's written key when charts are written).
+                try:
+                    from composition_songs_bridge import composition_playback_sections
+
+                    _chords = list((composition_playback_sections(doc, display_key) or {}).get(sec_label) or [])
+                except Exception:
+                    _chords = []
+                _gl = (doc.get("global") if isinstance(doc.get("global"), dict) else {}) or {}
                 score = build_section_score_model(
                     events=projected,
-                    chords=[],
+                    chords=_chords,
                     key=display_key,
-                    meter="4/4",
-                    bpm=int(session_state.get("bpm") or 120),
+                    meter=str(_gl.get("time_signature") or "4/4"),
+                    bpm=int(_gl.get("bpm") or session_state.get("bpm") or 120),
                     lyrics_alignment=alignment,
                     clef=clef,
                 )
                 abc_str = score.get("abc") or ""
                 if abc_str:
                     st.markdown(f"**{sec_label}**")
+                    # Render with the shared abcjs score component. (This used to import the whole
+                    # app module and call render_abc(..., key=...), which has no ``key`` parameter:
+                    # the TypeError fell through to raw ABC text, and the import re-ran the app and
+                    # drew its brand emblem full-size inside the expander.)
                     try:
-                        from streamlit_music_practice_app import render_abc
-                        render_abc(abc_str, key=f"creative_comp_melody_{sec_label}")
+                        import streamlit.components.v1 as _components
+                        from composition_melody_notation import render_abc_html
+
+                        _components.html(render_abc_html(abc_str, height=240), height=240, scrolling=True)
                     except Exception:
-                        st.code(abc_str, language=None)
+                        st.caption("The score could not be drawn here; open Practice or Backing for the notation.")
         except Exception:
             st.caption("Melody notation is available in Practice and Backing views.")
 
