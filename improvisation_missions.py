@@ -1006,8 +1006,12 @@ def _move_mission_by_degree(
             # The instrument's own register owns the octave: refuse only what the instrument cannot play.
             from instrument_register_fit import comfortable_written_range
 
-            _rng = comfortable_written_range(example.instrument, "Advanced")
-            if _rng and (min(new_display) < _rng[0] or max(new_display) > _rng[1]):
+            _hint = motif.get("_register_hint") if isinstance(motif.get("_register_hint"), dict) else {}
+            _rng = comfortable_written_range(str(_hint.get("instrument") or example.instrument), "Advanced")
+            if _rng:
+                _off = int(_hint.get("written_offset") or 0)
+                _rng = (_rng[0] - _off, _rng[1] - _off)
+            if _rng and (min(new_display) < min(_rng[0], min(midis)) or max(new_display) > max(_rng[1], max(midis))):   # never worse than where it already is
                 raise MoveRefused("that would take the phrase outside the instrument's range")
         elif _shift_phrase_into_bounds(list(new_display)) != new_display:
             raise MoveRefused("that would take the phrase outside the staff range")
