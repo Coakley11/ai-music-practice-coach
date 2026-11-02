@@ -1011,6 +1011,14 @@ def gather_backing_filters(session: dict[str, Any]) -> dict[str, Any]:
     meter = session.get(BACKING_METER_WIDGET_KEY)
     if meter is None and BACKING_METER_WIDGET_KEY not in session:
         meter_val = None
+        if bool(session.get(BACKING_METER_OVERRIDE_WIDGET_KEY, False)):
+            # Streamlit drops the radio key while another page is shown; the
+            # override flag survives. A missing meter must not become the "4/4"
+            # fallback (that saved ``(4/4, True)`` over a 3/4 / 6/8 choice, which
+            # Load Last Song then discarded): keep the saved override's meter.
+            saved_blob = session.get(BACKING_STATE_KEY)
+            if isinstance(saved_blob, dict) and saved_blob.get(BACKING_METER_OVERRIDE_WIDGET_KEY):
+                meter_val = saved_blob.get(BACKING_METER_WIDGET_KEY)
     else:
         meter_val = normalize_backing_meter(meter)
     return _normalize_filters(

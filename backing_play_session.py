@@ -241,6 +241,19 @@ def _catalog_song_meter_from_session(session: dict[str, Any], *, fallback: str =
         return fallback
 
 
+def _custom_song_meter_from_session(session: dict[str, Any], *, fallback: str = "4/4") -> str:
+    """Time signature of the active Custom song document, else ``fallback``."""
+    try:
+        from custom_progression_lab import CPL_ACTIVE_KEY
+        from songs.meter import normalize_time_signature
+
+        active = session.get(CPL_ACTIVE_KEY)
+        raw = str((active or {}).get("time_signature") or "").strip() if isinstance(active, dict) else ""
+        return normalize_time_signature(raw) if raw else fallback
+    except Exception:
+        return fallback
+
+
 def _source_defaults_from_session(session: dict[str, Any]) -> dict[str, Any]:
     bpm = 0
     groove = ""
@@ -322,11 +335,23 @@ def _source_defaults_from_session(session: dict[str, Any]) -> dict[str, Any]:
             meter = str(getattr(ctx, "meter", "") or meter).strip() or meter
     except ImportError:
         pass
-    if ctx_source in {"", "regular_song"}:
+    _custom_active = ctx_source == "custom_progression"
+    if not _custom_active and ctx_source in {"", "regular_song"}:
+        try:
+            from songs.music_source import is_custom_progression
+
+            _custom_active = bool(is_custom_progression(session))
+        except Exception:
+            _custom_active = False
+    if ctx_source in {"", "regular_song"} and not _custom_active:
         # A plain Catalog song's source-default meter is the song's own time
         # signature, not the transport "4/4" (that made every 3/4 / 6/8 song look
         # like a user override and let the "default" overwrite the song meter).
         meter = _catalog_song_meter_from_session(session, fallback=meter)
+    elif _custom_active:
+        # A Custom song owns its document meter (meter v3 left the transport "4/4"
+        # here, which reset the widgets / saved blob of a 3/4 or 6/8 Custom song).
+        meter = _custom_song_meter_from_session(session, fallback=meter)
     if int(bpm or 0) <= 0:
         bpm = 100
     if not groove:
