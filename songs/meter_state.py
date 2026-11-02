@@ -49,6 +49,12 @@ def apply_backing_meter_for_song(
                     default_meter=song_default,
                 )
                 st.session_state[LAST_BACKING_METER_SONG] = song_id
+                if not override:
+                    # No genuine user override: a restored/saved meter (the blob
+                    # defaults to "4/4") must never beat the song's own meter.
+                    applied = song_default
+                    st.session_state[BACKING_METER_KEY] = applied
+                    st.session_state[BACKING_METER_OVERRIDE_KEY] = False
                 if applied not in BACKING_TIME_SIGNATURES:
                     applied = song_default
                     st.session_state[BACKING_METER_KEY] = applied

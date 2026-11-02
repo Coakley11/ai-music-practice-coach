@@ -19932,6 +19932,7 @@ elif _studio_page == "backing":
             active_creative_backing_context,
             backing_page_sync_id,
             backing_page_transport_defaults,
+            backing_source_default_meter,
         )
 
         _creative_backing_ctx = active_creative_backing_context(st.session_state)
@@ -19977,7 +19978,11 @@ elif _studio_page == "backing":
         # Current session tempo (slider / play-session) — may differ from source.
         _backing_current_bpm = int(_td_bpm) if int(_td_bpm or 0) > 0 else _backing_source_default_bpm
         _backing_source_default_groove = str(_td_groove)
-        _backing_source_default_meter = str(_td_meter)
+        _backing_source_default_meter = backing_source_default_meter(
+            creative_ctx=_creative_backing_ctx,
+            transport_meter=_td_meter,
+            song_meter=_default_meter,
+        )
     except Exception:
         _bpm_sync_id = _song_bpm_sync_id
         _backing_catalog_default_bpm = int(_default_bpm)

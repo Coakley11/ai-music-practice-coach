@@ -1132,6 +1132,19 @@ def backing_page_transport_defaults(session: dict[str, Any]) -> tuple[int, str, 
     )
 
 
+def backing_source_default_meter(*, creative_ctx: Any, transport_meter: Any, song_meter: Any) -> str:
+    """Source-default meter for the Backing page.
+
+    ``backing_page_transport_defaults`` returns "4/4" whenever there is no Creative
+    context (every plain Catalog / Custom song), which made a 3/4 or 6/8 song
+    render, follow and click at 4/4. Only a Creative (Jam / Mission / SBI) context
+    owns its own meter; otherwise the active song's own time signature wins.
+    """
+    if creative_ctx is not None:
+        return str(transport_meter or song_meter or "4/4")
+    return str(song_meter or transport_meter or "4/4")
+
+
 def _backing_groove_style_from_ctx(ctx: BackingContext) -> str:
     """Map Creative style name to Backing Studio groove/style control value."""
     from songs.playback_defaults import normalize_groove_label
@@ -6759,6 +6772,7 @@ __all__ = [
     "format_backing_context_banner",
     "backing_page_sync_id",
     "backing_page_transport_defaults",
+    "backing_source_default_meter",
     "sync_creative_handoff_keys",
     "sync_live_keys_from_backing_context",
     "creative_specialized_backing_handoff_ready",
