@@ -163,8 +163,8 @@ _SCALE_LABEL = {
 }
 _JAZZ_STYLES = ("jazz", "bebop", "swing", "bossa", "fusion", "latin", "samba", "gypsy")
 _BLUESY_STYLES = ("blues", "rock", "funk", "country", "gospel", "soul", "r&b", "shuffle", "boogie")
-# Missions whose line is chord tones only: no scale is ever introduced for them.
-_CHORD_TONE_MISSIONS = ("chord tone", "guide tone", "5 notes", "motif", "silence", "beat 1")
+# Missions whose rule is chord tones / guide tones / no scalar runs: no scale is ever introduced for them.
+_CHORD_TONE_MISSIONS = ("chord tone", "guide tone", "without scalar")
 
 
 def _spell_collection(root_name: str, scale_key: str) -> list[str]:

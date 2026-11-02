@@ -12673,7 +12673,12 @@ def _render_catalog_song_picker_block(
         st.markdown(
             "<style>\n"
             + genre_search_result_css(sorted({str(r.get("genre") or "") for r in shown}))
-            + "\n[class*='st-key-browse_exclude'] button{min-height:44px;min-width:44px;padding:0;}"
+            + "\n[class*='st-key-browse_exclude'] [data-testid^='stBaseButton']{min-height:44px;min-width:44px;padding:0;}"
+            # Keep song + X on ONE row at phone width (Streamlit would stack the two columns).
+            + "\n[class*='st-key-browse_search_row'] [data-testid='stHorizontalBlock']{flex-wrap:nowrap !important;gap:0.4rem !important;align-items:center;}"
+            + "\n[class*='st-key-browse_search_row'] [data-testid='stColumn']{min-width:0 !important;}"
+            + "\n[class*='st-key-browse_search_row'] [data-testid='stColumn']:first-child{flex:1 1 auto !important;width:auto !important;}"
+            + "\n[class*='st-key-browse_search_row'] [data-testid='stColumn']:last-child{flex:0 0 44px !important;width:44px !important;}"
             + "\n</style>",
             unsafe_allow_html=True,
         )

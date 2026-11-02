@@ -53,7 +53,7 @@ class TestScaleChoiceIsContextual(unittest.TestCase):
         self.assertEqual(select_mission_scale("B7#11", key_center="E")["label"], "B Lydian dominant")
 
     def test_chord_tone_missions_get_no_scale(self):
-        for m in ("Improvise using only chord tones", "Target only guide tones (3rds & 7ths)", "Develop one motif for the entire solo"):
+        for m in ("Improvise using only chord tones", "Target only guide tones (3rds & 7ths)", "Play one chorus without scalar runs"):
             self.assertIsNone(select_mission_scale("B7", key_center="Em", next_chord="Em", level="Advanced", style="Jazz", mission=m))
 
     def test_spelling_matches_the_spec(self):

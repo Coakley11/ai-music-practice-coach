@@ -70,9 +70,15 @@ def fit_motif_to_instrument(motif: dict[str, Any], instrument: str, level: str =
     if not midis or len(midis) != len(motif.get("notes") or midis):
         return motif
     lvl = level or str(motif.get("pattern_level") or motif.get("student_level") or "Intermediate")
+    # The motif's pitch domain: written chart (offset 0) or concert chart (the transposition lower). The hint comes
+    # from the canonical transposition state, so a concert pitch is never compared with a written-pitch range.
+    hint = motif.get("_register_hint") if isinstance(motif.get("_register_hint"), dict) else {}
+    instrument = str(hint.get("instrument") or instrument)
+    offset = int(hint.get("written_offset") or 0)
     rng = comfortable_written_range(instrument, lvl)
     if rng is None:
         return motif
+    rng = (rng[0] - offset, rng[1] - offset)
     fitted = fit_midis_to_register(midis, *rng)
     out = dict(motif)
     out["midi"] = fitted

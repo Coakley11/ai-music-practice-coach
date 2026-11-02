@@ -1124,6 +1124,24 @@ def _instrument_family(instrument: str) -> str:
     return instrument_family(instrument)
 
 
+def _with_register_hint(motif: dict[str, Any], session_state: dict | None, instrument: str) -> dict[str, Any]:
+    """Record which pitch domain (written chart / concert chart) and which saxophone type the register fit must use."""
+    if session_state is None:
+        return motif
+    try:
+        from practice_melody_session import instrument_register_args
+
+        hint = instrument_register_args(session_state, instrument)
+    except Exception:
+        hint = {}
+    out = dict(motif)
+    if hint:
+        out["_register_hint"] = hint
+    else:
+        out.pop("_register_hint", None)
+    return out
+
+
 def _next_chord_in_section(improv_ctx: ImprovSessionContext, section: str, chord: str, session_state: dict | None) -> str:
     chords = [str(c) for c in ((getattr(improv_ctx, "sections", None) or {}).get(section) or [])]
     if not chords:
@@ -1157,10 +1175,11 @@ def _apply_mission_scale(
     (Issue 39) and keep that choice in the Mission state so Sequence Up/Down step through the same collection.
     Chord-tone / guide-tone / pentatonic / blues Missions keep their own collections and are untouched."""
     low = str(mission or "").lower()
-    if not ("scalar" in low and "only" in low):
-        return motif
+    scalar_run = "scalar" in low and "only" in low
+    if "pentatonic" in low or "blues" in low:
+        return motif                                    # these Missions own their collection
     try:
-        from chord_scale_selection import SCALES, select_mission_scale
+        from chord_scale_selection import SCALES, scale_pcs_for, select_mission_scale
 
         sel = select_mission_scale(
             chord,
@@ -1172,6 +1191,18 @@ def _apply_mission_scale(
         )
         n = len([x for x in (motif.get("notes") or []) if str(x).strip()])
         if not sel or n < 2:
+            return motif
+        if not scalar_run:
+            # Any other scale-capable Mission keeps its own phrase; the chosen scale becomes its movement framework
+            # only when every note already belongs to it (a chromatic Mission is never forced into a scale).
+            from improvisation_motif import _midi_from_note
+
+            spcs = scale_pcs_for(sel["key"], chord)
+            if spcs and {_midi_from_note(str(x), 4) % 12 for x in (motif.get("notes") or []) if str(x).strip()} <= spcs:
+                out = dict(motif)
+                out["mission_scale_key"] = sel["key"]
+                out["mission_scale_reason"] = sel["reason"]
+                return out
             return motif
         names = {}
         from music_theory import pitch_class_from_spelled_note
@@ -1314,6 +1345,7 @@ def generate_mission_example(
         motif["_concert_notes"] = list(motif.get("notes") or [])
         motif["_concert_chord"] = str(chord or "").strip()
         motif.pop("_projected_display_key", None)
+        motif = _with_register_hint(motif, session_state, instrument)
     concert = str(improv_ctx.key_center or "C").strip() or "C"
     chart = str(improv_ctx.display_key or concert).strip() or concert
     out = rebuild_mission_outputs(
@@ -1923,7 +1955,9 @@ def load_mission_example(session_state: dict, improv_ctx: ImprovSessionContext) 
         instrument=str(session_state.get("instrument", improv_ctx.instrument)),
         level=str(session_state.get("level", improv_ctx.level)),
         focus=str(session_state.get("focus", improv_ctx.focus)),
-        motif=dict(raw.get("motif") or {}),
+        motif=_with_register_hint(
+            dict(raw.get("motif") or {}), session_state, str(session_state.get("instrument", improv_ctx.instrument))
+        ),
         abc=str(raw.get("abc", "")),
         tab=str(raw.get("tab", "")),
         piano_html=str(raw.get("piano_html", "")),
