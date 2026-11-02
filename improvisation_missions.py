@@ -1666,6 +1666,17 @@ def _derive_mission_example_from_canon(
         # Record the chart domain the display notes now live in.
         motif["_projected_display_key"] = dest_chart
         if not restore:
+            # Chord tones keep the written chord's own spelling (A#m -> E#, not F), as in a fresh example.
+            try:
+                from harmonic_spelling import spell_pitch_classes_for_chord
+
+                if motif.get("chord") and motif.get("midi"):
+                    motif["notes"] = spell_pitch_classes_for_chord(
+                        [int(m) % 12 for m in motif["midi"]], motif["chord"], song_display_key=dest_chart
+                    )
+                    motif["display"] = " – ".join(motif["notes"])
+            except Exception:
+                pass
             # Pentatonic/Blues: re-spell with the one authoritative resolved collection.
             _respell_pentatonic_or_blues_notes(motif, dest_chart, chord=str(out.get("chord") or ""))
             try:

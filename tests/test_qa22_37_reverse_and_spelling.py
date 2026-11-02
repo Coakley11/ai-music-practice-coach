@@ -93,3 +93,18 @@ class TestMissionBackingProgressionIsConcert(unittest.TestCase):
         self.assertEqual(bc.progression, ["B7"])                     # concert harmony is what sounds
         self.assertIn("G#7", bc.progression_label)                   # the written chord is only the label
         self.assertEqual(bc.concert_key, "Em")
+
+
+class TestToggleWrittenAfterGenerationKeepsChordSpelling(unittest.TestCase):
+    def test_a_sharp_minor_uses_e_sharp(self):
+        from instrument_transposition import CHART_IN_INSTRUMENT_KEY_KEY, SELECTED_TRANSPOSING_INSTRUMENT_KEY, written_key_for_type
+
+        s, ctx = _setup(CHORD_TONES, "C#m", "E", level="Advanced", instrument="Saxophone")      # concert chart first
+        s[SELECTED_TRANSPOSING_INSTRUMENT_KEY] = "Alto saxophone (Eb)"
+        s[CHART_IN_INSTRUMENT_KEY_KEY] = True                                                    # then toggle written ON
+        ctx.display_key = written_key_for_type("E", "Alto saxophone (Eb)")
+        ex = ensure_mission_sheet_music_authority(s, load_mission_example(s, ctx), improv_ctx=ctx, instrument="Saxophone", bpm=100)
+        self.assertEqual(ex.motif["chord"], "A#m")
+        self.assertNotIn("F", ex.motif["notes"])
+        self.assertTrue(set(ex.motif["notes"]) <= {"A#", "C#", "E#"}, ex.motif["notes"])
+        self.assertEqual([m for m, _d in decode_abc_events(ex.abc) if m is not None], list(ex.motif["midi"]))
