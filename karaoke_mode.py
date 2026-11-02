@@ -816,8 +816,11 @@ def apply_entry_practice_key(session_state: Any, entry: dict[str, Any] | None = 
     if not pick_key or not key:
         return key
     try:
-        from songs.practice_key_state import PRACTICE_KEY_BY_SOURCE_KEY
+        from songs.practice_key_state import PRACTICE_KEY_BY_SOURCE_KEY, fixed_key_holds_song_keys
 
+        # Fixed Key plays the song in its fixed key and keeps the song's own saved key.
+        if fixed_key_holds_song_keys(session_state):
+            return key
         store = session_state.setdefault(PRACTICE_KEY_BY_SOURCE_KEY, {})
         store[pick_key] = key
     except Exception:
