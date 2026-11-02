@@ -2636,6 +2636,7 @@ def build_custom_progression_context(session: dict[str, Any]) -> BackingContext:
         groove=str(active.get("groove_style") or _default_groove(session)).strip(),
         scope=str(session.get("backing_track_scope") or "Full song"),
         loops=int(active.get("loops") or session.get("backing_track_loops") or 2),
+        meter=str(active.get("time_signature") or "4/4").strip() or "4/4",
         progression=progression,
         progression_label=label,
         loop=True,
