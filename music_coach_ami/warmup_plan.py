@@ -75,7 +75,7 @@ _QUESTION_START = re.compile(r"^\s*(?:why|what(?:\s+is|[’']s)?|how\s+(?:do|doe
 _EXERCISE_NOUN = re.compile(r"\b(?:exercises?|drills?|routine|patterns?|practice|work)\b", re.I)
 _DRILL_PHRASE = re.compile(r"\b(?:long[\s-]?tones?|two[\s-]?note|articulation|tonguing)\b", re.I)
 _DRILL_NOUN = re.compile(r"\b(?:exercises?|drills?|routine)\b", re.I)
-_NOT_WARMUP_TOPIC = re.compile(r"\b(?:guide[\s-]?tones?|chords?|chord\s+tones?|over\s+[a-g][#b]?\d?|over\s+(?:the|a|an|this|that)\b|patterns?|licks?|lines?|pentatonic|blues|"
+_NOT_WARMUP_TOPIC = re.compile(r"\b(?:dorian|phrygian|lydian|mixolydian|aeolian|locrian|melodic\s+minor|harmonic\s+minor|modes?|guide[\s-]?tones?|chords?|chord\s+tones?|over\s+[a-g][#b]?\d?|over\s+(?:the|a|an|this|that)\b|patterns?|licks?|lines?|pentatonic|blues|"
                                r"the\s+same|same\s+\w+\s+with|progressions?|arpeggios?|bass|melody|solo|song)\b", re.I)
 _UNVERIFIED_WORD = re.compile(r"\b(trombone|violin|viola|cello|guitar|bass|oboe|horn|bassoon|ukulele|banjo|recorder|voice|vocals?|singing|harp|tuba|"
                               r"euphonium|flugelhorn|piccolo|mandolin|harmonica|accordion|organ|keyboard|drums?)\b", re.I)

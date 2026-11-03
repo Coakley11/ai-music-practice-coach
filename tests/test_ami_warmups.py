@@ -127,6 +127,7 @@ class TestReadingTheRequest:
 
     @pytest.mark.parametrize("text", [
         "Why should I warm up?", "What is a warmup?", "Is it important to warm up before playing?", "Give me an A minor pentatonic line",
+        "Give me a medium E Dorian exercise for articulation on the flute", "Give me a medium E Dorian exercise for tone on the flute",
         "Give me an advanced scale pattern over Blue Bossa", "How do I make my long tones better?", "Explain the dorian scale"])
     def test_these_are_not(self, text):
         assert not wp.is_warmup_request(text)
