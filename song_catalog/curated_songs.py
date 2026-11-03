@@ -9458,7 +9458,13 @@ def curated_song_records() -> list[dict[str, Any]]:
             "Chorus": ["Ab", "Eb", "Bbm", "Fm"],
             "Bridge": ["Db", "Ab", "Eb", "Bbm"],
             "Solo / Outro Riff": ["Eb", "Bbm", "Fm", "Fm"],
-        }),
+        }, extensions=_ext(
+            default_bpm=131,
+            time_signature="4/4",
+            arrangement_notes=(
+                'Clocks: ~131 BPM, 4/4 (Hooktheory 131, songbpm 131, Waterloo audio-feature DB 131.0). Chart is a rehearsal skeleton (12/16/20 bars); the 5:07 album form is longer and its bar counts are not verified, so the form is unchanged.'
+            ),
+        )),
         _s("A Sky Full of Stars", "Coldplay", "Pop", "F", {
             "Intro": ["F", "Am", "Dm", "Bb"],
             "Verse": ["F", "Am", "Dm", "Bb"],
