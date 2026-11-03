@@ -3188,9 +3188,7 @@ def _im_yours_chart_pack() -> dict[str, Any]:
 
     advanced = {
         name: [
-            c.replace("G|", "Gmaj7|")
-            .replace("|Dsus4", "|Dsus2")
-            .replace("Em|D", "Em7|D")
+            c.replace("|Dsus4", "|Dsus2")
             .replace("G", "Gmaj7")
             .replace("Em", "Em7")
             .replace("C", "Cadd9")
