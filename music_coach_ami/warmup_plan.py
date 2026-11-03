@@ -292,7 +292,7 @@ def ref_from(text: str) -> dict[str, Any]:
     return {}
 
 
-def parse_revision(question: str) -> dict[str, Any] | None:
+def parse_revision(question: str, section_names: tuple[str, ...] | list[str] = ()) -> dict[str, Any] | None:
     """The one change a message asks of the working warmup, or None when it is not about the warmup. Only meaningful while a warmup is active."""
     q = _clean(question)
     if not q:
@@ -320,7 +320,7 @@ def parse_revision(question: str) -> dict[str, Any] | None:
     ref = ref_from(low)
     if ref and ref in [x for x in preserved if x]:
         return {"op": OP_UNSUPPORTED}
-    sop = song_revision(low)
+    sop = song_revision(low, section_names)
     if sop is not None and not (sop["op"] == OP_INSTRUMENT and _asks_for_a_new_warmup_text(low)):
         return sop
     if _OTHER_INTENT.search(low) and not _WARMUP_TALK.search(low) and not ref:
@@ -484,13 +484,18 @@ def is_song_request(question: str) -> bool:
     return False
 
 
-def song_revision(low: str) -> dict[str, Any] | None:
+def song_revision(low: str, section_names: tuple[str, ...] | list[str] = ()) -> dict[str, Any] | None:
     """A change that only makes sense for a song-aware warmup (or an instrument change), read from the words; None when the message is not one."""
     if _EXPLAIN.search(low) and _EXPLAIN_SUBJECT.search(low) and not re.search(r"\b(?:make|change|add|remove|drop|set)\b", low):
         return {"op": OP_EXPLAIN}
     spec = bars_spec(low)
     if spec and re.search(r"\b(?:just|only|use|do|play|practice|work\s+on|limit|restrict|go\s+back|the|first|last|bars?)\b", low) and not re.search(r"\b(?:exercise|exercises|minutes?)\b", low):
         return {"op": OP_BARS, "spec": spec}
+    if section_names:
+        named = ws.find_section(list(section_names), low)
+        verbs = re.search(r"\b(?:only|just|use|switch\s+to|change\s+to|go\s+to|move\s+to|try|do|practice|work\s+on|play|stay\s+(?:in|on)|focus\s+on)\b", low)
+        if named and (verbs or ws._norm(low) in {a for a in ws._aliases(named)} | {f"the {a}" for a in ws._aliases(named)}):
+            return {"op": OP_SECTION, "section": named}
     sec = section_word(low, verbs=True)
     if sec:
         return {"op": OP_SECTION, "section": sec}
@@ -1151,7 +1156,8 @@ def _song_setup(question: str, ctx: Any, req: dict[str, Any], sinfo: dict[str, A
     if ws.sph._beats_per_bar(song.get("meter") or "4/4") != 4:
         msg = f"this chart is in {song.get('meter')}; chord-aware warmups are written in 4/4 for now"
         return (None, None, _song_refusal(f"I can't build that yet: {msg}."), "") if explicit else (None, None, None, msg)
-    name, how = ws.pick_section(song, sinfo["section"])
+    asked = ws.find_section(song["order"], question) or sinfo["section"]
+    name, how = ws.pick_section(song, asked)
     sel: dict[str, Any] = {"section": name, "how": how, "bars": None}
     n_bars = len(song["sections"][name])
     b = sinfo["bars"] or {}
@@ -1166,8 +1172,10 @@ def _song_setup(question: str, ctx: Any, req: dict[str, Any], sinfo: dict[str, A
         sel["bars"] = [a, z]
     if sel["bars"] == [1, n_bars]:
         sel["bars"] = None
-    if sinfo["section"] and how == "active_section":
-        assumptions.append(f"I couldn't find a section called “{sinfo['section']}” in this chart, so I used the section you have open: {name}.")
+    if asked and how in ("active_section", "not_an_intro"):
+        assumptions.append(f"I couldn't find a section called “{asked}” in this chart ({', '.join(song['order'])}), so I used {name}.")
+    elif how == "named" and ws._norm(sinfo["section"]) in ("chorus", "choruses", "head", "form") and ws._norm(name) != ws._norm(sinfo["section"]):
+        assumptions.append(f"This chart has no section named “{sinfo['section']}”, so I used {name} as the chorus.")
     elif how == "chorus_is_active_section":
         assumptions.append(f"This chart has no section named “chorus”, so I used the section you have open as the chorus: {name}.")
     elif how == "not_an_intro":
@@ -1722,7 +1730,8 @@ def handle(question: str, session_ref: Any, ami_ctx: dict[str, Any] | None = Non
         if guess is not None and guess["op"] not in (OP_UNSUPPORTED, OP_MINUTES, OP_ADD_FAMILY, OP_MORE_FAMILY):
             return _simple("There's no warmup from this conversation to change yet. Ask for one first — for example “Give me a 10-minute flute warmup” — and then "
                            "I can shorten it, make it harder, remove or add exercises, slow one down, and undo or redo each change.", failed="no_warmup")
-    op = parse_revision(question) if active else None
+    names = tuple((((current(session) or {}).get("spec") or {}).get("song") or {}).get("order") or ()) if active else ()
+    op = parse_revision(question, names) if active else None
     if op is not None and op["op"] in SONG_OPS and not ((current(session) or {}).get("spec") or {}).get("song") and is_song_request(question):
         op = None                          # "practise the thirds and sevenths of these chords" while a non-song warmup is open starts a song-aware one
     if op is not None and op["op"] in _VIEW_OR_HISTORY:

@@ -91,6 +91,28 @@ def named_song_conflict(phrase: str, song: dict[str, Any]) -> str:
     return _clean(phrase)
 
 
+def _aliases(name: str) -> list[str]:
+    """How a musician might say a section: its name, and the words inside brackets or around a slash ('B (Bridge)' -> 'bridge', 'Final A / Outro' -> 'outro')."""
+    out = [_norm(name)]
+    for part in re.split(r"[()/]", name):
+        n = _norm(part)
+        if n and n not in out:
+            out.append(n)
+    return [a for a in out if a]
+
+
+def find_section(order: list[str], text: str) -> str:
+    """The section of THIS song a message names ('A3', 'the bridge', 'section b', 'outro'), or ''. Matched against the song's own section names, longest first."""
+    t = f" {_norm(text)} "
+    for name in sorted(order, key=lambda n: -len(_norm(n))):
+        for a in _aliases(name):
+            if len(a) == 1 and not re.search(rf" (?:section|part) {re.escape(a)} | {re.escape(a)} section ", t):
+                continue                                         # a lone letter is a section only when it is called one
+            if f" {a} " in t:
+                return name
+    return ""
+
+
 def pick_section(song: dict[str, Any], wanted: str = "") -> tuple[str, str]:
     """(section name, how it was chosen). ``wanted`` is the musician's word ('bridge', 'chorus', 'section b', ...); '' means the app's active section."""
     names = song["order"]

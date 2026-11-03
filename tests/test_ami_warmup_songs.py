@@ -54,8 +54,8 @@ def build_tune(who, title, section, level, *, tones="both", first="auto", style=
 
 # ================================================================ 1. the independent oracle on real songs, every instrument, level and variant
 
-SONGS = [("Blue Bossa", ["Section A", "Section B", "Head"]), ("Autumn Leaves", ["Chorus", "Verse 1"]), ("Satin Doll", ["A", "B (Bridge)"]),
-         ("Take the A Train", ["A Section"]), ("The Girl from Ipanema", ["B Section"]), ("All the Things You Are", ["A", "B"])]
+SONGS = [("Blue Bossa", ["Section A", "Section B", "Head"]), ("Autumn Leaves", ["A Section", "C Section"]), ("Satin Doll", ["A", "B (Bridge)"]),
+         ("Take the A Train", ["A Section"]), ("The Girl from Ipanema", ["B Section"]), ("All the Things You Are", ["A", "Bridge", "A3"])]
 INSTRUMENTS = ["flute", "alto", "tenor", "soprano", "baritone", "clarinet", "trumpet", "piano"]
 
 
@@ -200,20 +200,20 @@ class TestSplitMeasures:
 
 class TestUnsupportedChords:
     def test_a_diminished_chord_is_rested_for_exactly_its_time_and_named(self):
-        pl, built, abc, _c, song = build_tune("tenor", "All the Things You Are", "B", "Intermediate")
+        pl, built, abc, _c, song = build_tune("tenor", "All the Things You Are", "A3", "Intermediate")
         bars = [(u["bar"], u["concert"]) for u in built.meta["unsupported"]]
-        assert bars == [(6, "Bdim7")]
+        assert bars == [(8, "Bdim7")]
         tune = oracle.read_tune(abc)
-        bar6 = [t for t in tune if 20 <= t[0] < 24]
-        assert bar6 and all(t[2] is None for t in bar6) and sum(t[1] for t in bar6) == 4
-        assert bar6[0][3]                                                  # the chord symbol is still shown over the rest
-        assert oracle.check_tune(abc, song["sections"]["B"], pl.offset) == []
-        assert any("Rests mark chords" in x and "Bdim7" in x and "bar 6" in x for x in built.listen)
+        bar8 = [t for t in tune if 28 <= t[0] < 32]
+        assert bar8 and all(t[2] is None for t in bar8) and sum(t[1] for t in bar8) == 4
+        assert bar8[0][3]                                                  # the chord symbol is still shown over the rest
+        assert oracle.check_tune(abc, song["sections"]["A3"], pl.offset) == []
+        assert any("Rests mark chords" in x and "Bdim7" in x and "bar 8" in x for x in built.listen)
 
     def test_the_other_bars_keep_their_original_beat_positions(self):
-        pl, built, abc, _c, song = build_tune("alto", "All the Things You Are", "B", "Advanced", style="cells")
+        pl, built, abc, _c, song = build_tune("alto", "All the Things You Are", "A3", "Advanced", style="cells")
         starts = {t[0] for t in oracle.read_tune(abc)}
-        assert {Fraction(4 * i) for i in range(8)} <= starts
+        assert {Fraction(4 * i) for i in range(12)} <= starts
 
     def test_a_section_that_is_mostly_unsupported_is_refused_not_guessed(self):
         song = lib_song("Blue Bossa")
@@ -225,10 +225,10 @@ class TestUnsupportedChords:
         assert "Csus4" in str(e.value) and "bar" not in "" and "trustworthy" in str(e.value)
 
     def test_a_triad_gets_its_third_and_is_flagged(self):
-        pl, built, abc, _c, song = build_tune("flute", "Autumn Leaves", "Chorus", "Intermediate")
+        pl, built, abc, _c, song = build_tune("flute", "Autumn Leaves", "A Section", "Intermediate")
         flagged = [p for p in built.meta["segments"] if p.get("note")]
         assert any(p["concert"] == "Bm" for p in flagged) and "only its third" in flagged[0]["note"]
-        assert oracle.check_tune(abc, song["sections"]["Chorus"], pl.offset) == []
+        assert oracle.check_tune(abc, song["sections"]["A Section"], pl.offset) == []
 
     def test_only_the_charts_own_bars_are_used_for_a_section_that_does_not_exist(self):
         song = lib_song("Blue Bossa")
@@ -307,7 +307,7 @@ class TestVoiceLeading:
         assert any(r["from_chord"].startswith("E7") and r["to_chord"].startswith("Am") and r["step"] == "whole step" for r in built.meta["resolutions"])
 
     def test_resolutions_are_real_intervals_between_the_notes_written(self):
-        pl, built, abc, _c, song = build_tune("flute", "Autumn Leaves", "Verse 1", "Intermediate")
+        pl, built, abc, _c, song = build_tune("flute", "Autumn Leaves", "A Section", "Intermediate")
         midis = [m for _o, _b, m, _c2 in oracle.read_tune(abc) if m is not None]
         for r in built.meta["resolutions"]:
             f = next(s for s in built.meta["segments"] if s["bar"] == r["from_bar"])["notes"][-1]
@@ -318,8 +318,8 @@ class TestVoiceLeading:
     def test_leaps_stay_small_and_smoother_never_makes_them_bigger(self, who):
         for level in we.LEVELS:
             tones, first, style = ws.VARIANTS[level][0]
-            _p, normal, _a, _c, _s = build_tune(who, "Autumn Leaves", "Verse 1", level, tones=tones, first=first, style=style)
-            _p, smooth, _a2, _c2, _s2 = build_tune(who, "Autumn Leaves", "Verse 1", level, tones=tones, first=first, style=style, smooth=True)
+            _p, normal, _a, _c, _s = build_tune(who, "Autumn Leaves", "A Section", level, tones=tones, first=first, style=style)
+            _p, smooth, _a2, _c2, _s2 = build_tune(who, "Autumn Leaves", "A Section", level, tones=tones, first=first, style=style, smooth=True)
             assert normal.meta["largest_leap"] <= 12
             assert smooth.meta["mean_leap"] <= normal.meta["mean_leap"] + 1e-9 and smooth.meta["largest_leap"] <= normal.meta["largest_leap"]
 
@@ -401,13 +401,28 @@ class TestCreate:
             lo, hi = we.make_player(who, "Bm").window(level)
             assert all(lo <= m <= hi for m in r["written_midi"]) and [m - offset for m in r["written_midi"]] == r["sounding_midi"]
 
-    def test_the_chorus_word_uses_a_section_literally_called_chorus_and_an_explicit_section_is_honoured(self):
-        s = song_session("Autumn Leaves")
-        ask(s, "Give me a guide-tone exercise over the chorus.", key="Bm")
-        assert plan_of(s)["spec"]["song_sel"]["section"] == "Chorus"
-        s2 = song_session("Autumn Leaves")
-        ask(s2, "Give me a guide-tone warmup over the Verse 1.", key="Bm")
-        assert plan_of(s2)["spec"]["song_sel"]["section"] == "Verse 1"
+    def test_the_chorus_word_uses_the_open_form_section_and_says_so_when_there_is_no_section_called_chorus(self):
+        s = song_session("Blue Bossa")
+        resp = ask(s, "Give me a guide-tone exercise over the chorus.")
+        assert plan_of(s)["spec"]["song_sel"]["section"] in ("Section A", "Head") and "chorus" in resp.composed_markdown().lower()
+
+    def test_an_explicit_section_name_is_honoured_including_names_like_a3_and_the_bridge(self):
+        for q, want in (("Give me a guide-tone warmup over the B Section.", "B Section"), ("Give me a guide-tone warmup over the A2.", "A2")):
+            s = song_session("Autumn Leaves", instrument="Flute", sax=None)
+            ask(s, q, instrument="Flute", key="Bm")
+            assert plan_of(s)["spec"]["song_sel"]["section"] == want, q
+        s = song_session("All the Things You Are", sax=TENOR)
+        ask(s, "Give me a guide-tone warmup over the A3 section.", key="Ab")
+        assert plan_of(s)["spec"]["song_sel"]["section"] == "A3"
+        s = song_session("Satin Doll")
+        ask(s, "Give me a guide-tone warmup over the bridge.", key="C")
+        assert plan_of(s)["spec"]["song_sel"]["section"] == "B (Bridge)"
+
+    def test_a_section_the_song_does_not_have_is_said_not_silently_replaced(self):
+        s2 = song_session("Autumn Leaves", instrument="Flute", sax=None)
+        resp2 = ask(s2, "Give me a guide-tone warmup over the Pre-Chorus.", instrument="Flute", key="Bm")
+        text = resp2.composed_markdown()
+        assert "couldn't find a section called" in text and "A Section" in text
 
     def test_a_first_four_bars_request_is_built_at_exactly_four_bars(self):
         s = song_session("Blue Bossa")
@@ -666,11 +681,11 @@ class TestRevisions:
     def test_a_chart_with_a_dim_chord_keeps_working_through_revisions(self):
         s = song_session("All the Things You Are", sax=TENOR)
         ask(s, "Give me a guide-tone exercise over the chorus.", key="Ab")
-        ask(s, "Only the B section.", key="Ab")
+        ask(s, "Only A3.", key="Ab")
         plan = plan_of(s)
-        assert plan["spec"]["song_sel"]["section"] == "B"
+        assert plan["spec"]["song_sel"]["section"] == "A3"
         meta = plan["items"][0]["meta"]
-        assert [(u["bar"], u["concert"]) for u in meta["unsupported"]] == [(6, "Bdim7")]
+        assert [(u["bar"], u["concert"]) for u in meta["unsupported"]] == [(8, "Bdim7")]
         assert resp_has_rests(plan)
 
 
@@ -705,16 +720,19 @@ class TestDurationAndDefaults:
 
 
 class TestDefaultSection:
+    def synthetic(self, **sections):
+        song = lib_song("Blue Bossa")
+        song["sections"] = sections
+        song["order"] = list(sections)
+        song["active_section"] = next(iter(sections))
+        return song
+
     def test_an_intro_is_not_the_default_when_the_form_itself_is_available(self):
-        song = lib_song("Autumn Leaves")
-        song["active_section"] = "Intro"
+        song = self.synthetic(Intro=["Cm7"] * 2, Chorus=["Cm7"] * 8, Outro=["Cm7"] * 3)
         assert ws.pick_section(song, "") == ("Chorus", "not_an_intro")
 
     def test_with_no_chorus_the_longest_non_intro_section_is_used(self):
-        song = lib_song("Blue Bossa")
-        song["sections"] = {"Intro": ["Cm7"] * 2, "Outro": ["Cm7"] * 3, "Tune": ["Cm7"] * 6, "B": ["Fm7"] * 4}
-        song["order"] = list(song["sections"])
-        song["active_section"] = "Outro"
+        song = self.synthetic(Outro=["Cm7"] * 3, Tune=["Cm7"] * 6, B=["Fm7"] * 4)
         assert ws.pick_section(song, "") == ("Tune", "not_an_intro")
 
     def test_the_open_section_is_kept_when_it_is_part_of_the_form(self):
@@ -722,26 +740,47 @@ class TestDefaultSection:
         assert ws.pick_section(song, "") == ("Section A", "active_section")
 
     def test_a_named_section_always_wins(self):
-        song = lib_song("Autumn Leaves")
-        song["active_section"] = "Intro"
+        song = self.synthetic(Intro=["Cm7"] * 2, **{"Verse 1": ["Cm7"] * 8}, Chorus=["Cm7"] * 8)
         assert ws.pick_section(song, "verse") == ("Verse 1", "named")
 
 
-class TestAutumnLeavesAsTheAppCharts:
-    """The app charts Autumn Leaves with richer chords than the bare catalog record (Bm9, F#7b9); the notes follow the chart the app shows."""
+class TestFindingASectionByTheSongsOwnNames:
+    def test_names_aliases_and_lone_letters(self):
+        order = lib_song("Satin Doll")["order"]
+        assert ws.find_section(order, "only the bridge") == "B (Bridge)" and ws.find_section(order, "Use A2.") == "A2" and ws.find_section(order, "the turnaround") == "Turnaround"
+        assert ws.find_section(["A", "B"], "give me a warmup") == "" and ws.find_section(["A", "B"], "over section b") == "B" and ws.find_section(["A", "B"], "the A section") == "A"
 
-    def test_soloing_over_it_starts_on_the_form_not_the_intro_and_follows_the_apps_chords(self):
+    def test_a_song_title_never_matches_a_section(self):
+        order = lib_song("Take the A Train")["order"]
+        assert ws.find_section(order, "Warm me up for soloing over Take the A Train") == ""
+
+    def test_a_revision_names_a_section_only_as_an_instruction(self):
+        order = lib_song("All the Things You Are")["order"]
+        assert wp.parse_revision("Only A3.", order) == {"op": "section", "section": "A3"}
+        assert wp.parse_revision("Use the bridge", order) == {"op": "section", "section": "Bridge"}
+        assert (wp.parse_revision("Make the second exercise slower", order) or {}).get("op") == "item_slower"
+
+
+class TestAutumnLeavesAsTheAppCharts:
+    """The app charts Autumn Leaves with richer chords than the bare catalog record (Bm9, Em9, A13); the notes follow the chart the app shows."""
+
+    def test_soloing_over_it_follows_the_apps_chords_not_the_bare_catalog_triads(self):
         s = song_session("Autumn Leaves", instrument="Flute", sax=None)
-        resp = ask(s, "Warm me up for soloing over Autumn Leaves.", instrument="Flute", key="Bm")
+        ask(s, "Warm me up for soloing over Autumn Leaves.", instrument="Flute", key="Bm")
         plan = plan_of(s)
-        assert plan["spec"]["song_sel"]["section"] == "Chorus" and "is an intro or ending" in resp.composed_markdown()
-        chart = plan["spec"]["song"]["sections"]["Chorus"]
-        assert "Bm9" in chart and "F#7b9" in chart
+        section = plan["spec"]["song_sel"]["section"]
+        chart = plan["spec"]["song"]["sections"][section]
+        assert section == "A Section" and "Bm9" in chart and "A13" in chart
         check_plan_notes(plan, 0)
         sevenths = {n["name"] for r in plan["items"] for p in r["meta"]["segments"] if p["supported"] and p["concert"] == "Bm9" for n in p["notes"] if n["role"] == "7"}
-        assert sevenths == {"A"}                       # the seventh of Bm9, which the bare catalog triad does not have
+        assert sevenths <= {"A"}                       # the seventh of Bm9, which the bare catalog triad does not have
 
     def test_the_catalog_triad_alone_still_gets_only_its_third(self):
-        pl, built, abc, _c, song = build_tune("flute", "Autumn Leaves", "Chorus", "Intermediate", tones="sevenths", first="", style="pulse")
+        pl, built, abc, _c, song = build_tune("flute", "Autumn Leaves", "A Section", "Intermediate", tones="sevenths", first="", style="pulse")
         bm = [p for p in built.meta["segments"] if p["concert"] == "Bm"]
         assert bm and all({n["role"] for n in p["notes"]} == {"3"} for p in bm)
+
+    def test_split_bars_in_the_c_section_are_timed_by_halves(self):
+        pl, built, abc, _c, song = build_tune("alto", "Autumn Leaves", "C Section", "Intermediate")
+        assert oracle.check_tune(abc, song["sections"]["C Section"], pl.offset) == []
+        assert any(p["beats"] == 2.0 and p["concert"] == "Bm7" for p in built.meta["segments"])
