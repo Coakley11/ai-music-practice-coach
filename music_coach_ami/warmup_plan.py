@@ -83,15 +83,17 @@ _INSTRUMENT = re.compile(r"\b(?:(soprano|alto|tenor|bari(?:tone)?)\s+sax(?:ophon
 _LEVEL = [("Beginner", re.compile(r"\b(?:beginner|beginning|novice|easy|simple|basic|starter)\b", re.I)),
           ("Advanced", re.compile(r"\b(?:advanced|hard|difficult|challenging|expert)\b", re.I)),
           ("Intermediate", re.compile(r"\b(?:intermediate|medium|moderate)\b", re.I))]
+_PROGRESSIVE = re.compile(r"\b(?:increasingly|progressively|gradually|steadily)\s+(?:more\s+)?(?:difficult|challenging|advanced|hard(?:er)?|wide(?:r)?|demanding)\b|"
+                          r"\b(?:getting|growing|building)\s+(?:more\s+)?(?:difficult|challenging|harder|wider)\b", re.I)
 _MINUTES = re.compile(r"\b(\d+(?:\.\d+)?|(?:" + "|".join(_NUMBER_WORDS) + r"))[\s-]*(?:minutes?|mins?)\b", re.I)
 _HALF_HOUR = re.compile(r"\bhalf[\s-]?(?:an?\s+)?hour\b|\b30[\s-]?min", re.I)
 _HOUR = re.compile(r"\b(?:an?|one|1)[\s-]?hour\b", re.I)
 _KEY = re.compile(r"\bin\s+(?:the\s+key\s+of\s+)?([A-G](?:#|b|♯|♭)?)(?:\s*(major|minor|maj|min|m)\b)?(?=[\s.,!?;]|$)")
 _NEG = re.compile(r"\b(?:no|without|skip|exclude|excluding|avoid|except|not\s+(?:any|the)|don[’']?t\s+(?:include|add|want|need|use|do|give)(?:\s+(?:me|any))?|"
-                  r"do\s+not\s+(?:include|add|use)|leave\s+out|nothing\s+with)\s+(?:any\s+|the\s+|more\s+|of\s+the\s+|the\s+)?"
+                  r"do\s+not\s+(?:include|add|use)|leave\s+out|nothing\s+with|(?:but|and|or|plus)\s+not|instead\s+of|rather\s+than|other\s+than)\s+(?:any\s+|the\s+|more\s+|of\s+the\s+|the\s+)?"
                   r"(?:" + _FAMILY_ANY + r")(?:\s+(?:exercises?|drills?|work))?", re.I)
-_INTERVAL_WORD = {"seconds": r"(?:diatonic\s+)?seconds|2nds", "thirds": r"thirds?|3rds", "fourths": r"fourths?|4ths", "fifths": r"fifths?|5ths",
-                  "sixths": r"sixths?|6ths", "sevenths": r"sevenths?|7ths", "octaves": r"octaves?|8ves"}
+_INTERVAL_WORD = {"seconds": r"(?:diatonic\s+)?seconds|2nds", "thirds": r"thirds|third(?!\s+(?:one|exercise|item|drill|part)\b)|3rds", "fourths": r"fourths|fourth(?!\s+(?:one|exercise|item|drill|part)\b)|4ths", "fifths": r"fifths|fifth(?!\s+(?:one|exercise|item|drill|part)\b)|5ths",
+                  "sixths": r"sixths|sixth(?!\s+(?:one|exercise|item|drill|part)\b)|6ths", "sevenths": r"sevenths|seventh(?!\s+(?:one|exercise|item|drill|part)\b)|7ths", "octaves": r"octaves?|8ves"}
 _SONG_AWARE = re.compile(r"\b(?:solo(?:ing)?|improvis\w*|chord\s+(?:changes|progression|tones?)|the\s+changes|these\s+chords|guide[\s-]?tones?|"
                          r"over\s+(?:the\s+)?(?:chorus|verse|bridge|section|chart|changes)|the\s+chorus|this\s+song|the\s+song)\b", re.I)
 _TONE_FOCUS = re.compile(r"\b(?:tone|sound|breath(?:ing)?|embouchure|intonation|centered|resonan\w*)\b", re.I)
@@ -146,7 +148,7 @@ def parse_request(question: str) -> dict[str, Any]:
     q = _clean(question)
     low = q.lower()
     out: dict[str, Any] = {"raw": q, "instrument_word": "", "sax_type_word": "", "unverified": "", "level": "", "minutes": None, "key": "", "families": [],
-                           "excluded": [], "intervals": [], "artic": [], "focus": "", "song_aware": False, "derived_from": ""}
+                           "excluded": [], "intervals": [], "artic": [], "focus": "", "song_aware": False, "derived_from": "", "progressive": False}
     m = _INSTRUMENT.search(q)
     if m:
         if m.group(1):
@@ -159,8 +161,10 @@ def parse_request(question: str) -> dict[str, Any]:
         u = _UNVERIFIED_WORD.search(q)
         if u:
             out["unverified"] = u.group(1).lower()
+    progressive = bool(_PROGRESSIVE.search(low))
+    level_text = _PROGRESSIVE.sub(" ", low)
     for level, rx in _LEVEL:
-        if rx.search(low):
+        if rx.search(level_text):
             out["level"] = level
             break
     out["minutes"] = _minutes_in(low)
@@ -206,6 +210,7 @@ def parse_request(question: str) -> dict[str, Any]:
     out["focus"] = focus
     out["derived_from"] = derived
     out["song_aware"] = bool(_SONG_AWARE.search(low))
+    out["progressive"] = progressive
     return out
 
 
@@ -227,6 +232,21 @@ _ALL = re.compile(r"\b(?:show|see|display|open|go\s+(?:back\s+)?to|return\s+to|b
 _GOTO = re.compile(r"\b(?:show|go\s+to|jump\s+to|open|take\s+me\s+to|start\s+(?:with|at)|play)\s+(?:me\s+)?(?:the\s+)?(?:exercise\s*#?\s*(\d+)|(\w+)\s+exercise|number\s+(\d+))\b", re.I)
 _REF_NUM = re.compile(r"\b(?:exercise|number|no\.?|item|drill)\s*#?\s*(\d+)\b|#\s*(\d+)\b", re.I)
 _REF_ORD = re.compile(r"\b(?:the\s+)?(first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|last|1st|2nd|3rd|4th|5th|6th|7th|8th|9th|10th)\s+(?:exercise|one|item|drill|part)\b", re.I)
+_ORD_WORD = r"(?:first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|last|1st|2nd|3rd|4th|5th|6th|7th|8th|9th|10th)"
+_PRESERVE = re.compile(r"(?:[,;]\s*)?(?:\b(?:but|and|while|though)\s+)?\b(?:keep|leave|don[’']?t\s+(?:change|touch|alter)|do\s+not\s+(?:change|touch|alter))\s+"
+                       r"(?:the\s+)?(?:" + _ORD_WORD + r"(?:\s+(?:exercise|one|item|drill|part))?|(?:exercise|number|item|drill)\s*#?\s*\d+)\s*(?:exactly\s+|just\s+)?"
+                       r"(?:as\s+(?:it\s+is|is|they\s+are)|alone|the\s+same|unchanged|untouched)?", re.I)
+
+
+def _preserved_ref(text: str) -> dict[str, Any]:
+    m = re.search(_ORD_WORD, text, re.I)
+    if m:
+        w = m.group(0).lower()
+        return {"index": -1 if w == "last" else _ORDINALS[w]}
+    m = re.search(r"\d+", text)
+    return {"index": int(m.group(0))} if m else {}
+
+
 _VERB_REMOVE = r"(?:remove|drop|delete|take\s+out|get\s+rid\s+of|skip|cut|lose|ditch|leave\s+out|eliminate)"
 _VERB_ADD = r"(?:add|include|put\s+in|throw\s+in|bring\s+in|work\s+in|insert)"
 _SLOWER = re.compile(r"\b(?:slower|slow(?:\s+(?:it\s+)?down)?|more\s+slowly|reduce\s+the\s+tempo|lower\s+the\s+tempo)\b", re.I)
@@ -277,7 +297,11 @@ def parse_revision(question: str) -> dict[str, Any] | None:
             return {"op": OP_GOTO, "index": int(n)}
     if _ALL.search(low) and not re.search(r"\b(?:remove|drop|add|make|change)\b", low):
         return {"op": OP_ALL}
+    preserved = [_preserved_ref(m.group(0)) for m in _PRESERVE.finditer(low)]
+    low = _PRESERVE.sub(" ", low)             # "keep the first exactly as it is" says what NOT to touch; it must not pick the exercise to change
     ref = ref_from(low)
+    if ref and ref in [x for x in preserved if x]:
+        return {"op": OP_UNSUPPORTED}
     if _OTHER_INTENT.search(low) and not _WARMUP_TALK.search(low) and not ref:
         return None                       # "give me a scale pattern over Blue Bossa" is not a change to the warmup
     fam_mention = [f for pattern, f in _FAMILY_WORDS.items() if re.search(rf"\b(?:{pattern})\b", low, re.I)]
@@ -294,11 +318,11 @@ def parse_revision(question: str) -> dict[str, Any] | None:
     iv = [i for i, p in _INTERVAL_WORD.items() if re.search(rf"\b(?:{p})\b", low)]
     if iv and re.search(r"\b(?:change|switch|make|turn|set|use|swap|replace)\b", low) and (re.search(r"\binterval", low) or ref.get("family") == "intervals" or ref.get("index")):
         return {"op": OP_INTERVAL, "interval": iv[0], "ref": ref}
-    # level
+    # level (for one named exercise, harder / easier is a faster / slower tempo: the one difficulty I can change on a single exercise)
     if re.search(r"\b(?:more\s+advanced|harder|more\s+difficult|more\s+challenging|step\s+it\s+up|challenge\s+me|advance\s+it|a\s+(?:bit|little)\s+harder|up\s+the\s+level|increase\s+the\s+difficulty)\b", low):
-        return {"op": OP_HARDER}
+        return {"op": OP_ITEM_FASTER, "ref": ref, "challenge": True} if ref else {"op": OP_HARDER}
     if re.search(r"\b(?:easier|simpler|less\s+(?:advanced|difficult|challenging)|more\s+basic|a\s+(?:bit|little)\s+easier|decrease\s+the\s+difficulty|too\s+(?:hard|difficult))\b", low):
-        return {"op": OP_EASIER}
+        return {"op": OP_ITEM_SLOWER, "ref": ref, "challenge": True} if ref else {"op": OP_EASIER}
     lm = re.search(r"\b(?:make|set|change)\s+(?:it|the\s+warm[\s-]?up)\s+(?:to\s+|a\s+|an\s+)?(beginner|intermediate|advanced)\b", low)
     if lm:
         return {"op": OP_LEVEL, "level": lm.group(1).capitalize()}
@@ -354,6 +378,7 @@ def is_warmup_message(question: str) -> bool:
 DEFAULT_FAMILIES = {"Beginner": ["long_tones", "scale", "articulation"], "Intermediate": ["long_tones", "scale", "intervals", "articulation"],
                     "Advanced": ["long_tones", "scale", "intervals", "articulation"]}
 BASE_WEIGHT = {"long_tones": 1.0, "scale": 1.3, "intervals": 1.2, "articulation": 1.0}
+PROGRESSIVE_INTERVALS = {"Beginner": ["thirds", "fourths"], "Intermediate": ["thirds", "fourths", "fifths"], "Advanced": ["thirds", "fourths", "fifths", "sixths"]}
 DEFAULT_INTERVALS = {"Beginner": ["thirds"], "Intermediate": ["thirds", "fourths"], "Advanced": ["thirds", "fourths", "fifths"]}
 DEFAULT_ARTIC = {"Beginner": ["repeated", "two_note"], "Intermediate": ["slur_tongue", "two_note", "repeated", "contrast"],
                  "Advanced": ["slur_tongue", "repeated", "contrast", "two_note"]}
@@ -400,6 +425,8 @@ def _new_item(spec: dict[str, Any], family: str) -> dict[str, Any] | None:
     n = len(have)
     if n >= FAMILY_CAP.get(family, 4):
         return None
+    if family == "intervals" and spec.get("widening") and n >= len(spec.get("intervals") or []):
+        return None                       # a widening run ends at its widest interval; extra time becomes extra plays, never a narrower one again
     params: dict[str, Any] = {}
     if family == "intervals":
         pool = spec.get("intervals") or DEFAULT_INTERVALS[spec["level"]]
@@ -414,6 +441,20 @@ def _new_item(spec: dict[str, Any], family: str) -> dict[str, Any] | None:
     else:
         params = {"variant": n}
     return {"uid": _next_uid(spec), "family": family, "params": params, "tempo": None, "size": spec.get("size") or "full", "keep": n == 0}
+
+
+def _interval_pool(req: dict[str, Any], families: list[str], level: str, assumptions: list[str]) -> list[str]:
+    """The intervals the musician named; or, for "increasingly difficult intervals", a widening run (each stated, none dropped to save time)."""
+    named = [i for i in req["intervals"] if i in we.INTERVALS]
+    if named or not req.get("progressive") or "intervals" not in families:
+        return named
+    run = list(PROGRESSIVE_INTERVALS[level])
+    assumptions.append("The interval exercises get wider as the warmup goes on: " + ", ".join(run) + ".")
+    return run
+
+
+def _widening(req: dict[str, Any], families: list[str]) -> bool:
+    return bool(req.get("progressive")) and "intervals" in families and not [i for i in req["intervals"] if i in we.INTERVALS]
 
 
 def initial_items(spec: dict[str, Any]) -> None:
@@ -913,7 +954,7 @@ def create(question: str, session_ref: Any, ami_ctx: dict[str, Any] | None = Non
     spec: dict[str, Any] = {
         "instrument": player.key, "level": level, "level_source": l_source, "minutes": minutes, "minutes_source": m_source, "concert_key": concert,
         "key_source": k_source, "families": families, "explicit": explicit, "excluded": list(req["excluded"]), "focus": focus,
-        "intervals": [i for i in req["intervals"] if i in we.INTERVALS], "artic": list(req["artic"]), "more": dict(req.get("more") or {}), "tempo_scale": 1.0, "size": "full",
+        "intervals": _interval_pool(req, families, level, assumptions), "widening": _widening(req, families), "artic": list(req["artic"]), "more": dict(req.get("more") or {}), "tempo_scale": 1.0, "size": "full",
         "items": [], "uid_counter": 0, "song_aware_requested": bool(req["song_aware"]), "source_question": _clean(question)[:200],
     }
     initial_items(spec)
@@ -1159,7 +1200,9 @@ def revise(op: dict[str, Any], question: str, session_ref: Any, ami_ctx: dict[st
         touched.add(d["uid"])
         tempo_uid = d["uid"]
         replan = False
-        changed.append(f"exercise {_index_of(plan0, d['uid'])} ({we.FAMILY_LABEL[d['family']].lower()}) ♩ = {old_bpm} → {new_bpm}")
+        changed.append(f"exercise {_index_of(plan0, d['uid'])} ({we.FAMILY_LABEL[d['family']].lower()}) ♩ = {old_bpm} → {new_bpm}"
+                       + (" (a faster tempo is how I make a single exercise more challenging)" if op.get("challenge") and kind == OP_ITEM_FASTER else
+                          " (a slower tempo is how I make a single exercise easier)" if op.get("challenge") else ""))
         kept = "every other exercise exactly as it was (notes, tempo and plays); this one keeps about the same time by adjusting how many times you play it."
     elif kind in (OP_WHOLE_SLOWER, OP_WHOLE_FASTER):
         f = 0.9 if kind == OP_WHOLE_SLOWER else 1.1

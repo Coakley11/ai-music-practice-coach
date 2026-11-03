@@ -873,3 +873,85 @@ class TestEngine:
         iso = {"instrument": "Piano"}
         we.make_player("alto", "C")
         assert iso == {"instrument": "Piano"}
+
+
+# ================================================================ 9. sentences that read wrongly before the Claude evaluation
+
+
+class TestNegationProgressionAndSingleExerciseDifficulty:
+    @pytest.mark.parametrize("q", ["Give me an advanced flute warmup emphasizing articulation but not scales.",
+                                   "Give me a flute warmup with articulation instead of scales",
+                                   "Give me a flute warmup with articulation rather than scales"])
+    def test_but_not_scales_leaves_scales_out(self, q):
+        req = wp.parse_request(q)
+        assert "scale" in req["excluded"] and "scale" not in req["families"]
+        s = session("Flute")
+        ask(s, q, level="Intermediate")
+        assert "scale" not in families(plan_of(s)) and "articulation" in families(plan_of(s))
+
+    def test_not_much_is_not_an_exclusion(self):
+        req = wp.parse_request("Give me a warmup with long tones, but not much on scales")
+        assert req["excluded"] == []
+
+    def test_increasingly_difficult_is_a_progression_not_the_advanced_level(self):
+        req = wp.parse_request("Prepare a ten-minute saxophone warmup with long tones and increasingly difficult intervals.")
+        assert req["level"] == "" and req["progressive"] and req["minutes"] == 10
+        assert wp.parse_request("Give me a hard warmup")["level"] == "Advanced"
+
+    @pytest.mark.parametrize("level,expected", [("Beginner", ["thirds", "fourths"]), ("Intermediate", ["thirds", "fourths", "fifths"]),
+                                                ("Advanced", ["thirds", "fourths", "fifths", "sixths"])])
+    def test_the_intervals_widen_through_the_warmup_and_the_page_level_is_kept(self, level, expected):
+        s = session("Saxophone", ALTO)
+        resp = ask(s, "Prepare a ten-minute saxophone warmup with long tones and increasingly difficult intervals.", instrument="Saxophone", level=level)
+        plan = plan_of(s)
+        assert plan["level"] == level and "long_tones" in families(plan)
+        ivs = [r["params"].get("interval") for r in plan["items"] if r["family"] == "intervals"]
+        assert ivs == expected, ivs
+        assert "get wider as the warmup goes on" in resp.composed_markdown()
+        total = sum(r["seconds"] for r in plan["items"]) + (len(plan["items"]) - 1) * plan["transition_seconds"]
+        assert abs(total - plan["target_seconds"]) <= max(20, 0.08 * plan["target_seconds"]), (total, plan["target_seconds"])
+
+    def test_make_the_second_exercise_more_challenging_changes_only_that_exercise(self):
+        s = session("Saxophone", ALTO)
+        ask(s, "Give me a 10-minute warmup", instrument="Saxophone")
+        before = copy.deepcopy(plan_of(s))
+        versions = wp.history(s)["versions"]
+        resp = ask(s, "Make the second exercise more challenging, but keep the first exactly as it is.", instrument="Saxophone")
+        after = plan_of(s)
+        assert wp.history(s)["versions"] == versions + 1
+        assert after["items"][1]["bpm"] > before["items"][1]["bpm"] and after["level"] == before["level"]
+        assert "faster tempo is how I make a single exercise more challenging" in resp.composed_markdown()
+        for i, (a, b) in enumerate(zip(after["items"], before["items"])):
+            if i != 1:
+                assert a["abc"] == b["abc"] and a["bpm"] == b["bpm"], i
+        ask(s, "Undo that")
+        assert plan_of(s) == before
+
+    def test_asking_to_change_and_keep_the_same_exercise_is_refused_and_changes_nothing(self):
+        s = session("Flute")
+        ask(s, "Give me a warmup")
+        before = copy.deepcopy(plan_of(s))
+        versions = wp.history(s)["versions"]
+        resp = ask(s, "Make the first exercise more challenging, but keep the first exactly as it is.")
+        assert plan_of(s) == before and wp.history(s)["versions"] == versions
+        assert "can't make that change" in resp.direct_answer
+
+    def test_the_third_one_and_the_fourth_exercise_are_ordinals_not_intervals(self):
+        s = session("Saxophone", ALTO)
+        ask(s, "Give me a 10-minute warmup", instrument="Saxophone")
+        before = copy.deepcopy(plan_of(s))
+        ask(s, "Make the third one easier", instrument="Saxophone")
+        mid = plan_of(s)
+        assert mid["items"][2]["bpm"] < before["items"][2]["bpm"]
+        assert [r["params"] for r in mid["items"]] == [r["params"] for r in before["items"]]
+        ask(s, "Make the fourth exercise faster", instrument="Saxophone")
+        assert plan_of(s)["items"][3]["bpm"] > before["items"][3]["bpm"]
+        assert [r["params"] for r in plan_of(s)["items"]] == [r["params"] for r in before["items"]]
+
+    def test_the_whole_warmup_harder_and_a_real_interval_change_still_work(self):
+        s = session("Saxophone", ALTO)
+        ask(s, "Give me a 10-minute warmup", instrument="Saxophone", level="Intermediate")
+        ask(s, "Make it more advanced", instrument="Saxophone", level="Intermediate")
+        assert plan_of(s)["level"] == "Advanced"
+        ask(s, "Change the interval exercise to fourths", instrument="Saxophone", level="Intermediate")
+        assert {r["params"].get("interval") for r in plan_of(s)["items"] if r["family"] == "intervals"} >= {"fourths"}
