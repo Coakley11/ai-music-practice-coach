@@ -8766,7 +8766,14 @@ def mix_multitrack(backing_y, track_items, sr=44100):
 
         mix[: len(y)] += y.astype(np.float64)
 
-    peak = np.max(np.abs(mix)) + 1e-9
+    if mix.size == 0:
+        # Everything muted (or soloed away): a silent mix, not a crash on an empty array.
+        return np.zeros(0, dtype=np.float32)
+
+    peak = float(np.max(np.abs(mix)))
+
+    if peak <= 1e-9:
+        return mix.astype(np.float32)
 
     mix = (mix / peak * 0.95).astype(np.float32)
 
@@ -27626,23 +27633,60 @@ elif _studio_page == "multitrack":
             if not track_items_for_mix:
                 st.info("Save at least one layer above to export a mix.")
 
+            from multitrack_audio_polish import (
+                REVERB_AMOUNT_KEY,
+                REVERB_ENABLED_KEY,
+                apply_reverb,
+                mix_reverb_amount,
+            )
+
+            _rv_a, _rv_b = st.columns([1, 2])
+            _rv_a.checkbox(
+                "Add reverb to the mix",
+                key=REVERB_ENABLED_KEY,
+                help=(
+                    "A finishing touch applied only when the mix is created — your recorded layers are "
+                    "never changed. It cannot bring back notes the recording did not capture."
+                ),
+            )
+            if st.session_state.get(REVERB_ENABLED_KEY):
+                _rv_b.slider("Reverb amount", 0.0, 1.0, 0.25, 0.05, key=REVERB_AMOUNT_KEY)
+
             if st.button("Create mixed WAV", disabled=not track_items_for_mix, use_container_width=True):
                 try:
                     backing_y = None
                     _include_backing_in_mix = bool(st.session_state.get("include_backing_mix", False))
                     _backing_volume = float(st.session_state.get("mt_backing_volume", 0.75))
                     if _include_backing_in_mix and mt_events:
+                        # The exported backing must sound the CONCERT chords (not the written/shape
+                        # chart this page displays) and must use the song's own meter - the default
+                        # 4/4 put the exported backing out of step with the recorded layers in 3/4.
+                        _export_events = mt_events
+                        try:
+                            from multitrack_layer_chords import concert_sections_for_backing
+
+                            _export_sections = concert_sections_for_backing(
+                                st.session_state, sections, chart_key=chart_key, concert_key=concert_key
+                            )
+                            if _export_sections:
+                                _export_events = chord_events_for_selected_sections(
+                                    _export_sections, mt_selected_sections, song_data=song_data
+                                ) or mt_events
+                        except Exception:
+                            _export_events = mt_events
                         backing_y = backing_bytes_to_float(
-                            mt_events,
+                            _export_events,
                             bpm=mt_bpm,
                             style=mt_resolved_groove,
                             level=level,
+                            time_signature=mt_time_sig,
                         )
                         if mt_loops > 1:
                             backing_y = np.tile(backing_y, int(mt_loops))
                         backing_y = backing_y * _backing_volume
 
                     mixed = mix_multitrack(backing_y, track_items_for_mix)
+                    mixed = apply_reverb(mixed, sr=44100, amount=mix_reverb_amount(st.session_state))
                     st.session_state.mixed_track_wav = wav_bytes_from_float(mixed)
                     from multitrack_activity import capture_mix
                     capture_mix(st.session_state, st.session_state.mixed_track_wav,
