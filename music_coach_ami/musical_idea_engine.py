@@ -1432,7 +1432,8 @@ def composition_to_abc(
             else:
                 suffix = ""
             if "staccato" in str(ev.articulation or "").lower():
-                tok = tok + "."
+                # a decoration goes BEFORE the note: "c./2" makes abcjs ignore the "/2" and draw a staccato eighth as a quarter note
+                art_prefix = art_prefix + "."
             tok = f"{art_prefix}{tok}{suffix}"
         if slur_start:
             tok = "(" + tok

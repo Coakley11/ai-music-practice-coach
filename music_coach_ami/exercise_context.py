@@ -166,6 +166,14 @@ def exercise_authority_signature(session_ref: Any, question: str = "") -> str:
     base = (
         f"mission|{m.get('surface', '')}|{m.get('key', '')}|{m.get('chord', '')}" if m.get("active") else "none"
     )
+    try:  # a warmup revision or "next exercise" acts on the warmup's current version and view, so sending it twice is two different requests
+        from music_coach_ami import warmup_plan as _warmup
+
+        if _warmup.is_warmup_request(question) or (_warmup.is_active(session_ref) and _warmup.is_warmup_message(question)):
+            h = _warmup.history(session_ref)
+            return f"warmup|v={h.get('versions')}|cursor={h.get('cursor')}|view={h.get('view')}|{base}"
+    except Exception:
+        pass
     try:  # "undo that" twice, or "make it more syncopated" twice, act on a different version each time: they are different requests
         from music_coach_ami import conversation_state as _conv
         from music_coach_ami.exercise_revision import is_revision_request

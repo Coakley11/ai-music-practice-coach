@@ -1,0 +1,1273 @@
+"""AMI adaptive warmups, Slice 1: the request, the plan, its durations, its revisions and its undo history.
+
+A warmup is an ordered list of real exercises (``warmup_engine``) with a time budget. Everything is deterministic: the musician's words choose
+the families, the level and the length; the notes come from the engines; the times come from the actual tempo, the notated length, the
+number of plays and the rests between them.
+
+State: one record per browser session under ``_ami_conv_warmup`` (purged with the rest of the conversation by ``session_scope``). It holds up
+to ``MAX_VERSIONS`` complete plans, a cursor for undo / redo, which view is open ("whole plan" or one exercise) and whether the warmup is the
+thing the conversation is currently about. The record is shaped as one warmup *session* that contains its exercises, so a later practice-log
+step can store it as one entry; the practice log itself is not touched here.
+
+Honest limits (said in the answers, not hidden): Slice 1 warmups are key- and instrument-based. They do not look at a song's chords, even
+when the request names a song; a revision that is not one of the supported operations is refused in words and the warmup is left as it was.
+"""
+
+from __future__ import annotations
+
+import copy
+import hashlib
+import json
+import re
+from collections.abc import MutableMapping
+from typing import Any
+
+from music_coach_ami import warmup_engine as we
+from music_coach_ami.session_scope import ensure_owner, owner_token
+from music_coach_ami.types import CoachIntent, CoachResponse
+
+STATE_KEY = "_ami_conv_warmup"
+MAX_VERSIONS = 12
+DEFAULT_MINUTES = 10
+MIN_MINUTES, MAX_MINUTES = 2, 30
+MAX_REPS = 6
+FAMILY_CAP = {"long_tones": 3, "scale": 5, "intervals": 4, "articulation": 4}   # variants a family can supply before plays are repeated instead
+MAX_COMFORT_REPS = 3        # more plays of one exercise than this and another variant of the family is added instead
+MAX_ITEMS = 12
+TOLERANCE = 0.08            # a plan's total stays within 8% (or 20 s) of the requested length when the exercises allow it
+LEVEL_UP = {"Beginner": "Intermediate", "Intermediate": "Advanced"}
+LEVEL_DOWN = {"Advanced": "Intermediate", "Intermediate": "Beginner"}
+KEY_SHIFTS = (0, 5, 7, 2, 10, 3)       # the same mode a fourth, a fifth, ... up: variants of a key-based exercise
+
+_NUMBER_WORDS = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10, "eleven": 11,
+                 "twelve": 12, "fifteen": 15, "twenty": 20, "twenty-five": 25, "thirty": 30}
+_ORDINALS = {"first": 1, "second": 2, "third": 3, "fourth": 4, "fifth": 5, "sixth": 6, "seventh": 7, "eighth": 8, "ninth": 9, "tenth": 10,
+             "1st": 1, "2nd": 2, "3rd": 3, "4th": 4, "5th": 5, "6th": 6, "7th": 7, "8th": 8, "9th": 9, "10th": 10}
+
+_FAMILY_WORDS: dict[str, str] = {
+    r"long[\s-]?tones?": "long_tones", r"sustained\s+(?:notes?|tones?)": "long_tones", r"scales?|scalar": "scale",
+    r"intervals?|interval\s+(?:work|training)|thirds|fourths|fifths|sixths|sevenths|octaves": "intervals",
+    r"articulat\w*|tongu\w*|staccato|legato|slurs?|slurred|two[\s-]?note": "articulation",
+}
+_FAMILY_ANY = "|".join(f"(?:{p})" for p in _FAMILY_WORDS)
+
+
+def _family_of(text: str) -> str:
+    for pattern, family in _FAMILY_WORDS.items():
+        if re.fullmatch(pattern, text.strip(), re.I):
+            return family
+    for pattern, family in _FAMILY_WORDS.items():
+        if re.search(pattern, text, re.I):
+            return family
+    return ""
+
+
+def _clean(value: object) -> str:
+    return str(value or "").strip()
+
+
+# ---------------------------------------------------------------- reading a request
+
+_WARM = re.compile(r"\bwarm(?:ing)?[\s-]?(?:me\s+|us\s+|myself\s+)?ups?\b|\bwarm(?:ing)?\s+(?:me\s+|us\s+|myself\s+)?up\b", re.I)
+_ASK_VERB = re.compile(r"\b(?:give|make|create|build|design|write|put\s+together|set\s+up|plan|prepare|show|need|want|get|generate|produce|"
+                       r"i[’']?d\s+like|can\s+(?:i|you|we)|could\s+(?:i|you|we)|would\s+you|please|let[’']?s|start|build\s+me|do)\b", re.I)
+_QUESTION_START = re.compile(r"^\s*(?:why|what(?:\s+is|[’']s)?|how\s+(?:do|does|long|often|should)|is\s+it|should\s+i|do\s+i|does)\b", re.I)
+_EXERCISE_NOUN = re.compile(r"\b(?:exercises?|drills?|routine|patterns?|practice|work)\b", re.I)
+_DRILL_PHRASE = re.compile(r"\b(?:long[\s-]?tones?|two[\s-]?note|articulation|tonguing)\b", re.I)
+_DRILL_NOUN = re.compile(r"\b(?:exercises?|drills?|routine)\b", re.I)
+_NOT_WARMUP_TOPIC = re.compile(r"\b(?:dorian|phrygian|lydian|mixolydian|aeolian|locrian|melodic\s+minor|harmonic\s+minor|modes?|guide[\s-]?tones?|chords?|chord\s+tones?|over\s+[a-g][#b]?\d?|over\s+(?:the|a|an|this|that)\b|patterns?|licks?|lines?|pentatonic|blues|"
+                               r"the\s+same|same\s+\w+\s+with|progressions?|arpeggios?|bass|melody|solo|song)\b", re.I)
+_UNVERIFIED_WORD = re.compile(r"\b(trombone|violin|viola|cello|guitar|bass|oboe|horn|bassoon|ukulele|banjo|recorder|voice|vocals?|singing|harp|tuba|"
+                              r"euphonium|flugelhorn|piccolo|mandolin|harmonica|accordion|organ|keyboard|drums?)\b", re.I)
+_INSTRUMENT = re.compile(r"\b(?:(soprano|alto|tenor|bari(?:tone)?)\s+sax(?:ophone)?|(sax(?:ophone)?)|(flute)|(piano)|(trumpet)|(clarinet))\b", re.I)
+_LEVEL = [("Beginner", re.compile(r"\b(?:beginner|beginning|novice|easy|simple|basic|starter)\b", re.I)),
+          ("Advanced", re.compile(r"\b(?:advanced|hard|difficult|challenging|expert)\b", re.I)),
+          ("Intermediate", re.compile(r"\b(?:intermediate|medium|moderate)\b", re.I))]
+_MINUTES = re.compile(r"\b(\d+(?:\.\d+)?|(?:" + "|".join(_NUMBER_WORDS) + r"))[\s-]*(?:minutes?|mins?)\b", re.I)
+_HALF_HOUR = re.compile(r"\bhalf[\s-]?(?:an?\s+)?hour\b|\b30[\s-]?min", re.I)
+_HOUR = re.compile(r"\b(?:an?|one|1)[\s-]?hour\b", re.I)
+_KEY = re.compile(r"\bin\s+(?:the\s+key\s+of\s+)?([A-G](?:#|b|♯|♭)?)(?:\s*(major|minor|maj|min|m)\b)?(?=[\s.,!?;]|$)")
+_NEG = re.compile(r"\b(?:no|without|skip|exclude|excluding|avoid|except|not\s+(?:any|the)|don[’']?t\s+(?:include|add|want|need|use|do|give)(?:\s+(?:me|any))?|"
+                  r"do\s+not\s+(?:include|add|use)|leave\s+out|nothing\s+with)\s+(?:any\s+|the\s+|more\s+|of\s+the\s+|the\s+)?"
+                  r"(?:" + _FAMILY_ANY + r")(?:\s+(?:exercises?|drills?|work))?", re.I)
+_INTERVAL_WORD = {"seconds": r"(?:diatonic\s+)?seconds|2nds", "thirds": r"thirds?|3rds", "fourths": r"fourths?|4ths", "fifths": r"fifths?|5ths",
+                  "sixths": r"sixths?|6ths", "sevenths": r"sevenths?|7ths", "octaves": r"octaves?|8ves"}
+_SONG_AWARE = re.compile(r"\b(?:solo(?:ing)?|improvis\w*|chord\s+(?:changes|progression|tones?)|the\s+changes|these\s+chords|guide[\s-]?tones?|"
+                         r"over\s+(?:the\s+)?(?:chorus|verse|bridge|section|chart|changes)|the\s+chorus|this\s+song|the\s+song)\b", re.I)
+_TONE_FOCUS = re.compile(r"\b(?:tone|sound|breath(?:ing)?|embouchure|intonation|centered|resonan\w*)\b", re.I)
+_TECH_FOCUS = re.compile(r"\b(?:fingers?|finger\s+technique|fingering|dexterity|agility|technique|technical|speed|facility|evenness)\b", re.I)
+_ARTIC_WORD = re.compile(r"\b(?:articulat\w*|tongu\w*|two[\s-]?note)\b", re.I)
+
+
+def _number(text: str) -> float | None:
+    t = text.lower()
+    if t in _NUMBER_WORDS:
+        return float(_NUMBER_WORDS[t])
+    try:
+        return float(t)
+    except ValueError:
+        return None
+
+
+def _minutes_in(text: str) -> float | None:
+    m = _MINUTES.search(text)
+    if m:
+        return _number(m.group(1))
+    if _HALF_HOUR.search(text):
+        return 30.0
+    if _HOUR.search(text):
+        return 60.0
+    return None
+
+
+def is_warmup_request(question: str) -> bool:
+    """A request for a warmup, or for the warmup-style drills Slice 1 builds (long tones, two-note and articulation exercises)."""
+    q = _clean(question)
+    if not q:
+        return False
+    low = q.lower()
+    asks = bool(_ASK_VERB.search(low))
+    if re.match(r"^\s*(?:please\s+)?(?:can\s+you\s+|could\s+you\s+)?warm\s+(?:me|us|myself)\s+up\b|^\s*(?:let.?s\s+)?warm\s+up\b", low):
+        return True
+    if _WARM.search(low):
+        if _QUESTION_START.match(low) and not asks:
+            return False
+        if re.search(r"\b(?:why|benefits?|should\s+i|is\s+it\s+(?:good|important|necessary)|what\s+is)\b", low) and not re.search(r"\b(?:give|make|create|build|plan|need|want)\b", low):
+            return False
+        return asks or bool(_EXERCISE_NOUN.search(low)) or bool(_MINUTES.search(low))
+    if _DRILL_PHRASE.search(low) and _DRILL_NOUN.search(low) and not _NOT_WARMUP_TOPIC.search(low) \
+            and re.search(r"\b(?:give|make|create|build|write|need|want|show|get|generate|i[’']?d\s+like)\b", low):
+        return not _QUESTION_START.match(low)
+    return False
+
+
+def parse_request(question: str) -> dict[str, Any]:
+    """Everything the musician's words fix about the warmup. Empty / None fields are left to the page and to the defaults."""
+    q = _clean(question)
+    low = q.lower()
+    out: dict[str, Any] = {"raw": q, "instrument_word": "", "sax_type_word": "", "unverified": "", "level": "", "minutes": None, "key": "", "families": [],
+                           "excluded": [], "intervals": [], "artic": [], "focus": "", "song_aware": False, "derived_from": ""}
+    m = _INSTRUMENT.search(q)
+    if m:
+        if m.group(1):
+            out["sax_type_word"] = m.group(1).lower()
+            out["instrument_word"] = "saxophone"
+        else:
+            word = (m.group(2) or m.group(3) or m.group(4) or m.group(5) or m.group(6)).lower()
+            out["instrument_word"] = "saxophone" if word.startswith("sax") else word
+    else:
+        u = _UNVERIFIED_WORD.search(q)
+        if u:
+            out["unverified"] = u.group(1).lower()
+    for level, rx in _LEVEL:
+        if rx.search(low):
+            out["level"] = level
+            break
+    out["minutes"] = _minutes_in(low)
+    km = _KEY.search(q)
+    if km:
+        tonic = km.group(1).replace("♯", "#").replace("♭", "b")
+        mode = (km.group(2) or "").lower()
+        out["key"] = tonic + ("m" if mode in ("minor", "min", "m") else "")
+    # families: what is asked for, minus what is excluded
+    excluded: list[str] = []
+    stripped = low
+    for nm in _NEG.finditer(low):
+        fam = _family_of(nm.group(0))
+        if fam and fam not in excluded:
+            excluded.append(fam)
+    stripped = _NEG.sub(" ", low)
+    found: list[str] = []
+    for pattern, family in _FAMILY_WORDS.items():
+        if re.search(rf"\b(?:{pattern})\b", stripped, re.I) and family not in found:
+            found.append(family)
+    for interval, pattern in _INTERVAL_WORD.items():
+        if re.search(rf"\b(?:{pattern})\b", stripped, re.I) and "intervals" in found and interval not in out["intervals"]:
+            out["intervals"].append(interval)
+    if re.search(r"\btwo[\s-]?note\b", stripped):
+        out["artic"].append("two_note")
+    if re.search(r"\b(?:tongu\w*|repeated\s+notes?)\b", stripped) and "two_note" not in out["artic"]:
+        out["artic"].append("repeated")
+    if re.search(r"\bslur\w*\b", stripped) and re.search(r"\btongu\w*\b", stripped):
+        out["artic"].append("slur_tongue")
+    if re.search(r"\bstaccato\b|\blegato\b|\btenuto\b|\baccents?\b", stripped):
+        out["artic"].append("contrast")
+    out["artic"] = [a for i, a in enumerate(out["artic"]) if a not in out["artic"][:i]]
+    focus = ""
+    derived = ""
+    if not found:
+        if _TECH_FOCUS.search(stripped):
+            found, focus, derived = ["scale", "intervals", "articulation"], "technique", "finger technique"
+            out["artic"] = out["artic"] or ["two_note"]
+        elif _TONE_FOCUS.search(stripped):
+            found, focus, derived = ["long_tones", "scale"], "tone", "tone"
+    out["families"] = [f for f in found if f not in excluded]
+    out["excluded"] = excluded
+    out["focus"] = focus
+    out["derived_from"] = derived
+    out["song_aware"] = bool(_SONG_AWARE.search(low))
+    return out
+
+
+# ---------------------------------------------------------------- reading a revision
+
+OP_SHORTER, OP_LONGER, OP_MINUTES, OP_HARDER, OP_EASIER, OP_LEVEL = "shorter", "longer", "minutes", "harder", "easier", "level"
+OP_REMOVE_FAMILY, OP_REMOVE_ITEM, OP_ADD_FAMILY, OP_MORE_FAMILY = "remove_family", "remove_item", "add_family", "more_family"
+OP_ITEM_SLOWER, OP_ITEM_FASTER, OP_ITEM_TEMPO, OP_WHOLE_SLOWER, OP_WHOLE_FASTER = "item_slower", "item_faster", "item_tempo", "whole_slower", "whole_faster"
+OP_INTERVAL, OP_NEXT, OP_PREV, OP_ALL, OP_GOTO, OP_UNDO, OP_REDO, OP_UNSUPPORTED = "interval", "next", "prev", "all", "goto", "undo", "redo", "unsupported"
+
+_UNDO = re.compile(r"^\s*(?:please\s+)?(?:undo|revert)(?:\s+(?:that|it|this|the\s+last\s+(?:change|one|edit)|my\s+last\s+change))?[\s.!]*$|^\s*go\s+back\s+to\s+(?:before|the\s+previous\s+version)[\s.!]*$", re.I)
+_REDO = re.compile(r"^\s*(?:please\s+)?(?:redo|do\s+(?:that|it)\s+again|put\s+(?:that|it)\s+back)(?:\s+(?:that|it|this))?[\s.!]*$", re.I)
+_NEXT = re.compile(r"^\s*(?:please\s+)?(?:next(?:\s+(?:exercise|one|item|drill))?|go\s+(?:on\s+)?to\s+the\s+next(?:\s+(?:exercise|one))?|move\s+on(?:\s+to\s+the\s+next(?:\s+exercise)?)?|"
+                   r"continue|on\s+to\s+the\s+next(?:\s+exercise)?|show\s+(?:me\s+)?the\s+next\s+(?:exercise|one))[\s.!]*$", re.I)
+_PREV = re.compile(r"^\s*(?:please\s+)?(?:previous(?:\s+(?:exercise|one|item))?|go\s+back(?:\s+to\s+the\s+previous(?:\s+exercise)?)?|back(?:\s+one)?|"
+                   r"show\s+(?:me\s+)?the\s+previous\s+(?:exercise|one))[\s.!]*$", re.I)
+_ALL = re.compile(r"\b(?:show|see|display|open|go\s+(?:back\s+)?to|return\s+to|back\s+to)\s+(?:me\s+)?(?:the\s+)?(?:whole|full|entire|complete|all\s+of\s+the|all)\s*(?:warm[\s-]?up|plan|list|exercises)?\b|"
+                  r"\b(?:overview|whole\s+plan|full\s+plan)\b", re.I)
+_GOTO = re.compile(r"\b(?:show|go\s+to|jump\s+to|open|take\s+me\s+to|start\s+(?:with|at)|play)\s+(?:me\s+)?(?:the\s+)?(?:exercise\s*#?\s*(\d+)|(\w+)\s+exercise|number\s+(\d+))\b", re.I)
+_REF_NUM = re.compile(r"\b(?:exercise|number|no\.?|item|drill)\s*#?\s*(\d+)\b|#\s*(\d+)\b", re.I)
+_REF_ORD = re.compile(r"\b(?:the\s+)?(first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|last|1st|2nd|3rd|4th|5th|6th|7th|8th|9th|10th)\s+(?:exercise|one|item|drill|part)\b", re.I)
+_VERB_REMOVE = r"(?:remove|drop|delete|take\s+out|get\s+rid\s+of|skip|cut|lose|ditch|leave\s+out|eliminate)"
+_VERB_ADD = r"(?:add|include|put\s+in|throw\s+in|bring\s+in|work\s+in|insert)"
+_SLOWER = re.compile(r"\b(?:slower|slow(?:\s+(?:it\s+)?down)?|more\s+slowly|reduce\s+the\s+tempo|lower\s+the\s+tempo)\b", re.I)
+_FASTER = re.compile(r"\b(?:faster|quicker|speed(?:\s+(?:it\s+)?up)?|increase\s+the\s+tempo|raise\s+the\s+tempo)\b", re.I)
+_BPM = re.compile(r"\b(\d{2,3})\s*(?:bpm|beats\s+per\s+minute)\b", re.I)
+_OTHER_INTENT = re.compile(r"\b(?:patterns?|over|chords?|changes|song|blue\s+bossa|licks?|lines?|pentatonic|blues|improv\w*|progressions?|arpeggios?|bass|melody|solo|"
+                           r"what\s+is|why|how)\b", re.I)
+_WARMUP_TALK = re.compile(r"\bwarm[\s-]?up\b|\bexercises?\b|\bthe\s+(?:whole|entire|full)\s+(?:thing|plan)\b", re.I)
+
+
+def ref_from(text: str) -> dict[str, Any]:
+    """Which exercise a phrase points at: {'index': 2} (1-based, 'last' = -1), {'family': 'scale'} or {}."""
+    m = _REF_NUM.search(text)
+    if m:
+        return {"index": int(m.group(1) or m.group(2))}
+    m = _REF_ORD.search(text)
+    if m:
+        w = m.group(1).lower()
+        return {"index": -1 if w == "last" else _ORDINALS[w]}
+    m = re.search(r"\bthe\s+(" + _FAMILY_ANY + r")\b", text, re.I)
+    if m:
+        fam = _family_of(m.group(1))
+        if fam:
+            return {"family": fam}
+    return {}
+
+
+def parse_revision(question: str) -> dict[str, Any] | None:
+    """The one change a message asks of the working warmup, or None when it is not about the warmup. Only meaningful while a warmup is active."""
+    q = _clean(question)
+    if not q:
+        return None
+    low = q.lower().rstrip(" .!?")
+    if _UNDO.match(q):
+        return {"op": OP_UNDO}
+    if _REDO.match(q):
+        return {"op": OP_REDO}
+    if _NEXT.match(q):
+        return {"op": OP_NEXT}
+    if _PREV.match(q):
+        return {"op": OP_PREV}
+    gm = _GOTO.search(low)
+    if gm:
+        n = gm.group(1) or gm.group(3) or ""
+        if not n and gm.group(2):
+            n = str(_ORDINALS.get(gm.group(2).lower(), "")) or ("-1" if gm.group(2).lower() == "last" else "")
+        if n:
+            return {"op": OP_GOTO, "index": int(n)}
+    if _ALL.search(low) and not re.search(r"\b(?:remove|drop|add|make|change)\b", low):
+        return {"op": OP_ALL}
+    ref = ref_from(low)
+    if _OTHER_INTENT.search(low) and not _WARMUP_TALK.search(low) and not ref:
+        return None                       # "give me a scale pattern over Blue Bossa" is not a change to the warmup
+    fam_mention = [f for pattern, f in _FAMILY_WORDS.items() if re.search(rf"\b(?:{pattern})\b", low, re.I)]
+    # removing
+    m = re.search(rf"\b{_VERB_REMOVE}\b\s+(?:all\s+)?(?:of\s+)?(?:the\s+)?(.*)", low)
+    if m and (ref or fam_mention):
+        if ref.get("index"):
+            return {"op": OP_REMOVE_ITEM, "index": ref["index"]}
+        return {"op": OP_REMOVE_FAMILY, "family": ref.get("family") or fam_mention[0]}
+    m = re.search(r"\b(?:no\s+more|without|stop\s+(?:the|doing))\s+(?:the\s+)?(" + _FAMILY_ANY + r")", low)
+    if m:
+        return {"op": OP_REMOVE_FAMILY, "family": _family_of(m.group(1))}
+    # interval type
+    iv = [i for i, p in _INTERVAL_WORD.items() if re.search(rf"\b(?:{p})\b", low)]
+    if iv and re.search(r"\b(?:change|switch|make|turn|set|use|swap|replace)\b", low) and (re.search(r"\binterval", low) or ref.get("family") == "intervals" or ref.get("index")):
+        return {"op": OP_INTERVAL, "interval": iv[0], "ref": ref}
+    # level
+    if re.search(r"\b(?:more\s+advanced|harder|more\s+difficult|more\s+challenging|step\s+it\s+up|challenge\s+me|advance\s+it|a\s+(?:bit|little)\s+harder|up\s+the\s+level|increase\s+the\s+difficulty)\b", low):
+        return {"op": OP_HARDER}
+    if re.search(r"\b(?:easier|simpler|less\s+(?:advanced|difficult|challenging)|more\s+basic|a\s+(?:bit|little)\s+easier|decrease\s+the\s+difficulty|too\s+(?:hard|difficult))\b", low):
+        return {"op": OP_EASIER}
+    lm = re.search(r"\b(?:make|set|change)\s+(?:it|the\s+warm[\s-]?up)\s+(?:to\s+|a\s+|an\s+)?(beginner|intermediate|advanced)\b", low)
+    if lm:
+        return {"op": OP_LEVEL, "level": lm.group(1).capitalize()}
+    # length
+    mins = _minutes_in(low)
+    if mins and re.search(r"\b(?:make|set|change|only|just|i\s+(?:have|only\s+have|got)|need|want|shorten|extend|cut|keep|to)\b", low) and not ref:
+        return {"op": OP_MINUTES, "minutes": mins}
+    if re.search(r"\b(?:shorter|shorten|less\s+time|cut\s+(?:it\s+)?down|trim|quicker\s+warm|briefer)\b", low) and not ref:
+        return {"op": OP_SHORTER}
+    if re.search(r"\b(?:longer|lengthen|extend|more\s+time|expand)\b", low) and not ref:
+        return {"op": OP_LONGER}
+    # tempo
+    bm = _BPM.search(low)
+    if bm and ref:
+        return {"op": OP_ITEM_TEMPO, "ref": ref, "bpm": int(bm.group(1))}
+    if _SLOWER.search(low) or _FASTER.search(low):
+        slower = bool(_SLOWER.search(low))
+        if ref:
+            return {"op": OP_ITEM_SLOWER if slower else OP_ITEM_FASTER, "ref": ref}
+        if re.search(r"\b(?:whole|entire|all|everything|it|the\s+warm[\s-]?up)\b", low):
+            return {"op": OP_WHOLE_SLOWER if slower else OP_WHOLE_FASTER}
+    # adding / more of a family
+    m = re.search(rf"\b(?:{_VERB_ADD}|more)\b\s+(?:(?:some|a|an|more|extra|another)\s+)*(?:(?:\w+\s+){{0,2}})?({_FAMILY_ANY})", low)
+    if m and (_WARMUP_TALK.search(low) or re.match(r"^\s*(?:please\s+|also\s+|and\s+|can\s+you\s+|could\s+you\s+)*(?:add|include|put\s+in|throw\s+in|bring\s+in|work\s+in|insert|more)\b", low)):
+        fam = _family_of(m.group(1))
+        if fam:
+            return {"op": OP_MORE_FAMILY if re.search(r"\bmore\b|\bextra\b", low) else OP_ADD_FAMILY, "family": fam,
+                    "artic": "two_note" if re.search(r"\btwo[\s-]?note\b", low) else ""}
+    # anything else that is clearly about the warmup is refused in words (never guessed at)
+    if _WARMUP_TALK.search(low) or ref or re.match(r"^(?:please\s+)?(?:now\s+|also\s+|and\s+)?(?:make|change|add|remove|drop|delete|take)\s+(?:it|this|that|them|everything)\b", low):
+        return {"op": OP_UNSUPPORTED}
+    try:                                  # an exercise-style change (accents, syncopation, fourths ...) is refused for a warmup, not guessed at
+        from music_coach_ami.exercise_followup import is_exercise_followup
+        from music_coach_ami.exercise_revision import is_revision_request
+
+        if is_revision_request(question) or is_exercise_followup(question):
+            return {"op": OP_UNSUPPORTED}
+    except Exception:
+        pass
+    return None
+
+
+def is_warmup_message(question: str) -> bool:
+    """Used by the duplicate-send guard: warmup requests and revisions are new work every time they are sent."""
+    return is_warmup_request(question) or (parse_revision(question) or {}).get("op") in {
+        OP_NEXT, OP_PREV, OP_ALL, OP_GOTO, OP_SHORTER, OP_LONGER, OP_MINUTES, OP_HARDER, OP_EASIER, OP_LEVEL, OP_REMOVE_FAMILY, OP_REMOVE_ITEM,
+        OP_ADD_FAMILY, OP_MORE_FAMILY, OP_ITEM_SLOWER, OP_ITEM_FASTER, OP_ITEM_TEMPO, OP_WHOLE_SLOWER, OP_WHOLE_FASTER, OP_INTERVAL}
+
+
+# ---------------------------------------------------------------- the plan
+
+
+DEFAULT_FAMILIES = {"Beginner": ["long_tones", "scale", "articulation"], "Intermediate": ["long_tones", "scale", "intervals", "articulation"],
+                    "Advanced": ["long_tones", "scale", "intervals", "articulation"]}
+BASE_WEIGHT = {"long_tones": 1.0, "scale": 1.3, "intervals": 1.2, "articulation": 1.0}
+DEFAULT_INTERVALS = {"Beginner": ["thirds"], "Intermediate": ["thirds", "fourths"], "Advanced": ["thirds", "fourths", "fifths"]}
+DEFAULT_ARTIC = {"Beginner": ["repeated", "two_note"], "Intermediate": ["slur_tongue", "two_note", "repeated", "contrast"],
+                 "Advanced": ["slur_tongue", "repeated", "contrast", "two_note"]}
+FOCUS_BOOST = {"tone": ("long_tones",), "technique": ("scale", "intervals"), "articulation": ("articulation",), "improvisation": ("scale", "intervals"),
+               "speed": ("scale", "intervals"), "scales": ("scale",), "intervals": ("intervals",)}
+
+
+def _focus_key(focus: str) -> str:
+    low = _clean(focus).lower()
+    for key in FOCUS_BOOST:
+        if key in low:
+            return key
+    if "finger" in low or "tech" in low:
+        return "technique"
+    return ""
+
+
+def _weights(spec: dict[str, Any]) -> dict[str, float]:
+    w = {f: BASE_WEIGHT[f] for f in spec["families"]}
+    boost = FOCUS_BOOST.get(spec.get("focus") or "", ())
+    for f in boost:
+        if f in w:
+            w[f] *= 1.5
+    for f, extra in (spec.get("more") or {}).items():
+        if f in w:
+            w[f] *= float(extra)
+    if spec["level"] == "Advanced" and "long_tones" in w:
+        w["long_tones"] *= 0.8
+    return w
+
+
+def _next_uid(spec: dict[str, Any]) -> str:
+    spec["uid_counter"] = int(spec.get("uid_counter") or 0) + 1
+    return f"i{spec['uid_counter']}"
+
+
+def _items_of(spec: dict[str, Any], family: str) -> list[dict[str, Any]]:
+    return [it for it in spec["items"] if it["family"] == family]
+
+
+def _new_item(spec: dict[str, Any], family: str) -> dict[str, Any] | None:
+    """The next exercise of ``family`` (a new variant of what the family already has); None when the family has no more variants."""
+    have = _items_of(spec, family)
+    n = len(have)
+    if n >= FAMILY_CAP.get(family, 4):
+        return None
+    params: dict[str, Any] = {}
+    if family == "intervals":
+        pool = spec.get("intervals") or DEFAULT_INTERVALS[spec["level"]]
+        iv = pool[n % len(pool)]
+        used = sum(1 for it in have if it["params"].get("interval") == iv)
+        params = {"interval": iv, "variant": used}
+    elif family == "articulation":
+        pool = spec.get("artic") or DEFAULT_ARTIC[spec["level"]]
+        pat = pool[n % len(pool)]
+        used = sum(1 for it in have if it["params"].get("pattern") == pat)
+        params = {"pattern": pat, "variant": used}
+    else:
+        params = {"variant": n}
+    return {"uid": _next_uid(spec), "family": family, "params": params, "tempo": None, "size": spec.get("size") or "full", "keep": n == 0}
+
+
+def initial_items(spec: dict[str, Any]) -> None:
+    """Start with one exercise per family (families the instrument can't use were already dropped)."""
+    spec["items"] = []
+    for f in spec["families"]:
+        it = _new_item(spec, f)
+        if it:
+            spec["items"].append(it)
+    # an explicit pair of intervals ("thirds and fourths") means one exercise each
+    for f in ("intervals", "articulation"):
+        pool = (spec.get("intervals") if f == "intervals" else spec.get("artic")) or []
+        if f in spec["families"]:
+            while len(_items_of(spec, f)) < len(pool):
+                it = _new_item(spec, f)
+                if not it:
+                    break
+                it["keep"] = True               # the musician named it ("thirds and fourths"), so it is not dropped to save time
+                spec["items"].append(it)
+    spec["items"] = _ordered(spec)
+
+
+def _ordered(spec: dict[str, Any]) -> list[dict[str, Any]]:
+    """Exercises in a sensible order: tone first, then fingers, then the mouth, then the harder shapes; a family's variants stay in sequence."""
+    rank = {"long_tones": 0, "scale": 1, "intervals": 2, "articulation": 3}
+    return sorted(spec["items"], key=lambda it: (rank.get(it["family"], 9), spec["items"].index(it)))
+
+
+def _shift_key(tonic: str, tonality: str, k: int) -> tuple[str, str]:
+    return we.practical_key(*we.related_key(tonic, tonality, KEY_SHIFTS[k % len(KEY_SHIFTS)]))
+
+
+def build_item(player: we.Player, spec: dict[str, Any], desc: dict[str, Any]) -> dict[str, Any]:
+    """One rendered exercise: notes, staff, tempo and the time one play takes. Raises ``WarmupUnavailable`` if it can't be built correctly."""
+    level = spec["level"]
+    fam = desc["family"]
+    params = dict(desc["params"])
+    base_tonic, base_tonality = we.practical_key(*we.split_key(player.written_key))
+    if fam == "long_tones":
+        tonic, tonality = base_tonic, base_tonality
+    elif fam == "scale":
+        tonic, tonality = _shift_key(base_tonic, base_tonality, int(params.get("variant") or 0))
+    elif fam == "intervals":
+        tonic, tonality = _shift_key(base_tonic, base_tonality, int(params.get("variant") or 0))
+    else:
+        tonic, tonality = _shift_key(base_tonic, base_tonality, int(params.get("variant") or 0))
+    kwargs: dict[str, Any] = {"variant": int(params.get("variant") or 0), "size": desc.get("size") or "full"}
+    if fam == "intervals":
+        kwargs["interval"] = params["interval"]
+    if fam == "articulation":
+        kwargs["pattern"] = params["pattern"]
+    built = we.BUILDERS[fam](player, level, tonic, tonality, **kwargs)
+    scale = float(spec.get("tempo_scale") or 1.0)
+    bpm = int(desc.get("tempo") or round(built.bpm * scale))
+    bpm = max(36, min(160, bpm))
+    abc, diag = we.render(player, built, tonic, tonality, title=built.title, bpm=bpm)
+    checks = we.verify(player, level, built, tonic, tonality, diag)
+    seconds = we.pass_seconds(built, bpm)
+    pitched = [n for n in built.notes if not n.rest]
+    written = [n.midi for n in pitched]
+    return {
+        "uid": desc["uid"], "family": fam, "params": params, "title": built.title, "abc": abc, "bpm": bpm, "base_bpm": built.bpm,
+        "tempo_override": desc.get("tempo"), "size": desc.get("size") or "full", "key": we.key_text(tonic, tonality), "tonic": tonic, "tonality": tonality,
+        "bars": int(round(float(we.total_beats(built.notes) / we.BEATS_PER_BAR))), "pass_seconds": round(seconds, 2), "how": list(built.how),
+        "listen": list(built.listen), "meta": dict(built.meta), "written_midi": written, "sounding_midi": [m - player.offset for m in written],
+        "written_notes": [f"{n.spelled}{n.octave}" for n in pitched], "durations": [("rest_" if n.rest else "") + n.dur for n in built.notes],
+        "articulations": [n.art for n in built.notes if not n.rest], "slur_groups": [n.slur for n in built.notes if not n.rest],
+        "checks": checks, "range": [min(written), max(written)],
+    }
+
+
+def _total(rows: list[dict[str, Any]]) -> float:
+    secs = 0.0
+    for r in rows:
+        secs += r["reps"] * r["pass_seconds"] + (r["reps"] - 1) * we.GAP_SECONDS
+    return secs + max(0, len(rows) - 1) * we.TRANSITION_SECONDS
+
+
+def allocate(rows: list[dict[str, Any]], weights: dict[str, float], target_s: float) -> None:
+    """Set ``reps`` on every row so the plan's real playing time lands as close to ``target_s`` as the exercises allow."""
+    if not rows:
+        return
+    fam_count: dict[str, int] = {}
+    for r in rows:
+        fam_count[r["family"]] = fam_count.get(r["family"], 0) + 1
+    available = max(1.0, target_s - max(0, len(rows) - 1) * we.TRANSITION_SECONDS)
+    wsum = sum(weights.get(r["family"], 1.0) / fam_count[r["family"]] for r in rows)
+    for r in rows:
+        share = available * (weights.get(r["family"], 1.0) / fam_count[r["family"]]) / wsum
+        reps = round((share + we.GAP_SECONDS) / (r["pass_seconds"] + we.GAP_SECONDS))
+        r["reps"] = int(max(1, min(MAX_REPS, reps)))
+    for _ in range(80):                                       # nudge single exercises one play up or down while that gets closer
+        cur = abs(_total(rows) - target_s)
+        best: tuple[float, int, int] | None = None
+        for i, r in enumerate(rows):
+            for d in (1, -1):
+                nr = r["reps"] + d
+                if not (1 <= nr <= MAX_REPS):
+                    continue
+                r["reps"] = nr
+                gap = abs(_total(rows) - target_s)
+                r["reps"] -= d
+                if gap < cur - 1e-6 and (best is None or gap < best[0]):
+                    best = (gap, i, d)
+        if best is None:
+            break
+        rows[best[1]]["reps"] += best[2]
+    for r in rows:
+        r["seconds"] = round(r["reps"] * r["pass_seconds"] + (r["reps"] - 1) * we.GAP_SECONDS, 1)
+
+
+def build_plan(player: we.Player, spec: dict[str, Any], *, replan: bool = True) -> dict[str, Any]:
+    """Render every exercise in ``spec`` and settle its length. With ``replan`` the number of exercises may grow or shrink to fit the time."""
+    target_s = float(spec["minutes"]) * 60.0
+    weights = _weights(spec)
+    notes: list[str] = []
+    for _ in range(MAX_ITEMS + 6):
+        rows, bad = [], []
+        for desc in spec["items"]:
+            try:
+                rows.append(build_item(player, spec, desc))
+            except we.WarmupUnavailable as exc:
+                bad.append((desc, str(exc)))
+        for desc, why in bad:                                  # an exercise this player can't be given correctly is left out, and said so
+            spec["items"] = [d for d in spec["items"] if d["uid"] != desc["uid"]]
+            notes.append(f"Left out {we.FAMILY_LABEL[desc['family']].lower()} exercise ({why}).")
+        if bad:
+            continue
+        if not rows:
+            raise we.WarmupUnavailable("none of the requested exercises can be built correctly for this instrument and key")
+        allocate(rows, weights, target_s)
+        total = _total(rows)
+        if not replan:
+            break
+        slack = max(20.0, TOLERANCE * target_s)
+        busy = max(rows, key=lambda r: r["reps"])
+        if busy["reps"] > MAX_COMFORT_REPS and len(rows) < MAX_ITEMS:       # playing one exercise many times is dull: add another variant instead
+            it = _new_item(spec, busy["family"])
+            if it:
+                spec["items"].append(it)
+                spec["items"] = _ordered(spec)
+                continue
+        if total < target_s - slack and len(rows) < MAX_ITEMS:
+            fams = sorted(spec["families"], key=lambda f: len(_items_of(spec, f)) / max(0.1, weights.get(f, 1.0)))
+            added = False
+            for f in fams:
+                it = _new_item(spec, f)
+                if it:
+                    spec["items"].append(it)
+                    spec["items"] = _ordered(spec)
+                    added = True
+                    break
+            if added:
+                continue
+        if total > target_s + slack and len(rows) > len(spec["families"]):
+            extra = [d for d in spec["items"] if not d.get("keep")]
+            if extra:
+                victim = extra[-1]
+                spec["items"] = [d for d in spec["items"] if d["uid"] != victim["uid"]]
+                continue
+        if total > target_s + slack and any(d.get("size") != "short" for d in spec["items"]):
+            spec["size"] = "short"
+            for d in spec["items"]:
+                d["size"] = "short"
+            continue
+        break
+    plan = {"spec": copy.deepcopy(spec), "items": rows, "total_seconds": round(_total(rows), 1), "target_seconds": round(target_s, 1),
+            "transition_seconds": we.TRANSITION_SECONDS, "gap_seconds": we.GAP_SECONDS, "notes": notes,
+            "player": {"key": player.key, "label": player.label, "written_key": player.written_key, "concert_key": player.concert_key,
+                       "offset": player.offset, "semitones": player.semitones},
+            "level": spec["level"], "minutes": spec["minutes"]}
+    plan["id"] = "wu-" + hashlib.sha1(json.dumps([[r["uid"], r["abc"], r["reps"]] for r in rows], sort_keys=True).encode("utf-8")).hexdigest()[:10]
+    return plan
+
+
+def _first_of_family(spec: dict[str, Any], family: str) -> dict[str, Any] | None:
+    have = _items_of(spec, family)
+    return have[0] if have else None
+
+
+# ---------------------------------------------------------------- the player for a request
+
+
+def _spec_for_ttype(ttype: str) -> str:
+    from music_coach_ami.exercise_adapt import SPECS
+
+    for key, spec in SPECS.items():
+        if spec.ttype and spec.ttype == ttype:
+            return key
+    return ""
+
+
+def resolve_player(req: dict[str, Any], session_ref: Any, ctx: Any, concert_key: str) -> tuple[we.Player | None, str, dict[str, Any]]:
+    """(the player, '' or why not, facts about how it was resolved)."""
+    from music_coach_ami.coach_instrument import resolve_coach_instrument
+    from music_coach_ami.exercise_adapt import SPECS
+    from music_coach_ami.instrument_realization import resolve_transposing_subtype
+
+    facts: dict[str, Any] = {"sax_assumed": False}
+    session = session_ref if isinstance(session_ref, MutableMapping) else {}
+    word = req.get("instrument_word") or ""
+    sax_word = req.get("sax_type_word") or ""
+    if req.get("unverified"):
+        return None, (f"I can't write warmups for {req['unverified']} yet — Slice 1 covers flute, piano, saxophones (soprano, alto, tenor, baritone), trumpet "
+                      f"and clarinet, the instruments whose written and sounding pitch I can verify."), facts
+    if not word:
+        named = resolve_coach_instrument(session, question_entity="", ctx_instrument=_clean(getattr(ctx, "instrument", "")))
+        word = _clean(named).lower()
+        if not word:
+            return None, ("Which instrument is the warmup for? Name it in your request (for example “a flute warmup” or “an alto saxophone warmup”) or choose "
+                          "your instrument in the app."), facts
+    key = ""
+    if "sax" in word:
+        if sax_word:
+            key = {"soprano": "soprano", "alto": "alto", "tenor": "tenor", "bari": "baritone", "baritone": "baritone"}[sax_word]
+        else:
+            tt = resolve_transposing_subtype(session, "Saxophone")
+            key = _spec_for_ttype(tt)
+            if not key:
+                key, facts["sax_assumed"] = "alto", True
+            else:
+                facts["sax_from_app"] = SPECS[key].label
+    else:
+        for k in SPECS:
+            if k in word:
+                key = k
+                break
+    if not key:
+        return None, (f"I don't have a verified pitch table for “{word}” yet — Slice 1 covers flute, piano, saxophones, trumpet and clarinet."), facts
+    try:
+        return we.make_player(key, concert_key), "", facts
+    except we.WarmupUnavailable as exc:
+        return None, str(exc), facts
+
+
+# ---------------------------------------------------------------- the working record
+
+
+def _mutable(session_ref: Any) -> MutableMapping | None:
+    from music_coach_ami.session_access import as_mutable_session
+
+    s = as_mutable_session(session_ref)
+    return s if isinstance(s, MutableMapping) else None
+
+
+def _state(session: MutableMapping, *, create: bool = False) -> dict[str, Any] | None:
+    ensure_owner(session)
+    raw = session.get(STATE_KEY)
+    if isinstance(raw, dict) and raw.get("owner") == owner_token(session):
+        return raw
+    if not create:
+        return None
+    fresh = {"owner": owner_token(session), "versions": [], "cursor": -1, "active": False, "view": {"mode": "plan", "index": 0}}
+    session[STATE_KEY] = fresh
+    return fresh
+
+
+def current(session_ref: Any) -> dict[str, Any] | None:
+    """The current version's plan when a warmup is the working context (the live record, not a copy)."""
+    s = _mutable(session_ref)
+    st = _state(s) if s is not None else None
+    if not st or not st.get("active") or not (0 <= st["cursor"] < len(st["versions"])):
+        return None
+    return st["versions"][st["cursor"]]["plan"]
+
+
+def is_active(session_ref: Any) -> bool:
+    return current(session_ref) is not None
+
+
+def deactivate(session_ref: Any) -> None:
+    """Another exercise became the thing the conversation is about; keep the warmup record but stop answering revisions with it."""
+    s = _mutable(session_ref)
+    st = _state(s) if s is not None else None
+    if st:
+        st["active"] = False
+
+
+def history(session_ref: Any) -> dict[str, Any]:
+    s = _mutable(session_ref)
+    st = _state(s) if s is not None else None
+    if not st:
+        return {"versions": 0, "cursor": -1, "can_undo": False, "can_redo": False, "active": False}
+    n, c = len(st["versions"]), st["cursor"]
+    return {"versions": n, "cursor": c, "can_undo": c > 0, "can_redo": 0 <= c < n - 1, "active": bool(st.get("active")), "view": dict(st.get("view") or {})}
+
+
+def _push(session: MutableMapping, plan: dict[str, Any], label: str, *, fresh: bool = False) -> None:
+    st = _state(session, create=True)
+    if fresh:
+        st["versions"], st["cursor"] = [], -1
+    ver = {"vid": plan["id"], "plan": copy.deepcopy(plan), "label": _clean(label)[:160]}
+    st["versions"] = st["versions"][: st["cursor"] + 1] + [ver]
+    drop = max(0, len(st["versions"]) - MAX_VERSIONS)
+    if drop:
+        del st["versions"][:drop]
+    st["cursor"] = len(st["versions"]) - 1
+    st["active"] = True
+    st["view"] = {"mode": "plan", "index": 0}
+
+
+# ---------------------------------------------------------------- the answers
+
+
+def _a(word: str) -> str:
+    return ("an " if word[:1] in "aeiou" else "a ") + word
+
+
+def _family_phrase(family: str, n: int) -> str:
+    base = {"long_tones": "long tones", "scale": "scale", "intervals": "interval", "articulation": "articulation"}[family]
+    if family == "long_tones":
+        return "long tones" + (f" ({n} exercises)" if n != 1 else "")
+    return f"{n} {base} exercise{'s' if n != 1 else ''}"
+
+
+def _mmss(seconds: float) -> str:
+    s = int(round(seconds))
+    return f"{s // 60}:{s % 60:02d}"
+
+
+def _minutes_text(seconds: float) -> str:
+    return f"{seconds / 60:.1f}".rstrip("0").rstrip(".") + " min"
+
+
+def _item_line(i: int, r: dict[str, Any], gap: int) -> str:
+    plays = f"play it {r['reps']}×" if r["reps"] > 1 else "play it once"
+    rest = f" with {gap} s rests" if r["reps"] > 1 else ""
+    return (f"{i}. **{r['title']}** — {_mmss(r['seconds'])}. ♩ = {r['bpm']} · {r['bars']} bars · {r['pass_seconds']:.0f} s per play · {plays}{rest}.")
+
+
+def _header(plan: dict[str, Any], label: str) -> str:
+    p = plan["player"]
+    key_note = f"written key {we.key_text(*we.practical_key(*we.split_key(p['written_key'])))}"
+    if p["offset"] or p["semitones"]:
+        key_note += f" (concert {we.key_text(*we.split_key(p['concert_key']))})"
+    mins = f"{plan['target_seconds'] / 60:g}"
+    n = len(plan["items"])
+    return (f"**Your {mins}-minute {plan['level']} {p['label'].lower()} warmup** — {n} exercise{'s' if n != 1 else ''}, {key_note}. "
+            f"Planned playing time {_mmss(plan['total_seconds'])}.")
+
+
+def _nav(plan: dict[str, Any], view: dict[str, Any]) -> dict[str, Any]:
+    n = len(plan["items"])
+    idx = int(view.get("index") or 0)
+    mode = view.get("mode") or "plan"
+    return {"plan_id": plan["id"], "count": n, "mode": mode, "index": idx, "can_next": (mode == "plan" and n > 0) or (mode == "item" and idx < n - 1),
+            "can_prev": mode == "item" and idx > 0, "can_all": mode == "item"}
+
+
+def _plan_response(plan: dict[str, Any], *, lead: str = "", changed: list[str] | None = None, kept: str = "", view: dict[str, Any] | None = None,
+                   session_ref: Any = None, assumptions: list[str] | None = None, history_info: dict[str, Any] | None = None) -> CoachResponse:
+    view = view or {"mode": "plan", "index": 0}
+    gap = plan["gap_seconds"]
+    steps: list[str] = ["**Practice**"]
+    sections: list[str] = []
+    items = plan["items"]
+    if view.get("mode") == "item" and items:
+        i = max(0, min(int(view.get("index") or 0), len(items) - 1))
+        r = items[i]
+        direct = f"**Exercise {i + 1} of {len(items)}: {r['title']}**\n\n{_header(plan, '')}"
+        steps = ["**How to practice it**", *[f"- {h}" for h in r["how"]],
+                 f"- **Time:** ♩ = {r['bpm']}, {r['bars']} bars is {r['pass_seconds']:.0f} seconds per play; play it {r['reps']} time{'s' if r['reps'] != 1 else ''} with "
+                 f"{gap} seconds of rest between plays — {_mmss(r['seconds'])} in all."]
+        listen = r["listen"]
+        sections = [r["abc"]]
+    else:
+        direct = _header(plan, "")
+        steps += [_item_line(i + 1, r, gap) for i, r in enumerate(items)]
+        steps.append(f"Between exercises take about {plan['transition_seconds']} seconds to breathe and turn to the next one — that is included in the total.")
+        listen = []
+        sections = [r["abc"] for r in items]
+    if lead:
+        direct = lead.strip() + "\n\n" + direct
+    if changed:
+        direct += "\n\n**What changed:** " + "; ".join(changed) + "."
+    if kept:
+        direct += f"\n\n**Kept as it was:** {kept}"
+    notes = list(assumptions or []) + list(plan.get("notes") or [])
+    if notes:
+        direct += "\n\n" + "\n".join(f"_{n}_" for n in notes)
+    hist = history_info or history(session_ref)
+    nxt = ("Say “next exercise” to work through them one at a time, or change the plan: “make it shorter”, “remove the long tones”, “add more articulation work”, "
+           "“make the second exercise slower”, “change the interval exercise to fourths”, “undo that”.")
+    return CoachResponse(
+        intent=CoachIntent.SCALE_PRACTICE, direct_answer=direct, practice_steps=steps, what_to_listen_for=list(listen), suggested_next_action=nxt if view.get("mode") != "item" else
+        "Say “next exercise” for the next one, “show the whole warmup” for the plan, or change it (“make this one slower”).",
+        notation_abc=sections[0] if sections else "", notation_abc_sections=list(sections), source_solver="AdaptiveWarmup", confidence=0.9,
+        diagnostics={"musical_idea_content": True, "warmup": True, "warmup_plan_id": plan["id"], "warmup_level": plan["level"], "warmup_minutes": plan["minutes"],
+                     "warmup_total_seconds": plan["total_seconds"], "warmup_target_seconds": plan["target_seconds"], "warmup_version": hist.get("cursor", 0) + 1,
+                     "warmup_versions": hist.get("versions", 1), "warmup_can_undo": hist.get("can_undo", False), "warmup_can_redo": hist.get("can_redo", False),
+                     "warmup_nav": _nav(plan, view), "warmup_items": [_item_summary(r) for r in items],
+                     "warmup_song_aware": False, "warmup_view": dict(view)})
+
+
+def _item_summary(r: dict[str, Any]) -> dict[str, Any]:
+    keys = ("uid", "family", "title", "bpm", "bars", "pass_seconds", "reps", "seconds", "key", "written_midi", "sounding_midi", "range", "abc", "params",
+            "tempo_override", "size", "checks", "written_notes")
+    return {k: copy.deepcopy(r.get(k)) for k in keys}
+
+
+def _simple(direct: str, steps: list[str] | None = None, *, failed: str = "", plan: dict[str, Any] | None = None, session_ref: Any = None,
+            extra: dict[str, Any] | None = None) -> CoachResponse:
+    diag: dict[str, Any] = {"musical_idea_content": True, "warmup": True, "warmup_failed": bool(failed), "warmup_failure_reason": failed, **(extra or {})}
+    if plan is not None:
+        diag["warmup_plan_id"] = plan["id"]
+        diag["warmup_nav"] = _nav(plan, (_state(_mutable(session_ref)) or {}).get("view") or {"mode": "plan", "index": 0}) if session_ref is not None else {}
+    return CoachResponse(intent=CoachIntent.SCALE_PRACTICE, direct_answer=direct, practice_steps=list(steps or []), source_solver="AdaptiveWarmup",
+                         confidence=0.9, diagnostics=diag)
+
+
+_SUPPORTED = ("make the whole warmup shorter or longer (or “make it 5 minutes”), more advanced or easier, remove the long tones (or any family, or “remove exercise 2”), "
+              "add more articulation work (or a scale, interval or long-tone exercise), make one exercise slower or faster (“make the second exercise slower”, "
+              "“set exercise 3 to 80 BPM”), change the interval exercise to thirds, fourths, fifths and so on, go through the exercises one at a time "
+              "(“next exercise”, “previous exercise”, “show the whole warmup”), and “undo that” or “redo”")
+
+
+def _unsupported(session_ref: Any, plan: dict[str, Any], reason: str = "") -> CoachResponse:
+    return _simple((reason or "I can't make that change to the warmup in this first version.") + " The warmup is unchanged.",
+                   [f"What I can change: {_SUPPORTED}."], failed="unsupported", plan=plan, session_ref=session_ref)
+
+
+# ---------------------------------------------------------------- creating a warmup
+
+
+def _page_values(question: str, session_ref: Any, ami_ctx: dict[str, Any] | None) -> tuple[Any, dict[str, Any]]:
+    from music_coach_ami.router import route_question
+
+    req = route_question(question, session_ref if isinstance(session_ref, MutableMapping) else {}, ami_ctx=ami_ctx)
+    return req.context, {"entities": req.entities}
+
+
+def create(question: str, session_ref: Any, ami_ctx: dict[str, Any] | None = None, request: dict[str, Any] | None = None) -> CoachResponse:
+    session = _mutable(session_ref)
+    if session is None:
+        return _simple("I can't keep a warmup in this session.", failed="no_session")
+    ctx, _ = _page_values(question, session, ami_ctx)
+    req = request if request is not None else parse_request(question)       # ``request``: the rules' reading, completed by a validated interpretation
+    assumptions: list[str] = []
+    # length
+    minutes = req["minutes"]
+    if minutes is None:
+        minutes, m_source = float(DEFAULT_MINUTES), "default"
+        assumptions.append(f"You didn't say how long, so I planned {DEFAULT_MINUTES} minutes.")
+    else:
+        m_source = "request"
+        if minutes > MAX_MINUTES:
+            return _simple(f"I keep warmups to {MAX_MINUTES} minutes at most — a longer one is really a practice session. Ask again with {MAX_MINUTES} minutes or fewer.",
+                           failed="too_long")
+        if minutes < MIN_MINUTES:
+            assumptions.append(f"{minutes:g} minute{'s' if minutes != 1 else ''} is shorter than the shortest warmup I plan, so I used {MIN_MINUTES} minutes.")
+            minutes = float(MIN_MINUTES)
+    # level
+    page_level = _clean(getattr(ctx, "level", ""))
+    if req["level"]:
+        level, l_source = req["level"], "request"
+    elif page_level.capitalize() in we.LEVELS:
+        level, l_source = page_level.capitalize(), "page"
+        assumptions.append(f"Level: {level}, from your app setting — say “beginner” or “advanced” to change it.")
+    else:
+        level, l_source = "Intermediate", "default"
+        assumptions.append("Level: Intermediate (no level was set) — say “beginner” or “advanced” to change it.")
+    # key
+    page_key = _clean(getattr(ctx, "current_practice_key", ""))
+    if req["key"]:
+        concert, k_source = req["key"], "request"
+    elif page_key:
+        concert, k_source = page_key, "practice_key"
+    else:
+        concert, k_source = "C", "default"
+    player, why, facts = resolve_player(req, session, ctx, concert)
+    if player is None:
+        return _simple(why, failed="no_player")
+    if facts.get("sax_assumed"):
+        assumptions.append("Saxophone type: Alto — choose your saxophone in the app or say “tenor saxophone” to change it.")
+    elif facts.get("sax_from_app"):
+        assumptions.append(f"Saxophone: {facts['sax_from_app']}, from your app setting — say “tenor saxophone” (or another type) to change it.")
+    if req["key"]:
+        assumptions.append(f"Key: {we.key_text(*we.split_key(req['key']))} (concert pitch, as the Practice Key is).")
+    # families
+    families = list(req["families"]) or list(DEFAULT_FAMILIES[level])
+    dropped: list[str] = []
+    for f in list(families):
+        reason = we.supports(player, f)
+        if reason:
+            families.remove(f)
+            dropped.append(f"Left out {we.FAMILY_LABEL[f].lower()}: {reason}.")
+    if not families:
+        return _simple("; ".join(dropped).replace("Left out ", "I can't build that for this instrument — ") or "There's nothing I can build for that request.", failed="no_family")
+    explicit = bool(req["families"])
+    focus = req["focus"] or _focus_key(_clean(getattr(ctx, "practice_focus", "")))
+    if req["derived_from"]:
+        assumptions.append(f"You asked for {req['derived_from']} work, so I chose scales, intervals and two-note articulation.")
+    if req["excluded"]:
+        assumptions.append("Left out, as you asked: " + ", ".join(we.FAMILY_LABEL[f].lower() for f in req["excluded"]) + ".")
+    if not req["families"]:
+        families = [f for f in families if f not in req["excluded"]]
+    spec: dict[str, Any] = {
+        "instrument": player.key, "level": level, "level_source": l_source, "minutes": minutes, "minutes_source": m_source, "concert_key": concert,
+        "key_source": k_source, "families": families, "explicit": explicit, "excluded": list(req["excluded"]), "focus": focus,
+        "intervals": [i for i in req["intervals"] if i in we.INTERVALS], "artic": list(req["artic"]), "more": dict(req.get("more") or {}), "tempo_scale": 1.0, "size": "full",
+        "items": [], "uid_counter": 0, "song_aware_requested": bool(req["song_aware"]), "source_question": _clean(question)[:200],
+    }
+    initial_items(spec)
+    try:
+        plan = build_plan(player, spec)
+    except we.WarmupUnavailable as exc:
+        return _simple(f"I couldn't build that warmup correctly for {player.label} in {we.key_text(*we.split_key(player.written_key))}: {exc}.", failed="unavailable")
+    _push(session, plan, question, fresh=True)
+    lead = ""
+    song_title = _clean(((ami_ctx or {}).get("active_song") or {}).get("title"))
+    if req["song_aware"] or (song_title and song_title.lower() in question.lower()):
+        lead = ("_I can't tailor a warmup to a song's chords yet — this one is built from your instrument, level and key. Song-aware warmups (guide tones, "
+                "chord-tone patterns over your chart) are a later step._")
+    resp = _plan_response(plan, lead=lead, assumptions=assumptions + dropped, session_ref=session)
+    resp.diagnostics["warmup_song_aware_requested"] = bool(req["song_aware"])
+    resp.diagnostics["warmup_spec"] = {k: spec[k] for k in ("instrument", "level", "minutes", "concert_key", "families", "explicit", "excluded", "focus")}
+    return resp
+
+
+# ---------------------------------------------------------------- revising a warmup
+
+
+def _player_of(plan: dict[str, Any]) -> we.Player:
+    p = plan["player"]
+    return we.make_player(p["key"], p["concert_key"])
+
+
+def _resolve_ref(items: list[dict[str, Any]], ref: dict[str, Any]) -> tuple[list[dict[str, Any]], str]:
+    if ref.get("index"):
+        i = ref["index"]
+        i = len(items) if i == -1 else i
+        if not (1 <= i <= len(items)):
+            return [], f"The warmup has {len(items)} exercises, so there is no exercise {ref['index']}."
+        return [items[i - 1]], ""
+    if ref.get("family"):
+        hits = [d for d in items if d["family"] == ref["family"]]
+        if not hits:
+            return [], f"There's no {we.FAMILY_LABEL[ref['family']].lower()} exercise in this warmup."
+        return hits, ""
+    return [], ""
+
+
+def _index_of(plan: dict[str, Any], uid: str) -> int:
+    return next((i + 1 for i, r in enumerate(plan["items"]) if r["uid"] == uid), 0)
+
+
+def _contract(old: dict[str, Any], new: dict[str, Any], *, untouched_uids: set[str]) -> str:
+    """Everything the musician did not ask to change is still exactly as it was: same notation for every untouched exercise."""
+    old_by = {r["uid"]: r for r in old["items"]}
+    new_by = {r["uid"]: r for r in new["items"]}
+    for uid in untouched_uids:
+        if uid in old_by and uid in new_by and old_by[uid]["abc"] != new_by[uid]["abc"]:
+            return f"exercise {uid} changed although it wasn't asked to"
+    return ""
+
+
+def _rebuild(plan: dict[str, Any], spec: dict[str, Any], *, replan: bool) -> dict[str, Any]:
+    return build_plan(_player_of(plan), spec, replan=replan)
+
+
+def _retarget_reps_for_item(old_plan: dict[str, Any], new_plan: dict[str, Any], uid: str) -> None:
+    """A tempo change on one exercise keeps its share of the time (fewer plays when it's slower) and leaves every other exercise's plays alone."""
+    old_by = {r["uid"]: r for r in old_plan["items"]}
+    old_share = old_by[uid]["seconds"]
+    for r in new_plan["items"]:
+        if r["uid"] != uid:
+            r["reps"] = old_by[r["uid"]]["reps"]
+    tgt = next(r for r in new_plan["items"] if r["uid"] == uid)
+    best = min(range(1, MAX_REPS + 1), key=lambda k: abs(k * tgt["pass_seconds"] + (k - 1) * we.GAP_SECONDS - old_share))
+    tgt["reps"] = best
+    for r in new_plan["items"]:
+        r["seconds"] = round(r["reps"] * r["pass_seconds"] + (r["reps"] - 1) * we.GAP_SECONDS, 1)
+    new_plan["total_seconds"] = round(_total(new_plan["items"]), 1)
+
+
+def _commit(session: MutableMapping, plan: dict[str, Any], label: str) -> None:
+    plan["id"] = "wu-" + hashlib.sha1(json.dumps([[r["uid"], r["abc"], r["reps"], r["bpm"]] for r in plan["items"]], sort_keys=True).encode("utf-8")).hexdigest()[:10]
+    _push(session, plan, label)
+
+
+def revise(op: dict[str, Any], question: str, session_ref: Any, ami_ctx: dict[str, Any] | None = None) -> CoachResponse:
+    session = _mutable(session_ref)
+    st = _state(session) if session is not None else None
+    plan0 = current(session_ref)
+    if session is None or st is None or plan0 is None:
+        return _simple("There's no warmup from this conversation to change yet. Ask for one first — for example “Give me a 10-minute flute warmup”.", failed="no_warmup")
+    kind = op["op"]
+    spec = copy.deepcopy(plan0["spec"])
+    hist = history(session)
+
+    # ----- history and views (no new version for a view)
+    if kind == OP_UNDO:
+        if not hist["can_undo"]:
+            return _simple("There's nothing to undo — this is the first version of the warmup.", failed="nothing_to_undo", plan=plan0, session_ref=session)
+        st["cursor"] -= 1
+        st["view"] = {"mode": "plan", "index": 0}
+        prev = st["versions"][st["cursor"]]
+        return _plan_response(prev["plan"], lead=f"Undid your last change (“{st['versions'][st['cursor'] + 1]['label']}”). The warmup is back to the version before it.",
+                              session_ref=session)
+    if kind == OP_REDO:
+        if not hist["can_redo"]:
+            return _simple("There's nothing to redo.", failed="nothing_to_redo", plan=plan0, session_ref=session)
+        st["cursor"] += 1
+        st["view"] = {"mode": "plan", "index": 0}
+        nxt = st["versions"][st["cursor"]]
+        return _plan_response(nxt["plan"], lead=f"Redid “{nxt['label']}”.", session_ref=session)
+    n = len(plan0["items"])
+    view = dict(st.get("view") or {"mode": "plan", "index": 0})
+    if kind in (OP_NEXT, OP_PREV, OP_ALL, OP_GOTO):
+        if kind == OP_ALL:
+            st["view"] = {"mode": "plan", "index": 0}
+            return _plan_response(plan0, session_ref=session)
+        if kind == OP_GOTO:
+            i = op["index"]
+            i = n if i == -1 else i
+            if not (1 <= i <= n):
+                return _simple(f"The warmup has {n} exercises, so there is no exercise {op['index']}.", failed="no_such_exercise", plan=plan0, session_ref=session)
+            st["view"] = {"mode": "item", "index": i - 1}
+        elif kind == OP_NEXT:
+            if view["mode"] == "plan":
+                st["view"] = {"mode": "item", "index": 0}
+            elif view["index"] + 1 < n:
+                st["view"] = {"mode": "item", "index": view["index"] + 1}
+            else:
+                st["view"] = {"mode": "plan", "index": 0}
+                return _plan_response(plan0, lead="That was the last exercise — here is the whole warmup again.", session_ref=session)
+        else:
+            if view["mode"] != "item" or view["index"] == 0:
+                st["view"] = {"mode": "plan", "index": 0}
+                return _plan_response(plan0, lead="You're at the start — here is the whole warmup.", session_ref=session)
+            st["view"] = {"mode": "item", "index": view["index"] - 1}
+        return _plan_response(plan0, view=st["view"], session_ref=session)
+    if kind == OP_UNSUPPORTED:
+        return _unsupported(session, plan0)
+
+    # ----- changes (a new version each)
+    try:
+        player = _player_of(plan0)
+    except we.WarmupUnavailable as exc:
+        return _unsupported(session, plan0, str(exc))
+    changed: list[str] = []
+    kept = ""
+    replan = True
+    touched: set[str] = set()
+    tempo_uid = ""
+    if kind in (OP_SHORTER, OP_LONGER, OP_MINUTES):
+        old_m = float(spec["minutes"])
+        if kind == OP_MINUTES:
+            new_m = float(op["minutes"])
+        elif kind == OP_SHORTER:
+            new_m = max(float(MIN_MINUTES), float(round(old_m * 0.6)))
+        else:
+            new_m = min(float(MAX_MINUTES), float(round(old_m * 1.5)))
+        if new_m > MAX_MINUTES:
+            return _unsupported(session, plan0, f"I keep warmups to {MAX_MINUTES} minutes at most.")
+        if new_m < MIN_MINUTES:
+            new_m = float(MIN_MINUTES)
+        if abs(new_m - old_m) < 1e-9:
+            return _unsupported(session, plan0, f"The warmup is already {old_m:g} minutes{' — the shortest I plan' if old_m <= MIN_MINUTES else ''}.")
+        spec["minutes"] = new_m
+        changed.append(f"length {old_m:g} → {new_m:g} minutes")
+        kept = "the level, the key, your tempo choices and every exercise's notes; only the number of plays (and, if needed, which variants are included) is re-planned."
+    elif kind in (OP_HARDER, OP_EASIER, OP_LEVEL):
+        old = spec["level"]
+        new = (LEVEL_UP.get(old) if kind == OP_HARDER else LEVEL_DOWN.get(old) if kind == OP_EASIER else op["level"])
+        if not new:
+            return _unsupported(session, plan0, f"The warmup is already {old}" + (" — the top level I have, so there is nothing harder yet." if kind == OP_HARDER else " — the easiest level."))
+        if new == old:
+            return _unsupported(session, plan0, f"The warmup is already {old}.")
+        spec["level"], spec["level_source"] = new, "revision"
+        for d in spec["items"]:
+            d["tempo"] = None
+        spec["tempo_scale"] = 1.0
+        spec["items"] = [d for d in spec["items"]]
+        changed.append(f"level {old} → {new} (new tempos, ranges and rhythms for {new})")
+        kept = "the instrument, the key, the length, and which kinds of exercise are included."
+    elif kind == OP_REMOVE_FAMILY:
+        fam = op["family"]
+        if fam not in {d["family"] for d in spec["items"]}:
+            return _unsupported(session, plan0, f"There are no {we.FAMILY_LABEL[fam].lower()} exercises in this warmup.")
+        if len({d["family"] for d in spec["items"]}) == 1:
+            return _unsupported(session, plan0, "That would remove the whole warmup.")
+        gone = [d for d in spec["items"] if d["family"] == fam]
+        spec["items"] = [d for d in spec["items"] if d["family"] != fam]
+        spec["families"] = [f for f in spec["families"] if f != fam]
+        spec["excluded"] = sorted(set(spec.get("excluded") or []) | {fam})
+        changed.append(f"removed the {_family_phrase(fam, len(gone))}")
+        kept = f"the other exercises exactly as they were; the warmup stays {spec['minutes']:g} minutes, so their plays are re-planned."
+    elif kind == OP_REMOVE_ITEM:
+        hits, err = _resolve_ref(spec["items"], {"index": op["index"]})
+        if err:
+            return _unsupported(session, plan0, err)
+        if len(spec["items"]) == 1:
+            return _unsupported(session, plan0, "That would remove the whole warmup.")
+        d = hits[0]
+        spec["items"] = [x for x in spec["items"] if x["uid"] != d["uid"]]
+        if not _items_of(spec, d["family"]):
+            spec["families"] = [f for f in spec["families"] if f != d["family"]]
+        changed.append(f"removed exercise {op['index'] if op['index'] != -1 else len(plan0['items'])} ({we.FAMILY_LABEL[d['family']].lower()})")
+        kept = f"the other exercises exactly as they were; the warmup stays {spec['minutes']:g} minutes, so their plays are re-planned."
+    elif kind in (OP_ADD_FAMILY, OP_MORE_FAMILY):
+        fam = op["family"]
+        reason = we.supports(player, fam)
+        if reason:
+            return _unsupported(session, plan0, f"I can't add {we.FAMILY_LABEL[fam].lower()} for {player.label}: {reason}.")
+        if fam not in spec["families"]:
+            spec["families"].append(fam)
+        spec["excluded"] = [f for f in spec.get("excluded") or [] if f != fam]
+        if op.get("artic") and fam == "articulation":
+            spec["artic"] = list(dict.fromkeys(["two_note", *(spec.get("artic") or [])]))
+        spec["more"] = {**(spec.get("more") or {}), fam: float((spec.get("more") or {}).get(fam, 1.0)) * 1.6}
+        it = _new_item(spec, fam)
+        if it is None:
+            return _unsupported(session, plan0, f"The warmup already has as many {we.FAMILY_LABEL[fam].lower()} exercises as I can vary.")
+        if fam == "articulation" and op.get("artic"):
+            it["params"]["pattern"] = "two_note"
+        it["keep"] = True
+        spec["items"].append(it)
+        spec["items"] = _ordered(spec)
+        changed.append(f"added {_a(we.FAMILY_LABEL[fam].lower())} exercise" + (" and gave that kind of exercise more of the time" if kind == OP_MORE_FAMILY else ""))
+        touched.add(it["uid"])
+        kept = f"every existing exercise's notes; the warmup stays {spec['minutes']:g} minutes, so the plays are re-planned."
+    elif kind in (OP_ITEM_SLOWER, OP_ITEM_FASTER, OP_ITEM_TEMPO):
+        hits, err = _resolve_ref(spec["items"], op["ref"])
+        if err:
+            return _unsupported(session, plan0, err)
+        if len(hits) != 1:
+            names = ", ".join(f"exercise {_index_of(plan0, d['uid'])}" for d in hits)
+            return _unsupported(session, plan0, f"More than one exercise matches ({names}). Say which one, for example “make exercise {_index_of(plan0, hits[0]['uid'])} slower”.")
+        d = hits[0]
+        row = next(r for r in plan0["items"] if r["uid"] == d["uid"])
+        old_bpm = int(row["bpm"])
+        if kind == OP_ITEM_TEMPO:
+            new_bpm = int(op["bpm"])
+        else:
+            step = max(4, int(round(old_bpm * 0.1 / 2) * 2))
+            new_bpm = old_bpm - step if kind == OP_ITEM_SLOWER else old_bpm + step
+        if not (36 <= new_bpm <= 160):
+            return _unsupported(session, plan0, f"♩ = {new_bpm} is outside the 36–160 range I write exercises in.")
+        if new_bpm == old_bpm:
+            return _unsupported(session, plan0, f"Exercise {_index_of(plan0, d['uid'])} is already at ♩ = {old_bpm}.")
+        d["tempo"] = new_bpm
+        touched.add(d["uid"])
+        tempo_uid = d["uid"]
+        replan = False
+        changed.append(f"exercise {_index_of(plan0, d['uid'])} ({we.FAMILY_LABEL[d['family']].lower()}) ♩ = {old_bpm} → {new_bpm}")
+        kept = "every other exercise exactly as it was (notes, tempo and plays); this one keeps about the same time by adjusting how many times you play it."
+    elif kind in (OP_WHOLE_SLOWER, OP_WHOLE_FASTER):
+        f = 0.9 if kind == OP_WHOLE_SLOWER else 1.1
+        new_scale = round(float(spec.get("tempo_scale") or 1.0) * f, 3)
+        if not (0.5 <= new_scale <= 1.6):
+            return _unsupported(session, plan0, "That's as far as I'll move the whole warmup's tempo.")
+        spec["tempo_scale"] = new_scale
+        changed.append(f"every exercise's tempo {'slower' if f < 1 else 'faster'} by about 10% (except any you set individually)")
+        kept = "the notes, the keys, the exercises and the length."
+    elif kind == OP_INTERVAL:
+        ivs = [d for d in spec["items"] if d["family"] == "intervals"]
+        if not ivs:
+            return _unsupported(session, plan0, "There's no interval exercise in this warmup. Say “add an interval exercise” first.")
+        target = ivs
+        if op["ref"].get("index"):
+            hits, err = _resolve_ref(spec["items"], {"index": op["ref"]["index"]})
+            if err:
+                return _unsupported(session, plan0, err)
+            if hits[0]["family"] != "intervals":
+                return _unsupported(session, plan0, f"Exercise {op['ref']['index']} isn't an interval exercise, so it can't be changed to {op['interval']}.")
+            target = hits
+        if len(target) > 1:
+            names = ", ".join(f"exercise {_index_of(plan0, d['uid'])} ({d['params'].get('interval')})" for d in target)
+            return _unsupported(session, plan0, f"There's more than one interval exercise ({names}). Say which one, for example “change exercise {_index_of(plan0, target[0]['uid'])} to {op['interval']}”.")
+        d = target[0]
+        old_iv = d["params"].get("interval")
+        if old_iv == op["interval"]:
+            return _unsupported(session, plan0, f"That exercise is already {op['interval']}.")
+        d["params"] = {**d["params"], "interval": op["interval"]}
+        spec["intervals"] = list(dict.fromkeys([op["interval"], *[x for x in (spec.get("intervals") or []) if x != old_iv]]))
+        touched.add(d["uid"])
+        replan = False
+        changed.append(f"exercise {_index_of(plan0, d['uid'])} {old_iv} → {op['interval']}")
+        kept = "every other exercise exactly as it was; this one keeps its tempo and about the same time."
+    else:
+        return _unsupported(session, plan0)
+
+    old_by = {r["uid"]: r for r in plan0["items"]}
+    try:
+        plan1 = build_plan(player, spec, replan=replan)
+    except we.WarmupUnavailable as exc:
+        return _unsupported(session, plan0, f"I couldn't build that change correctly: {exc}.")
+    if kind in (OP_ITEM_SLOWER, OP_ITEM_FASTER, OP_ITEM_TEMPO):
+        _retarget_reps_for_item(plan0, plan1, tempo_uid)
+    elif kind == OP_INTERVAL:
+        uid = next(iter(touched))
+        _retarget_reps_for_item(plan0, plan1, uid)
+    # the contract: untouched exercises keep their notation (a level change touches all of them by design)
+    size_changed = (plan0["spec"].get("size") or "full") != (plan1["spec"].get("size") or "full")
+    if size_changed:
+        changed.append("each exercise shortened to its brief version so the plan fits the time")
+    if kind not in (OP_HARDER, OP_EASIER, OP_LEVEL, OP_WHOLE_SLOWER, OP_WHOLE_FASTER) and not size_changed:
+        bad = _contract(plan0, plan1, untouched_uids={u for u in old_by if u not in touched})
+        if bad:
+            return _unsupported(session, plan0, f"I stopped because {bad}.")
+    if kind in (OP_SHORTER, OP_LONGER, OP_MINUTES, OP_REMOVE_FAMILY, OP_REMOVE_ITEM, OP_ADD_FAMILY, OP_MORE_FAMILY):
+        gained = [r for r in plan1["items"] if r["uid"] not in old_by]
+        dropped_ = [r for r in plan0["items"] if r["uid"] not in {x["uid"] for x in plan1["items"]}]
+        if gained and kind in (OP_SHORTER, OP_LONGER, OP_MINUTES):
+            changed.append(f"{len(gained)} exercise{'s' if len(gained) != 1 else ''} added to fill the time")
+        if dropped_ and kind in (OP_SHORTER, OP_LONGER, OP_MINUTES):
+            changed.append(f"{len(dropped_)} exercise{'s' if len(dropped_) != 1 else ''} dropped to fit")
+    changed.append(f"total playing time now {_mmss(plan1['total_seconds'])}")
+    _commit(session, plan1, question)
+    return _plan_response(plan1, changed=changed, kept=kept, session_ref=session)
+
+
+# ---------------------------------------------------------------- entry points
+
+
+_FRESH_WORDS = re.compile(r"\b(?:new|another|different|fresh|start\s+over|from\s+scratch|instead)\b", re.I)
+_ADDITIVE = re.compile(r"\b(?:more|extra|another|add|also|additional)\b", re.I)
+_STARTS_FRESH = re.compile(r"^\s*(?:please\s+)?(?:give|create|build|plan|design|generate|write|put\s+together|set\s+up)\b", re.I)
+_VIEW_OR_HISTORY = {OP_UNDO, OP_REDO, OP_NEXT, OP_PREV, OP_ALL, OP_GOTO}
+
+
+def _asks_for_a_new_warmup(question: str) -> bool:
+    """While a warmup is open, 'make the whole warmup shorter' changes it and 'give me a 5-minute flute warmup' starts another."""
+    req = parse_request(question)
+    low = _clean(question).lower()
+    if req["instrument_word"] or req["unverified"] or _FRESH_WORDS.search(low):
+        return True
+    return bool(_STARTS_FRESH.match(low)) and not _ADDITIVE.search(low)
+
+
+def handle(question: str, session_ref: Any, ami_ctx: dict[str, Any] | None = None) -> CoachResponse | None:
+    """The warmup answer for ``question``, or None when it isn't about warmups (the rest of AMI then answers)."""
+    session = _mutable(session_ref)
+    if session is None:
+        return None
+    ensure_owner(session)
+    active = is_active(session)
+    if not active and _WARM.search(question) and not _asks_for_a_new_warmup(question):
+        guess = parse_revision(question)
+        if guess is not None and guess["op"] not in (OP_UNSUPPORTED, OP_MINUTES, OP_ADD_FAMILY, OP_MORE_FAMILY):
+            return _simple("There's no warmup from this conversation to change yet. Ask for one first — for example “Give me a 10-minute flute warmup” — and then "
+                           "I can shorten it, make it harder, remove or add exercises, slow one down, and undo or redo each change.", failed="no_warmup")
+    op = parse_revision(question) if active else None
+    if op is not None and op["op"] in _VIEW_OR_HISTORY:
+        return revise(op, question, session, ami_ctx)
+    if is_warmup_request(question) and not (op is not None and op["op"] != OP_UNSUPPORTED and not _asks_for_a_new_warmup(question)):
+        return create(question, session, ami_ctx)
+    if op is not None:
+        return revise(op, question, session, ami_ctx)
+    return None
+
+
+def step_view(session_ref: Any, delta: int) -> CoachResponse | None:
+    """The 'Next exercise' / 'Previous exercise' / 'Whole warmup' buttons: move the view (delta +1, -1, 0 = whole plan). No new version."""
+    op = {"op": OP_NEXT if delta > 0 else OP_PREV if delta < 0 else OP_ALL}
+    return revise(op, "next exercise", session_ref, None) if is_active(session_ref) else None
