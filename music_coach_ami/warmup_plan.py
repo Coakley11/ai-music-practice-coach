@@ -395,7 +395,7 @@ _SONG_SCOPE = re.compile(r"\b(?:chorus|choruses|whole\s+(?:song|tune|form|chorus
                          r"section\s+\w+|\w\s+section|the\s+verse|the\s+chart|warm[\s-]?up)\b", re.I)
 _SPAN_CHORDS = re.compile(r"\bii[\s-]?v\b|\b(?:first|last|next)\s+(?:two|three|2|3)\s+chords?\b|\bone\s+chord\b|\bover\s+[A-G][#b]?(?:maj|min|dim|aug|sus|m|M)?\d+\b|"
                           r"\b[A-G][#b]?(?:maj|min|dim|aug|sus|m|M)?\d*\s*(?:to|→|->|then)\s*[A-G][#b]?(?:maj|min|dim|aug|sus|m|M)?\d*\b")
-_PRACTICE_ASK = re.compile(r"\b(?:give|make|create|build|design|write|prepare|show|need|want|get|generate|produce|practice|practise|work\s+on|play|drill|"
+_PRACTICE_ASK = re.compile(r"\b(?:give|make|create|build|design|write|prepare|show|need|want|get|generate|produce|practi[cs]e|work\s+on|play|drill|"
                            r"i[’']?d\s+like|can\s+(?:i|you|we)|could\s+(?:i|you|we)|would\s+you|please|let[’']?s|warm)\b", re.I)
 _SECTION_WORD = r"(bridge|verse(?:\s*\d+)?|chorus(?:\s*\d+)?|head|intro|outro|pre-?chorus|solo\s+section|solo|section\s+[a-z0-9]+|[a-z0-9]\s+section|b\s*\(bridge\)|turnaround)"
 _BAR_NUM = r"(\d+|" + "|".join(_NUMBER_WORDS) + r")"
@@ -1073,7 +1073,7 @@ def _explain_text(plan: dict[str, Any], view: dict[str, Any]) -> str:
     r = guides[max(0, min(int(view.get("index") or 0), len(plan["items"]) - 1))] if view.get("mode") == "item" and plan["items"][min(int(view.get("index") or 0), len(plan["items"]) - 1)]["family"] == "guide_tones" else guides[0]
     meta = r["meta"]
     lines = [f"**Why these notes work — {r['title']}**",
-             "The third says whether a chord is major or minor and the seventh gives its colour (dominant, major-seventh, half-diminished...). A line that lands on them at each change outlines the harmony itself, so you hear the chords even with nothing else playing.",
+             "The third says whether a chord is major or minor and the seventh gives its color (dominant, major-seventh, half-diminished...). A line that lands on them at each change outlines the harmony itself, so you hear the chords even with nothing else playing.",
              ""]
     for p in meta["segments"]:
         where = f"bar {p['bar']}" + (f", beat {p['beat'] + 1:g}" if p["beat"] else "")
@@ -1145,7 +1145,7 @@ def _song_setup(question: str, ctx: Any, req: dict[str, Any], sinfo: dict[str, A
     if song is None:
         if sinfo["named"] or explicit:
             who = f"“{sinfo['named']}”" if sinfo["named"] else "the song"
-            return None, None, _song_refusal(f"I can't build a guide-tone exercise over {who} yet: {why}. Select the song you want to practise (or open its chart), then ask again — "
+            return None, None, _song_refusal(f"I can't build a guide-tone exercise over {who} yet: {why}. Select the song you want to practice (or open its chart), then ask again — "
                                               "I only use the active song's chart and won't guess its chords."), ""
         return None, None, None, f"I couldn't read an active song's chart ({why})"
     if sinfo["named"]:
@@ -1212,7 +1212,7 @@ def create(question: str, session_ref: Any, ami_ctx: dict[str, Any] | None = Non
     song_fallback = ""
     explicit_guide = bool(sinfo["guide_explicit"] or "guide_tones" in req["families"])
     if (sinfo["wants_song"] or explicit_guide) and sinfo["tones"] and set(req["families"]) <= {"intervals", "guide_tones"}:
-        # in a song-aware request "thirds" / "sevenths" name the guide tones to practise, not an interval exercise
+        # in a song-aware request "thirds" / "sevenths" name the guide tones to practice, not an interval exercise
         req = {**req, "families": [f for f in req["families"] if f != "intervals"], "intervals": []}
     if sinfo["wants_song"] or explicit_guide:
         song, sel, early, song_fallback = _song_setup(question, ctx, req, sinfo, assumptions)
@@ -1733,7 +1733,7 @@ def handle(question: str, session_ref: Any, ami_ctx: dict[str, Any] | None = Non
     names = tuple((((current(session) or {}).get("spec") or {}).get("song") or {}).get("order") or ()) if active else ()
     op = parse_revision(question, names) if active else None
     if op is not None and op["op"] in SONG_OPS and not ((current(session) or {}).get("spec") or {}).get("song") and is_song_request(question):
-        op = None                          # "practise the thirds and sevenths of these chords" while a non-song warmup is open starts a song-aware one
+        op = None                          # "practice the thirds and sevenths of these chords" while a non-song warmup is open starts a song-aware one
     if op is not None and op["op"] in _VIEW_OR_HISTORY:
         return revise(op, question, session, ami_ctx)
     if is_warmup_request(question) and not (op is not None and op["op"] != OP_UNSUPPORTED and not _asks_for_a_new_warmup(question)):

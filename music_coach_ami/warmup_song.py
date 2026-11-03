@@ -510,7 +510,7 @@ def _explain(placed: list[dict[str, Any]], meta: dict[str, Any], level: str, sty
     thirds = [p for p in sup if p.get("third")]
     if thirds:
         p = thirds[0]
-        listen.append(f"The third decides the chord's colour: {p['third']} makes {p['written']} {'minor' if _is_minor_third(p) else 'major'}." if p.get("third") else "")
+        listen.append(f"The third decides the chord's color: {p['third']} makes {p['written']} {'minor' if _is_minor_third(p) else 'major'}." if p.get("third") else "")
     notes = {p["note"] for p in sup if p.get("note")}
     listen.extend(sorted(notes))
     if meta["unsupported"]:
