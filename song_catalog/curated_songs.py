@@ -3279,6 +3279,9 @@ def _im_yours_chart_pack() -> dict[str, Any]:
                 "and **N.C.** outro pickup."
             ),
             default_bpm=75,
+            # Beginner plays all 9 sections (one loop pass per repeat); the global trim
+            # dropped the Bridge, Verse 3 and the Final Chorus / Outro Build.
+            full_form_levels=["Beginner"],
             default_groove="Pop groove",
             time_signature="4/4",
             capo_note="Capo 4 (G-shape chart) · concert key B major",
