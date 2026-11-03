@@ -7354,6 +7354,18 @@ def _core_chart_overrides() -> dict[tuple[str, str], dict[str, Any]]:
                 "Solo": ["G13", "C13", "G13", "G13", "C13", "C13", "G13", "D13"],
                 "Outro": ["G6", "Cmaj9/G", "G6", "Cmaj9/G"],
             },
+            extensions=_ext(
+                default_bpm=42,
+                time_signature="6/8",
+                arrangement_notes=(
+                    "Gravity: written in 6/8, slowly 'in 2' (two dotted-quarter beats per bar), "
+                    "dotted-quarter = ~42 BPM (Musicnotes Piano/Vocal/Chords MN0109828 marks 6/8 "
+                    "dotted-quarter = 40, Musicnotes Easy Guitar TAB MN0100066 marks 6/8 = 42, "
+                    "Hooktheory 6/8 at 125 eighth-note pulses = 41.7 dotted-quarters). "
+                    "Chart is a rehearsal skeleton (16/16/32 bars, one chord per 6/8 bar); the 4:05 "
+                    "album form is longer and its bar counts are not verified, so the form is unchanged."
+                ),
+            ),
         ),
         # ``Shape of You`` — Ed Sheeran. Form as written (one chord = one bar in 4/4;
         # ``_shape_of_you_timing`` halves every chord and pushes Em and A):
