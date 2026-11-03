@@ -44,8 +44,10 @@ class BrowseUnionAcceptance(unittest.TestCase):
     def keys(self, **kwargs) -> list[str]:
         return [self.pick_key(row) for row in self.result(**kwargs)]
 
-    def test_browse1_no_filters_returns_full_catalog(self) -> None:
-        self.assertEqual(self.keys(), [self.pick_key(row) for row in self.records])
+    def test_browse1_no_filters_returns_nothing(self) -> None:
+        # Product decision (Nov 3 2026): Browse builds up from the criteria the musician picks, so with
+        # none active it is empty. The Active Song dropdown remains the full-catalog selector.
+        self.assertEqual(self.keys(), [])
 
     def test_browse2_search_only(self) -> None:
         rows = self.result(query="autumn leaves")

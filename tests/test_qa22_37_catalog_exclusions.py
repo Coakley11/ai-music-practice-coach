@@ -95,7 +95,7 @@ class TestAdditiveWithExclusions(unittest.TestCase):
         self.state[SONG_SEARCH_TEXT_KEY] = ""
         self.assertNotIn(victim, {_pk(r) for r in _browse(self.state)})
 
-    def test_clear_filters_restores_catalog_clears_exclusions_keeps_favorites(self):
+    def test_clear_filters_empties_browse_clears_exclusions_keeps_favorites(self):
         self.state.update({SONG_SEARCH_TEXT_KEY: "Mayer", WORKSPACE_GENRE_FILTERS_KEY: ["Jazz"], SONG_PICKER_FAVORITES_ONLY_KEY: True,
                            "selected_song": {"pick_key": "keep-me"}})
         exclude_browse_pick_key(self.state, _pk(_browse(self.state)[0]))
@@ -105,8 +105,8 @@ class TestAdditiveWithExclusions(unittest.TestCase):
         apply_picker_session_resets(self.state)                                       # next rerun, before the widget is drawn
         self.assertEqual(self.state[SONG_SEARCH_TEXT_KEY], "")
         self.assertEqual(browse_excluded_pick_keys(self.state), [])
-        self.assertEqual(len(_browse(self.state)), len(RECORDS))
-        self.assertGreaterEqual(len(RECORDS), 119)
+        self.assertEqual(_browse(self.state), [])            # Clear Filters leaves an EMPTY list, not 119 songs
+        self.assertGreaterEqual(len(RECORDS), 119)           # ... while the catalog itself is intact
         self.assertEqual(self.state[CATALOG_FAVORITES_KEY], favs_before)
         self.assertEqual(self.state["selected_song"], {"pick_key": "keep-me"})
 

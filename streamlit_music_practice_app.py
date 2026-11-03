@@ -12704,9 +12704,9 @@ def _render_catalog_song_picker_block(
         ``filtered`` (closed over from ``_apply_picker_catalog_filters`` above)
         is the canonical-deduplicated union that narrows the Active Song
         dropdown's own options. Search, Genre, and Favorites contribute
-        independently. Only shown while a filter is actually active: with no
-        filter the dropdown already covers "browse everything" and a
-        119-row button list would just be noise. Each row commits through
+        independently. With no criterion active the list is empty (and says so):
+        opening Songs, or clearing the last filter, never dumps the whole
+        catalog here - the dropdown already covers "browse everything". Each row commits through
         ``_apply_catalog_pick`` — the identical canonical path the dropdown's
         own on_change uses — so this is a second entry point into the same
         active-song state, never a competing one.
@@ -12714,7 +12714,14 @@ def _render_catalog_song_picker_block(
         query = str(st.session_state.get("song_search_text") or "").strip()
         genres_active = bool(st.session_state.get(WORKSPACE_GENRE_FILTERS_KEY) or [])
         fav_active = bool(st.session_state.get(SONG_PICKER_FAVORITES_ONLY_KEY))
-        if not filtered and fav_active and not query:
+        if not filtered and not (query or genres_active or fav_active):
+            # Deliberate empty start: Browse lists what the musician asks for, nothing more.
+            st.caption(
+                "Search for a title or artist, tap a genre, or tap ★ Favorites to start building a list. "
+                "The **Active Song** dropdown always covers the whole catalog."
+            )
+            return
+        if not filtered and fav_active and not query and not genres_active:
             st.info("No favorite songs yet. Star a song with ☆ Favorite on its song card.")
             return
         if not filtered:
@@ -13011,8 +13018,11 @@ def _render_catalog_song_picker_block(
         )
 
     if not show_song_cards and not _developer_mode_enabled():
+        # Browse starts empty on purpose; the dropdown above is the full catalog either way.
         st.caption(
             f"**{len(filtered)}** songs in list · open **Practice** or **Backing Track** after you pick one."
+            if filtered
+            else "Search or filter to build a list · the dropdown above covers the whole catalog."
         )
 
     if _developer_mode_enabled():
