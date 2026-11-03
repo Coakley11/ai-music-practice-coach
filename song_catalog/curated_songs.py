@@ -7559,6 +7559,17 @@ def _core_chart_overrides() -> dict[tuple[str, str], dict[str, Any]]:
                 "Bridge": ["Cadd9", "G/B", "Dadd9", "Aadd9", "Cadd9", "G/B", "Dadd9", "E13"],
                 "Outro": ["Aadd9", "Dmaj9/F#", "E13", "Aadd9"],
             },
+            extensions=_ext(
+                default_bpm=129,
+                time_signature="4/4",
+                arrangement_notes=(
+                    "A major, ~129 BPM (quarter-note pulse). Form HELD (W3-13): the original "
+                    "bridge alternates 11/8, 4/4 and 7/8 bars (three-bar phrase, five times, "
+                    "then a 4/4 V ending) and the last refrain bar before it is 7/8, which the "
+                    "fixed 4/4 bar grid cannot represent; the chart below is the verse/refrain "
+                    "skeleton with the bridge approximated in 4/4."
+                ),
+            ),
         ),
         ("Don't Stop Believin'", "Journey"): _journey_believin_chart_pack(),
         ("Hotel California", "Eagles"): _hotel_california_chart_pack(),
