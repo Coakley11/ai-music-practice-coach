@@ -94,6 +94,7 @@ _NEG = re.compile(r"\b(?:no|without|skip|exclude|excluding|avoid|except|not\s+(?
                   r"(?:" + _FAMILY_ANY + r")(?:\s+(?:exercises?|drills?|work))?", re.I)
 _INTERVAL_WORD = {"seconds": r"(?:diatonic\s+)?seconds|2nds", "thirds": r"thirds|third(?!\s+(?:one|exercise|item|drill|part)\b)|3rds", "fourths": r"fourths|fourth(?!\s+(?:one|exercise|item|drill|part)\b)|4ths", "fifths": r"fifths|fifth(?!\s+(?:one|exercise|item|drill|part)\b)|5ths",
                   "sixths": r"sixths|sixth(?!\s+(?:one|exercise|item|drill|part)\b)|6ths", "sevenths": r"sevenths|seventh(?!\s+(?:one|exercise|item|drill|part)\b)|7ths", "octaves": r"octaves?|8ves"}
+_WIDER_THAN = re.compile(r"\b(?:wider|larger|bigger|greater|beyond|above|bigger\s+than|more\s+than)\s+(?:than\s+)?(?:just\s+)?(" + "|".join(_INTERVAL_WORD.values()) + r")\b", re.I)
 _SONG_AWARE = re.compile(r"\b(?:solo(?:ing)?|improvis\w*|chord\s+(?:changes|progression|tones?)|the\s+changes|these\s+chords|guide[\s-]?tones?|"
                          r"over\s+(?:the\s+)?(?:chorus|verse|bridge|section|chart|changes)|the\s+chorus|this\s+song|the\s+song)\b", re.I)
 _TONE_FOCUS = re.compile(r"\b(?:tone|sound|breath(?:ing)?|embouchure|intonation|centered|resonan\w*)\b", re.I)
@@ -185,8 +186,17 @@ def parse_request(question: str) -> dict[str, Any]:
     for pattern, family in _FAMILY_WORDS.items():
         if re.search(rf"\b(?:{pattern})\b", stripped, re.I) and family not in found:
             found.append(family)
+    wider = _WIDER_THAN.search(stripped)
+    if wider:
+        base = next((i for i, pat in _INTERVAL_WORD.items() if re.fullmatch(pat, wider.group(1), re.I)), "")
+        order = list(we.INTERVALS)
+        if base:
+            out["intervals"] = order[order.index(base) + 1: order.index(base) + 4]
+        stripped = stripped[:wider.start()] + " intervals " + stripped[wider.end():]
+        if "intervals" not in found and re.search(r"\bintervals?\b", low):
+            found.append("intervals")
     for interval, pattern in _INTERVAL_WORD.items():
-        if re.search(rf"\b(?:{pattern})\b", stripped, re.I) and "intervals" in found and interval not in out["intervals"]:
+        if not wider and re.search(rf"\b(?:{pattern})\b", stripped, re.I) and "intervals" in found and interval not in out["intervals"]:
             out["intervals"].append(interval)
     if re.search(r"\btwo[\s-]?note\b", stripped):
         out["artic"].append("two_note")
@@ -200,7 +210,9 @@ def parse_request(question: str) -> dict[str, Any]:
     focus = ""
     derived = ""
     if not found:
-        if _TECH_FOCUS.search(stripped):
+        if _TECH_FOCUS.search(stripped) and _TONE_FOCUS.search(stripped):
+            found, focus, derived = ["long_tones", "scale", "intervals"], "technique", "tone and finger technique"
+        elif _TECH_FOCUS.search(stripped):
             found, focus, derived = ["scale", "intervals", "articulation"], "technique", "finger technique"
             out["artic"] = out["artic"] or ["two_note"]
         elif _TONE_FOCUS.search(stripped):
@@ -946,7 +958,9 @@ def create(question: str, session_ref: Any, ami_ctx: dict[str, Any] | None = Non
     explicit = bool(req["families"])
     focus = req["focus"] or _focus_key(_clean(getattr(ctx, "practice_focus", "")))
     if req["derived_from"]:
-        assumptions.append(f"You asked for {req['derived_from']} work, so I chose scales, intervals and two-note articulation.")
+        chosen = [we.FAMILY_LABEL[f].lower() for f in req["families"] if f in we.FAMILY_LABEL]
+        assumptions.append(f"You asked for {req['derived_from']} work, so I chose " + (", ".join(chosen[:-1]) + " and " + chosen[-1] if len(chosen) > 1 else "".join(chosen))
+                           + (" (with two-note articulation)" if "articulation" in chosen else "") + ".")
     if req["excluded"]:
         assumptions.append("Left out, as you asked: " + ", ".join(we.FAMILY_LABEL[f].lower() for f in req["excluded"]) + ".")
     if not req["families"]:

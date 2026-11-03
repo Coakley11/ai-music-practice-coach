@@ -955,3 +955,29 @@ class TestNegationProgressionAndSingleExerciseDifficulty:
         assert plan_of(s)["level"] == "Advanced"
         ask(s, "Change the interval exercise to fourths", instrument="Saxophone", level="Intermediate")
         assert {r["params"].get("interval") for r in plan_of(s)["items"] if r["family"] == "intervals"} >= {"fourths"}
+
+
+class TestWiderThanAndToneWithFingers:
+    def test_intervals_wider_than_thirds_means_the_next_wider_ones_not_thirds(self):
+        req = wp.parse_request("Give me a fifteen-minute warmup with a bit of everything but make the intervals wider than thirds")
+        assert req["intervals"] == ["fourths", "fifths", "sixths"] and req["minutes"] == 15
+        s = session("Saxophone", ALTO)
+        ask(s, "Give me a fifteen-minute warmup with a bit of everything but make the intervals wider than thirds", instrument="Saxophone")
+        got = [r["params"].get("interval") for r in plan_of(s)["items"] if r["family"] == "intervals"]
+        assert got and "thirds" not in got and set(got) <= {"fourths", "fifths", "sixths"}
+
+    def test_other_interval_sentences_still_read_as_before(self):
+        assert wp.parse_request("An intermediate warmup focused on thirds and fourths")["intervals"] == ["thirds", "fourths"]
+        assert wp.parse_request("Give me a warmup with intervals wider than fifths")["intervals"] == ["sixths", "sevenths", "octaves"]
+
+    def test_tone_and_finger_coordination_gets_both_halves(self):
+        req = wp.parse_request("Give me a beginner warmup focused on tone and finger coordination.")
+        assert req["families"] == ["long_tones", "scale", "intervals"] and req["level"] == "Beginner"
+        s = session("Flute")
+        resp = ask(s, "Give me a beginner warmup focused on tone and finger coordination.", level="Intermediate")
+        assert {"long_tones", "scale"} <= set(families(plan_of(s))) and plan_of(s)["level"] == "Beginner"
+        assert "tone and finger technique work" in resp.composed_markdown()
+
+    def test_finger_technique_alone_and_tone_alone_are_unchanged(self):
+        assert wp.parse_request("A warmup that improves finger technique")["families"] == ["scale", "intervals", "articulation"]
+        assert wp.parse_request("A warmup for my tone")["families"] == ["long_tones", "scale"]
