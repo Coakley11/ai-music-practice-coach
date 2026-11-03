@@ -783,8 +783,8 @@ def _shape_of_you_timing(row: dict[str, Any]) -> dict[str, Any]:
         level: _halved(sections) if isinstance(sections, dict) else sections
         for level, sections in versions.items()
     }
-    # Intermediate plays the whole form: Pre-Chorus 2 is not trimmed as a repeat.
-    row["extensions"] = {**(row.get("extensions") or {}), "full_form_levels": ["Intermediate"]}
+    # Beginner and Intermediate play the whole form (Pre-Chorus 2, Bridge and Final Chorus are not trimmed).
+    row["extensions"] = {**(row.get("extensions") or {}), "full_form_levels": ["Beginner", "Intermediate"]}
     return row
 
 

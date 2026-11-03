@@ -118,9 +118,14 @@ class ShapeOfYouFullFormTests(unittest.TestCase):
             [("Bm", 2.0, False), ("Em", 2.0, True), ("G", 2.0, False), ("A", 2.0, True)],
         )
 
-    def test_beginner_form_is_unchanged(self) -> None:
+    def test_beginner_form_is_the_full_form(self) -> None:
+        # Wave 3 (W3-34): Beginner also plays the whole form (one loop pass per section)
+        # instead of the 5-section trim that dropped Pre-Chorus 2, the Bridge and the Final Chorus.
         order, _ = _level(self.song, "Beginner")
-        self.assertEqual(order, ["Verse 1", "Pre-Chorus 1", "Chorus 1", "Verse 2", "Chorus 2"])
+        self.assertEqual(
+            order,
+            ["Verse 1", "Pre-Chorus 1", "Chorus 1", "Verse 2", "Pre-Chorus 2", "Chorus 2", "Bridge", "Final Chorus"],
+        )
 
 
 class ScopeTests(unittest.TestCase):
