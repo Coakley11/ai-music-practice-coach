@@ -7249,6 +7249,69 @@ def _hey_jude_pack(pack):
     )
 
 
+def _yesterday_pack(pack):
+    """Yesterday, full one-pass form at 97 BPM (~2:05 recording).
+
+    Alan W. Pollack, "Notes on Yesterday": Intro (2 bars guitar open-fifth F
+    drone), Verse (7 bars: F | Em7b5 A7 | Dm | Bb C7 | F | Dm G | Bb F) x2,
+    Bridge (8 bars = |Em7b5 A7|Dm Bb|Gm C|F| played twice), Verse, Bridge,
+    Verse, Outro (a single reprise of the last phrase, 2 bars).
+    """
+    verse_b = ["F", "Em|A", "Dm", "Bb|C", "F", "Dm|G", "Bb|F"]
+    verse_i = ["F", "Em7b5|A7", "Dm", "Bb|C7", "F", "Dm|G7", "Bb|F"]
+    verse_a = ["Fmaj7", "Em7b5|A7b9", "Dm9", "Bbmaj7|C7", "Fmaj7", "Dm9|G7", "Bbmaj7|F6"]
+    bridge_b = ["Em|A", "Dm|Bb", "Gm|C", "F"]
+    bridge_i = ["Em7b5|A7", "Dm|Bb", "Gm|C7", "F"]
+    bridge_a = ["Em7b5|A7b9", "Dm9|Bbmaj7", "Gm7|C7", "Fmaj7"]
+    outro_b = ["Dm|G", "Bb|F"]
+    outro_i = ["Dm|G7", "Bb|F"]
+    outro_a = ["Dm9|G7", "Bbmaj7|F6"]
+
+    def levels(intro, verse, bridge, outro):
+        return {
+            "Intro": list(intro),
+            "Verse 1": list(verse),
+            "Verse 2": list(verse),
+            "Bridge 1": list(bridge) * 2,
+            "Verse 3": list(verse),
+            "Bridge 2": list(bridge) * 2,
+            "Verse 4": list(verse),
+            "Outro": list(outro),
+        }
+
+    return pack(
+        "F",
+        levels(["F", "F"], verse_b, bridge_b, outro_b),
+        levels(["F", "F"], verse_i, bridge_i, outro_i),
+        levels(["F", "F"], verse_a, bridge_a, outro_a),
+        lyric_cues={
+            "Intro": ["two bars of guitar on an open F - no third yet"],
+            "Verse 1": ["Yesterday, all my troubles seemed so far away - 7 bars (3+2+2)"],
+            "Verse 2": ["Suddenly, I'm not half the man I used to be - 7 bars"],
+            "Bridge 1": ["Why she had to go - 8 bars, each phrase starts on bar 2"],
+            "Verse 3": ["Yesterday, love was such an easy game to play - 7 bars"],
+            "Bridge 2": ["Why she had to go - same 8 bars, melody varied at the end"],
+            "Verse 4": ["Yesterday, love was such an easy game - 7 bars"],
+            "Outro": ["hummed last phrase, 2 bars (Dm G | Bb F)"],
+        },
+        extensions=_ext(
+            default_bpm=97,
+            default_groove="Ballad",
+            time_signature="4/4",
+            full_form_levels=["Beginner", "Intermediate"],
+            arrangement_notes=(
+                "Yesterday at 97 BPM (Hooktheory 97/98, Tunebat 97, SongBPM 97). "
+                "Form: Intro 2 - Verse 7 - Verse 7 - Bridge 8 - Verse 7 - Bridge 8 - "
+                "Verse 7 - Outro 2 = 48 bars = 119 s vs the 2:03-2:06 recording. "
+                "The verse is a 7-bar form (3+2+2) in Pollack's notes, not 8 bars. "
+                "Beat placement of the two-chord bars is an even 2+2 split "
+                "(UNVERIFIED against a score)."
+            ),
+        ),
+        section_order=["Intro", "Verse 1", "Verse 2", "Bridge 1", "Verse 3", "Bridge 2", "Verse 4", "Outro"],
+    )
+
+
 def _core_chart_overrides() -> dict[tuple[str, str], dict[str, Any]]:
     """Explicit musician-practice charts for the trusted core library.
 
@@ -7526,26 +7589,7 @@ def _core_chart_overrides() -> dict[tuple[str, str], dict[str, Any]]:
             },
         ),
         ("Hey Jude", "The Beatles"): _hey_jude_pack(pack),
-        ("Yesterday", "The Beatles"): pack("F",
-            {
-                "Intro": ["F", "F"],
-                "Verse": ["F", "Em", "A7", "Dm", "Dm", "Bb", "C7", "F"],
-                "Middle Eight": ["Bb", "C7", "F", "Dm", "Gm", "C7", "F", "F"],
-                "Return / Tag": ["F", "Em", "A7", "Dm", "Gm", "C7", "F", "F"],
-            },
-            {
-                "Intro": ["Fmaj7", "F6"],
-                "Verse": ["F", "Em7", "A7", "Dm", "Dm/C", "Bbmaj7", "C7", "F"],
-                "Middle Eight": ["Bbmaj7", "C7", "F/A", "Dm7", "Gm7", "C7", "Fmaj7", "F6"],
-                "Return / Tag": ["F", "Em7", "A7", "Dm", "Gm7", "C7", "Fmaj7", "F6"],
-            },
-            {
-                "Intro": ["Fmaj9", "F6add9"],
-                "Verse": ["Fmaj9", "Em7b5", "A7b9", "Dm9", "Dm9/C", "Bbmaj9", "C13", "Fmaj9"],
-                "Middle Eight": ["Bbmaj9", "C13", "F/A", "Dm9", "Gm9", "C13", "Fmaj9", "F6add9"],
-                "Return / Tag": ["Fmaj9", "Em7b5", "A7b9", "Dm9", "Gm9", "C13", "Fmaj9", "F6add9"],
-            },
-        ),
+        ("Yesterday", "The Beatles"): _yesterday_pack(pack),
         ("Here Comes the Sun", "The Beatles"): pack("A",
             {
                 "Intro": ["A", "D", "E7", "A"],
