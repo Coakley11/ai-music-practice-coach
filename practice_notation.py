@@ -859,6 +859,20 @@ def _build_piano_voicings(
     )
 
 
+def _exercise_rhythm_counts(level: str, plans: list[str]) -> str:
+    """What this exercise drills, for the caption above the staff."""
+    if plans:
+        try:
+            from notation_exercise_patterns import exercise_summary
+
+            summary = exercise_summary(plans)
+            if summary:
+                return f"{level} technical exercise — {summary}"
+        except ImportError:
+            pass
+    return f"{level} connected chord-tone line"
+
+
 def _build_arpeggio_line(
     *,
     section_chord_pairs: list[tuple[str, list[str]]],
@@ -891,11 +905,26 @@ def _build_arpeggio_line(
     sections_out: list[dict[str, Any]] = []
     all_chords: list[str] = []
     all_staff_lines: list[str] = []
+    exercise_plans: list[str] = []
     for sec_name, sec_chords in section_chord_pairs:
         use = list(sec_chords) or ["C"]
-        events = build_connected_arpeggio_line(
-            use, level=level, instrument=instrument, focus=focus, groove_style=groove_style
-        )
+        # Technical-exercise motion (arpeggios and scales up and down, thirds, fourths, voice
+        # leading). Practice Melody keeps its own phrasing - this is the exercise builder.
+        exercise_plan: list[str] = []
+        events = []
+        try:
+            from notation_exercise_patterns import build_exercise_events
+
+            events, exercise_plan = build_exercise_events(
+                use, level=level, instrument=instrument, key_center=display_key, focus=focus
+            )
+        except Exception:
+            events = []
+        if not events:
+            events = build_connected_arpeggio_line(
+                use, level=level, instrument=instrument, focus=focus, groove_style=groove_style
+            )
+        exercise_plans.extend(exercise_plan)
         dicts = arpeggio_events_to_melody_dicts(events)
         abc = build_abc_from_melody_events(
             dicts,
@@ -918,7 +947,7 @@ def _build_arpeggio_line(
         format="abc",
         title=f"{song_title} — {section} — {instrument}",
         chord_labels=" | ".join(all_chords),
-        rhythm_counts=f"{level} connected chord-tone line",
+        rhythm_counts=_exercise_rhythm_counts(level, exercise_plans),
         body="\n".join(all_staff_lines),
         html="",
         abc=combined_abc,
