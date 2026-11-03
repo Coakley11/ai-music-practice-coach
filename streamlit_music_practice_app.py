@@ -11073,13 +11073,17 @@ def _render_active_song_card(
         f'<p class="ui-chart-edit-cta-hint">{_edit_hint}</p></div>',
         unsafe_allow_html=True,
     )
-    if st.button(
-        _edit_label,
-        key="picker_card_edit_chart",
-        type="primary",
-        use_container_width=True,
-        help=_edit_hint,
-    ):
+    # Keyed by source so the CTA can carry its own page colour (Custom green, Composition black) -
+    # the button key itself has to stay stable for existing state/tests.
+    with st.container(key=f"picker_card_edit_chart_{_edit_mode}"):
+        _edit_clicked = st.button(
+            _edit_label,
+            key="picker_card_edit_chart",
+            type="primary",
+            use_container_width=True,
+            help=_edit_hint,
+        )
+    if _edit_clicked:
         _open_active_source_chart_editor(_edit_mode)
     if show_nav_actions:
         _render_songs_hub_nav_actions(
