@@ -161,9 +161,12 @@ ACTION_ICONS: dict[str, str] = {
     "edit": "✏️",             # pencil
     "apply_text": "📝",  # memo
     "preview": "▶️",          # play
-    "accept": "✅",          # check
+    # Accept and Continue already had a settled look in Composition Studio before this map existed
+    # ("✔️ Accept changes", "Continue →"); the map follows that rather than introducing a
+    # second check mark or a second arrow.
+    "accept": "✔️",           # heavy check mark
     "reset": "↩️",            # undo arrow
-    "continue": "➡️",         # right arrow
+    "continue": "→",        # trailing arrow, as the Continue buttons already use
     "feel": "✨",            # same glyph as the style / groove field badge
 }
 

@@ -59,5 +59,24 @@ class TestButtonsUseTheMap(unittest.TestCase):
             self.assertIn("action_label", src)
 
 
+class TestAcceptAndContinueFollowTheExistingConvention(unittest.TestCase):
+    """Composition Studio already marked these two verbs; the shared map matches it rather than
+    introducing a second check mark or arrow. No editor behaviour is changed by this."""
+
+    def setUp(self):
+        self.src = (ROOT / "composition_studio_page.py").read_text(encoding="utf-8")
+
+    def test_accept_buttons_already_carry_the_maps_check(self):
+        check = semantic_action_icon("accept")
+        self.assertIn(f'"{check} Accept changes"', self.src)
+        self.assertIn(f'"{check} Accept"', self.src)
+        self.assertGreaterEqual(self.src.count(f'"{check} Accept'), 3)
+
+    def test_continue_buttons_already_carry_the_maps_arrow(self):
+        arrow = semantic_action_icon("continue")
+        self.assertIn(f'Continue {arrow}"', self.src)
+        self.assertGreaterEqual(self.src.count(f'{arrow}", type="primary"'), 3)
+
+
 if __name__ == "__main__":
     unittest.main()
