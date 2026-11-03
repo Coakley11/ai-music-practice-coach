@@ -33,6 +33,7 @@ import hashlib
 import random
 from dataclasses import replace
 
+from chord_scale_selection import blue_note_pcs, chord_scale_pcs
 from harmonic_spelling import spell_pitch_classes_for_chord
 from music_theory import classify_chord_quality, pitch_class_from_spelled_note, spell_chord_tones, split_key_center
 from practice_melody_model import MelodyEvent, MelodySection, PracticeMelody, SCHEMA_VERSION
@@ -63,6 +64,40 @@ _LEVEL_RANGE: dict[str, tuple[int, int]] = {
     "Intermediate": (57, 77),   # A3 - F5
     "Advanced": (55, 81),       # G3 - A5
 }
+
+
+def register_window(level: str, instrument: str = "", written_offset: int = 0) -> tuple[int, int]:
+    """(low, high) MIDI for a Practice Melody: the level's comfortable window, placed inside the instrument's
+    own comfortable register.
+
+    ``instrument`` is the selected instrument / saxophone type (``"Alto saxophone (Eb)"``, ``"Flute"`` ...).
+    ``written_offset`` is how far the melody's pitch domain sits BELOW written pitch: 0 when the melody is in the
+    written chart (or the instrument does not transpose), the transposition (e.g. 9 for an Eb saxophone, 2 for a Bb
+    one) when the chart is in concert pitch - so a concert-pitch range check never compares against written pitch.
+    Only melodic wind families are constrained; piano, guitar and bass keep the level window.
+    """
+    lo, hi = _LEVEL_RANGE.get(level, _LEVEL_RANGE["Intermediate"])
+    if not instrument:
+        return lo, hi
+    try:
+        from instrument_register_fit import comfortable_written_range
+
+        rng = comfortable_written_range(instrument, level)
+    except Exception:
+        rng = None
+    if rng is None:
+        return lo, hi
+    ilo, ihi = int(rng[0]) - int(written_offset), int(rng[1]) - int(written_offset)
+    nlo, nhi = max(lo, ilo), min(hi, ihi)
+    if nhi - nlo >= 12:
+        return nlo, nhi
+    # The level window and the instrument's comfortable register barely overlap (e.g. a baritone saxophone
+    # is far below a generic C4-D5): follow the instrument, keeping the level's width.
+    width = max(12, hi - lo)
+    nlo = max(ilo, min(lo, ihi - 12))
+    return nlo, min(ihi, nlo + width)
+
+
 _MAX_LEAP_SEMITONES: dict[str, int] = {
     "Beginner": 7,        # perfect 5th ceiling
     "Intermediate": 9,    # major 6th
@@ -257,6 +292,9 @@ def _choose_pitch_class(
     focus_key: str = "",
     guide_tone_pcs: list[int] | None = None,
     pentatonic_pcs: list[int] | None = None,
+    prev_midi: int | None = None,
+    allow_approach: bool = True,
+    colour_pcs: list[int] | None = None,
 ) -> tuple[int, str]:
     chromatic_prob = _CHROMATIC_APPROACH_PROB[level] if chromatic_prob is None else chromatic_prob
     passing_prob = _PASSING_TONE_PROB[level] if passing_prob is None else passing_prob
@@ -266,6 +304,12 @@ def _choose_pitch_class(
     strong_pool = chord_pcs
     if focus_key == _FOCUS_GUIDE_TONES and guide_tone_pcs:
         strong_pool = guide_tone_pcs
+    def _nearest(pool: list[int]) -> int:
+        """Voice-leading: usually the chord tone closest to where the line already is."""
+        if prev_midi is None or rng.random() >= 0.65:
+            return rng.choice(pool)
+        return min(pool, key=lambda pc: min(abs(((pc - prev_midi) + 6) % 12 - 6), 12))
+
     if is_phrase_end:
         # Resolve phrase endings to the chord's root or third for a clear
         # harmonic landing rather than any chord tone at random (Guide Tones
@@ -273,9 +317,11 @@ def _choose_pitch_class(
         target_set = (guide_tone_pcs if (focus_key == _FOCUS_GUIDE_TONES and guide_tone_pcs) else chord_pcs[:2]) or chord_pcs
         return rng.choice(target_set), "chord_tone"
     if is_strong_beat:
-        return rng.choice(strong_pool), "chord_tone"
+        return _nearest(strong_pool), "chord_tone"
     roll = rng.random()
-    if roll < chromatic_prob and next_chord_pcs:
+    # A chromatic approach is only played as the LAST note before a chord change, so the next bar's first
+    # note can resolve it by a half step (prepared and resolved, never a stray outside note).
+    if allow_approach and roll < chromatic_prob and next_chord_pcs:
         target = rng.choice(next_chord_pcs)
         approach = (target + rng.choice((-1, 1))) % 12
         return approach, "approach"
@@ -285,13 +331,26 @@ def _choose_pitch_class(
         # diatonic scale, so passing motion stays pentatonic-flavored.
         pool = pentatonic_pcs if (focus_key == _FOCUS_PENTATONICS and pentatonic_pcs) else scale_pcs
         non_chord_scale = [pc for pc in pool if pc not in chord_pcs]
+        if colour_pcs and prev_midi is not None:
+            # Blue notes (b3 / b5) are chromatic passing colour: only as a half-step neighbour of the note
+            # just played, so they are approached and left by step - never dropped in from outside.
+            non_chord_scale = non_chord_scale + [
+                pc for pc in colour_pcs
+                if pc not in chord_pcs and pc not in non_chord_scale
+                and min((pc - prev_midi) % 12, (prev_midi - pc) % 12) == 1
+            ]
         if non_chord_scale:
+            if prev_midi is not None:
+                # Passing tones connect: prefer one within a whole step of the previous note.
+                near = [pc for pc in non_chord_scale if min(abs(((pc - prev_midi) + 6) % 12 - 6), 12) <= 2]
+                if near:
+                    return rng.choice(near), "passing"
             return rng.choice(non_chord_scale), "passing"
     if focus_key == _FOCUS_PENTATONICS and pentatonic_pcs:
         in_pentatonic = [pc for pc in chord_pcs if pc in pentatonic_pcs]
         if in_pentatonic:
             return rng.choice(in_pentatonic), "chord_tone"
-    return rng.choice(chord_pcs), "chord_tone"
+    return _nearest(chord_pcs), "chord_tone"
 
 
 def _closest_chord_tone_within_budget(
@@ -341,10 +400,11 @@ def _generate_section_events(
     start_midi: int,
     style: str = "",
     focus_key: str = "",
+    register: tuple[int, int] | None = None,
 ) -> tuple[list[MelodyEvent], int]:
-    low, high = _LEVEL_RANGE[level]
+    low, high = register if register else _LEVEL_RANGE[level]
     max_leap = _MAX_LEAP_SEMITONES[level]
-    scale_pcs = _diatonic_scale_pcs(key_center)
+    key_scale_pcs = _diatonic_scale_pcs(key_center)
     jazz_advanced = level == "Advanced" and _is_jazz_style(style)
     chromatic_prob = _JAZZ_ADVANCED_CHROMATIC_APPROACH_PROB if jazz_advanced else _CHROMATIC_APPROACH_PROB[level]
     passing_prob = _JAZZ_ADVANCED_PASSING_TONE_PROB if jazz_advanced else _PASSING_TONE_PROB[level]
@@ -356,8 +416,13 @@ def _generate_section_events(
     prev_midi = start_midi
     num_measures = len(chords)
 
+    pending_resolution: int | None = None   # pc a chromatic approach in the previous bar must resolve to
+    arp_direction = 1                       # contour of arpeggio runs alternates bar to bar
     for m_idx, chord in enumerate(chords):
         chord_pcs = _chord_tone_pcs(chord)
+        # Each chord has its own scale (Am6 -> Dorian, D7 -> Mixolydian ...), not one scale for the song.
+        scale_pcs = chord_scale_pcs(chord, key_center, style=style) or key_scale_pcs
+        colour_pcs = blue_note_pcs(chord, style) if level != "Beginner" else []
         next_chord = chords[m_idx + 1] if m_idx + 1 < num_measures else None
         next_chord_pcs = _chord_tone_pcs(next_chord) if next_chord else None
         guide_tone_pcs = _guide_tone_pcs_for(chord, chord_pcs) if focus_key == _FOCUS_GUIDE_TONES else None
@@ -373,6 +438,26 @@ def _generate_section_events(
         num_sounding = sum(1 for _, is_rest in cells if not is_rest)
         sounding_seen = 0
         beat_cursor = 0.0
+        # Arpeggio runs (ascending one bar, descending the next) give the line a contour instead of a
+        # one-way climb. Beginners get the simplest version (fewer notes, small steps).
+        use_arpeggio = (
+            num_sounding >= 3
+            and len(chord_pcs) >= 3
+            and focus_key not in (_FOCUS_TONE, _FOCUS_SCALES)
+            and rng.random() < (0.35 if level == "Beginner" else 0.5)
+        )
+        if use_arpeggio:
+            arp_direction = -arp_direction
+
+        def _arpeggio_pc(prev: int, _pcs=chord_pcs, _dir=arp_direction) -> int:
+            ladder = sorted(m for m in range(low, high + 1) if m % 12 in _pcs)
+            if not ladder:
+                return _pcs[0]
+            here = min(range(len(ladder)), key=lambda i: abs(ladder[i] - prev))
+            nxt = here + _dir
+            if not 0 <= nxt < len(ladder):
+                nxt = here - _dir if 0 <= here - _dir < len(ladder) else here
+            return ladder[nxt] % 12
 
         for dur, is_rest in cells:
             if is_rest:
@@ -394,21 +479,39 @@ def _generate_section_events(
                 beats_per_measure >= 4 and abs(beat_cursor - (beats_per_measure // 2)) < 1e-6
             )
             is_phrase_end = is_last_measure and sounding_seen == num_sounding
+            is_measure_last = sounding_seen == num_sounding
 
-            pc, role = _choose_pitch_class(
-                level=level,
-                is_strong_beat=is_strong_beat,
-                is_phrase_end=is_phrase_end,
-                chord_pcs=chord_pcs,
-                scale_pcs=scale_pcs,
-                next_chord_pcs=next_chord_pcs,
-                rng=rng,
-                chromatic_prob=chromatic_prob,
-                passing_prob=passing_prob,
-                focus_key=focus_key,
-                guide_tone_pcs=guide_tone_pcs,
-                pentatonic_pcs=pentatonic_pcs,
-            )
+            if pending_resolution is not None and sounding_seen == 1:
+                # Resolve the previous bar's chromatic approach by half step onto its target.
+                pc, role = pending_resolution, "chord_tone"
+                pending_resolution = None
+            elif use_arpeggio and not is_phrase_end and not is_measure_last:
+                pc, role = _arpeggio_pc(prev_midi), "chord_tone"
+            else:
+                pc, role = _choose_pitch_class(
+                    level=level,
+                    is_strong_beat=is_strong_beat,
+                    is_phrase_end=is_phrase_end,
+                    chord_pcs=chord_pcs,
+                    scale_pcs=scale_pcs,
+                    next_chord_pcs=next_chord_pcs,
+                    rng=rng,
+                    chromatic_prob=chromatic_prob,
+                    passing_prob=passing_prob,
+                    focus_key=focus_key,
+                    guide_tone_pcs=guide_tone_pcs,
+                    pentatonic_pcs=pentatonic_pcs,
+                    prev_midi=prev_midi,
+                    allow_approach=is_measure_last and not is_last_measure,
+                    colour_pcs=colour_pcs,
+                )
+                if role == "approach" and next_chord_pcs:
+                    # the half-step target is the chord tone the approach was built around
+                    pending_resolution = next(
+                        (t for t in next_chord_pcs if (t - pc) % 12 in (1, 11)), None
+                    )
+                    if pending_resolution is None:
+                        pc, role = rng.choice(chord_pcs), "chord_tone"
             candidate_midi = _closest_midi_for_pc(pc, prev_midi, low, high)
             if abs(candidate_midi - prev_midi) > max_leap:
                 # Leap too large for this level — fall back to the closest
@@ -529,6 +632,8 @@ def generate_practice_melody(
     seed: int | None = None,
     alt_index: int = 0,
     focus: str = "",
+    instrument: str = "",
+    written_offset: int = 0,
 ) -> PracticeMelody:
     """Generate a structured Practice Melody for one song, level and alternative.
 
@@ -554,7 +659,8 @@ def generate_practice_melody(
     resolved_seed = _seed_for(song_id, level, alt_index, seed)
     rng = random.Random(resolved_seed)
     beats_per_measure = float(meter[0]) if meter and meter[0] else 4.0
-    prev_end_midi = _START_MIDI[level]
+    window = register_window(level, instrument, written_offset)
+    prev_end_midi = min(max(_START_MIDI[level], window[0]), window[1])
     focus_key = _normalize_focus(focus)
 
     generated_by_chords: dict[tuple[str, ...], MelodySection] = {}
@@ -588,6 +694,7 @@ def generate_practice_melody(
             start_midi=prev_end_midi,
             style=style,
             focus_key=focus_key,
+            register=window,
         )
         events = _apply_notation_markings(events, level=level, focus_key=focus_key, n_measures=len(chords))
         section = MelodySection(

@@ -97,6 +97,15 @@ def validate_mission_motif(
             return False, "register span too wide"
         return True, ""
 
+    if "scalar" in low and "only" in low and motif.get("mission_scale_key"):
+        # The run belongs to the Mission's own chord scale (Issue 39): every note must be in it.
+        from chord_scale_selection import scale_pcs_for
+
+        spcs = scale_pcs_for(str(motif["mission_scale_key"]), chord)
+        if spcs and not pcs.issubset(spcs):
+            return False, "note outside the Mission scale"
+        return True, ""
+
     if "scalar" in low and "only" in low:
         if _stepwise_ratio(notes, key_center=key_center) < 0.75:
             return False, "not enough stepwise motion"

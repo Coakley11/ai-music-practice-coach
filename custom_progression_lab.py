@@ -3430,12 +3430,12 @@ _STYLE_DEFAULTS: dict[str, dict] = {
 }
 
 _CHORD_PRESETS: dict[str, list[tuple[int, str]]] = {
-    "ii–V–I": [(2, "m7"), (5, "7"), (0, "maj7")],
+    "ii–V–I": [(2, "m7"), (7, "7"), (0, "maj7")],
     "I–V–vi–IV": [(0, "maj7"), (7, "7"), (9, "m7"), (5, "maj7")],
     "Jazz turnaround": [(0, "maj7"), (9, "7"), (2, "m7"), (7, "7")],
     "Bossa cadence": [(0, "maj7"), (7, "7"), (9, "m7"), (7, "7")],
     "Blues (8 bars)": [(0, "7"), (0, "7"), (0, "7"), (0, "7"), (5, "7"), (0, "7"), (0, "7"), (7, "7")],
-    "Neo soul": [(2, "m9"), (5, "7"), (0, "maj7"), (9, "m7")],
+    "Neo soul": [(2, "m9"), (7, "7"), (0, "maj7"), (9, "m7")],
 }
 
 
@@ -4065,17 +4065,17 @@ STYLE_PRESET_SPECS: dict[str, dict[str, list[tuple[int, str]]]] = {
     "Soul/R&B": {
         "I–vi–IV–V": [(0, "maj7"), (9, "m7"), (5, "maj7"), (7, "7")],
         "vi–IV–I–V": [(9, "m7"), (5, "maj7"), (0, "maj7"), (7, "7")],
-        "ii–V–I": [(2, "m7"), (5, "7"), (0, "maj7")],
+        "ii–V–I": [(2, "m7"), (7, "7"), (0, "maj7")],
         "I–IV–vi–V": [(0, "maj7"), (5, "maj7"), (9, "m7"), (7, "7")],
     },
     "Jazz": {
-        "ii–V–I": [(2, "m7"), (5, "7"), (0, "maj7")],
-        "I–vi–ii–V": [(0, "maj7"), (9, "m7"), (2, "m7"), (5, "7")],
+        "ii–V–I": [(2, "m7"), (7, "7"), (0, "maj7")],
+        "I–vi–ii–V": [(0, "maj7"), (9, "m7"), (2, "m7"), (7, "7")],
         "Jazz turnaround": [(0, "maj7"), (9, "7"), (2, "m7"), (7, "7")],
-        "Neo soul": [(2, "m9"), (5, "7"), (0, "maj7"), (9, "m7")],
+        "Neo soul": [(2, "m9"), (7, "7"), (0, "maj7"), (9, "m7")],
     },
     "Bossa": {
-        "Bossa ii–V": [(2, "m7"), (5, "7"), (0, "maj7")],
+        "Bossa ii–V": [(2, "m7"), (7, "7"), (0, "maj7")],
         "Minor bossa": [(9, "m7"), (7, "7"), (2, "m7"), (5, "7")],
         "Bossa cadence": [(0, "maj7"), (7, "7"), (9, "m7"), (7, "7")],
         "I–V–vi–IV": [(0, "maj7"), (7, "7"), (9, "m7"), (5, "maj7")],
@@ -4092,7 +4092,7 @@ STYLE_PRESET_SPECS: dict[str, dict[str, list[tuple[int, str]]]] = {
             (7, "7"),
         ],
         "Quick change": [(0, "7"), (5, "7"), (0, "7"), (7, "7")],
-        "ii–V–I": [(2, "m7"), (5, "7"), (0, "maj7")],
+        "ii–V–I": [(2, "m7"), (7, "7"), (0, "maj7")],
     },
     "Funk": {
         "I7 vamp": [(0, "7"), (0, "7"), (0, "7"), (0, "7")],
@@ -4118,6 +4118,23 @@ def preset_chords_for_key(spec: list[tuple[int, str]], home_key: str) -> list[st
 def preset_button_label(preset_id: str, home_key: str, spec: list[tuple[int, str]]) -> str:
     chords = preset_chords_for_key(spec, home_key)
     return f"{preset_id}: {' '.join(chords)}"
+
+
+def preset_roman_labels(home_key: str, spec: list[tuple[int, str]]) -> list[str]:
+    """Roman numeral for each preset chord, read in the preset's own key.
+
+    Preset degrees are built from the preset key's tonic (see ``_chord_at_degree``), so the
+    analysis key is that tonic as a major key. Computed per chord by the shared analyser, so
+    dominant sevenths, minor sevenths and extensions are labelled by quality, not copied.
+    """
+    from roman_numeral_analysis import chord_to_roman
+
+    tonic = chord_root(home_key) or "C"
+    return [chord_to_roman(c, tonic) for c in preset_chords_for_key(spec, home_key)]
+
+
+def preset_roman_text(home_key: str, spec: list[tuple[int, str]]) -> str:
+    return " – ".join(r for r in preset_roman_labels(home_key, spec) if r)
 
 
 def presets_for_style(style: str) -> dict[str, list[tuple[int, str]]]:
@@ -4221,7 +4238,7 @@ def suggest_next_chords(
             out.append(_chord_at_degree(home_key, 5, "7"))
             out.append(_chord_at_degree(home_key, 0, "maj7"))
 
-    for deg, qual in [(2, "m7"), (5, "7"), (0, "maj7"), (9, "m7"), (5, "maj7"), (7, "7")]:
+    for deg, qual in [(2, "m7"), (7, "7"), (0, "maj7"), (9, "m7"), (5, "maj7"), (7, "7")]:
         cand = _chord_at_degree(home_key, deg, qual)
         if cand != last and cand not in out:
             out.append(cand)
@@ -4250,6 +4267,21 @@ def chords_per_measure(time_signature: str) -> int:
     return {"3/4": 3, "2/4": 2, "6/8": 3}.get(ts, 4)
 
 
+def roman_for_display_symbol(display: str, key_center: str) -> str:
+    """Roman numeral label for a display cell; split measures (``F7|B7`` or ``F7:2|B7:2``)
+    get one numeral per chord, each analysed from its own symbol in the same key."""
+    from roman_numeral_analysis import chord_to_roman as _c2r
+
+    if not key_center or not display or display == "%":
+        return ""
+    parts = [p.strip() for p in str(display).split("|") if p.strip()]
+    out: list[str] = []
+    for part in parts:
+        sym = part.split(":")[0].strip()
+        out.append(_c2r(sym, key_center) if sym and sym != "%" else "")
+    return " | ".join(out) if len(out) > 1 else (out[0] if out else "")
+
+
 def cpl_progression_bar_chart_html(
     entries: list[dict] | None,
     *,
@@ -4275,7 +4307,7 @@ def cpl_progression_bar_chart_html(
                 cell_cls += " cpl-repeat-cell"
             roman = ""
             if key_center and display and display != "%":
-                roman = _c2r(display, key_center)
+                roman = roman_for_display_symbol(display, key_center)
             roman_html = (
                 f'<span class="cpl-bar-roman">{_html.escape(roman)}</span>'
                 if roman
@@ -4312,7 +4344,7 @@ def entries_chord_tiles_html(
             cls += " cpl-repeat-cell"
         roman = ""
         if key_center and display and display != "%":
-            roman = _c2r(display, key_center)
+            roman = roman_for_display_symbol(display, key_center)
         roman_html = (
             f'<div class="cpl-roman-label">{_html.escape(roman)}</div>'
             if roman

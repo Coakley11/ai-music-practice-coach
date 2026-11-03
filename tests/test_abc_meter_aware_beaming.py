@@ -154,7 +154,7 @@ class TestOnlyWhitespaceChanged(unittest.TestCase):
         abc = practice_melody_section_abc(melody, melody.sections[0])
         self._assert_content(
             abc,
-            '"Dm7"z2(!>!c2d4)|"G7"(!>!g4d4)|"Cmaj7"(!>!c.c_a2.c\'.ad\'2)|"A7"(!>!a2^c\'2a4)|',
+            '"Dm7"z2(!>!c2d4)|"G7"(!>!d4.d.ga2)|"Cmaj7"(!>!g4g4)|"A7"!>!a8|',   # harmony-aware generator (Issues 22/23)
         )
 
     def test_notation_exercise_content_unchanged(self) -> None:

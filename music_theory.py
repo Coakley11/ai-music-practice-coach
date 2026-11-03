@@ -626,6 +626,11 @@ def _chord_letter_interval_spec(suffix: str) -> list[tuple[int, int]]:
         return [(0, 0), (2, 4), (4, 8)]
     if "sus" in low:
         return [(0, 0), (1, 2), (4, 7)] if "sus2" in low else [(0, 0), (3, 5), (4, 7)]
+    # --- sixth chords: the 6th (a major 6th above the root) is a chord tone - Am6 is A C E F#, not A C E ---
+    if re.search(r"(?<![0-9#b♯♭])6(?:9|(?![0-9]))", raw) and "7" not in low and "add" not in low:
+        nine = [(1, 2)] if re.search(r"6\s*/?\s*9|69", raw) else []
+        third = (2, 3) if ("m" in low and "maj" not in low) else (2, 4)
+        return [(0, 0), third, (4, 7), (5, 9), *nine]
     # --- 9th-family chords (must precede 7th checks) ---
     if "add9" in low or "add2" in low:
         if "m" in low and "maj" not in low:
@@ -653,6 +658,9 @@ def _chord_letter_interval_spec(suffix: str) -> list[tuple[int, int]]:
         return [(0, 0), (2, 3), (4, 7), (6, 10), (1, 2), (3, 5)]
     if re.search(r"(?<![a-z#♯])11", low) and "maj" not in low:
         return [(0, 0), (2, 4), (4, 7), (6, 10), (1, 2), (3, 5)]
+    # --- minor-major seventh: "Am(maj7)", "Ammaj7", "Am(M7)" - minor triad over a MAJOR seventh ---
+    if re.search(r"(?:^|[^a-z])(?:m|min|mi|-)\s*\(?\s*(?:maj|Maj|ma|M)7", raw) and not low.startswith("maj"):
+        return [(0, 0), (2, 3), (4, 7), (6, 11)]
     # --- 7th chords ---
     if "maj7" in low:
         return [(0, 0), (2, 4), (4, 7), (6, 11)]

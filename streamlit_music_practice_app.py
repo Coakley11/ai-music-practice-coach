@@ -385,6 +385,8 @@ from songs.picker_session import (
     compose_browse_results,
     prune_catalog_pick_keys,
     request_clear_browse_filters,
+    exclude_browse_pick_key,
+    browse_excluded_pick_keys,
     toggle_catalog_favorite,
     toggle_favorites_filter,
     toggle_genre_filter,
@@ -11625,6 +11627,7 @@ def _apply_picker_catalog_filters(
         genres=genres,
         favorite_pick_keys=st.session_state.get(CATALOG_FAVORITES_KEY) or [],
         favorites_enabled=favorites_only,
+        excluded_pick_keys=browse_excluded_pick_keys(st.session_state),
     )
     browse_pick_options = [
         format_pick_key(r["genre"], f"{r['title']} — {r['artist']}") for r in filtered
@@ -12744,6 +12747,12 @@ def _render_catalog_song_picker_block(
         st.markdown(
             "<style>\n"
             + genre_search_result_css(sorted({str(r.get("genre") or "") for r in shown}))
+            + "\n[class*='st-key-browse_exclude'] [data-testid^='stBaseButton']{min-height:44px;min-width:44px;padding:0;}"
+            # Keep song + X on ONE row at phone width (Streamlit would stack the two columns).
+            + "\n[class*='st-key-browse_search_row'] [data-testid='stHorizontalBlock']{flex-wrap:nowrap !important;gap:0.4rem !important;align-items:center;}"
+            + "\n[class*='st-key-browse_search_row'] [data-testid='stColumn']{min-width:0 !important;}"
+            + "\n[class*='st-key-browse_search_row'] [data-testid='stColumn']:first-child{flex:1 1 auto !important;width:auto !important;}"
+            + "\n[class*='st-key-browse_search_row'] [data-testid='stColumn']:last-child{flex:0 0 44px !important;width:44px !important;}"
             + "\n</style>",
             unsafe_allow_html=True,
         )
@@ -12755,16 +12764,28 @@ def _render_catalog_song_picker_block(
                 favorite_star = "★ " if pk in favorite_keys else ""
                 emoji = str(genre_visual_style(str(rec.get("genre") or "")).get("emoji") or "").strip()
                 with st.container(key=genre_search_result_row_key(str(rec.get("genre") or ""), idx)):
-                    st.button(
-                        f"{emoji + ' ' if emoji else ''}{favorite_star}{'✓ ' if is_active else ''}"
-                        f"{rec['title']} — {rec['artist']}",
-                        key=f"browse_search_result::{pk}",
-                        help=f"{rec.get('genre', '')} · Levels: {levels}",
-                        use_container_width=True,
-                        disabled=is_active,
-                        on_click=_apply_catalog_pick,
-                        args=(pk,),
-                    )
+                    _row_main, _row_x = st.columns([9, 1], vertical_alignment="center")
+                    with _row_main:
+                        st.button(
+                            f"{emoji + ' ' if emoji else ''}{favorite_star}{'✓ ' if is_active else ''}"
+                            f"{rec['title']} — {rec['artist']}",
+                            key=f"browse_search_result::{pk}",
+                            help=f"{rec.get('genre', '')} · Levels: {levels}",
+                            use_container_width=True,
+                            disabled=is_active,
+                            on_click=_apply_catalog_pick,
+                            args=(pk,),
+                        )
+                    with _row_x:
+                        # View-only removal from this Browse list: never deletes the song or its Favorite.
+                        st.button(
+                            "✕",
+                            key=f"browse_exclude::{pk}",
+                            help=f"Remove this song from the list (the song and your Favorites are not changed): {rec['title']}",
+                            use_container_width=True,
+                            on_click=exclude_browse_pick_key,
+                            kwargs={"session_state": st.session_state, "pick_key": pk},
+                        )
         if len(filtered) > max_shown:
             st.caption(
                 f"Showing the first {max_shown} of {len(filtered)} matches — "
@@ -12925,6 +12946,7 @@ def _render_catalog_song_picker_block(
             genres=_legacy_genres,
             favorite_pick_keys=st.session_state.get(CATALOG_FAVORITES_KEY) or [],
             favorites_enabled=_legacy_fav_only,
+            excluded_pick_keys=browse_excluded_pick_keys(st.session_state),
         )
         _legacy_browse_options = [
             format_pick_key(r["genre"], f"{r['title']} — {r['artist']}") for r in filtered
@@ -19225,6 +19247,7 @@ elif _studio_page == "practice":
                                     meter=parse_meter(_time_sig),
                                     regenerate=regenerate,
                                     focus=focus,
+                                    instrument=str(instrument or ""),
                                 )
 
                             _pm_melody = _pm_resolve()

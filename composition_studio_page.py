@@ -4753,8 +4753,6 @@ def _render_chords_lane(
     editing_key = f"composer_chord_edit_idx_{sid}"
     insert_key = f"composer_chord_insert_at_{sid}"
 
-    from roman_numeral_analysis import chord_to_roman as _c2r
-
     rows = annotate_chromatic(chord_timeline(draft, meter=meter), key_token)
     st.caption("Edit this section's progression. Accepted changes update notation, melody alignment, and playback.")
 
@@ -4763,16 +4761,11 @@ def _render_chords_lane(
             i = int(row["index"])
             chrom = " · outside key" if row.get("chromatic") else ""
             _ch = row.get("chord") or "?"
-            _roman = _c2r(_ch, key_token) if _ch != "?" else ""
-            _roman_span = (
-                f" <span style='color:#6366f1;font-size:0.85rem;font-weight:600;'>{html.escape(_roman)}</span>"
-                if _roman
-                else ""
-            )
+            # Chord symbols only here by design.
             c1, c2, c3, c4, c5 = st.columns([2.2, 1.2, 1.0, 1.0, 1.0])
             with c1:
                 st.markdown(
-                    f"**{_ch}**{_roman_span}  \n"
+                    f"**{_ch}**  \n"
                     f"<span style='color:#64748b;font-size:0.85rem;'>m{row.get('measure')} "
                     f"beat {row.get('beat')}{chrom}</span>",
                     unsafe_allow_html=True,
@@ -4835,12 +4828,10 @@ def _render_chords_lane(
             bass_cur = parts.get("bass") or ""
             bass = st.selectbox("Bass /", bass_opts, index=bass_opts.index(bass_cur) if bass_cur in bass_opts else 0, key=f"composer_ch_bass_{sid}")
         built = build_chord_symbol(root=root, quality=quality, alteration=alteration, bass=bass)
-        _built_roman = _c2r(built, key_token)
-        _roman_hint = f"  ({_built_roman})" if _built_roman else ""
         if is_chromatic_to_key(built, key_token):
-            st.warning(f"`{built}`{_roman_hint} is outside the main key ({key_token}) — intentional chromatic color.")
+            st.warning(f"`{built}` is outside the main key ({key_token}) — intentional chromatic color.")
         else:
-            st.caption(f"Result: `{built}`{_roman_hint}")
+            st.caption(f"Result: `{built}`")
         if st.button("Apply to draft", key=f"composer_ch_apply_edit_{sid}"):
             session_state[draft_key(sid)] = update_draft_chord(draft, edit_idx, chord=built)
             session_state.pop(editing_key, None)
@@ -4864,8 +4855,7 @@ def _render_chords_lane(
         for si, sug in enumerate(suggestions[:6]):
             with scols[si % len(scols)]:
                 label = str(sug.get("chord") or "")
-                _sug_r = _c2r(label, key_token) if label else ""
-                _sug_label = f"{label}  {_sug_r}" if _sug_r else label
+                _sug_label = label
                 why = str(sug.get("why") or "")
                 if sug.get("chromatic"):
                     why = f"{why} (chromatic)"

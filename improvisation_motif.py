@@ -2545,6 +2545,82 @@ def _apply_rhythm_key(motif: dict[str, Any], rhythm_key: str) -> dict[str, Any]:
     return sync_motif_midi(updated)
 
 
+def _retrograde_rhythm_fields(motif: dict[str, Any]) -> dict[str, Any]:
+    """Mirror the rhythm in time so each pitch keeps its own duration under retrograde.
+
+    Reversing only the pitches would hand a half note's pitch to a quarter note's slot. A true
+    retrograde plays the (pitch, duration) events in reverse order: onsets are mirrored about the
+    phrase end (total length, meter and bar lines are preserved, rests included), the note index
+    ``n`` is renumbered in the new order, and tuplet-start flags move to the first event of each
+    group. Reversing twice restores the original events exactly.
+    """
+    from fractions import Fraction
+
+    from melodic_rhythm_engine import (
+        RhythmEvent,
+        display_rhythm,
+        events_from_json,
+        legacy_symbol,
+    )
+
+    events = events_from_json(list(motif.get("rhythm_events") or []))
+    if not events:
+        return {}
+    total = max(e.onset + e.duration for e in events)
+    mirrored = sorted(
+        (
+            RhythmEvent(
+                onset=total - (e.onset + e.duration),
+                duration=e.duration,
+                written=e.written,
+                rest=e.rest,
+                tuplet=e.tuplet,
+                tuplet_start=False,
+                note=e.note,
+            )
+            for e in events
+        ),
+        key=lambda e: e.onset,
+    )
+    out: list[RhythmEvent] = []
+    n = 0
+    for e in mirrored:
+        is_start = bool(e.tuplet) and not _tuplet_group_open(out, e.tuplet)
+        note = None
+        if not e.rest:
+            note = n
+            n += 1
+        out.append(RhythmEvent(e.onset, e.duration, e.written, e.rest, e.tuplet, is_start, note))
+    meta = dict(motif.get("rhythm_meta") or {})
+    meter = str(meta.get("meter") or motif.get("meter") or "4/4")
+    bars = int(meta.get("bars") or 0) or None
+    notes_only = [e for e in out if not e.rest]
+    symbols = [legacy_symbol(e) for e in notes_only]
+    group = int(meta.get("group") or 0)
+    rid = str(meta.get("id") or "")
+    meta["id"] = rid[:-2] if rid.endswith("^R") else rid + "^R"
+    return {
+        "rhythm_events": [e.to_json() for e in out],
+        "rhythm_meta": meta,
+        "rhythm_symbols": symbols,
+        "cell_rhythm_symbols": symbols[:group] if group else list(symbols),
+        "rhythm": display_rhythm(out, meter, bars=int(meta.get("unit_bars") or 0) or bars),
+    }
+
+
+def _tuplet_group_open(out: list[Any], tup: Any) -> bool:
+    """True while the trailing events of ``out`` are an unfinished tuplet group of ``tup``."""
+    count = 0
+    for e in reversed(out):
+        if e.tuplet == tup:
+            count += 1
+            if e.tuplet_start:
+                break
+        else:
+            return False
+    return 0 < count < int(tup[0])
+
+
 def transform_motif(
     motif: dict[str, Any],
     operation: str,
@@ -2600,7 +2676,7 @@ def transform_motif(
     op_labels = {
         "sequence_up": "Sequence up",
         "sequence_down": "Sequence down",
-        "invert": "Inversion",
+        "invert": "Reverse order",
     }
     label = op_labels.get(operation, operation)
     from music_theory import respell_notes_for_key
@@ -2661,6 +2737,18 @@ def transform_motif(
         updated["rhythm_meta"] = meta
         updated["cell_rhythm_symbols"] = list(motif.get("cell_rhythm_symbols") or [])
         updated["meter"] = motif.get("meter")
+        if operation == "invert":
+            updated.update(_retrograde_rhythm_fields(dict(motif, rhythm_meta=meta)))
+    elif operation == "invert":
+        # Legacy per-note symbols: reverse them with the pitches so durations stay attached.
+        syms = list(motif.get("rhythm_symbols") or [])
+        if syms and len(syms) == len(notes):
+            updated["rhythm_symbols"] = list(reversed(syms))
+            groups = [g.split() for g in str(motif.get("rhythm") or "").split("|")]
+            if sum(len(g) for g in groups) == len(syms):
+                updated["rhythm"] = " | ".join(" ".join(reversed(g)) for g in reversed(groups))
+            else:
+                updated["rhythm"] = " ".join(reversed(syms))
     if out_midis is not None:
         updated["midi"] = out_midis
     # Keep pattern cell structure aligned after whole-pattern pitch shift.
@@ -2923,7 +3011,10 @@ def sync_motif_midi(motif: dict[str, Any]) -> dict[str, Any]:
     if pcs_ok:
         # Planned register (pattern / sequence) is authoritative. Never nearest-wrap
         # an individual note to the previous MIDI — that jumps octaves mid-phrase.
-        motif["midi"] = _shift_phrase_into_bounds([int(m) for m in existing[: len(notes)]])
+        if motif.get("_register_pinned"):
+            motif["midi"] = [int(m) for m in existing[: len(notes)]]
+        else:
+            motif["midi"] = _shift_phrase_into_bounds([int(m) for m in existing[: len(notes)]])
     else:
         compact = _compact_midis_from_notes(notes)
         motif["midi"] = _shift_phrase_into_bounds(compact)

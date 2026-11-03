@@ -59,6 +59,15 @@ def resolve_framework(
         notes = chord_tone_names(chord, reference_key=key)
         if notes:
             return f"{chord} chord tones", {_pc(n): n for n in notes}
+    scale_key = str(motif.get("mission_scale_key") or "").strip()
+    if scale_key and chord:
+        # The Mission's own chord scale (chosen once, retained in the Mission state): every Sequence move
+        # steps through exactly this collection, never the song's key scale.
+        from chord_scale_selection import scale_label_for, scale_names_for
+
+        names = scale_names_for(scale_key, chord)
+        if names:
+            return scale_label_for(scale_key, chord), names
     _mode, pcs = _parse_key_scale(key)
     return f"{key} scale", {pc: _note_from_midi(pc, key) for pc in pcs}
 

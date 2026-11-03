@@ -13,6 +13,9 @@ SONG_PICKER_FAVORITES_ONLY_KEY = "song_picker_favorites_only"
 SONG_SEARCH_USER_TOUCHED_KEY = "_song_search_user_touched"
 FAVORITES_ONLY_USER_TOUCHED_KEY = "_favorites_only_user_touched"
 LEGACY_ALL_GENRES_VALUE = "All genres"
+# Temporary, view-only per-song exclusions (the "X" beside each Browse result). Never touches the Catalog,
+# Favorites, keys or any saved song data; cleared by Clear Filters.
+BROWSE_EXCLUDED_PICK_KEYS_KEY = "browse_excluded_pick_keys"
 
 
 def _save_picker_page_snapshot(session_state: MutableMapping[str, object]) -> None:
@@ -48,7 +51,24 @@ def request_clear_browse_filters(session_state: MutableMapping[str, object]) -> 
     session_state["_genre_filters_user_touched"] = True
     session_state[FAVORITES_ONLY_USER_TOUCHED_KEY] = True
     session_state[SONG_SEARCH_RESET_REQUESTED_KEY] = True
+    session_state[BROWSE_EXCLUDED_PICK_KEYS_KEY] = []
     _save_picker_page_snapshot(session_state)
+
+
+def exclude_browse_pick_key(session_state: MutableMapping[str, object], pick_key: str) -> None:
+    """Hide one song from the current Browse results (view-only; Favorites and the Catalog are untouched)."""
+    key = str(pick_key or "").strip()
+    if not key:
+        return
+    current = list(session_state.get(BROWSE_EXCLUDED_PICK_KEYS_KEY) or [])
+    if key not in current:
+        current.append(key)
+    session_state[BROWSE_EXCLUDED_PICK_KEYS_KEY] = current
+    _save_picker_page_snapshot(session_state)
+
+
+def browse_excluded_pick_keys(session_state: Mapping[str, object]) -> list[str]:
+    return [str(k) for k in (session_state.get(BROWSE_EXCLUDED_PICK_KEYS_KEY) or []) if k]
 
 
 def commit_browse_search_text(session_state: MutableMapping[str, object]) -> None:
@@ -86,8 +106,13 @@ def compose_browse_results(
     favorite_pick_keys: Iterable[str] = (),
     favorites_enabled: bool = False,
     pick_key_for_record: Callable[[Mapping[str, Any]], str] | None = None,
+    excluded_pick_keys: Iterable[str] = (),
 ) -> list[dict[str, Any]]:
-    """Compose Search union Genres union Favorites with canonical pick-key deduplication."""
+    """Compose Search union Genres union Favorites with canonical pick-key deduplication.
+
+    ``excluded_pick_keys`` are the user's temporary per-result X removals: they only hide rows from this
+    composed view, whichever source(s) contributed them.
+    """
     from song_catalog.catalog import format_pick_key, search_records
 
     rows = [dict(record) for record in records]
@@ -117,7 +142,7 @@ def compose_browse_results(
             contributors.extend(row for row in rows if pick_key_for_record(row) in favorites)
 
     result: list[dict[str, Any]] = []
-    seen: set[str] = set()
+    seen: set[str] = set(str(k) for k in excluded_pick_keys if str(k))
     for row in contributors:
         identity = str(pick_key_for_record(row) or "")
         if not identity or identity in seen:
