@@ -1546,15 +1546,15 @@ div[data-testid="stTabs"] [data-baseweb="tab-list"] { flex-wrap: wrap; gap: 0.25
   container: backing-main / inline-size;
 }
 body:has(.st-key-backing_card_controls) .ui-backing-active-song {
-  padding-bottom: calc(132px + 0.9rem + 0.65rem) !important;
+  padding-bottom: calc(150px + 0.9rem + 0.65rem) !important;
 }
 .st-key-backing_card_controls {
   box-sizing: border-box !important;
-  height: 132px !important;
-  min-height: 132px !important;
-  max-height: 132px !important;
+  height: 150px !important;
+  min-height: 150px !important;
+  max-height: 150px !important;
   overflow: hidden;
-  margin: calc(2px - (132px + 0.9rem + 1rem)) 1rem 1.75rem calc(1rem + 96px + 0.9rem);
+  margin: calc(2px - (150px + 0.9rem + 1rem)) 1rem 1.75rem calc(1rem + 96px + 0.9rem);
   width: auto !important;
   padding: 0.3rem 0.75rem;
   border-radius: 12px;
@@ -1653,6 +1653,8 @@ body:has(.st-key-backing_card_controls) .ui-backing-active-song {
 }
 .st-key-backing_card_controls .st-key-backing_card_key_row [data-testid="stHorizontalBlock"] {
   gap: 0 !important; align-items: stretch !important;
+  /* The panel's own rows fill its fixed height; the strip sizes to its content. */
+  height: auto !important; flex-direction: row !important; justify-content: flex-start !important;
 }
 .st-key-backing_card_controls .st-key-backing_card_key_row [data-testid="stHorizontalBlock"] > [data-testid="stColumn"],
 .st-key-backing_card_controls .st-key-backing_card_key_row [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:first-child {
@@ -1675,13 +1677,12 @@ body:has(.st-key-backing_card_controls) .ui-backing-active-song {
   height: 40px; box-sizing: border-box; padding: 0 10px; display: flex; align-items: center; gap: 8px; border-radius: 10px;
   border: 1px solid #c7d2fe; background: #eef2ff; font-size: 1.3rem; font-weight: 800; color: #1e1b4b; white-space: nowrap;
 }
-.st-key-backing_card_key_row .ui-skp-cap { margin: 0; font-size: 0.8rem; line-height: 1.3; color: #64748b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.st-key-backing_card_key_row .ui-skp-cap { margin: 0; font-size: 0.8rem; line-height: 1.3; color: #64748b; }
 .st-key-backing_card_key_row .ui-skp-cap-fixed { color: #4338ca; font-weight: 600; }
 .st-key-backing_card_controls .st-key-backing_card_key_row [data-baseweb="select"] > div {
   min-height: 40px !important; border-radius: 10px; border: 1px solid #94a3b8 !important; background: #ffffff !important;
 }
-.st-key-backing_card_key_row [data-baseweb="select"] > div > div:first-child,
-.st-key-backing_card_key_row [data-baseweb="select"] > div > div:first-child * {
+.st-key-backing_card_key_row [data-baseweb="select"] *:not(svg):not(path) {
   font-size: 1.3rem !important; font-weight: 800 !important; color: #0f172a !important; line-height: 1.2 !important;
 }
 @container backing-main (max-width: 800px) {
@@ -1976,8 +1977,7 @@ body:has(.st-key-picker_active_song_favorite_row) .st-key-picker_active_song_car
 .st-key-picker_active_song_practice_key_row [data-baseweb="select"] > div {
   min-height: 52px; border-radius: 10px; border: 1px solid #94a3b8 !important; background: #ffffff !important;
 }
-.st-key-picker_active_song_practice_key_row [data-baseweb="select"] > div > div:first-child,
-.st-key-picker_active_song_practice_key_row [data-baseweb="select"] > div > div:first-child * {
+.st-key-picker_active_song_practice_key_row [data-baseweb="select"] *:not(svg):not(path) {
   font-size: 1.6rem !important; font-weight: 800 !important; color: #0f172a !important; line-height: 1.2 !important;
 }
 /* Meta badges inside the v12 card: quiet neutral pills (Tempo / Meter / Style / Source). */
@@ -1999,7 +1999,7 @@ body:has(.st-key-picker_active_song_favorite_row) .st-key-picker_active_song_car
   .st-key-picker_active_song_key_row .ui-skp-narrow { display: inline; }
   .st-key-picker_active_song_key_row .ui-skp-value,
   .st-key-picker_active_song_key_row .ui-skp-locked,
-  .st-key-picker_active_song_practice_key_row [data-baseweb="select"] > div > div:first-child { font-size: 1.25rem; }
+  .st-key-picker_active_song_practice_key_row [data-baseweb="select"] *:not(svg):not(path) { font-size: 1.25rem !important; }
   .st-key-picker_active_song_key_row .ui-skp-value,
   .st-key-picker_active_song_key_row .ui-skp-locked,
   .st-key-picker_active_song_practice_key_row [data-baseweb="select"] > div { height: 46px; min-height: 46px; }

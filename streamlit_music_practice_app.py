@@ -10058,7 +10058,8 @@ def _create_backing_card_slots() -> tuple[Any, tuple | None]:
     head = st.container()
     try:
         with st.container(key="backing_card_controls"):
-            cols = st.columns([1.3, 1.4, 1.2], vertical_alignment="center", gap="small")
+            # v12: the key strip gets the widest column; the transport keeps its fixed width (app_ui).
+            cols = st.columns([1.7, 1.0, 1.2], vertical_alignment="center", gap="small")
         return head, tuple(cols)
     except Exception:
         return head, None
