@@ -5167,6 +5167,10 @@ def _iris_chart_pack() -> dict[str, Any]:
                 "swell; final chorus: peak. Karaoke-friendly vocal showcase."
             ),
             default_bpm=154,
+            # Beginner/Intermediate play all 13 sections (Beginner = triad-simplified chords);
+            # the global trim dropped the Interlude, Instrumental, Ending Build, Final Chorus,
+            # Outro and Coda.
+            full_form_levels=["Beginner", "Intermediate"],
             default_groove="Rock groove",
             time_signature="4/4",
             repertoire_tags=[
