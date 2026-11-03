@@ -3091,7 +3091,6 @@ def _dance_monkey_chart_pack() -> dict[str, Any]:
             c.replace("F#m", "F#m7")
             .replace("C#m", "C#m7")
             .replace("D", "Dmaj7")
-            .replace("E.hit", "Emaj7.hit")
             .replace("E", "Emaj7")
             for c in chords
         ]
