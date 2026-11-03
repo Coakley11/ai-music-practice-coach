@@ -44,6 +44,8 @@ the parsing logic.
 
 from __future__ import annotations
 
+import re
+
 from dataclasses import dataclass
 from typing import Iterable
 
@@ -292,6 +294,15 @@ def expand_chord_list(chords: Iterable[object]) -> list[str]:
         for part in subdivisions(token):
             out.append(part)
     return out
+
+
+_SINGLE_BAR_WEIGHT_RE = re.compile(r"^(?P<chord>[^:|]+):\d+(?:\.\d+)?p?$")
+
+
+def _strip_single_bar_weight(token: str) -> str:
+    """``"D:4"`` (one chord holding 4 beats) is the chord ``"D"`` - the beat weight is chart syntax."""
+    m = _SINGLE_BAR_WEIGHT_RE.match(token)
+    return m.group("chord").strip() if m else token
 
 
 def chord_stream(chords: Iterable[object]) -> list[str]:

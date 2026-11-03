@@ -260,7 +260,17 @@ def spell_pitch_classes_for_chord(
     from music_theory import spell_pitch_class
 
     mode = notation_spelling_mode_for_chord(chord, song_display_key=song_display_key)
-    return [spell_pitch_class(int(pc) % 12, mode=mode) for pc in pitch_classes]
+    # A chord tone keeps the chord's own spelling (G#7 -> B#, not C), unless that needs a double accidental.
+    own: dict[int, str] = {}
+    try:
+        from music_theory import pitch_class_from_spelled_note, spell_chord_tones
+
+        for tone in spell_chord_tones(str(chord or "")):
+            if "##" not in tone and "bb" not in tone[1:]:
+                own.setdefault(pitch_class_from_spelled_note(tone) % 12, tone)
+    except Exception:
+        own = {}
+    return [own.get(int(pc) % 12) or spell_pitch_class(int(pc) % 12, mode=mode) for pc in pitch_classes]
 
 
 def apply_motif_chord_spelling(

@@ -873,23 +873,38 @@ def _render_composition_melody_in_creative(st: Any, session_state: dict, practic
                     from instrument_transposition import written_key_for_instrument
 
                     display_key = written_key_for_instrument(display_key, instrument, session_state) or display_key
+                # Chord symbols above the measures, in the same key the notes are shown in
+                # (Practice Key, or the instrument's written key when charts are written).
+                try:
+                    from composition_songs_bridge import composition_playback_sections
+
+                    _chords = list((composition_playback_sections(doc, display_key) or {}).get(sec_label) or [])
+                except Exception:
+                    _chords = []
+                _gl = (doc.get("global") if isinstance(doc.get("global"), dict) else {}) or {}
                 score = build_section_score_model(
                     events=projected,
-                    chords=[],
+                    chords=_chords,
                     key=display_key,
-                    meter="4/4",
-                    bpm=int(session_state.get("bpm") or 120),
+                    meter=str(_gl.get("time_signature") or "4/4"),
+                    bpm=int(_gl.get("bpm") or session_state.get("bpm") or 120),
                     lyrics_alignment=alignment,
                     clef=clef,
                 )
                 abc_str = score.get("abc") or ""
                 if abc_str:
                     st.markdown(f"**{sec_label}**")
+                    # Render with the shared abcjs score component. (This used to import the whole
+                    # app module and call render_abc(..., key=...), which has no ``key`` parameter:
+                    # the TypeError fell through to raw ABC text, and the import re-ran the app and
+                    # drew its brand emblem full-size inside the expander.)
                     try:
-                        from streamlit_music_practice_app import render_abc
-                        render_abc(abc_str, key=f"creative_comp_melody_{sec_label}")
+                        import streamlit.components.v1 as _components
+                        from composition_melody_notation import render_abc_html
+
+                        _components.html(render_abc_html(abc_str, height=240), height=240, scrolling=True)
                     except Exception:
-                        st.code(abc_str, language=None)
+                        st.caption("The score could not be drawn here; open Practice or Backing for the notation.")
         except Exception:
             st.caption("Melody notation is available in Practice and Backing views.")
 
@@ -2664,7 +2679,7 @@ def _tab_motif(
         transforms = [
             (t1, "sequence_up", "Sequence Up ↑", "improv_xform_up"),
             (t2, "sequence_down", "Sequence Down ↓", "improv_xform_down"),
-            (t3, "invert", "Invert ↓↑", "improv_xform_invert"),
+            (t3, "invert", "Reverse Order ⇄", "improv_xform_invert"),
             (t4, "rhythmic", "Change Rhythm", "improv_xform_rhythm"),
         ]
         for col, op, label, key in transforms:
@@ -3343,11 +3358,11 @@ def _render_span_motif_panel(
                 state["current"] = current
                 session_state[SPAN_MOTIF_STATE_KEY] = state
         t0, t1, t2 = st.columns(3)
-        for col, label, key in ((t0, "Sequence Up ↑", "improv_span_seq_up"), (t1, "Sequence Down ↓", "improv_span_seq_down"), (t2, "Invert ↓↑", "improv_span_invert")):
+        for col, label, key in ((t0, "Sequence Up ↑", "improv_span_seq_up"), (t1, "Sequence Down ↓", "improv_span_seq_down"), (t2, "Reverse Order ⇄", "improv_span_invert")):
             with col:
                 st.button(label, key=key, disabled=True, use_container_width=True)
         st.caption(
-            "Sequence and Invert are single-chord transforms: across a span they would move notes "
+            "Sequence and Reverse Order are single-chord transforms: across a span they would move notes "
             "off the later chords, so they are off in multi-chord scope for now."
         )
         if current.get("span_length") != "seed":
@@ -4699,6 +4714,7 @@ def _stash_missions_generate_context(
             "level": improv_ctx.level,
             "focus": improv_ctx.focus,
             "bpm": improv_ctx.bpm,
+            "style_label": str(improv_ctx.style_label or ""),
             "sections": _normalize_section_map_for_generate(section_map),
         },
     }
@@ -4736,7 +4752,7 @@ def _improv_ctx_from_generate_context(session_state: dict) -> ImprovSessionConte
         focus=str(snap.get("live_focus") or raw.get("focus") or "Improvisation"),
         sections={str(k): list(v) for k, v in sections.items() if isinstance(v, list)},
         bpm=int(snap.get("bpm") or raw.get("bpm") or 100),
-        style_label="",
+        style_label=str(raw.get("style_label") or ""),
         progression_flat=[],
         section_order=list(sections.keys()),
     )
@@ -4767,7 +4783,11 @@ def _mission_improv_ctx_from_session(session_state: dict) -> ImprovSessionContex
         focus=str(session_state.get("focus") or "Improvisation"),
         sections={},
         bpm=int(session_state.get("backing_track_bpm") or 100),
-        style_label="",
+        style_label=str(
+            session_state.get("genre")
+            or (session_state.get("selected_song") if isinstance(session_state.get("selected_song"), dict) else {}).get("genre")
+            or ""
+        ),
         progression_flat=[],
     )
     home = session_state.get("home_sections")
@@ -6085,6 +6105,14 @@ def _tab_missions(
             f"**Notes:** `{notes_txt}` · "
             f"**Rhythm:** `{rhythm_txt}`"
         )
+        try:
+            from improvisation_missions import mission_scale_label
+
+            _scale_label, _scale_reason = mission_scale_label(example)
+        except Exception:
+            _scale_label, _scale_reason = "", ""
+        if _scale_label:
+            st.markdown(f"**Scale:** {html.escape(_scale_label)}", help=_scale_reason or None)
         st.markdown(f"**Why it works:** {example.why}")
         steps = list(example.practice_steps or [])
         live_steps = _practice_steps(
@@ -6132,7 +6160,7 @@ def _tab_missions(
                     )
                     transform_clicked = True
             with t3:
-                if st.button("Invert ↓↑", key="improv_mission_invert", use_container_width=True):
+                if st.button("Reverse Order ⇄", key="improv_mission_invert", use_container_width=True):
                     apply_mission_motif_transform(
                         session_state, improv_ctx, "invert", bpm=bpm, key_center=practice_key
                     )

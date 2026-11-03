@@ -460,14 +460,17 @@ class TestSpanMissionBacking(unittest.TestCase):
         self.assertEqual(s["ii_selected_chord"], "Gm7")  # Mission state isolation
 
     def test_written_key_projection_and_practice_key_follow(self) -> None:
-        from mission_span_backing import active_span_backing, span_backing_progression
+        from mission_span_backing import active_span_backing, span_backing_label, span_backing_progression
 
         s = self._session(instrument="Saxophone", saxophone_type="Alto saxophone (Eb)",
                           selected_transposing_instrument="Alto saxophone (Eb)", show_chart_in_instrument_key=True)
         self._start(s)
         payload = active_span_backing(s)
-        self.assertEqual(span_backing_progression(s, payload, "F"), ["Em7", "A7", "Dmaj7"])  # alto charts in D
-        self.assertEqual(span_backing_progression(s, payload, "G"), ["F#m7", "B7", "Emaj7"])  # Mission key moved to G
+        # The progression the AUDIO reads is concert; the written chart (alto in D) is only the label.
+        self.assertEqual(span_backing_progression(s, payload, "F"), ["Gm7", "C7", "Fmaj7"])
+        self.assertEqual(span_backing_label(s, payload, "F"), "Em7 → A7 → Dmaj7")            # alto charts in D
+        self.assertEqual(span_backing_progression(s, payload, "G"), ["Am7", "D7", "Gmaj7"])  # Mission key moved to G
+        self.assertEqual(span_backing_label(s, payload, "G"), "F#m7 → B7 → Emaj7")
 
     def test_bars_repeat_in_the_loop(self) -> None:
         from mission_span_backing import span_backing_progression

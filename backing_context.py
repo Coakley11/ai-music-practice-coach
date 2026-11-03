@@ -2353,7 +2353,10 @@ def build_mission_context(session: dict[str, Any]) -> BackingContext:
 
     progression: list[str] = []
     if target_chord:
-        progression = [target_chord]
+        # The audio reads ``progression`` as CONCERT chords, so it must carry the concert chord. The player-facing
+        # (written / Shape) chord is only the label (``target_chord`` below): projecting it into the progression made
+        # a written-key Mission sound the written chord (concert B7 played as G#7 for an alto chart).
+        progression = [canonical_target or target_chord]
         session["improv_mission_progression"] = progression
     else:
         stored = session.get("improv_mission_progression")

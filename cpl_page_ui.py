@@ -598,6 +598,7 @@ def render_custom_progression_lab_page() -> None:
         migrate_cpl_builder_version,
         normalize_chord_symbol,
         preset_button_label,
+        preset_roman_text,
         prepare_cpl_backing_handoff,
         presets_for_style,
         progression_is_empty,
@@ -1743,6 +1744,9 @@ def render_custom_progression_lab_page() -> None:
                     on_click=cpl_on_append_preset_callback,
                     args=(style, preset_id),
                 )
+                _pr_text = preset_roman_text(presets_key, spec)
+                if _pr_text:
+                    st.caption(f"Roman numerals: {_pr_text}")
         st.markdown("</div>", unsafe_allow_html=True)
 
         if section_has_chords:

@@ -152,8 +152,9 @@ def span_chart_chords(session: dict[str, Any], payload: dict[str, Any], concert_
 
 
 def span_backing_progression(session: dict[str, Any], payload: dict[str, Any], concert_key: str) -> list[str]:
-    """Mission Backing loop: one chart chord per bar across the span."""
-    return [chord for chord, bars in span_chart_chords(session, payload, concert_key) for _ in range(max(1, bars))]
+    """Mission Backing loop: one CONCERT chord per bar across the span (the audio reads these as sounding chords;
+    the written / shape projection is only the label, see ``span_backing_label``)."""
+    return [chord for chord, bars in span_concert_chords(payload, concert_key) for _ in range(max(1, bars))]
 
 
 def span_backing_label(session: dict[str, Any], payload: dict[str, Any], concert_key: str) -> str:
