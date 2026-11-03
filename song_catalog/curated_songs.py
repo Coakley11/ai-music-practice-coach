@@ -10459,7 +10459,7 @@ def curated_song_records() -> list[dict[str, Any]]:
             "Bars 1-4": ["F7", "Bb7", "F7", "F7"],
             "Bars 5-8": ["Bb7", "Bb7", "F7", "F7"],
             "Bars 9-12": ["C7", "Bb7", "F7", "C7"],
-        }),
+        }, extensions=_ext(full_form_levels=["Beginner", "Intermediate"])),
         *_jewish_catalog_songs(),
         *_jewish_traditional_catalog_songs(),
         _s("Ode to Joy", "Beethoven", "Classical", "D", {
