@@ -295,6 +295,28 @@ def resolve_catalog_song_for_chart(
                     break
 
     if canonical:
+        # Provenance-aware: a stale verbatim copy of an EARLIER catalog version of this
+        # song (selected_song / catalog_session / bundle overlay) must not override the
+        # corrected canonical chart; user-edited, custom, composition and mission/creative
+        # charts are kept (see songs/chart_provenance.py).
+        try:
+            from songs.chart_provenance import heal_session_chart_copies, reconcile_snapshot
+
+            pk_for_prov = pk if pk and not pk.startswith("custom::") else ""
+            overlay = reconcile_snapshot(
+                overlay,
+                canonical,
+                where="resolve_catalog_song_for_chart",
+                pick_key=pk_for_prov,
+                session=session_state,
+                stamp=False,
+            )
+            if not karaoke_chart_pk and pk_for_prov:
+                heal_session_chart_copies(
+                    session_state, canonical, pk_for_prov, where="resolve_catalog_song_for_chart"
+                )
+        except Exception as exc:
+            _chart_prov_failure(session_state, "resolve_catalog_song_for_chart", exc)
         merged = merge_chart_song_overlay(canonical, overlay)
         # Catalog library row is authoritative for original/home key. Session
         # selected_song.key / catalog_session may carry Practice or Custom C.
@@ -345,3 +367,13 @@ def resolve_catalog_song_for_chart(
     merged["key"] = original_key
     session_state.pop(CHART_SONG_RESOLVE_DIAG_KEY, None)
     return merged, original_key
+
+
+def _chart_prov_failure(session: Any, where: str, exc: BaseException) -> None:
+    """Log a swallowed chart-provenance failure (bounded _chart_provenance_log); never raises."""
+    try:
+        from songs.chart_provenance import log_failure
+
+        log_failure(session, where, exc)
+    except Exception:
+        pass

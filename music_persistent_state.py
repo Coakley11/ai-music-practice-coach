@@ -669,6 +669,7 @@ _PERSIST_KEYS: tuple[str, ...] = (
     "backing_track_bpm",
     "backing_time_signature",
     "backing_time_signature_override",
+    "backing_time_signature_override_song",
     "backing_quick_section",
     "_backing_play_session",
     "_backing_play_session_expired",
@@ -2605,6 +2606,7 @@ def _backing_filters_for_envelope(st: Any, state: dict[str, Any], *, save_reason
             "backing_volume": backing_meta.get("backing_volume"),
             "backing_time_signature": backing_meta.get("backing_time_signature"),
             "backing_time_signature_override": backing_meta.get("backing_time_signature_override"),
+            "backing_time_signature_override_song": backing_meta.get("backing_time_signature_override_song"),
             "backing_quick_section": backing_meta.get("backing_quick_section"),
         }
 
@@ -3123,6 +3125,14 @@ def build_music_disk_state(st: Any) -> dict[str, Any]:
         audit_payload_global_keys(ss, state, save_reason=save_reason)
     except ImportError:
         pass
+    try:
+        # Record chart provenance (chart_origin/catalog_revision) on catalog snapshots and
+        # never persist a stale copy of a corrected catalog chart.
+        from songs.chart_provenance import reconcile_payload_chart_copies
+
+        reconcile_payload_chart_copies(state, where="build_music_disk_state", session=ss)
+    except Exception as exc:
+        _chart_prov_failure(ss, "build_music_disk_state", exc)
     return state
 
 
@@ -3136,6 +3146,14 @@ def apply_music_disk_state(
 ) -> None:
     """Apply disk/cloud payload with studio_page ownership protection."""
     ss = st.session_state
+    try:
+        # Cold restore / cloud hydration: an old saved copy of a catalog chart is
+        # refreshed from the current catalog before any restore path reads it.
+        from songs.chart_provenance import reconcile_payload_chart_copies
+
+        reconcile_payload_chart_copies(payload, where="apply_music_disk_state", session=ss)
+    except Exception as exc:
+        _chart_prov_failure(ss, "apply_music_disk_state", exc)
     if not authoritative_restore and ss.pop("_music_authoritative_cloud_apply", False):
         authoritative_restore = True
     if authoritative_restore:
@@ -5578,3 +5596,13 @@ def default_reset_music_session(st: Any) -> None:
 
 def clear_music_workspace_autosave_block(st: Any) -> None:
     clear_workspace_autosave_block(st, APP_ID)
+
+
+def _chart_prov_failure(session: Any, where: str, exc: BaseException) -> None:
+    """Log a swallowed chart-provenance failure (bounded _chart_provenance_log); never raises."""
+    try:
+        from songs.chart_provenance import log_failure
+
+        log_failure(session, where, exc)
+    except Exception:
+        pass

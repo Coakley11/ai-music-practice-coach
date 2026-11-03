@@ -780,6 +780,7 @@ def _apply_backing_payload(session: dict[str, Any], payload: dict[str, Any]) -> 
             "backing_groove_style": payload.get("backing_groove_style"),
             "backing_time_signature": payload.get("backing_time_signature"),
             "backing_time_signature_override": payload.get("backing_time_signature_override"),
+            "backing_time_signature_override_song": payload.get("backing_time_signature_override_song"),
         }
         _apply_filters_to_session_keys(session, {k: v for k, v in filters.items() if v is not None})
     except ImportError:

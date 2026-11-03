@@ -1046,6 +1046,14 @@ def generate_practice_notation(
     if not any(chs for _name, chs in section_chord_pairs):
         section_chord_pairs = [(section_label, ["C"])]
 
+    # A lone ``X:w`` cell (``C:4``) is just chord X; never let the weight leak
+    # into the notation text. Pipe splits/pushes are left exactly as before.
+    from chord_subdivisions import bare_chord_token as _bare_chord_token
+
+    section_chord_pairs = [
+        (_n, [_bare_chord_token(_c) for _c in _chs]) for _n, _chs in section_chord_pairs
+    ]
+
     tabs = song_guitar_tabs_for_key(guitar_tabs, original_key, display_key)
     inst = (instrument or "").lower()
 

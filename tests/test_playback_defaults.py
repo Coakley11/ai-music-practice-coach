@@ -349,7 +349,7 @@ def test_canonicalize_song_card_matches_playback_for_known_songs():
         ("pk::Pop::Shallow — Lady Gaga / Bradley Cooper", 96, "Ballad", "4/4"),
         ("pk::Pop::Perfect — Ed Sheeran", 95, "Pop groove", "6/8"),
         ("pk::Jazz::Blue Bossa — Kenny Dorham", 135, "Bossa nova", "4/4"),
-        ("pk::Rock::We Are the Champions — Queen", 65, "Rock groove", "4/4"),
+        ("pk::Rock::We Are the Champions — Queen", 65, "Rock groove", "6/8"),
     ]
     for sync_id, bpm, groove, meter in test_cases:
         st = _FakeSession({

@@ -4784,6 +4784,19 @@ def on_sidebar_practice_concert_key_change() -> None:
         _mission_pk = str(st.session_state.get("improv_mission_concert_key") or "").strip()
         if _mission_pk:
             live_pk = _mission_pk
+    try:
+        from practice_key_mode import practice_key_edit_locked
+
+        if write_owner not in {"mission", "entry_jam"} and practice_key_edit_locked(st.session_state):
+            # Fixed Key decides a song's Practice Key: a control drawn before it was
+            # turned on cannot change it. Put the fixed key back on the next run.
+            if old_pk and live_pk != old_pk:
+                from songs.key_state import request_display_key
+
+                request_display_key(st.session_state, old_pk)
+            return
+    except ImportError:
+        pass
     handler = {
         "entry_jam": "sync_sidebar_jam_owner",
         "mission": "sync_sidebar_mission_owner",

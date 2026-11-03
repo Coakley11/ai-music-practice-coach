@@ -1,0 +1,56 @@
+<!doctype html>
+<html>
+  <head><meta charset="utf-8" /></head>
+  <body style="margin:0">
+    <script>
+      // Chord Tone Hints channel (zero height). The "Chord Tone Hints" switch in the Live
+      // Follow-Along Player shows / hides the hints in the browser at once and calls
+      // window.parent.__cthSave(on); this sends the choice to the app, which saves it at the
+      // start of the (quiet) re-run that follows. The same frame keeps every open lead sheet
+      // on the saved choice -- a click not yet saved wins, so the hints never flip back.
+      (function () {
+        const P = window.parent;
+        const SESSION = Math.random().toString(36).slice(2) + Date.now().toString(36);
+        let nonce = 0;
+        function post(type, data) {
+          window.parent.postMessage(Object.assign({ isStreamlitMessage: true, type: type }, data || {}), "*");
+        }
+        try {
+          P.__cthSave = function (on) {
+            nonce += 1;
+            post("streamlit:setComponentValue", { value: { on: !!on, nonce: nonce, session: SESSION } });
+          };
+        } catch (e) {}
+        function apply() {
+          let on = false;
+          try { on = !!P.__cthOn; } catch (e) {}
+          try {
+            P.document.querySelectorAll("iframe").forEach(function (f) {
+              try {
+                const d = f.contentDocument;
+                if (d && d.getElementById("live-chart-root")) {
+                  if (on) d.documentElement.setAttribute("data-cth", "1");
+                  else d.documentElement.removeAttribute("data-cth");
+                }
+              } catch (e) {}
+            });
+          } catch (e) {}
+        }
+        window.addEventListener("message", function (event) {
+          if (!event.data || event.data.type !== "streamlit:render") return;
+          const saved = !!((event.data.args || {}).enabled);
+          try {
+            if (P.__cthPending === undefined || P.__cthPending === null || P.__cthPending === saved) {
+              P.__cthOn = saved;
+              P.__cthPending = null;
+            }
+          } catch (e) {}
+          apply();
+        });
+        setInterval(apply, 500);
+        post("streamlit:componentReady", { apiVersion: 1 });
+        post("streamlit:setFrameHeight", { height: 0 });
+      })();
+    </script>
+  </body>
+</html>

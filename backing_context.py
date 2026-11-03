@@ -1132,6 +1132,19 @@ def backing_page_transport_defaults(session: dict[str, Any]) -> tuple[int, str, 
     )
 
 
+def backing_source_default_meter(*, creative_ctx: Any, transport_meter: Any, song_meter: Any) -> str:
+    """Source-default meter for the Backing page.
+
+    ``backing_page_transport_defaults`` returns "4/4" whenever there is no Creative
+    context (every plain Catalog / Custom song), which made a 3/4 or 6/8 song
+    render, follow and click at 4/4. Only a Creative (Jam / Mission / SBI) context
+    owns its own meter; otherwise the active song's own time signature wins.
+    """
+    if creative_ctx is not None:
+        return str(transport_meter or song_meter or "4/4")
+    return str(song_meter or transport_meter or "4/4")
+
+
 def _backing_groove_style_from_ctx(ctx: BackingContext) -> str:
     """Map Creative style name to Backing Studio groove/style control value."""
     from songs.playback_defaults import normalize_groove_label
@@ -2626,6 +2639,7 @@ def build_custom_progression_context(session: dict[str, Any]) -> BackingContext:
         groove=str(active.get("groove_style") or _default_groove(session)).strip(),
         scope=str(session.get("backing_track_scope") or "Full song"),
         loops=int(active.get("loops") or session.get("backing_track_loops") or 2),
+        meter=str(active.get("time_signature") or "4/4").strip() or "4/4",
         progression=progression,
         progression_label=label,
         loop=True,
@@ -2798,6 +2812,7 @@ def build_composition_song_context(
         groove=groove,
         scope=str(session.get("backing_track_scope") or "Full song"),
         loops=int(projected.get("loops") or session.get("backing_track_loops") or 2),
+        meter=str(projected.get("time_signature") or "4/4"),
         progression=progression,
         progression_label=label,
         loop=True,
@@ -3575,6 +3590,37 @@ def apply_backing_context_to_session(
         multi = session.get("backing_track_multi_sections")
         if isinstance(multi, list) and multi:
             canonical["backing_track_multi_sections"] = list(multi)
+        if ctx.source in {"regular_song", "composition_song"}:
+            # ``ctx.meter`` is the transport "4/4", not the song's meter, and this
+            # rebuild (Load Last Song / song re-pick) must not erase the
+            # musician's saved override for this very song.
+            try:
+                from backing_play_session import _catalog_song_meter_from_session
+                from songs.meter_state import genuine_saved_meter_override
+
+                _pick = str(
+                    getattr(ctx, "bound_pick_key", "")
+                    or getattr(ctx, "active_song_id", "")
+                    or session.get("active_catalog_pick_key")
+                    or ""
+                ).strip()
+                kept = genuine_saved_meter_override(
+                    session,
+                    # Same id the override is tagged with (active_song_sync_id for a catalog pick).
+                    sync_id=f"pk::{_pick}" if _pick else "",
+                    song_default_meter=(
+                        str(ctx.meter or "4/4")
+                        if ctx.source == "composition_song"
+                        else _catalog_song_meter_from_session(session, fallback=str(ctx.meter or "4/4"))
+                    ),
+                    untagged_ok=False,
+                )
+            except Exception:
+                kept = None
+            if kept:
+                canonical["backing_time_signature"] = kept["meter"]
+                canonical["backing_time_signature_override"] = True
+                canonical["backing_time_signature_override_song"] = kept["song"]
         write_canonical_backing_state(
             session,
             canonical,
@@ -6762,6 +6808,7 @@ __all__ = [
     "format_backing_context_banner",
     "backing_page_sync_id",
     "backing_page_transport_defaults",
+    "backing_source_default_meter",
     "sync_creative_handoff_keys",
     "sync_live_keys_from_backing_context",
     "creative_specialized_backing_handoff_ready",
