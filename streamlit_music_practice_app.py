@@ -9052,8 +9052,18 @@ def _render_multitrack_session_setup_panel(
     )
     if _prep_clicked:
         practice_level = str(st.session_state.get("level") or "Intermediate")
+        # Monitor backing is SOUNDING audio: render it from the concert progression, never from the
+        # written / capo-shape chart this page happens to be displaying.
+        try:
+            from multitrack_layer_chords import concert_sections_for_backing
+
+            _backing_sections = concert_sections_for_backing(
+                st.session_state, sections, chart_key=chart_key, concert_key=concert_key
+            ) or sections
+        except Exception:
+            _backing_sections = sections
         monitor_wav, _ = multitrack_monitor_backing_bytes(
-            sections,
+            _backing_sections,
             mt_selected_sections,
             bpm=mt_bpm,
             loops=mt_loops,
@@ -9118,6 +9128,9 @@ def multitrack_studio_html(
     backing_duration_sec=0,
 ):
     tracks_json = json.dumps(tracks)
+    from multitrack_layer_chords import transport_clock_script
+
+    clock_script = transport_clock_script()
     bar_duration = meter_timing(bpm, time_signature).bar_sec
     config = json.dumps({
         "bpm": bpm,
@@ -9194,6 +9207,7 @@ def multitrack_studio_html(
 
     let audioCtx = null;
     let startedAt = 0;
+    let countInStartedAt = 0;
     let rafId = null;
     let metroTimer = null;
     let trackNodes = [];
@@ -9201,6 +9215,7 @@ def multitrack_studio_html(
     let masterGain = null;
     let sessionDuration = 8;
 
+    {clock_script}
     function barDuration() {{ return cfg.barDuration; }}
     function beatDuration() {{ return 60 / cfg.bpm; }}
 
@@ -9285,10 +9300,15 @@ def multitrack_studio_html(
       cursorEl.style.width = "0%";
       timeEl.textContent = "0.0s";
       labelEl.textContent = "Stopped.";
+      // Layer chord strips follow this clock; a stopped transport must never advance them.
+      mtPublishClock(0, false);
     }}
 
     function updateTransport() {{
       if (!audioCtx) return;
+      // Seconds from the START OF THE COUNT-IN: the layer chord strips line their bars up against this,
+      // so count-in, loops and restarts all land where the musician hears them.
+      mtPublishClock(audioCtx.currentTime - countInStartedAt, true);
       const t = Math.max(0, audioCtx.currentTime - startedAt);
       const bd = barDuration();
       const barNum = Math.floor(t / bd) + 1;
@@ -9313,6 +9333,7 @@ def multitrack_studio_html(
       const countInStart = audioCtx.currentTime;
       const musicStart = scheduleCountIn(countInStart);
       startedAt = musicStart;
+      countInStartedAt = countInStart;
 
       let maxEnd = musicStart;
 
@@ -27175,6 +27196,35 @@ elif _studio_page == "multitrack":
                 "Loop section = repeat the selected section while recording"
             )
 
+            # --- Per-layer chord progression (concert audio, per-instrument reading) -------------
+            # The Practice chart this page holds is in the CHART key (written / capo shape), so the
+            # sounding progression is recovered once here and every layer projects from it.
+            try:
+                from multitrack_layer_chords import (
+                    LAYER_INSTRUMENT_KEY_PREFIX,
+                    concert_bar_chords,
+                    layer_chord_strip_html,
+                    layer_chord_timeline,
+                    layer_instrument,
+                    layer_instrument_options,
+                    layer_key_label,
+                    project_chords_for_layer,
+                )
+
+                _mt_concert_bars = concert_bar_chords(
+                    st.session_state,
+                    chart_sections=sections,
+                    selected_sections=mt_selected_sections,
+                    section_names=section_names_from_song(song_data),
+                    chart_key=chart_key,
+                    concert_key=concert_key,
+                )
+                _mt_bar_sec = meter_timing(mt_bpm, mt_time_sig).bar_sec
+                _mt_count_in_sec = float(mt_count_in_bars) * _mt_bar_sec
+                _mt_layer_chords_ok = bool(_mt_concert_bars)
+            except Exception:
+                _mt_layer_chords_ok = False
+
             for slot in MT_SLOTS:
                 _slot_ready = bool(st.session_state.mt_tracks.get(slot))
                 try:
@@ -27199,6 +27249,22 @@ elif _studio_page == "multitrack":
                             value=st.session_state.get(f"mt_name_{slot}", slot),
                             key=f"mt_name_{slot}",
                         )
+                        if _mt_layer_chords_ok:
+                            _layer_inst_options = layer_instrument_options()
+                            _layer_inst_default = layer_instrument(st.session_state, slot)
+                            st.selectbox(
+                                "Chart this layer for",
+                                _layer_inst_options,
+                                index=_layer_inst_options.index(_layer_inst_default)
+                                if _layer_inst_default in _layer_inst_options
+                                else 0,
+                                key=f"{LAYER_INSTRUMENT_KEY_PREFIX}{slot}",
+                                help=(
+                                    "Chord names this player reads. Transposing instruments read their "
+                                    "written chords; the backing keeps sounding in concert pitch."
+                                ),
+                            )
+
                         from upload_media import UPLOAD_AUDIO_FILE_TYPES, UPLOAD_MAX_SIZE_MB
 
                         uploaded = st.file_uploader(
@@ -27298,6 +27364,31 @@ elif _studio_page == "multitrack":
                             ctrl["delay"] = float(st.session_state.get(f"mt_delay_{slot}", 0.0))
                             ctrl["mute"] = bool(st.session_state.get(f"mt_mute_{slot}", False))
                             ctrl["solo"] = bool(st.session_state.get(f"mt_solo_{slot}", False))
+
+                    if _mt_layer_chords_ok:
+                        # Chord progression for THIS player, highlighted from the real transport clock.
+                        _layer_inst = layer_instrument(st.session_state, slot)
+                        _layer_cells = layer_chord_timeline(
+                            project_chords_for_layer(
+                                _mt_concert_bars,
+                                concert_key=concert_key,
+                                instrument=_layer_inst,
+                                session_state=st.session_state,
+                            ),
+                            bar_duration=_mt_bar_sec,
+                            loops=mt_loops,
+                            count_in_sec=_mt_count_in_sec,
+                        )
+                        components.html(
+                            layer_chord_strip_html(
+                                _layer_cells,
+                                layer_id=slot,
+                                key_label=layer_key_label(concert_key, _layer_inst, st.session_state),
+                                instrument=_layer_inst,
+                            ),
+                            height=108,
+                            scrolling=False,
+                        )
 
                     saved_audio = st.session_state.mt_tracks.get(slot)
                     if saved_audio:
