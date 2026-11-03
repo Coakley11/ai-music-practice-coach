@@ -789,14 +789,21 @@ class TestIsolationAndTheRestOfTheApp:
         resp = ask(s, "Make it slower", level="Advanced", key="Cm")
         assert resp is not None and not resp.diagnostics.get("warmup")
 
-    def test_a_warmup_for_a_song_does_not_claim_chord_awareness(self):
+    def test_a_warmup_with_no_readable_chart_does_not_claim_chord_awareness(self):
+        s = session("Flute")
+        resp = ask(s, "Warm me up for soloing.")
+        assert "isn't tailored to a song's chords" in resp.composed_markdown()
+        assert resp.diagnostics["warmup_song_aware"] is False
+        for r in plan_of(s)["items"]:
+            assert '"' not in r["abc"].split("K:")[1], "no chord symbols are printed"
+
+    def test_a_song_warmup_is_chord_aware_only_when_it_is_built_from_the_chart(self):
         s = session("Flute")
         resp = ask(s, "Warm me up for soloing over Blue Bossa.", active_song={"title": "Blue Bossa", "key": "Cm", "default_key": "Cm"},
                    chart_sections={"Section A": ["Cm7", "Fm7"]})
-        assert "can't tailor a warmup to a song's chords yet" in resp.direct_answer
-        assert resp.diagnostics["warmup_song_aware"] is False and resp.diagnostics["warmup_song_aware_requested"] is True
+        assert resp.diagnostics["warmup_song_aware"] is True and "Built from" in resp.composed_markdown()
         for r in plan_of(s)["items"]:
-            assert '"' not in r["abc"].split("K:")[1], "no chord symbols are printed"
+            assert '"Cm7"' in r["abc"] and '"Fm7"' in r["abc"], "the chord symbols of the chart are printed over the staff"
 
     def test_the_duplicate_send_guard_sees_each_warmup_command_as_new_work(self):
         from music_coach_ami.exercise_context import exercise_authority_signature
