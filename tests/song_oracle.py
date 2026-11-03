@@ -79,7 +79,7 @@ def read_tune(abc: str):
     return out
 
 
-def check_tune(abc: str, slots: list[str], offset: int, written_roots_ok=None) -> list[str]:
+def check_tune(abc: str, slots: list[str], offset: int, check_suffix: bool = True) -> list[str]:
     """Problems found (empty list = the tune is exactly the guide-tone line of the chart). ``offset`` = written minus sounding semitones."""
     tune = read_tune(abc)
     bad: list[str] = []
@@ -112,6 +112,6 @@ def check_tune(abc: str, slots: list[str], offset: int, written_roots_ok=None) -
         if starts[0][3] and chord_tones(chord) is not None:
             suffix = re.match(r"^[A-G][#b]?(.*)$", chord).group(1).split("/")[0]
             label = starts[0][3]
-            if not label.endswith(suffix) or note_pc(re.match(r"^[A-G][#b]?", label).group(0)) != (note_pc(re.match(r"^[A-G][#b]?", chord).group(0)) + offset) % 12:
+            if (check_suffix and not label.endswith(suffix)) or note_pc(re.match(r"^[A-G][#b]?", label).group(0)) != (note_pc(re.match(r"^[A-G][#b]?", chord).group(0)) + offset) % 12:
                 bad.append(f"chord label {label!r} is not {chord} written for this instrument (offset {offset})")
     return bad

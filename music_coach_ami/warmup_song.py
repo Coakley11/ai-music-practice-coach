@@ -111,7 +111,15 @@ def pick_section(song: dict[str, Any], wanted: str = "") -> tuple[str, str]:
                 if _norm(name) in ("chorus", "head", "solo"):
                     return name, "named"
             return song["active_section"], "chorus_is_active_section"
-    return song["active_section"], "active_section"
+    active = song["active_section"]
+    if re.search(r"\b(?:intro|outro|coda|tag|ending|turnaround|interlude|break)\b", _norm(active)):
+        for name in names:                                   # a soloist is not warmed up on a two-bar intro: prefer the form itself
+            if _norm(name) in ("chorus", "head", "solo", "instrumental", "solos", "main"):
+                return name, "not_an_intro"
+        sized = [n for n in names if not re.search(r"\b(?:intro|outro|coda|tag|ending|turnaround|interlude|break)\b", _norm(n))]
+        if sized:
+            return max(sized, key=lambda n: len(song["sections"][n])), "not_an_intro"
+    return active, "active_section"
 
 
 # ---------------------------------------------------------------- the harmonic timeline

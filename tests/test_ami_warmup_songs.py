@@ -702,3 +702,26 @@ class TestDurationAndDefaults:
         ask(s, "Give me a guide-tone warmup over the first two bars.")
         p = plan_of(s)
         assert p["total_seconds"] < p["target_seconds"] and "Planned playing time" in ask(s, "Show the whole warmup.").composed_markdown()
+
+
+class TestDefaultSection:
+    def test_an_intro_is_not_the_default_when_the_form_itself_is_available(self):
+        song = lib_song("Autumn Leaves")
+        song["active_section"] = "Intro"
+        assert ws.pick_section(song, "") == ("Chorus", "not_an_intro")
+
+    def test_with_no_chorus_the_longest_non_intro_section_is_used(self):
+        song = lib_song("Blue Bossa")
+        song["sections"] = {"Intro": ["Cm7"] * 2, "Outro": ["Cm7"] * 3, "Tune": ["Cm7"] * 6, "B": ["Fm7"] * 4}
+        song["order"] = list(song["sections"])
+        song["active_section"] = "Outro"
+        assert ws.pick_section(song, "") == ("Tune", "not_an_intro")
+
+    def test_the_open_section_is_kept_when_it_is_part_of_the_form(self):
+        song = lib_song("Blue Bossa")
+        assert ws.pick_section(song, "") == ("Section A", "active_section")
+
+    def test_a_named_section_always_wins(self):
+        song = lib_song("Autumn Leaves")
+        song["active_section"] = "Intro"
+        assert ws.pick_section(song, "verse") == ("Verse 1", "named")

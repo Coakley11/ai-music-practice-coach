@@ -1170,6 +1170,8 @@ def _song_setup(question: str, ctx: Any, req: dict[str, Any], sinfo: dict[str, A
         assumptions.append(f"I couldn't find a section called “{sinfo['section']}” in this chart, so I used the section you have open: {name}.")
     elif how == "chorus_is_active_section":
         assumptions.append(f"This chart has no section named “chorus”, so I used the section you have open as the chorus: {name}.")
+    elif how == "not_an_intro":
+        assumptions.append(f"The section you have open ({song['active_section']}) is an intro or ending, so I used {name} — say “only the bridge” (or any section of the song) to change it.")
     elif how == "active_section":
         assumptions.append(f"Section: {name}, the one you have open — say “only the bridge” (or any section of the song) to change it.")
     return song, sel, None, ""
