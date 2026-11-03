@@ -9349,7 +9349,13 @@ def curated_song_records() -> list[dict[str, Any]]:
             "Verse": ["Bm", "G", "D", "A"],
             "Pre-Chorus": ["Bm", "G", "D", "A"],
             "Chorus": ["Bm", "G", "D", "A"],
-        }),
+        }, extensions=_ext(
+            default_bpm=141,
+            time_signature="4/4",
+            arrangement_notes=(
+                "Shivers: ~141 BPM, 4/4 (Hooktheory 141, Musicnotes official Ed Sheeran edition MN0241810 'fast driving beat' 141, several other Musicnotes arrangements 141). Chart is a rehearsal skeleton (Advanced 12 bars); the 3:27 single form is longer and its bar counts are not verified, so the form is unchanged."
+            ),
+        )),
         _s("The A Team", "Ed Sheeran", "Pop", "A", {
             "Verse": ["A", "E", "F#m", "D"],
             "Chorus": ["A", "E", "F#m", "D"],
