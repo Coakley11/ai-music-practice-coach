@@ -10168,7 +10168,7 @@ def curated_song_records() -> list[dict[str, Any]]:
             "Verse": ["G", "Bm", "Em", "Em7"],
             "Orchestral Bridge": ["E", "E", "E", "E"],
             "Final": ["G", "Bm", "Em", "C"],
-        }, composer="Lennon–McCartney"),
+        }, composer="Lennon–McCartney", extensions=_ext(full_form_levels=["Beginner"])),
         _s("Help!", "The Beatles", "Rock", "A", {
             "Verse": ["A", "C#m", "F#m", "D"],
             "Chorus": ["E", "A", "D", "D"],
