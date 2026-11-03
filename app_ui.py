@@ -1546,15 +1546,15 @@ div[data-testid="stTabs"] [data-baseweb="tab-list"] { flex-wrap: wrap; gap: 0.25
   container: backing-main / inline-size;
 }
 body:has(.st-key-backing_card_controls) .ui-backing-active-song {
-  padding-bottom: calc(88px + 0.9rem + 0.65rem) !important;
+  padding-bottom: calc(132px + 0.9rem + 0.65rem) !important;
 }
 .st-key-backing_card_controls {
   box-sizing: border-box !important;
-  height: 88px !important;
-  min-height: 88px !important;
-  max-height: 88px !important;
+  height: 132px !important;
+  min-height: 132px !important;
+  max-height: 132px !important;
   overflow: hidden;
-  margin: calc(2px - (88px + 0.9rem + 1rem)) 1rem 1.75rem calc(1rem + 96px + 0.9rem);
+  margin: calc(2px - (132px + 0.9rem + 1rem)) 1rem 1.75rem calc(1rem + 96px + 0.9rem);
   width: auto !important;
   padding: 0.3rem 0.75rem;
   border-radius: 12px;
@@ -1642,15 +1642,57 @@ body:has(.st-key-backing_card_controls) .ui-backing-active-song {
 .st-key-backing_card_controls .ui-backing-quick-controls {
   margin: 0;
 }
+/* v12 Backing key strip: Original | Practice in one bordered strip, same as the Songs card. */
+.st-key-backing_card_controls {
+  background: #ffffff !important;
+  border-color: #e2e8f0 !important;
+  padding: 0.55rem 0.9rem !important;
+}
+.st-key-backing_card_controls .st-key-backing_card_key_row {
+  border: 1px solid #e2e8f0; border-radius: 12px; background: #f8fafc; overflow: hidden;
+}
+.st-key-backing_card_controls .st-key-backing_card_key_row [data-testid="stHorizontalBlock"] {
+  gap: 0 !important; align-items: stretch !important;
+}
+.st-key-backing_card_controls .st-key-backing_card_key_row [data-testid="stHorizontalBlock"] > [data-testid="stColumn"],
+.st-key-backing_card_controls .st-key-backing_card_key_row [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:first-child {
+  flex: 1 1 0 !important; padding: 8px 12px 6px; min-width: 0 !important;
+}
+.st-key-backing_card_key_row [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:first-child {
+  border-right: 1px solid #e2e8f0;
+}
+.st-key-backing_card_key_row [data-testid="stVerticalBlock"] { gap: 0.25rem !important; }
+.st-key-backing_card_key_row .ui-skp-label {
+  margin: 0 0 1rem 0 !important; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #475569;
+  white-space: nowrap;
+}
+.st-key-backing_card_key_row .ui-skp-label + .ui-skp-value,
+.st-key-backing_card_key_row .ui-skp-label + .ui-skp-locked { margin-top: -0.75rem; }
+.st-key-backing_card_key_row .ui-skp-value {
+  height: 40px; display: flex; align-items: center; font-size: 1.3rem; font-weight: 800; color: #0f172a; white-space: nowrap;
+}
+.st-key-backing_card_key_row .ui-skp-locked {
+  height: 40px; box-sizing: border-box; padding: 0 10px; display: flex; align-items: center; gap: 8px; border-radius: 10px;
+  border: 1px solid #c7d2fe; background: #eef2ff; font-size: 1.3rem; font-weight: 800; color: #1e1b4b; white-space: nowrap;
+}
+.st-key-backing_card_key_row .ui-skp-cap { margin: 0; font-size: 0.8rem; line-height: 1.3; color: #64748b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.st-key-backing_card_key_row .ui-skp-cap-fixed { color: #4338ca; font-weight: 600; }
+.st-key-backing_card_controls .st-key-backing_card_key_row [data-baseweb="select"] > div {
+  min-height: 40px !important; border-radius: 10px; border: 1px solid #94a3b8 !important; background: #ffffff !important;
+}
+.st-key-backing_card_key_row [data-baseweb="select"] > div > div:first-child,
+.st-key-backing_card_key_row [data-baseweb="select"] > div > div:first-child * {
+  font-size: 1.3rem !important; font-weight: 800 !important; color: #0f172a !important; line-height: 1.2 !important;
+}
 @container backing-main (max-width: 800px) {
   body:has(.st-key-backing_card_controls) .ui-backing-active-song {
-    padding-bottom: calc(224px + 0.9rem + 0.65rem) !important;
+    padding-bottom: calc(312px + 0.9rem + 0.65rem) !important;
   }
   .st-key-backing_card_controls {
-    height: 224px !important;
-    min-height: 224px !important;
-    max-height: 224px !important;
-    margin: calc(2px - (224px + 0.9rem + 1rem)) 0.9rem 1.75rem 0.9rem;
+    height: 312px !important;
+    min-height: 312px !important;
+    max-height: 312px !important;
+    margin: calc(2px - (312px + 0.9rem + 1rem)) 0.9rem 1.75rem 0.9rem;
     padding: 0.55rem 0.75rem;
   }
   .st-key-backing_card_controls [data-testid="stHorizontalBlock"] {

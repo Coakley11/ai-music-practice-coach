@@ -10072,10 +10072,13 @@ def _render_backing_pk_owner_select(proxy: dict[str, Any], options: list[str], *
     same widget.
     """
     proxy["rendered"] = True
+    # The card asks for readable names (D♭ major); the value stays the key token.
+    _fmt = {"format_func": proxy["format_func"]} if proxy.get("format_func") else {}
     st.selectbox(
         proxy["label"],
         options,
         key=proxy["key"],
+        **_fmt,
         on_change=proxy["on_change"],
         label_visibility=label_visibility,
         help="Concert pitch for charts and backing audio.",
@@ -10100,9 +10103,19 @@ def _render_backing_card_practice_key(original_key: str, practice_key: str) -> N
     reruns and reverted the key. Without an owner widget this run, the row
     shows the keys as text, as before.
     """
+    from song_card_keys import key_relation_caption, pretty_key_name
+
+    orig_name = pretty_key_name(original_key) or str(original_key or "")
+    orig_cell = (
+        '<p class="ui-skp-label">Original key</p>'
+        f'<div class="ui-skp-value">{html.escape(orig_name)}</div>'
+        '<p class="ui-skp-cap">Concert pitch</p>'
+    )
+    pk_label = '<p class="ui-skp-label">Practice key</p>'
     proxy = globals().get("_sidebar_pk_proxy")
     if not proxy or proxy.get("rendered"):
-        st.markdown(active_song_key_row_html(original_key, practice_key), unsafe_allow_html=True)
+        # No owner widget this run (Fixed Key, or the sidebar drew it): the keys as text.
+        _backing_card_key_text_row(original_key, practice_key, orig_cell=orig_cell, pk_label=pk_label)
         return
     widget_key, sidebar_options = proxy["key"], proxy["options"]
     current = str(st.session_state.get(widget_key) or practice_key or original_key or "").strip()
@@ -10116,26 +10129,59 @@ def _render_backing_card_practice_key(original_key: str, practice_key: str) -> N
     options = [k for k in conventional if k in sidebar_options] or list(sidebar_options)
     if current and current not in options:
         options = [current] + options
-    orig = html.escape(str(original_key or current or "C"))
-    shifted = " is-shifted" if current and current != original_key else ""
+    proxy["format_func"] = lambda k: pretty_key_name(k) or str(k)
     with st.container(key="backing_card_key_row"):
-        c_orig, c_pk = st.columns([0.8, 1.6], gap="small", vertical_alignment="bottom")
+        c_orig, c_pk = st.columns(2, gap="small")
         with c_orig:
-            st.markdown(
-                f'<div class="ui-backing-card-keys{shifted}">'
-                f'<span class="ui-active-song-key-chip original">'
-                f'<span class="ui-active-song-key-label">Original key</span>'
-                f'<span class="ui-active-song-key-value">{orig}</span></span>'
-                f'<span class="ui-active-song-key-arrow" aria-hidden="true">→</span>'
-                f"</div>",
-                unsafe_allow_html=True,
-            )
+            st.markdown(orig_cell, unsafe_allow_html=True)
         with c_pk:
+            st.markdown(pk_label, unsafe_allow_html=True)
+            _render_backing_pk_owner_select(proxy, options, label_visibility="collapsed")
+            _rel = key_relation_caption(original_key, str(st.session_state.get(widget_key) or current))
             st.markdown(
-                '<span class="ui-backing-inline-label" title="Practice / Concert Key">Practice Key</span>',
+                '<p class="ui-skp-cap">Concert pitch'
+                + (f' · {html.escape(_rel)}' if _rel else "")
+                + "</p>",
                 unsafe_allow_html=True,
             )
-            _render_backing_pk_owner_select(proxy, options, label_visibility="collapsed")
+
+
+def _backing_card_key_text_row(original_key: str, practice_key: str, *, orig_cell: str, pk_label: str) -> None:
+    """Original | Practice key as text (no owner widget this run); locked while Fixed Key decides it."""
+    from song_card_keys import key_relation_caption, pretty_key_name
+
+    practice = str(practice_key or original_key or "").strip()
+    rel = key_relation_caption(original_key, practice)
+    name = html.escape(pretty_key_name(practice) or practice)
+    try:
+        from practice_key_mode import fixed_key_family_label_for_session, practice_key_edit_locked
+
+        locked = practice_key_edit_locked(st.session_state)
+        family = fixed_key_family_label_for_session(st.session_state) if locked else ""
+    except Exception:
+        locked, family = False, ""
+    if locked:
+        value = (
+            f'<div class="ui-skp-locked ui-practice-key-locked" title="Set by Fixed Key'
+            f'{(" (" + html.escape(family) + ")") if family else ""}">'
+            '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#4338ca" stroke-width="2" '
+            'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" '
+            'height="10" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path></svg>'
+            f"<span>{name}</span></div>"
+            '<p class="ui-skp-cap">Concert pitch</p>'
+            f'<p class="ui-skp-cap ui-skp-cap-fixed">Fixed Key{(" · " + html.escape(rel)) if rel else ""}</p>'
+        )
+    else:
+        value = (
+            f'<div class="ui-skp-value">{name}</div>'
+            f'<p class="ui-skp-cap">Concert pitch{(" · " + html.escape(rel)) if rel else ""}</p>'
+        )
+    with st.container(key="backing_card_key_row"):
+        c_orig, c_pk = st.columns(2, gap="small")
+        with c_orig:
+            st.markdown(orig_cell, unsafe_allow_html=True)
+        with c_pk:
+            st.markdown(pk_label + value, unsafe_allow_html=True)
 
 
 def render_backing_card_transport_control(*, enabled: bool) -> None:
