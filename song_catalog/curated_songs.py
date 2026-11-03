@@ -9214,6 +9214,7 @@ def _jewish_catalog_songs() -> list[dict[str, Any]]:
         advanced: dict[str, list[str]] | None = None,
         composer: str | None = None,
         artist: str = "Traditional",
+        full_form_levels: list[str] | None = None,
     ) -> dict[str, Any]:
         inter = sections
         beg = beginner or sections
@@ -9225,6 +9226,7 @@ def _jewish_catalog_songs() -> list[dict[str, Any]]:
             arrangement_notes=(
                 f"{title}: practice-level Jewish folk chart; one chord cell = one bar."
             ),
+            full_form_levels=full_form_levels,
         )
         row = _s(
             title,
@@ -9376,6 +9378,8 @@ def _jewish_catalog_songs() -> list[dict[str, Any]]:
                 "Verse 2": ["Am", "Am", "Am", "Em", "F", "C", "G", "Am"],
                 "Bridge": ["F", "C", "G", "Am", "F", "C", "G", "Am"],
             },
+            # Beginner plays all three sections; the global trim dropped the Bridge.
+            full_form_levels=["Beginner"],
         ),
         _j(
             "Hinei Ma Tov",
