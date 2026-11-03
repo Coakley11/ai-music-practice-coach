@@ -9552,7 +9552,13 @@ def curated_song_records() -> list[dict[str, Any]]:
             "Chorus": ["E", "B", "F#sus4", "F#", "E", "B", "F#", "E"],
             "Bridge": ["G#m7", "F#/A#", "E", "B"],
             "Outro": ["E", "B", "F#sus4", "B"],
-        }),
+        }, extensions=_ext(
+            default_bpm=87,
+            time_signature="4/4",
+            arrangement_notes=(
+                'Yellow: ~87 BPM, 4/4 (Hooktheory 87, Wikipedia 88, tab sites 86). Chart is a rehearsal skeleton (24/28/28 bars); the 4:29 album form is longer and its bar counts are not verified, so the form is unchanged.'
+            ),
+        )),
         _s("Fix You", "Coldplay", "Pop", "Eb", {
             "Intro (Organ)": ["Eb", "Gm", "Cm", "Bb"],
             "Verse": ["Eb", "Gm", "Cm", "Bb"],
