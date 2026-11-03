@@ -9474,7 +9474,13 @@ def curated_song_records() -> list[dict[str, Any]]:
             "Chorus": ["Bb", "F", "C", "Dm"],
             "Bridge": ["Gm", "Bb", "F", "C"],
             "Outro": ["Bb", "F", "C", "Dm"],
-        }),
+        }, extensions=_ext(
+            default_bpm=140,
+            time_signature="4/4",
+            arrangement_notes=(
+                'Paradise: ~140 BPM, 4/4 (Hooktheory 140, UBC audio-feature DB 139.7). Chart is a rehearsal skeleton (20/24/24 bars); the 4:37 album form is longer and its bar counts are not verified, so the form is unchanged.'
+            ),
+        )),
 
         # --- Billy Joel (composer = self where applicable) ---
         _s(
