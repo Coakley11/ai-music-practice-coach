@@ -9560,7 +9560,17 @@ def curated_song_records() -> list[dict[str, Any]]:
             "Chorus": ["Ab", "Eb", "Bb", "Cm"],
             "Bridge (Build)": ["Ab", "Eb", "Bb", "Cm"],
             "Outro / Resolution": ["Ab", "Eb", "Bb", "Eb"],
-        }, extensions=_ext(default_groove="Ballad")),
+        }, extensions=_ext(
+            default_groove="Ballad",
+            default_bpm=69,
+            time_signature="4/4",
+            arrangement_notes=(
+                "Fix You: ~69 BPM, 4/4 (quarter-note pulse; the 138 some analyzers print is the "
+                "double-time count of the same slow ballad). Chart is a rehearsal skeleton "
+                "(24 bars); the 4:54 album form is longer and its bar counts are not yet "
+                "verified, so the form is intentionally unchanged."
+            ),
+        )),
         _s(
             "The Scientist",
             "Coldplay",
