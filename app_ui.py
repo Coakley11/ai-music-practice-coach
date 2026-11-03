@@ -1893,6 +1893,105 @@ body:has(.st-key-picker_active_song_favorite_row) .st-key-picker_active_song_car
   border-color: #d97706 !important;
   color: #3b2300 !important;
 }
+/* v12 Songs card: one bordered white card; the header runs to its edges. */
+.st-key-picker_active_song_card_content:has(.ui-sch) {
+  background: #ffffff;
+  border: 1px solid #d5dbe5;
+  border-radius: 18px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05), 0 10px 28px rgba(15, 23, 42, 0.07);
+}
+.st-key-picker_active_song_card_content .ui-active-song-head {
+  margin: -0.95rem -1rem 0.35rem;
+}
+.st-key-picker_active_song_card_content .ui-sch { border-radius: 17px 17px 0 0; }
+/* Key panel: Original | Practice in one bordered strip. */
+.st-key-picker_active_song_card_content .st-key-picker_active_song_key_row {
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  background: #f8fafc;
+  padding: 0;
+  overflow: hidden;
+}
+.st-key-picker_active_song_key_row [data-testid="stHorizontalBlock"] { gap: 0 !important; }
+.st-key-picker_active_song_key_row [data-testid="stColumn"] { padding: 14px 18px 12px; }
+.st-key-picker_active_song_key_row [data-testid="stColumn"]:first-child { border-right: 1px solid #e2e8f0; }
+.st-key-picker_active_song_key_row [data-testid="stVerticalBlock"] { gap: 0.4rem; }
+.st-key-picker_active_song_key_row .ui-skp-label {
+  margin: 0; font-size: 0.78rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #475569;
+}
+.st-key-picker_active_song_key_row .ui-skp-narrow { display: none; }
+.st-key-picker_active_song_key_row .ui-skp-value {
+  height: 52px; display: flex; align-items: center; font-size: 1.6rem; font-weight: 800; color: #0f172a;
+}
+.st-key-picker_active_song_key_row .ui-skp-cap { margin: 0; font-size: 0.875rem; line-height: 1.35; color: #64748b; }
+.st-key-picker_active_song_key_row .ui-skp-cap-fixed { color: #4338ca; font-weight: 600; }
+.st-key-picker_active_song_key_row .ui-skp-locked {
+  height: 52px; box-sizing: border-box; padding: 0 14px; display: flex; align-items: center; gap: 10px;
+  border-radius: 10px; border: 1px solid #c7d2fe; background: #eef2ff; font-size: 1.6rem; font-weight: 800; color: #1e1b4b;
+}
+/* Streamlit pulls the element after a markdown block up by 1rem; the label keeps its own line. */
+.st-key-picker_active_song_practice_key_row .ui-skp-label { margin-bottom: 1rem !important; }
+.st-key-picker_active_song_practice_key_row [data-baseweb="select"] > div {
+  min-height: 52px; border-radius: 10px; border: 1px solid #94a3b8 !important; background: #ffffff !important;
+}
+.st-key-picker_active_song_practice_key_row [data-baseweb="select"] > div > div:first-child,
+.st-key-picker_active_song_practice_key_row [data-baseweb="select"] > div > div:first-child * {
+  font-size: 1.6rem !important; font-weight: 800 !important; color: #0f172a !important; line-height: 1.2 !important;
+}
+/* Meta badges inside the v12 card: quiet neutral pills (Tempo / Meter / Style / Source). */
+.st-key-picker_active_song_card_content:has(.ui-sch) .ui-studio-meta-badge {
+  background: #ffffff !important; border: 1px solid #e2e8f0 !important; box-shadow: none !important;
+  padding: 0.4rem 0.85rem !important; border-radius: 999px !important; font-size: 0.95rem !important; gap: 0.4rem !important;
+}
+.st-key-picker_active_song_card_content:has(.ui-sch) .ui-studio-meta-badge-ico { display: none !important; }
+.st-key-picker_active_song_card_content:has(.ui-sch) .ui-studio-meta-badge-label {
+  color: #64748b !important; font-weight: 600 !important; text-transform: none !important; letter-spacing: 0 !important;
+  font-size: 0.95rem !important;
+}
+.st-key-picker_active_song_card_content:has(.ui-sch) .ui-studio-meta-badge-value {
+  color: #0f172a !important; font-weight: 800 !important; font-size: 0.95rem !important;
+}
+@media (max-width: 720px) {
+  .st-key-picker_active_song_key_row [data-testid="stColumn"] { padding: 12px; }
+  .st-key-picker_active_song_key_row .ui-skp-wide { display: none; }
+  .st-key-picker_active_song_key_row .ui-skp-narrow { display: inline; }
+  .st-key-picker_active_song_key_row .ui-skp-value,
+  .st-key-picker_active_song_key_row .ui-skp-locked,
+  .st-key-picker_active_song_practice_key_row [data-baseweb="select"] > div > div:first-child { font-size: 1.25rem; }
+  .st-key-picker_active_song_key_row .ui-skp-value,
+  .st-key-picker_active_song_key_row .ui-skp-locked,
+  .st-key-picker_active_song_practice_key_row [data-baseweb="select"] > div { height: 46px; min-height: 46px; }
+  .st-key-picker_active_song_key_row .ui-song-library-genre-chips-label { min-height: 0; }
+}
+/* v12 header: the Favorite sits in the header's top-right slot, level with the chips. */
+body:has(.ui-sch) .st-key-picker_active_song_card_shell .st-key-picker_active_song_favorite_row {
+  top: 1.45rem;
+  right: 2.4rem;
+}
+body:has(.st-key-picker_active_song_favorite_row) .st-key-picker_active_song_card_shell .ui-sch-right {
+  margin-right: 8.4rem;
+}
+body:has(.ui-sch) .st-key-picker_active_song_favorite_row button:not([kind="primary"]) {
+  background: rgba(2, 6, 23, 0.3) !important;
+  border: 1px solid rgba(255, 255, 255, 0.4) !important;
+  color: #ffffff !important;
+}
+@container sch (max-width: 820px) {
+  body:has(.st-key-picker_active_song_favorite_row) .st-key-picker_active_song_card_shell .ui-sch-right {
+    margin-right: 8rem;
+  }
+}
+@media (max-width: 720px) {
+  body:has(.ui-sch) .st-key-picker_active_song_card_shell .st-key-picker_active_song_favorite_row {
+    top: 0.85rem;
+    right: 1.6rem;
+  }
+  /* Phone: the status pill has its own row; the Favorite sits at its right end. */
+  body:has(.st-key-picker_active_song_favorite_row) .st-key-picker_active_song_card_shell .ui-sch-right {
+    margin-right: 0;
+    padding-right: 7rem;
+  }
+}
 .st-key-picker_active_song_favorite_row button[kind="primary"] p {
   color: #3b2300 !important;
 }

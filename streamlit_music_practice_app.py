@@ -10981,7 +10981,7 @@ def _render_active_song_card(
             style=_style_label,
             title=str(details["title"]),
             artist=_header_artist,
-            favorite=bool(_is_favorite),
+            favorite=False,  # the card's Favorite button (top-right) shows the state
         )
         + "</div>"
     )
@@ -11000,9 +11000,12 @@ def _render_active_song_card(
             with st.container(key="picker_active_song_key_row"):
                 _original_col, _practice_col = st.columns(2)
                 with _original_col:
+                    from song_card_keys import pretty_key_name as _pretty_key_name
+
                     st.markdown(
-                        '<p class="ui-song-library-genre-chips-label" style="margin-bottom:0.15rem;">Original Key</p>'
-                        f'<div class="ui-active-song-original-value">{html.escape(_orig_label)}</div>',
+                        '<p class="ui-skp-label">Original key</p>'
+                        f'<div class="ui-skp-value">{html.escape(_pretty_key_name(_original_key) or _orig_label)}</div>'
+                        '<p class="ui-skp-cap">Concert pitch</p>',
                         unsafe_allow_html=True,
                     )
                 with _practice_col:
@@ -11192,18 +11195,34 @@ def _render_card_practice_key_selector(rec: dict, *, pick_key: str) -> None:
     original_key = str(rec.get("key") or "C").strip() or "C"
     from practice_key_mode import practice_key_edit_locked, resolve_practice_concert_key_for_song
 
+    from song_card_keys import key_relation_caption, pretty_key_name
+
+    _pk_label_html = (
+        '<p class="ui-skp-label"><span class="ui-skp-wide">Practice / Concert key</span>'
+        '<span class="ui-skp-narrow">Practice key</span></p>'
+    )
     if practice_key_edit_locked(st.session_state):
         # Fixed Key decides this key: show it, offer nothing to change.
+        from practice_key_mode import fixed_key_family_label_for_session
+
         locked = resolve_practice_concert_key_for_song(
             st.session_state, original_key, pick_key=pk, fallback=original_key
         )
+        _rel = key_relation_caption(original_key, locked)
+        _family = fixed_key_family_label_for_session(st.session_state)
+        _lock_svg = (
+            '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#4338ca" stroke-width="2" '
+            'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" '
+            'height="10" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path></svg>'
+        )
         with st.container(key="picker_active_song_practice_key_row"):
             st.markdown(
-                '<p class="ui-song-library-genre-chips-label" style="margin-bottom:0.15rem;">'
-                "Practice / Concert Key</p>"
-                f'<div class="ui-active-song-original-value ui-practice-key-locked" '
-                f'title="Set by Fixed Key">{html.escape(locked)} '
-                '<span class="ui-practice-key-lock-note">Fixed Key</span></div>',
+                _pk_label_html
+                + f'<div class="ui-skp-locked ui-practice-key-locked" '
+                f'title="Set by Fixed Key{(" (" + html.escape(_family) + ")") if _family else ""}">'
+                f"{_lock_svg}<span>{html.escape(pretty_key_name(locked) or locked)}</span></div>"
+                '<p class="ui-skp-cap">Concert pitch</p>'
+                f'<p class="ui-skp-cap ui-skp-cap-fixed">Fixed Key{(" · " + html.escape(_rel)) if _rel else ""}</p>',
                 unsafe_allow_html=True,
             )
         return
@@ -11223,19 +11242,22 @@ def _render_card_practice_key_selector(rec: dict, *, pick_key: str) -> None:
     if st.session_state.get(widget_key) != current:
         st.session_state[widget_key] = current
     with st.container(key="picker_active_song_practice_key_row"):
-        st.markdown(
-            '<p class="ui-song-library-genre-chips-label" style="margin-bottom:0.15rem;">'
-            "Practice / Concert Key</p>",
-            unsafe_allow_html=True,
-        )
+        st.markdown(_pk_label_html, unsafe_allow_html=True)
         st.selectbox(
             "Practice / Concert Key",
             options,
             key=widget_key,
+            format_func=lambda k: pretty_key_name(k) or str(k),
             label_visibility="collapsed",
             on_change=_apply_card_practice_key_change,
             args=(widget_key,),
             help="Change the Practice / Concert Key for this song — stays in sync with the sidebar control.",
+        )
+        _rel = key_relation_caption(original_key, str(st.session_state.get(widget_key) or current))
+        st.markdown(
+            '<p class="ui-skp-cap">Concert pitch</p>'
+            + (f'<p class="ui-skp-cap">{html.escape(_rel)}</p>' if _rel else ""),
+            unsafe_allow_html=True,
         )
 
 
