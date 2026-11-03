@@ -788,6 +788,7 @@ _APP_UI_LOADED = False
 _APP_UI_IMPORT_ERROR = None
 
 from music_feature_icons import (
+    action_label,
     FEATURE_ICONS,
     feature_label,
     page_feature_icon,
@@ -8990,7 +8991,7 @@ def _render_multitrack_session_setup_panel(
         )
     with _kbpm_c3:
         mt_groove = st.selectbox(
-            "Groove / feel",
+            action_label("feel", "Groove / feel"),
             [
                 "Auto",
                 "Pop groove",
@@ -27294,7 +27295,7 @@ elif _studio_page == "multitrack":
                         )
 
                         uploaded = st.file_uploader(
-                            f"Upload — {slot}",
+                            action_label("upload", f"Upload — {slot}"),
                             type=UPLOAD_AUDIO_FILE_TYPES,
                             key=recorder_widget_key(st.session_state, slot, "upload"),
                             max_upload_size=UPLOAD_MAX_SIZE_MB,
@@ -27351,7 +27352,7 @@ elif _studio_page == "multitrack":
                                 pass
                             st.rerun()
                         if _save_col.button(
-                            f"Save layer — {slot}", key=f"mt_save_{slot}", use_container_width=True
+                            action_label("save", f"Save layer — {slot}"), key=f"mt_save_{slot}", use_container_width=True
                         ):
                             audio_obj = recorded if recorded is not None else uploaded
                             if audio_obj is None and st.session_state.mt_tracks.get(slot):
@@ -27652,7 +27653,7 @@ elif _studio_page == "multitrack":
             if st.session_state.get(REVERB_ENABLED_KEY):
                 _rv_b.slider("Reverb amount", 0.0, 1.0, 0.25, 0.05, key=REVERB_AMOUNT_KEY)
 
-            if st.button("Create mixed WAV", disabled=not track_items_for_mix, use_container_width=True):
+            if st.button(action_label("create_mix", "Create mixed WAV"), disabled=not track_items_for_mix, use_container_width=True):
                 try:
                     backing_y = None
                     _include_backing_in_mix = bool(st.session_state.get("include_backing_mix", False))
@@ -27705,7 +27706,7 @@ elif _studio_page == "multitrack":
             if mixed_export_wav:
                 st.audio(mixed_export_wav, format="audio/wav")
                 st.download_button(
-                    "Download mixed track WAV",
+                    action_label("download", "Download mixed track WAV"),
                     mixed_export_wav,
                     file_name=f"{song.replace(' ', '_')}_multitrack_mix.wav",
                     mime="audio/wav",
@@ -27726,7 +27727,7 @@ elif _studio_page == "multitrack":
 
             render_multitrack_export_library(st, st.session_state, song_title=str(song or ""))
 
-            if st.button("Clear all multitrack layers", use_container_width=True):
+            if st.button(action_label("delete", "Clear all multitrack layers"), use_container_width=True):
                 try:
                     from multitrack_session_persistence import clear_multitrack_persisted_state
                     from music_persistent_state import force_save_music_state

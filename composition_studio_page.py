@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+from music_feature_icons import action_label
 import html
 from typing import Any
 
@@ -4169,7 +4170,7 @@ def _render_active_melody_phrase_editor(session_state: dict, doc: dict[str, Any]
         )
     d1, d2 = st.columns(2)
     with d1:
-        if st.button("Apply to selected note", key=f"composer_melody_ed_apply_sel_{section_id}"):
+        if st.button(action_label("edit", "Apply to selected note"), key=f"composer_melody_ed_apply_sel_{section_id}"):
             row = copy.deepcopy(ev) if isinstance(ev, dict) else {}
             row["duration_beats"] = float(dur)
             if is_rest:
@@ -4196,7 +4197,7 @@ def _render_active_melody_phrase_editor(session_state: dict, doc: dict[str, Any]
             session_state[draft_key] = draft
             st.rerun()
     with d2:
-        if st.button("Delete selected note", key=f"composer_melody_ed_delete_{section_id}"):
+        if st.button(action_label("delete", "Delete selected note"), key=f"composer_melody_ed_delete_{section_id}"):
             # Pending proposal only — replace with rest to preserve measure timing.
             session_state[draft_key] = delete_melody_note_preserve_gap(draft, selected)
             st.rerun()
@@ -4223,7 +4224,7 @@ def _render_active_melody_phrase_editor(session_state: dict, doc: dict[str, Any]
         )
     with a4:
         st.write("")
-        if st.button("Add note", key=f"composer_melody_ed_add_go_{section_id}", use_container_width=True):
+        if st.button(action_label("add", "Add note"), key=f"composer_melody_ed_add_go_{section_id}", use_container_width=True):
             draft = insert_melody_note(
                 draft,
                 at_index=selected,
@@ -4241,7 +4242,7 @@ def _render_active_melody_phrase_editor(session_state: dict, doc: dict[str, Any]
         key=f"composer_melody_ed_nl_{section_id}",
         placeholder='e.g. "Delete the short E before the F" or "Hold the final note of the second pass"',
     )
-    if st.button("Apply description", key=f"composer_melody_ed_nl_go_{section_id}"):
+    if st.button(action_label("apply_text", "Apply description"), key=f"composer_melody_ed_nl_go_{section_id}"):
         result = apply_natural_language_melody_edit(draft, nl, key=key, meter=meter)
         if result.get("needs_choice"):
             session_state[choice_key] = {
@@ -4334,7 +4335,7 @@ def _render_active_melody_phrase_editor(session_state: dict, doc: dict[str, Any]
             _save_doc(session_state, doc)
             st.rerun()
     with e3:
-        if st.button("Reset proposal", key=f"composer_melody_ed_reset_{section_id}", use_container_width=True):
+        if st.button(action_label("reset", "Reset proposal"), key=f"composer_melody_ed_reset_{section_id}"):
             session_state[draft_key] = copy.deepcopy(active_events)
             session_state.pop(choice_key, None)
             st.rerun()
