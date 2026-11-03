@@ -2666,6 +2666,12 @@ def _come_together_chart_pack() -> dict[str, Any]:
             "Chorus 1": ["Come together, right now, over me"],
             "Verse 2": ["He wear no shoeshine…"],
             "Instrumental 1": ["Intro riff ×4 (tag)"],
+            "Instrumental 2": ["Intro riff ×4 (tag) after the first chorus"],
+            "Verse 3": ["Third verse — same 8-bar Dm · A · G · N.C. form"],
+            "Chorus 2": ["Come together, right now, over me"],
+            "Instrumental 3": ["Intro riff ×2 (tag) after the second chorus"],
+            "Instrumental 4": ["Intro riff ×2 (tag) after the solo"],
+            "Verse 4": ["Fourth verse — same form; leads into the final chorus"],
             "Instrumental 5": ["Intro riff ×4 (tag) before the coda"],
             "Solo": ["Keyboard + lead-guitar solo — Dm then A vamp"],
             "Final Chorus": ["Final chorus lift"],
@@ -2682,6 +2688,9 @@ def _come_together_chart_pack() -> dict[str, Any]:
                 "drums, prominent bass, chorus slightly fuller than verses."
             ),
             default_bpm=82,
+            # Beginner/Intermediate play all 15 sections (Beginner = simplified chords); the
+            # global trim dropped the tags, Solo and Final Chorus (Beginner) / tags and Solo (Intermediate).
+            full_form_levels=["Beginner", "Intermediate"],
             default_groove="Rock groove",
             time_signature="4/4",
             riff_driven=True,
