@@ -7078,6 +7078,79 @@ def _say_waiting_lyric_pack(title: str) -> dict[str, Any]:
     }
 
 
+def _hey_jude_pack(pack):
+    """Hey Jude, full one-pass form at 74 BPM (~7:11 recording).
+
+    Form (Alan W. Pollack, "Notes on Hey Jude"; Wikipedia agrees: four verses,
+    two bridges, then a ~4 minute coda of nineteen rounds): Verse 1 (8 bars),
+    Verse 2 (9), Bridge (11.5), Verse 3 (9), Bridge (11.5), Verse 4 (8), Coda
+    (19 x 4 bars F | Eb | Bb | F; Pollack says 18.5-19 repeats and the
+    recording fades from about the 10th round).  The song has NO intro (the
+    old "Intro" bars were the first half of the verse).  Verses that lead into
+    a bridge carry one extra bar of F7 (V of IV).  The bridge is Bb Gm C F F7
+    (5 bars) + Bb Gm C F (4) + a half bar of F7 + a 2-bar C7 "na-na" tag; the
+    half bar cannot be a bar in this grid, so it is the split bar
+    ``F7:2|C7:2`` followed by two C7 bars (12 bars, 0.5 bar over).
+    """
+    f_verse_b = ["F", "C", "C", "F", "Bb", "F", "C", "F"]
+    f_verse_i = ["F", "C/E", "C7", "F", "Bb", "F/A", "C7", "F"]
+    bridge_b = ["Bb", "Gm", "C", "F", "F", "Bb", "Gm", "C", "F", "F:2|C:2", "C", "C"]
+    bridge_i = ["Bb", "Gm", "C", "F", "F7", "Bb", "Gm", "C", "F", "F7:2|C7:2", "C7", "C7"]
+    coda_cell = ["F", "Eb", "Bb", "F"]
+
+    def levels(verse, bridge, extra):
+        sec = {
+            "Verse 1": list(verse),
+            "Verse 2": list(verse) + [extra],
+            "Bridge 1": list(bridge),
+            "Verse 3": list(verse) + [extra],
+            "Bridge 2": list(bridge),
+            "Verse 4": list(verse),
+        }
+        for n, reps in (("Coda 1", 5), ("Coda 2", 5), ("Coda 3", 5), ("Coda 4", 4)):
+            sec[n] = coda_cell * reps
+        return sec
+
+    order = ["Verse 1", "Verse 2", "Bridge 1", "Verse 3", "Bridge 2", "Verse 4",
+             "Coda 1", "Coda 2", "Coda 3", "Coda 4"]
+    return pack(
+        "F",
+        levels(f_verse_b, bridge_b, "F"),
+        levels(f_verse_i, bridge_i, "F7"),
+        levels(f_verse_i, bridge_i, "F7"),
+        lyric_cues={
+            "Verse 1": ["Hey Jude, don't make it bad - no intro, the voice and piano start the song"],
+            "Verse 2": ["Hey Jude, don't be afraid - 9 bars, the extra F7 bar leads into the bridge"],
+            "Bridge 1": ["And anytime you feel the pain - Bb Gm C F, 12 bars with the na-na tag"],
+            "Verse 3": ["Hey Jude, don't let me down - 9 bars again"],
+            "Bridge 2": ["So let it out and let it in - same bridge, drums and bass in"],
+            "Verse 4": ["Hey Jude, you'll do - 8 bars, closes on F"],
+            "Coda 1": ["Na na na na-na-na-na - F Eb Bb F, 5 rounds, then keep looping"],
+            "Coda 2": ["Hey Jude ad-libs over the loop - 5 rounds"],
+            "Coda 3": ["Keep the F-Eb-Bb-F cycle steady - 5 rounds"],
+            "Coda 4": ["Final 4 rounds: the recording fades out from about the 10th round"],
+        },
+        extensions=_ext(
+            default_bpm=74,
+            default_groove="Ballad",
+            time_signature="4/4",
+            full_form_levels=["Beginner", "Intermediate"],
+            arrangement_notes=(
+                "Hey Jude at 74 BPM (Hooktheory 74/75, Love-version listings 74; "
+                "2009/2015 remaster analyzers report ~147 = double time). Full form: "
+                "Verse 1 (8) - Verse 2 (9) - Bridge 1 (12) - Verse 3 (9) - Bridge 2 (12) - "
+                "Verse 4 (8) - Coda (19 rounds x 4 bars of F | Eb | Bb | F = 76 bars): "
+                "134 bars = 434 s at 74 BPM against the 7:11 (431 s) recording. "
+                "No intro. The bridge is 11.5 bars in the recording (Pollack); here it "
+                "is 12 bars with F7:2|C7:2 for the shortened F7 bar. Coda: the "
+                "recording fades from about the 10th round; 19 rounds are written so "
+                "the one-pass length matches the record, stop earlier if you prefer."
+            ),
+        ),
+        section_order=order,
+    )
+
+
 def _core_chart_overrides() -> dict[tuple[str, str], dict[str, Any]]:
     """Explicit musician-practice charts for the trusted core library.
 
@@ -7342,26 +7415,7 @@ def _core_chart_overrides() -> dict[tuple[str, str], dict[str, Any]]:
                 "Outro": ["Cadd9", "G13sus", "Fmaj9", "Cadd9", "Fmaj9", "C/E", "G13sus", "Cadd9"],
             },
         ),
-        ("Hey Jude", "The Beatles"): pack("F",
-            {
-                "Intro": ["F", "C", "C7", "F"],
-                "Verse": ["F", "C", "C7", "F", "Bb", "F", "C", "F"],
-                "Bridge / Build": ["F7", "Bb", "Bb/A", "Bb/G", "Bb/F", "C7", "F", "F"],
-                "Outro Vamp": ["F", "F7", "Eb", "Bb", "F", "F7", "Eb", "Bb"],
-            },
-            {
-                "Intro": ["F", "C/E", "C7", "F"],
-                "Verse": ["F", "C/E", "C7", "F", "Bb", "F/A", "C7", "F"],
-                "Bridge / Build": ["F7", "Bb", "Bb/A", "Bb/G", "Bb/F", "C7", "F", "F"],
-                "Outro Vamp": ["F6", "F7", "Eb", "Bb", "F6", "F7", "Eb", "Bb"],
-            },
-            {
-                "Intro": ["F", "C/E", "C7", "F"],
-                "Verse": ["F", "C/E", "C7", "F", "Bb", "F/A", "C7", "F"],
-                "Bridge / Build": ["F7", "Bb", "Bb/A", "Bb/G", "Bb/F", "C7", "F", "F"],
-                "Outro Vamp": ["F6", "F7", "Eb", "Bb", "F6", "F7", "Eb", "Bb"],
-            },
-        ),
+        ("Hey Jude", "The Beatles"): _hey_jude_pack(pack),
         ("Yesterday", "The Beatles"): pack("F",
             {
                 "Intro": ["F", "F"],
