@@ -143,5 +143,42 @@ class TestRestoreHelperIsSafe(unittest.TestCase):
         self.assertNotIn(f"mt_name_{SLOT}", s)
 
 
+class TestNamingASlotBeforeRecording(unittest.TestCase):
+    """A musician can label a slot before recording into it; the label is still layer data."""
+
+    def test_the_name_is_saved_even_with_no_audio_yet(self):
+        s = {"mt_tracks": {x: None for x in MULTITRACK_SLOTS}, "mt_track_filenames": {},
+             f"mt_name_{SLOT}": "Flute"}
+        commit_all_multitrack_mixer_widgets(s)
+        self.assertEqual(resolve_slot_control(s, SLOT)["layer_name"], "Flute")
+
+    def test_it_survives_leaving_the_page_and_coming_back(self):
+        s = {"studio_page": "multitrack", "mt_tracks": {x: None for x in MULTITRACK_SLOTS},
+             "mt_track_filenames": {}, f"mt_name_{SLOT}": "Flute"}
+        commit_all_multitrack_mixer_widgets(s)
+        save_page_snapshot(s, "multitrack")
+        returned = {                                      # widget keys are dropped on page exit
+            "studio_page": "multitrack",
+            "_studio_page_snapshots": copy.deepcopy(s["_studio_page_snapshots"]),
+            "mt_tracks": {x: None for x in MULTITRACK_SLOTS},
+            "mt_track_controls": copy.deepcopy(s["mt_track_controls"]),
+        }
+        prepare_multitrack_mixer_widgets(returned)
+        self.assertEqual(returned.get(f"mt_name_{SLOT}"), "Flute")
+
+    def test_an_unnamed_slot_is_not_given_its_own_label_as_a_name(self):
+        s = {"mt_tracks": {x: None for x in MULTITRACK_SLOTS}, "mt_track_filenames": {}}
+        commit_all_multitrack_mixer_widgets(s)
+        for slot in MULTITRACK_SLOTS:
+            self.assertIsNone(resolve_slot_control(s, slot).get("layer_name"), slot)
+
+    def test_recorded_layers_are_still_the_only_ones_in_the_mix(self):
+        s = {"mt_tracks": {x: (AUDIO if x == SLOT else None) for x in MULTITRACK_SLOTS},
+             "mt_track_filenames": {}, f"mt_name_{SLOT}": "Flute", "mt_name_Guitar": "Lead"}
+        out = commit_all_multitrack_mixer_widgets(s)
+        self.assertEqual(list(out), [SLOT])               # only the recorded slot is returned
+        self.assertEqual(resolve_slot_control(s, "Guitar")["layer_name"], "Lead")   # name still kept
+
+
 if __name__ == "__main__":
     unittest.main()

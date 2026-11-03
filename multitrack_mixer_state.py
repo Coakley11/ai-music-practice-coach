@@ -87,15 +87,16 @@ def prepare_multitrack_mixer_widgets(
     """Seed widget keys from canonical slot controls before widgets render."""
     target_slots = slots if slots is not None else list(MULTITRACK_SLOTS)
     for slot in target_slots:
-        if not slot_has_audio(session_state, slot) and not force:
-            continue
+        has_audio = slot_has_audio(session_state, slot)
         ctrl = resolve_slot_control(session_state, slot)
         # The layer NAME is saved layer data, not just a widget value: a layer renamed on one device
-        # must come back named on the next one. Seed it from the canonical control the same way the
-        # mixer values are seeded, so the text input opens on the saved name instead of the slot label.
+        # must come back named on the next one, and a slot labelled before anything was recorded into
+        # it keeps that label. Seeded for every slot; the mixer values still follow the recording.
         _saved_name = str(ctrl.get("layer_name") or "").strip()
         if _saved_name and (force or f"mt_name_{slot}" not in session_state):
             session_state[f"mt_name_{slot}"] = _saved_name
+        if not has_audio and not force:
+            continue
         if force or f"mt_vol_{slot}" not in session_state:
             session_state[f"mt_vol_{slot}"] = float(ctrl["volume"])
         if force or f"mt_delay_{slot}" not in session_state:
@@ -169,7 +170,14 @@ def commit_multitrack_mixer_widget(
 ) -> dict[str, Any]:
     """Write live widget keys back into canonical slot control."""
     if not slot_has_audio(session_state, slot):
-        return resolve_slot_control(session_state, slot, layer_name=layer_name)
+        # Mixer values belong to a recording, but the NAME is layer metadata: a musician can label a
+        # slot before recording into it, and that label has to survive leaving the page.
+        empty = resolve_slot_control(session_state, slot, layer_name=layer_name)
+        early_name = str(layer_name or session_state.get(f"mt_name_{slot}") or "").strip()
+        if early_name and early_name != slot:
+            empty["layer_name"] = early_name[:120]
+            _controls_map(session_state)[slot] = empty
+        return empty
     ctrl = resolve_slot_control(session_state, slot, layer_name=layer_name)
     ctrl["volume"] = _widget_volume(session_state, slot)
     ctrl["delay"] = _widget_delay(session_state, slot)
@@ -185,9 +193,13 @@ def commit_multitrack_mixer_widget(
 def commit_all_multitrack_mixer_widgets(session_state: dict[str, Any]) -> dict[str, dict[str, Any]]:
     """Commit mixer widget values for every slot with audio."""
     out: dict[str, dict[str, Any]] = {}
-    for slot in slots_with_audio(session_state):
+    # Every slot is committed, not only the recorded ones: an empty slot can still carry a name the
+    # musician typed before recording, and that name must be saved with the project.
+    for slot in MULTITRACK_SLOTS:
         layer_name = str(session_state.get(f"mt_name_{slot}") or slot)
-        out[slot] = commit_multitrack_mixer_widget(session_state, slot, layer_name=layer_name)
+        ctrl = commit_multitrack_mixer_widget(session_state, slot, layer_name=layer_name)
+        if slot_has_audio(session_state, slot):
+            out[slot] = ctrl
     session_state[CONTROLS_KEY] = copy.deepcopy(_controls_map(session_state))
     return out
 
