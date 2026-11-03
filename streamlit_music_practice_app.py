@@ -27094,6 +27094,12 @@ elif _studio_page == "multitrack":
         st.session_state.mt_track_filenames = {
             slot: f"{slot.replace(' ', '_').lower()}.wav" for slot in MT_SLOTS
         }
+    try:
+        from multitrack_takes import adopt_restored_layers_as_saved
+
+        adopt_restored_layers_as_saved(st.session_state, MT_SLOTS)
+    except ImportError:
+        pass
 
     _default_mt_time_sig = default_time_signature(song, sections)
     _existing_mt_time_sig = str(st.session_state.get("mt_time_signature") or "").strip()
@@ -27271,14 +27277,26 @@ elif _studio_page == "multitrack":
 
                         from upload_media import UPLOAD_AUDIO_FILE_TYPES, UPLOAD_MAX_SIZE_MB
 
+                        from multitrack_takes import (
+                            discard_button_label,
+                            discard_take,
+                            mark_take_saved,
+                            mark_take_unsaved,
+                            recorder_widget_key,
+                            take_status_line,
+                        )
+
                         uploaded = st.file_uploader(
                             f"Upload — {slot}",
                             type=UPLOAD_AUDIO_FILE_TYPES,
-                            key=f"mt_upload_{slot}",
+                            key=recorder_widget_key(st.session_state, slot, "upload"),
                             max_upload_size=UPLOAD_MAX_SIZE_MB,
                         )
                         try:
-                            recorded = st.audio_input(f"Record — {slot}", key=f"mt_record_{slot}")
+                            recorded = st.audio_input(
+                                f"Record — {slot}",
+                                key=recorder_widget_key(st.session_state, slot, "record"),
+                            )
                         except Exception:
                             recorded = None
                             st.caption("Recording unavailable in this build — upload still works.")
@@ -27293,6 +27311,7 @@ elif _studio_page == "multitrack":
                                 st.session_state.mt_track_filenames[slot] = getattr(
                                     _mt_audio_obj, "name", f"{slot}.wav"
                                 )
+                                mark_take_unsaved(st.session_state, slot)
                                 try:
                                     from music_persistent_state import force_save_music_state
                                     from studio_page_persistence import flush_current_page_snapshot
@@ -27302,13 +27321,49 @@ elif _studio_page == "multitrack":
                                 except Exception:
                                     pass
 
-                        if st.button(f"Save layer — {slot}", key=f"mt_save_{slot}"):
+                        _take_line = take_status_line(st.session_state, slot)
+                        if _take_line:
+                            st.caption(_take_line)
+                        _save_col, _discard_col = st.columns(2)
+                        if _discard_col.button(
+                            discard_button_label(st.session_state, slot),
+                            key=f"mt_discard_{slot}",
+                            use_container_width=True,
+                            disabled=not st.session_state.mt_tracks.get(slot),
+                            help=(
+                                "Throw this take away and record again. Only this layer is affected — "
+                                "other layers, the backing and saved projects are untouched."
+                            ),
+                        ):
+                            discard_take(st.session_state, slot)
+                            try:
+                                from music_persistent_state import force_save_music_state
+
+                                force_save_music_state(st, reason="multitrack_discard_take")
+                            except Exception:
+                                pass
+                            st.rerun()
+                        if _save_col.button(
+                            f"Save layer — {slot}", key=f"mt_save_{slot}", use_container_width=True
+                        ):
                             audio_obj = recorded if recorded is not None else uploaded
+                            if audio_obj is None and st.session_state.mt_tracks.get(slot):
+                                # The take is already held for playback; saving keeps it for good.
+                                mark_take_saved(st.session_state, slot)
+                                st.success(f"{layer_name} saved.")
+                                try:
+                                    from music_persistent_state import force_save_music_state
+
+                                    force_save_music_state(st, reason="multitrack_layer_save")
+                                except Exception:
+                                    pass
+                                st.rerun()
                             if audio_obj is not None:
                                 st.session_state.mt_tracks[slot] = audio_obj.getvalue()
                                 st.session_state.mt_track_filenames[slot] = getattr(
                                     audio_obj, "name", f"{slot}.wav"
                                 )
+                                mark_take_saved(st.session_state, slot)
                                 st.success(f"{layer_name} saved.")
                                 try:
                                     from music_persistent_state import force_save_music_state
