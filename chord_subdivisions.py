@@ -87,6 +87,8 @@ __all__ = [
     "is_hit_token",
     "hit_underlying_chord",
     "make_hit_token",
+    "SPLIT_MEASURE_PATTERNS",
+    "split_measure_token",
 ]
 
 
@@ -568,3 +570,40 @@ def join_weighted_subdivisions(
         # Single-chord; don't render weight - keep simple bar token.
         return pieces[0].split(WEIGHT_SEPARATOR, 1)[0]
     return SUBDIVISION_SEPARATOR.join(pieces)
+
+
+# How a single bar can be split between two chords. One definition shared by the Custom Progression Lab
+# and the Composition chord editor, so both pages offer (and write) exactly the same subdivisions.
+SPLIT_MEASURE_PATTERNS: dict[str, str] = {
+    "2+2": "Two halves — two beats each",
+    "3+1": "Three beats, then one",
+    "1+3": "One beat, then three",
+    "push": "Second chord pushed in early (anticipated)",
+    "4x1": "One chord per beat, alternating",
+}
+
+
+def split_measure_token(pattern: str, first_chord: str, second_chord: str) -> str:
+    """Weighted subdivided-bar token for one of ``SPLIT_MEASURE_PATTERNS`` (empty for an unknown pattern)."""
+    first = str(first_chord or "").strip()
+    second = str(second_chord or "").strip() or first
+    if not first:
+        return ""
+    if pattern == "2+2":
+        parts = [Subdivision(first, 2.0, False), Subdivision(second, 2.0, False)]
+    elif pattern == "3+1":
+        parts = [Subdivision(first, 3.0, False), Subdivision(second, 1.0, False)]
+    elif pattern == "1+3":
+        parts = [Subdivision(first, 1.0, False), Subdivision(second, 3.0, False)]
+    elif pattern == "push":
+        parts = [Subdivision(first, 3.5, False), Subdivision(second, 0.5, True)]
+    elif pattern == "4x1":
+        parts = [
+            Subdivision(first, 1.0, False),
+            Subdivision(second, 1.0, False),
+            Subdivision(first, 1.0, False),
+            Subdivision(second, 1.0, False),
+        ]
+    else:
+        return ""
+    return join_weighted_subdivisions(parts)

@@ -4752,6 +4752,7 @@ def _render_chords_lane(
     draft = ensure_draft(session_state, sid, live_entries)
     editing_key = f"composer_chord_edit_idx_{sid}"
     insert_key = f"composer_chord_insert_at_{sid}"
+    split_key = f"composer_chord_split_idx_{sid}"
 
     rows = annotate_chromatic(chord_timeline(draft, meter=meter), key_token)
     st.caption("Edit this section's progression. Accepted changes update notation, melody alignment, and playback.")
@@ -4762,12 +4763,14 @@ def _render_chords_lane(
             chrom = " · outside key" if row.get("chromatic") else ""
             _ch = row.get("chord") or "?"
             # Chord symbols only here by design.
-            c1, c2, c3, c4, c5 = st.columns([2.2, 1.2, 1.0, 1.0, 1.0])
+            _is_split = "|" in str(_ch)
+            c1, c2, c3, c4, c5, c6 = st.columns([2.2, 1.1, 1.0, 1.0, 1.0, 1.0])
             with c1:
                 st.markdown(
                     f"**{_ch}**  \n"
                     f"<span style='color:#64748b;font-size:0.85rem;'>m{row.get('measure')} "
-                    f"beat {row.get('beat')}{chrom}</span>",
+                    f"beat {row.get('beat')}{chrom}"
+                    f"{' · split measure' if _is_split else ''}</span>",
                     unsafe_allow_html=True,
                 )
             with c2:
@@ -4792,6 +4795,21 @@ def _render_chords_lane(
                     session_state[draft_key(sid)] = remove_draft_chord(draft, i)
                     st.rerun()
             with c5:
+                # Split measure: two chords in one bar, written as the same subdivision token the
+                # Custom Progression Lab uses, so chart, notation and playback already understand it.
+                if _is_split:
+                    if st.button("↔️ Unsplit", key=f"composer_ch_unsplit_{sid}_{i}", use_container_width=True):
+                        from composition_chord_manual_editor import unsplit_draft_chord
+
+                        session_state[draft_key(sid)] = unsplit_draft_chord(draft, i)
+                        session_state.pop(split_key, None)
+                        st.rerun()
+                elif st.button("🔀 Split", key=f"composer_ch_split_{sid}_{i}", use_container_width=True):
+                    session_state[split_key] = i
+                    session_state.pop(editing_key, None)
+                    session_state.pop(insert_key, None)
+                    st.rerun()
+            with c6:
                 bars = st.number_input(
                     "Bars",
                     min_value=1,
@@ -4799,8 +4817,9 @@ def _render_chords_lane(
                     value=int(row.get("bars") or 1),
                     key=f"composer_ch_bars_{sid}_{i}",
                     label_visibility="collapsed",
+                    disabled=_is_split,
                 )
-                if int(bars) != int(row.get("bars") or 1):
+                if not _is_split and int(bars) != int(row.get("bars") or 1):
                     session_state[draft_key(sid)] = update_draft_chord(draft, i, bars=int(bars))
                     st.rerun()
     else:
@@ -4835,6 +4854,100 @@ def _render_chords_lane(
         if st.button("Apply to draft", key=f"composer_ch_apply_edit_{sid}"):
             session_state[draft_key(sid)] = update_draft_chord(draft, edit_idx, chord=built)
             session_state.pop(editing_key, None)
+            st.rerun()
+
+    split_idx = session_state.get(split_key)
+    if isinstance(split_idx, int) and 0 <= split_idx < len(draft):
+        from chord_subdivisions import SPLIT_MEASURE_PATTERNS, split_measure_token
+        from composition_chord_manual_editor import split_draft_chord
+        from custom_progression_lab import suggest_split_second_chords
+
+        st.markdown("---")
+        _cur_entry = draft[split_idx] if isinstance(draft[split_idx], dict) else {}
+        _cur_chord = str(_cur_entry.get("chord") or "C").split("|", 1)[0].split(":", 1)[0] or "C"
+        _nxt = ""
+        if split_idx + 1 < len(draft):
+            _nxt = str((draft[split_idx + 1] or {}).get("chord") or "").split("|", 1)[0].split(":", 1)[0]
+        _prv = ""
+        if split_idx > 0:
+            _prv = str((draft[split_idx - 1] or {}).get("chord") or "").split("|", 1)[0].split(":", 1)[0]
+        st.markdown(f"**Split measure {split_idx + 1} — `{_cur_chord}` plus a second chord**")
+        st.caption(
+            "Two chords share this bar. The first stays where it is; pick what follows it and how the "
+            "bar is divided."
+        )
+        try:
+            _style = str((doc.get("global") or {}).get("style") or doc.get("style") or "Pop")
+        except Exception:
+            _style = "Pop"
+        try:
+            _suggested = suggest_split_second_chords(
+                current_chord=_cur_chord,
+                next_chord=_nxt,
+                prev_chord=_prv,
+                home_key=key_token,
+                style=_style,
+            )
+        except Exception:
+            _suggested = []
+        _reason_by_chord = {c: r for c, r in _suggested}
+        _options = [c for c, _r in _suggested]
+        s1, s2 = st.columns([1.4, 1.0])
+        with s1:
+            _sug_label = "Second chord — suggestions for this spot"
+            if _options:
+                _picked = st.selectbox(
+                    _sug_label,
+                    _options + ["Other…"],
+                    key=f"composer_split_sug_{sid}",
+                    format_func=lambda c: (
+                        c if c not in _reason_by_chord else f"{c} — {_reason_by_chord[c]}"
+                    ),
+                )
+            else:
+                _picked = "Other…"
+                st.caption("No automatic suggestion here — type the second chord.")
+            _typed = st.text_input(
+                "Second chord",
+                value="" if _picked != "Other…" else "",
+                key=f"composer_split_other_{sid}",
+                placeholder="e.g. B7",
+                disabled=_picked != "Other…",
+            )
+        _second = (_typed if _picked == "Other…" else _picked).strip()
+        with s2:
+            _pattern = st.selectbox(
+                "How the bar divides",
+                list(SPLIT_MEASURE_PATTERNS),
+                key=f"composer_split_pattern_{sid}",
+                format_func=lambda p: f"{p} · {SPLIT_MEASURE_PATTERNS[p]}",
+            )
+        if _second:
+            _why = _reason_by_chord.get(_second)
+            _preview = split_measure_token(_pattern, _cur_chord, _second)
+            st.caption(f"Result: `{_preview}`")
+            if _why:
+                st.info(f"**Why `{_second}` works here:** it {_why}.")
+            elif _nxt:
+                st.caption(f"Your own choice — it will lead into `{_nxt}`.")
+            if is_chromatic_to_key(_second, key_token):
+                st.warning(
+                    f"`{_second}` is outside the main key ({key_token}) — intentional chromatic colour."
+                )
+        _ap, _cn = st.columns(2)
+        if _ap.button(
+            "Apply split to draft",
+            key=f"composer_split_apply_{sid}",
+            use_container_width=True,
+            disabled=not _second,
+        ):
+            session_state[draft_key(sid)] = split_draft_chord(
+                draft, split_idx, pattern=_pattern, second_chord=_second
+            )
+            session_state.pop(split_key, None)
+            st.rerun()
+        if _cn.button("Cancel split", key=f"composer_split_cancel_{sid}", use_container_width=True):
+            session_state.pop(split_key, None)
             st.rerun()
 
     insert_at = session_state.get(insert_key)
