@@ -10966,26 +10966,24 @@ def _render_active_song_card(
         )
     else:
         _artist_display = ""
-    _artist_html = (
-        f'<p class="ui-active-song-artist">{html.escape(_artist_display)}</p>'
-        if _artist_display
-        else ""
-    )
     from songs.picker_session import is_catalog_favorite
+    from song_card_header import song_card_header_html
 
-    _title_star = "★ " if str(edit_mode).lower() == "catalog" and is_catalog_favorite(
+    _is_favorite = str(edit_mode).lower() == "catalog" and is_catalog_favorite(
         st.session_state, str(st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or "")
-    ) else ""
+    )
+    # v12 header: source identity (Catalog / Custom / Composition) + the song's style artwork.
+    _header_artist = _artist_display[3:] if _artist_display.lower().startswith("by ") else _artist_display
     card_html = (
-        f'<div class="ui-active-song-card{trusted_cls}{modifier_cls}{_card_source_cls}">'
-        f'<div class="ui-active-song-art{_art_source_cls}" '
-        f'style="background:{html.escape(details["visual_gradient"])};">'
-        f'{html.escape(details["visual_emoji"])}<small>{html.escape(details["visual_genre"])}</small></div>'
-        f'<div class="ui-active-song-body">'
-        f'<p class="ui-active-song-kicker">Now loaded for practice</p>'
-        f'<p class="ui-active-song-title">{_title_star}{html.escape(details["title"])}</p>'
-        f'{_artist_html}'
-        + "</div></div>"
+        f'<div class="ui-active-song-head{trusted_cls}{modifier_cls}{_card_source_cls}">'
+        + song_card_header_html(
+            source=_source_label,
+            style=_style_label,
+            title=str(details["title"]),
+            artist=_header_artist,
+            favorite=bool(_is_favorite),
+        )
+        + "</div>"
     )
     with st.container(key="picker_active_song_card_content"):
         st.markdown(card_html, unsafe_allow_html=True)
