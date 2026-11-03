@@ -2210,6 +2210,7 @@ def render_applied_math_insight_panel(
                 st.code(abc_text, language="abc")
                 notation_staff_rendered = True
         _render_open_in_missions_action(st, data, app=app)
+        _render_warmup_nav(st, data, app=app)
         assumptions = data.get("assumptions") or []
         if show_details and assumptions:
             st.markdown("**Assumptions:**")
@@ -2266,6 +2267,48 @@ def _render_open_in_missions_action(st: Any, data: dict, *, app: str) -> None:
             st.rerun()
         else:
             st.warning(str(result.get("message") or "Couldn't open it in Missions."))
+
+
+def _render_warmup_nav(st: Any, data: dict, *, app: str) -> None:
+    """Adaptive-warmup card: step through the exercises one at a time ("Next exercise"), back, or back to the whole plan.
+
+    A view change only: it re-reads the stored warmup and re-draws this card; it creates no new warmup version and touches no other state.
+    """
+    nav = data.get("warmup_nav")
+    if app != "music" or not isinstance(nav, dict) or not nav.get("count"):
+        return
+    pid = str(nav.get("plan_id") or "wu")[:14]
+    stamp = f"{nav.get('mode')}_{nav.get('index')}"
+    wanted = []
+    if nav.get("can_prev"):
+        wanted.append(("Previous exercise", -1, "prev"))
+    if nav.get("can_next"):
+        wanted.append(("Next exercise", 1, "next"))
+    if nav.get("can_all"):
+        wanted.append(("Whole warmup", 0, "all"))
+    if not wanted:
+        return
+    cols = st.columns(len(wanted))
+    for col, (label, delta, tag) in zip(cols, wanted):
+        with col:
+            if not st.button(label, key=f"ami_warmup_{tag}_{pid}_{stamp}", use_container_width=True, type="primary" if tag == "next" else "secondary"):
+                continue
+            try:
+                from music_coach_ami.warmup_plan import step_view
+
+                resp = step_view(st.session_state, delta)
+            except Exception as exc:  # the card must never take the page down
+                st.warning(f"Couldn't change the view ({type(exc).__name__}).")
+                return
+            if resp is None:
+                st.warning("This warmup is no longer the working one. Ask for a new warmup.")
+                return
+            data["conclusion"] = resp.composed_markdown()
+            data["notation_abc"] = str(resp.notation_abc or "")
+            data["notation_abc_sections"] = [str(x) for x in resp.notation_abc_sections if str(x).strip()]
+            data["warmup_nav"] = dict(resp.diagnostics.get("warmup_nav") or {})
+            st.session_state[SESSION_PENDING_KEY] = data
+            st.rerun()
 
 
 def render_suite_applied_math_insight_for_page(

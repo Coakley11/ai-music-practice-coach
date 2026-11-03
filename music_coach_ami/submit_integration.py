@@ -70,6 +70,9 @@ def stage_routed_music_coach_insight(
         insight["notation_abc_sections"] = [str(s) for s in sections if str(s).strip()]
     elif insight.get("notation_abc"):
         insight["notation_abc_sections"] = [str(insight["notation_abc"])]
+    nav = (getattr(coach_resp, "diagnostics", None) or {}).get("warmup_nav")
+    if isinstance(nav, dict) and nav.get("count"):
+        insight["warmup_nav"] = nav   # the card's "Next exercise" / "Whole warmup" buttons (a view change, never a new warmup)
     action = (getattr(coach_resp, "diagnostics", None) or {}).get("open_in_missions")
     if isinstance(action, dict) and (isinstance(action.get("example"), dict) or isinstance(action.get("motif"), dict)):
         insight["open_in_missions"] = action  # the card's "Open in Missions" button (exact example, not regenerated)

@@ -1519,7 +1519,7 @@ def build_abc_from_note_names(
     for name, octv in pitched:
         tok = _note_to_abc(name, octv, key_field=key_field)
         if staccato:
-            tok = tok + "."
+            tok = "." + tok   # a staccato dot is a decoration BEFORE the note; after it abcjs shifts it to the next note and drops a following length ("c./2")
         if dur:
             tok = tok + dur
         pitch_tokens.append(tok)
