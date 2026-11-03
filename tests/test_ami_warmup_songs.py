@@ -725,3 +725,23 @@ class TestDefaultSection:
         song = lib_song("Autumn Leaves")
         song["active_section"] = "Intro"
         assert ws.pick_section(song, "verse") == ("Verse 1", "named")
+
+
+class TestAutumnLeavesAsTheAppCharts:
+    """The app charts Autumn Leaves with richer chords than the bare catalog record (Bm9, F#7b9); the notes follow the chart the app shows."""
+
+    def test_soloing_over_it_starts_on_the_form_not_the_intro_and_follows_the_apps_chords(self):
+        s = song_session("Autumn Leaves", instrument="Flute", sax=None)
+        resp = ask(s, "Warm me up for soloing over Autumn Leaves.", instrument="Flute", key="Bm")
+        plan = plan_of(s)
+        assert plan["spec"]["song_sel"]["section"] == "Chorus" and "is an intro or ending" in resp.composed_markdown()
+        chart = plan["spec"]["song"]["sections"]["Chorus"]
+        assert "Bm9" in chart and "F#7b9" in chart
+        check_plan_notes(plan, 0)
+        sevenths = {n["name"] for r in plan["items"] for p in r["meta"]["segments"] if p["supported"] and p["concert"] == "Bm9" for n in p["notes"] if n["role"] == "7"}
+        assert sevenths == {"A"}                       # the seventh of Bm9, which the bare catalog triad does not have
+
+    def test_the_catalog_triad_alone_still_gets_only_its_third(self):
+        pl, built, abc, _c, song = build_tune("flute", "Autumn Leaves", "Chorus", "Intermediate", tones="sevenths", first="", style="pulse")
+        bm = [p for p in built.meta["segments"] if p["concert"] == "Bm"]
+        assert bm and all({n["role"] for n in p["notes"]} == {"3"} for p in bm)
