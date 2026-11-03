@@ -94,6 +94,12 @@ STATUS_RUNNING = "running"
 STATUS_HELD = "held"
 STATUS_STOPPED = "stopped"
 
+# Saved in the cycle session: no playback session exists (Stop ended it, or
+# cycling was turned On while stopped). A refreshed page then restores the cycle
+# stopped, not as a paused session. Play, Resume, Next / Previous and a jump
+# clear it.
+CYCLE_SESSION_OVER = "transport_session_over"
+
 # Owner ids — isolated cycle bags
 OWNER_CATALOG = "catalog"
 OWNER_CUSTOM = "custom"
@@ -1080,6 +1086,17 @@ def audible_follow_timeline(session: dict[str, Any]) -> list | None:
     return None
 
 
+def _note_cycle_session_over_if_stopped(session: dict[str, Any], data: dict[str, Any]) -> None:
+    """A cycle record built while nothing plays starts with no playback session."""
+    try:
+        from backing_transport_intent import transport_session_active
+
+        if not transport_session_active(session):
+            data[CYCLE_SESSION_OVER] = True
+    except Exception:
+        pass
+
+
 def normalize_key_cycle_after_browser_restore(session: dict[str, Any]) -> bool:
     """On a fresh Streamlit process/session with a restored cycle: hold at pass start.
 
@@ -1098,6 +1115,7 @@ def normalize_key_cycle_after_browser_restore(session: dict[str, Any]) -> bool:
         return False
     data = dict(data)
     data["status"] = STATUS_HELD
+    session_over = bool(data.get(CYCLE_SESSION_OVER))
     _put_owner_cycle_session(session, owner, data)
     session["_backing_autoplay"] = False
     session.pop(BACKING_KEY_CYCLE_CONTINUE_PLAY_KEY, None)
@@ -1106,13 +1124,18 @@ def normalize_key_cycle_after_browser_restore(session: dict[str, Any]) -> bool:
     session["_backing_transport_user_stopped"] = True
     session["_kc_hard_stop"] = True
     session["_kc_pause_audio"] = True
-    # Resume after refresh starts this key's pass from the first chord.
-    session["_kc_refresh_resume_from_start"] = True
     session.pop("_kc_resume_play", None)
     session.pop("_kc_restart_play", None)
-    from backing_transport_intent import restore_paused_session
+    if session_over:
+        # The last session was stopped: the card offers Play, not a paused
+        # session nothing can be heard from.
+        session.pop("_kc_refresh_resume_from_start", None)
+    else:
+        # Resume after refresh starts this key's pass from the first chord.
+        session["_kc_refresh_resume_from_start"] = True
+        from backing_transport_intent import restore_paused_session
 
-    restore_paused_session(session, reason="key_cycle_browser_restore")
+        restore_paused_session(session, reason="key_cycle_browser_restore")
     try:
         session["_kc_player_cmd_epoch"] = int(session.get("_kc_player_cmd_epoch") or 0) + 1
     except Exception:
@@ -1207,6 +1230,7 @@ def reanchor_key_cycle_from_practice_key(
     data["enabled"] = True
     data["current_playback_key"] = start
     data["offset_semitones"] = 0
+    _note_cycle_session_over_if_stopped(session, data)
     data = _bump_cycle_identity(session, data)
     _put_owner_cycle_session(session, owner, data)
     session["backing_key_cycle_enabled"] = True
@@ -3031,13 +3055,21 @@ def _put_owner_cycle_session(session: dict[str, Any], owner: str, data: dict[str
     data = dict(data)
     # Every position change gets the next sequence number, so the disk merge can
     # tell an intentional move (Previous, Stop's rewind) from a stale behind-write.
+    # Ending or starting a playback session counts too: a stale write must not
+    # bring back a session Stop ended.
     try:
         _seq = int((prev or {}).get("position_seq") or 0)
     except (TypeError, ValueError):
         _seq = 0
-    if str((prev or {}).get("current_playback_key") or "") != str(
-        data.get("current_playback_key") or ""
-    ) or (prev or {}).get("offset_semitones") != data.get("offset_semitones"):
+    _session_over_changed = bool((prev or {}).get(CYCLE_SESSION_OVER)) != bool(
+        data.get(CYCLE_SESSION_OVER)
+    )
+    if (
+        str((prev or {}).get("current_playback_key") or "")
+        != str(data.get("current_playback_key") or "")
+        or (prev or {}).get("offset_semitones") != data.get("offset_semitones")
+        or _session_over_changed
+    ):
         _seq += 1
     data["position_seq"] = max(_seq, int(data.get("position_seq") or 0))
     bag[owner] = dict(data)
@@ -3057,6 +3089,7 @@ def _put_owner_cycle_session(session: dict[str, Any], owner: str, data: dict[str
             or _prev_off != _new_off
             or _prev_en != _new_en
             or str((prev or {}).get("status") or "") != str(data.get("status") or "")
+            or _session_over_changed
         ):
             persist_key_cycle_position(session)
     except Exception:
@@ -3341,6 +3374,7 @@ def start_key_cycle(
     data["enabled"] = True
     data["current_playback_key"] = start
     data["offset_semitones"] = 0
+    _note_cycle_session_over_if_stopped(session, data)
     try:
         from backing_key_cycle_handoff import new_cycle_id
 
@@ -3421,6 +3455,7 @@ def resume_key_cycle(session: dict[str, Any]) -> dict[str, Any] | None:
     continue_playback(session, reason="key_cycle_resume")
     data = dict(data)
     data["status"] = STATUS_RUNNING
+    data.pop(CYCLE_SESSION_OVER, None)
     _put_owner_cycle_session(session, owner, data)
     session["_kc_player_cmd_epoch"] = int(session.get("_kc_player_cmd_epoch") or 0) + 1
     session.pop("_backing_transport_user_stopped", None)
@@ -3492,6 +3527,7 @@ def arm_key_cycle_for_explicit_play(session: dict[str, Any]) -> dict[str, Any] |
                 data["start_cycle_key"] = start
         data["status"] = STATUS_RUNNING
         data["pass_id"] = int(data.get("pass_id") or 0) + 1
+        data.pop(CYCLE_SESSION_OVER, None)
         _put_owner_cycle_session(session, owner, data)
         try:
             promote_prepared_cycle_audio(
@@ -3575,6 +3611,7 @@ def rewind_key_cycle_to_first_key(session: dict[str, Any]) -> dict[str, Any] | N
         data["offset_semitones"] = 0
     data["status"] = STATUS_HELD
     data["pending_pass_advance"] = False
+    data[CYCLE_SESSION_OVER] = True
     _put_owner_cycle_session(session, owner, data)
     if first and not _keys_equivalent(before, first) and not promote_prepared_cycle_audio(session, first):
         # The stopped key's take must not stand in for the first key: Play saw
@@ -3666,6 +3703,7 @@ def jump_key_cycle_to_key(
     data["status"] = STATUS_RUNNING
     data["pending_pass_advance"] = False
     data["pass_id"] = int(data.get("pass_id") or 0) + 1
+    data.pop(CYCLE_SESSION_OVER, None)
     _put_owner_cycle_session(session, owner, data)
     for flag in (
         "_kc_at_final_key",
@@ -3969,6 +4007,8 @@ def _step_owner_cycle(
     data["pending_pass_advance"] = False
     if status == STATUS_HELD and force:
         data["status"] = STATUS_RUNNING
+    if force:
+        data.pop(CYCLE_SESSION_OVER, None)
     _put_owner_cycle_session(session, owner, data)
     try:
         import inspect
@@ -6900,6 +6940,8 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
     parentWin.__kcHardStop = function () {{
       const t0 = Number(parentWin.__kcClickT0 || kcNow());
       abortTransportPlayback({{ seekZero: false }});
+      // Commands up to this epoch were built before the Stop (see applyCmd).
+      state.stoppedEpoch = Number(state.epoch);
       parentWin.__kcLastStopMs = kcNow() - t0;
       try {{
         const act = activeAudio();
@@ -10525,6 +10567,25 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
 
     parentWin.__kcApplyCmd = function applyCmd(cmd) {{
       if (!cmd) return;
+      // A command built before the musician's Stop is stale: it must not start the
+      // take again or move the key highlight back. Stop publishes no new player
+      // command, so a stale player frame that Streamlit re-creates during the Stop
+      // run replays its Play (same epoch, so the stale check below lets it through).
+      // Python bumps the epoch on Stop / Pause / Resume / Play, so every later
+      // command is newer and applies normally.
+      if (cmd.epoch != null && state.stoppedEpoch != null) {{
+        if (Number(cmd.epoch) > Number(state.stoppedEpoch)) {{
+          state.stoppedEpoch = null;
+        }} else if (cmd.enabled && state.userPaused && !cmd.hardStop) {{
+          try {{
+            const bag = parentWin.__kcApplyTrace || (parentWin.__kcApplyTrace = []);
+            bag.push({{ t: Date.now(), reason: 'before_stop', epoch: cmd.epoch, stoppedEpoch: state.stoppedEpoch }});
+            if (bag.length > 40) bag.shift();
+          }} catch (eBs) {{}}
+          cancelPendingPlays();
+          return;
+        }}
+      }}
       // A command built before Python learned of the user's latest Next/Previous
       // describes a key the browser has already left. Applying it would pull the
       // player (and highlight) back to that older key. Explicit Play / stop / off
@@ -10678,6 +10739,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         state.cycleId = '';
         state.passId = 0;
         state.epoch = -1;
+        state.stoppedEpoch = null;
         state.handoffSettledToken = null;
         try {{ parentWin.sessionStorage.setItem('kc_user_paused', '0'); }} catch (eSS0) {{}}
         teardownKeyCycleWatchers();

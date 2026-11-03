@@ -24,6 +24,42 @@ def _practice_key_store(session: dict[str, Any]) -> dict[str, str]:
     return {str(k): str(v) for k, v in raw.items() if str(k).strip() and str(v).strip()}
 
 
+def fixed_key_holds_song_keys(session: dict[str, Any]) -> bool:
+    """Fixed Key is on and governs song sources (Catalog, Custom, Composition).
+
+    It is a temporary override: while it holds, every read of a song's Practice Key
+    sees the fixed pair's major/minor member, and nothing may write over the song's
+    own saved key, so turning Fixed Key off returns each song to it. Generated Jam /
+    Mission keys keep their own exception (``fixed_practice_key_projection_blocked``).
+    """
+    try:
+        from practice_key_mode import is_fixed_practice_key_mode
+    except ImportError:
+        return False
+    if not is_fixed_practice_key_mode(session):
+        return False
+    try:
+        from workflow_key_identity import fixed_practice_key_projection_blocked
+
+        return not fixed_practice_key_projection_blocked(session)
+    except ImportError:
+        return True
+
+
+_LOCK_CHECK_DEPTH = [0]
+
+
+def _song_key_locked(session: dict[str, Any], pick_key: str) -> bool:
+    # The Jam / Mission exception reads Backing context, which may read a saved key.
+    if _LOCK_CHECK_DEPTH[0] or not is_song_source_pick(pick_key):
+        return False
+    _LOCK_CHECK_DEPTH[0] += 1
+    try:
+        return fixed_key_holds_song_keys(session)
+    finally:
+        _LOCK_CHECK_DEPTH[0] -= 1
+
+
 def _user_override_picks(session: dict[str, Any]) -> set[str]:
     raw = session.get(PRACTICE_KEY_USER_OVERRIDE_PICKS_KEY)
     if isinstance(raw, (list, tuple, set)):
@@ -34,7 +70,7 @@ def _user_override_picks(session: dict[str, Any]) -> set[str]:
 def mark_practice_key_user_override(session: dict[str, Any], pick_key: str) -> None:
     """Durable: this pick's saved Practice Key is a genuine user edit, not residue."""
     pick = str(pick_key or "").strip()
-    if not pick:
+    if not pick or _song_key_locked(session, pick):
         return
     picks = _user_override_picks(session)
     picks.add(pick)
@@ -44,7 +80,7 @@ def mark_practice_key_user_override(session: dict[str, Any], pick_key: str) -> N
 def clear_practice_key_user_override(session: dict[str, Any], pick_key: str) -> None:
     """Drop a leftover override stamp so a fresh source activation can init from Original."""
     pick = str(pick_key or "").strip()
-    if not pick:
+    if not pick or _song_key_locked(session, pick):
         return
     picks = _user_override_picks(session)
     picks.discard(pick)
@@ -61,7 +97,7 @@ def catalog_pick_has_user_practice_key_override(session: dict[str, Any], pick_ke
 def record_composition_practice_key_choice(session: dict[str, Any], pick_key: str, key: str) -> None:
     """Remember the Practice Key the musician chose for this Composition (durable)."""
     pick, token = str(pick_key or "").strip(), str(key or "").strip()
-    if not pick or not token:
+    if not pick or not token or _song_key_locked(session, pick):
         return
     raw = session.get(COMPOSITION_PRACTICE_KEY_CHOICE_KEY)
     choices = dict(raw) if isinstance(raw, dict) else {}
@@ -719,6 +755,46 @@ def get_practice_concert_key(
     *,
     default: str = "",
 ) -> str:
+    """The Practice Key a song plays in: its saved key, or the Fixed Key pair's member.
+
+    While Fixed Key holds, the saved key stays untouched underneath; the fixed pair's
+    major or minor side (from the song's mode) is what every reader sees.
+    """
+    key = saved_practice_concert_key(session, pick_key, default=default)
+    if str(session.get("practice_key_mode") or "").strip() != "fixed":
+        return key
+    active = str(resolve_practice_source_pick(session) or "").strip()
+    pk = str(pick_key or "").strip() or active
+    if not _song_key_locked(session, pk):
+        return key
+    try:
+        from music_theory import key_mode
+        from practice_key_mode import resolve_family_option_id, resolve_session_key_from_family
+
+        mode_from = str(default or "").strip() or key
+        if not mode_from and pk == active and not _LOCK_CHECK_DEPTH[0]:
+            # Never given a key: the active song's own mode picks the pair's side.
+            from session_key_context import resolve_active_object_home_key
+
+            _LOCK_CHECK_DEPTH[0] += 1
+            try:
+                mode_from = str(resolve_active_object_home_key(session, original_key="") or "").strip()
+            finally:
+                _LOCK_CHECK_DEPTH[0] -= 1
+        if not mode_from:
+            return key
+        return resolve_session_key_from_family(resolve_family_option_id(session), key_mode(mode_from))
+    except ImportError:
+        return key
+
+
+def saved_practice_concert_key(
+    session: dict[str, Any],
+    pick_key: str = "",
+    *,
+    default: str = "",
+) -> str:
+    """The song's own saved Practice Key, as the musician left it (Fixed Key ignored)."""
     explicit = str(pick_key or "").strip()
     # SBI Custom visit: bare reads must use Custom UUID / visit PK — never Global
     # Active catalog sticky (Perfect C while focus/Original are Trial D/F).
@@ -770,6 +846,9 @@ def set_practice_concert_key(
         pk = resolve_settings_pick_for_write(session, pick_key)
     key = str(concert_key or "").strip()
     if not pk or not key:
+        return
+    # Fixed Key overrides the song's key without replacing it.
+    if _song_key_locked(session, pk):
         return
     # Gate 12 leave: leftover Mission tokens must not stamp a different catalog
     # sticky. A genuine sidebar Practice Key edit on Missions / Mission Backing
@@ -1207,6 +1286,8 @@ def clear_practice_concert_key(
     pk = str(pick_key or "").strip()
     if not pk:
         return False
+    if not force and _song_key_locked(session, pk):
+        return False
     if (
         not force
         and _pick_kind(pk) in {"catalog", "custom"}
@@ -1267,8 +1348,9 @@ def reset_practice_key_to_original_on_source_switch(
 
     Fixed-family mode: Practice = the active family's major/minor member for this
     song's mode — never raw Original, never a parked per-song sticky, never a
-    leftover from the prior source. Sticky + capo sounding are rewritten to that
-    canonical token so sidebar/helpers stay coherent.
+    leftover from the prior source. The song's own saved key is left as it is
+    (``get_practice_concert_key`` reads the family member over it); capo sounding
+    follows the family member.
 
     Same-source refresh/navigation must NOT call this.
     """
@@ -1283,16 +1365,6 @@ def reset_practice_key_to_original_on_source_switch(
 
         if is_fixed_practice_key_mode(session):
             target = resolve_fixed_practice_concert_key_for_session(session, original)
-            if pk:
-                # Family member becomes the sticky for this pick so refresh/nav
-                # cannot resurrect an older per-song Practice Key over the family.
-                clear_practice_key_user_override(session, pk)
-                set_practice_concert_key(
-                    session,
-                    target,
-                    pick_key=pk,
-                    allow_restore_original=True,
-                )
             try:
                 from session_widget_safe import reconcile_practice_key_fields
 
@@ -1320,8 +1392,8 @@ def reset_practice_key_to_original_on_source_switch(
         # the invariant lives here, at the primitive that does the clearing,
         # rather than in a guard per caller. (Blues Test: Practice G chosen,
         # Catalog song, back to Blues Test -> its saved G was cleared to F.)
-        # Fixed-family mode above still supersedes an override deliberately;
-        # Custom choices use the same per-source override marker.
+        # Fixed-family mode above overrides it without clearing it; Custom
+        # choices use the same per-source override marker.
         kind = _pick_kind(pk)
         saved = ""
         if kind in {"catalog", "custom"} and catalog_pick_has_user_practice_key_override(session, pk):

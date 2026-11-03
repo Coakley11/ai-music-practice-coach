@@ -490,25 +490,9 @@ def _apply_fixed_display_key_for_song(
 
         resolved = resolve_fixed_practice_concert_key_for_session(session, original_key or "C")
         request_display_key(session, resolved)
-        # Keep sticky Practice Key + Guitar sounding on the same canonical path so
-        # sidebar Sounding Key / Guitar helper cannot lag on a prior D/G while the
-        # unified Practice surface already shows the fixed-family key (e.g. E).
-        try:
-            from songs.practice_key_state import (
-                resolve_practice_source_pick,
-                set_practice_concert_key,
-            )
-
-            pick = str(resolve_practice_source_pick(session) or "").strip()
-            if pick:
-                set_practice_concert_key(
-                    session,
-                    resolved,
-                    pick_key=pick,
-                    allow_restore_original=True,
-                )
-        except ImportError:
-            pass
+        # The song's saved Practice Key stays as it is: readers of it see the
+        # fixed-family key over it (songs.practice_key_state.get_practice_concert_key),
+        # so the sidebar Sounding Key / Guitar helper cannot lag on a prior D/G.
         try:
             from guitar_capo import sync_capo_from_practice_display_key
 
@@ -528,11 +512,14 @@ def on_practice_key_mode_change(
     st_like: Any | None = None,
 ) -> None:
     """Callback when the user toggles practice key behavior."""
+    was_fixed = is_fixed_practice_key_mode(session)
     commit_practice_key_mode_widgets(session)
     if is_fixed_practice_key_mode(session) and not str(session.get(FIXED_PRACTICE_KEY_FAMILY_ID) or "").strip():
         set_fixed_practice_key_family(session, _default_family_option_id())
     if is_fixed_practice_key_mode(session):
         _apply_fixed_display_key_for_song(session, original_key=original_key)
+    elif was_fixed:
+        _restore_song_practice_key(session, original_key=original_key)
     persist_practice_key_mode(st_like)
 
 
@@ -614,17 +601,56 @@ def disable_fixed_practice_key_mode(
     if not is_fixed_practice_key_mode(session):
         return
     set_practice_key_mode(session, MODE_STANDARD)
+    _restore_song_practice_key(session, original_key=original_key)
+    persist_practice_key_mode(st_like)
+
+
+def practice_key_edit_locked(session: dict[str, Any]) -> bool:
+    """True while Fixed Key decides the song's Practice Key: its controls are read-only."""
+    try:
+        from songs.practice_key_state import fixed_key_holds_song_keys
+
+        return fixed_key_holds_song_keys(session)
+    except ImportError:
+        return is_fixed_practice_key_mode(session)
+
+
+def _restore_song_practice_key(session: dict[str, Any], *, original_key: str = "") -> None:
+    """Fixed Key just turned off: the song returns to its own saved Practice Key.
+
+    The same rule as choosing the song again: the key the musician saved for it
+    (or a Composition's recorded choice), else its Original Key.
+    """
     original = str(original_key or "").strip()
+    target = original
+    try:
+        from songs.practice_key_state import (
+            reset_practice_key_to_original_on_source_switch,
+            resolve_practice_source_pick,
+        )
+
+        pick = str(resolve_practice_source_pick(session) or "").strip()
+        if pick and original:
+            target = reset_practice_key_to_original_on_source_switch(
+                session, pick_key=pick, original_key=original
+            )
+    except ImportError:
+        pass
     try:
         from songs.key_state import BACKING_NEEDS_REGEN, invalidate_backing_cache, request_display_key
 
-        if original:
-            request_display_key(session, original)
+        if target:
+            request_display_key(session, target)
+            try:
+                from guitar_capo import sync_capo_from_practice_display_key
+
+                sync_capo_from_practice_display_key(session, target)
+            except ImportError:
+                pass
         session[BACKING_NEEDS_REGEN] = True
         invalidate_backing_cache(session)
     except ImportError:
         pass
-    persist_practice_key_mode(st_like)
 
 
 __all__ = [
@@ -660,6 +686,7 @@ __all__ = [
     "on_practice_key_mode_change",
     "parse_family_option_id",
     "persist_practice_key_mode",
+    "practice_key_edit_locked",
     "practice_key_mode_label",
     "practice_key_mode_label_legacy",
     "prepare_practice_key_mode_widgets",

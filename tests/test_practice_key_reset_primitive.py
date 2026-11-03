@@ -9,8 +9,9 @@ lives here rather than in a guard per caller.
 Scope held deliberately narrow:
   * only an explicit *catalog* override, or a Composition's recorded choice, is
     protected;
-  * fixed-practice-key mode still supersedes an override on purpose (it calls
-    ``clear_practice_key_user_override`` itself);
+  * fixed-practice-key mode overrides the saved key without touching it (it
+    neither clears the override nor writes the pick; see
+    tests/test_fixed_key_keeps_saved_practice_keys.py);
   * custom / creative picks keep their existing semantics.
 """
 
@@ -136,22 +137,21 @@ class TestOtherSourceKindsUnchanged(unittest.TestCase):
         self.assertEqual(_reset(session, CREATIVE_PICK, "F"), "F")
 
 
-class TestFixedFamilyModeStillSupersedes(unittest.TestCase):
-    def test_fixed_mode_branch_is_untouched_by_the_guard(self) -> None:
-        """Fixed-family mode drops the override on purpose; keep it that way."""
-        from pathlib import Path
+class TestFixedFamilyModeLeavesTheSavedKey(unittest.TestCase):
+    def test_fixed_mode_switch_keeps_the_override_and_the_saved_key(self) -> None:
+        """Fixed Key is a temporary override; the song's own choice survives it."""
+        from practice_key_mode import MODE_FIXED, set_fixed_practice_key_family, set_practice_key_mode
 
-        source = (
-            Path(__file__).resolve().parents[1] / "songs" / "practice_key_state.py"
-        ).read_text(encoding="utf-8")
-        body = source.split("def reset_practice_key_to_original_on_source_switch", 1)[1]
-        # The fixed-family branch ends by returning its family token.
-        fixed_branch, _, standard_branch = body.partition("            return target\n")
-        # The deliberate override-drop stays in the fixed-family branch.
-        self.assertIn("clear_practice_key_user_override", fixed_branch)
-        # The guard lives in the standard branch only.
-        self.assertIn("catalog_pick_has_user_practice_key_override", standard_branch)
-        self.assertNotIn("catalog_pick_has_user_practice_key_override", fixed_branch)
+        session: dict = {}
+        set_practice_concert_key(session, "D", pick_key=IPANEMA, allow_restore_original=True)
+        mark_practice_key_user_override(session, IPANEMA)
+        set_fixed_practice_key_family(session, "Eb|C")
+        set_practice_key_mode(session, MODE_FIXED)
+        self.assertEqual(_reset(session, IPANEMA, "F"), "Eb")
+        self.assertTrue(catalog_pick_has_user_practice_key_override(session, IPANEMA))
+        self.assertEqual(session[PRACTICE_KEY_BY_SOURCE_KEY][IPANEMA], "D")
+        set_practice_key_mode(session, "standard")
+        self.assertEqual(_reset(session, IPANEMA, "F"), "D")
 
 
 if __name__ == "__main__":
