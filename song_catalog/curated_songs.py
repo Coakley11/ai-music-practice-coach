@@ -10755,7 +10755,7 @@ def curated_song_records() -> list[dict[str, Any]]:
             "Main Groove": ["Ebm7", "Ebm7", "Ebm7", "Ebm7"],
             "Chorus": ["Ab7", "Gb7", "Ebm7", "Ebm7"],
             "Final Groove": ["Ebm7", "Ebm7", "Ebm7", "Ebm7"],
-        }),
+        }, extensions=_ext(full_form_levels=["Beginner"])),
         _s("Cissy Strut", "The Meters", "Funk", "C", {
             "Main Funk Vamp": ["C7", "C7", "C7", "C7"],
             "Turnaround": ["F7", "Eb7", "C7", "C7"],
