@@ -2798,6 +2798,9 @@ def _day_tripper_chart_pack() -> dict[str, Any]:
                 "isolated riff looping, and guitar/bass/full-band backing."
             ),
             default_bpm=138,
+            # Beginner plays the whole 94-bar form (guitar break, riff returns, coda):
+            # its chart is authored per section; the global trim dropped them.
+            full_form_levels=["Beginner"],
             default_groove="Rock groove",
             time_signature="4/4",
             riff_driven=True,
