@@ -3141,6 +3141,9 @@ def _dance_monkey_chart_pack() -> dict[str, Any]:
                 "chorus: full pulse. **E.hit** = hold/single strum on E in Verse 1."
             ),
             default_bpm=98,
+            # Every level plays all 12 sections (Beginner: one loop pass per repeat);
+            # the global trim dropped Pre-Chorus 2, Chorus 3, the Bridge and both final choruses.
+            full_form_levels=["Beginner", "Intermediate"],
             default_groove="Pop groove",
             time_signature="4/4",
             repertoire_tags=[
