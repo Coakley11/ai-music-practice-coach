@@ -8,6 +8,12 @@ re-running the script with --baseline-root pointing at a checkout BEFORE a catal
 from __future__ import annotations
 
 PRIOR_REVISIONS: dict[str, tuple[tuple[str, str], ...]] = {
+    'blues|12-bar blues in f|traditional': (
+        ('fd404fc03ac77238', ''),
+    ),
+    'funk|superstition|stevie wonder': (
+        ('a84fd5512ae6ffd0', ''),
+    ),
     'jazz|all of me|jazz standard': (
         ('b26f5969a3596e19', ''),
     ),
@@ -47,17 +53,47 @@ PRIOR_REVISIONS: dict[str, tuple[tuple[str, str], ...]] = {
     'jazz|take the a train|duke ellington': (
         ('08c51bc718e50945', ''),
     ),
+    'jazz|the girl from ipanema|antonio carlos jobim': (
+        ('0b66ee3a9d7fd3f3', 'cde21beac128a2a9'),
+    ),
     'jazz|wave|antonio carlos jobim': (
         ('3ce22f8100910f5d', 'a3d87edcdf7a617f'),
+    ),
+    'jewish|shalom aleichem|traditional jewish sabbath song': (
+        ('d67262f56ac7547e', '62bf70ede702e950'),
+    ),
+    'jewish|yerushalayim shel zahav|traditional': (
+        ('dd303f343b990742', 'edfb959b1a2eac16'),
     ),
     'pop|all of me|john legend': (
         ('a7411919e9ef95d6', '6049d1904a0fa66b'),
     ),
+    'pop|bad habits|ed sheeran': (
+        ('aa877e80165c7b68', ''),
+    ),
     'pop|careless whisper|george michael': (
         ('19e28f19b8f77472', 'cfd933bc173f3d7b'),
     ),
+    'pop|castle on the hill|ed sheeran': (
+        ('497bf0290441fffa', ''),
+    ),
+    'pop|clocks|coldplay': (
+        ('3c3f84a375403148', ''),
+    ),
+    'pop|dance monkey|tones and i': (
+        ('b7d73776f086c2a6', '3cee3b47ea4667a8'),
+    ),
+    'pop|fix you|coldplay': (
+        ('f3ed16e448322a7f', ''),
+    ),
+    'pop|gravity|john mayer': (
+        ('5ff69ec364f3018b', 'ac070127c3dca250'),
+    ),
     'pop|heal the world|michael jackson': (
         ('8b4bb3abe38e14d9', 'db686f12d5b10066'),
+    ),
+    "pop|i'm yours|jason mraz": (
+        ('fbf88d46397bf058', 'c8a99bcee48f4821'),
     ),
     'pop|just the way you are|billy joel': (
         ('6a74c7baa018cc61', 'e9f9bb46a5b8386e'),
@@ -65,8 +101,17 @@ PRIOR_REVISIONS: dict[str, tuple[tuple[str, str], ...]] = {
     'pop|kiss me|sixpence none the richer': (
         ('f3d5ce439d9db794', '550f2d9774cfc3c2'),
     ),
+    'pop|paradise|coldplay': (
+        ('a8c443c421680bdc', ''),
+    ),
     'pop|photograph|ed sheeran': (
         ('6ce7dc1b3040166a', '7fcc1c9d4ad33003'),
+    ),
+    'pop|shape of you|ed sheeran': (
+        ('fa41bdd926076ef1', '924dbe5cb73af834'),
+    ),
+    'pop|shivers|ed sheeran': (
+        ('189f2a825bccd296', ''),
     ),
     'pop|thinking out loud|ed sheeran': (
         ('5cddf828d4de7080', 'f956456290b898d9'),
@@ -77,22 +122,51 @@ PRIOR_REVISIONS: dict[str, tuple[tuple[str, str], ...]] = {
     'pop|vienna|billy joel': (
         ('6d039a0d4089d973', '65e20ddc34872dcd'),
     ),
+    'pop|yellow|coldplay': (
+        ('39edad7f9e2c6450', ''),
+    ),
+    'pop|you belong with me|taylor swift': (
+        ('47ad993c1e040fbb', '0a1e5cf18eff60c1'),
+    ),
+    'rock|a day in the life|the beatles': (
+        ('e813c8be20cba7ee', ''),
+    ),
     'rock|californication|red hot chili peppers': (
         ('a79c309c671d2fce', '87113096ddf657ec'),
     ),
     'rock|come together|the beatles': (
         ('e24f9906a3f6f641', 'ca05ea4edfb59747'),
+        ('72297e2e51214492', '4a23224c5252e6b2'),
     ),
     'rock|day tripper|the beatles': (
         ('201bcdcf097297b9', 'a99053587fb363c9'),
+        ('22b2d1c526ea84a8', 'fa2a91ba58e6fcdb'),
     ),
     "rock|don't stop believin'|journey": (
         ('ee5292b0908f5b10', 'e3e79a723fc824e8'),
     ),
+    'rock|here comes the sun|the beatles': (
+        ('3a84af28946d8f4a', '8a798a18f87989c9'),
+    ),
+    'rock|hey jude|the beatles': (
+        ('fc93bf5d1d044bf6', 'c4bd23855b113364'),
+    ),
     'rock|imagine|john lennon': (
         ('c1cb8ceb30390ca3', '4257fed65a3180ab'),
     ),
+    'rock|in my life|the beatles': (
+        ('b4a797e7e8da2f74', '08fd72868abc8625'),
+    ),
+    'rock|iris|goo goo dolls': (
+        ('f9b5114cb9fe65bc', 'dfa9cecc8dabfce8'),
+    ),
     'rock|we are the champions|queen': (
         ('bc5fedc94b5b40ad', '29e30cc7b9afa68e'),
+    ),
+    'rock|while my guitar gently weeps|the beatles': (
+        ('0ae5c50ae7efe427', ''),
+    ),
+    'rock|yesterday|the beatles': (
+        ('c16e5e4cbfbf6a0b', 'd643a7520ab58e69'),
     ),
 }
