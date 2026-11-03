@@ -9338,7 +9338,13 @@ def curated_song_records() -> list[dict[str, Any]]:
             "Pre-Chorus": ["Bm", "G", "D", "A"],
             "Chorus": ["Bm", "G", "D", "A"],
             "Bridge": ["G", "A", "Bm", "D"],
-        }),
+        }, extensions=_ext(
+            default_bpm=126,
+            time_signature="4/4",
+            arrangement_notes=(
+                'Bad Habits: ~126 BPM, 4/4 (Hooktheory 126, Wikipedia citing the published sheet music 126). Chart is a rehearsal skeleton (Advanced 16 bars); the 3:51 single form is longer and its bar counts are not verified, so the form is unchanged.'
+            ),
+        )),
         _s("Castle on the Hill", "Ed Sheeran", "Pop", "D", {
             "Verse": ["D", "G", "Bm", "A"],
             "Pre-Chorus": ["G", "A", "Bm", "D"],
