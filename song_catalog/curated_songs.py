@@ -9541,7 +9541,13 @@ def curated_song_records() -> list[dict[str, Any]]:
             "Pre-Chorus": ["G", "A", "Bm", "D"],
             "Chorus": ["D", "G", "Bm", "A"],
             "Bridge": ["G", "D", "A", "Bm"],
-        }),
+        }, extensions=_ext(
+            default_bpm=135,
+            time_signature="4/4",
+            arrangement_notes=(
+                'Castle on the Hill: ~135 BPM, 4/4 (Hooktheory 135, Karaoke-Version 135, Musicnotes TutorialsByHugo 135, piano-lesson site 135, klang.io 136). Chart is a rehearsal skeleton (Advanced 16 bars); the 4:21 album form is longer and its bar counts are not verified, so the form is unchanged.'
+            ),
+        )),
         _s("Shivers", "Ed Sheeran", "Pop", "Bm", {
             "Verse": ["Bm", "G", "D", "A"],
             "Pre-Chorus": ["Bm", "G", "D", "A"],
