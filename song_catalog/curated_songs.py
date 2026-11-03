@@ -5433,6 +5433,9 @@ def _shalom_aleichem_chart_pack() -> dict[str, Any]:
                 "melodic interlude; Verse 4: slightly fuller; outro: gentle Dm cadence."
             ),
             default_bpm=72,
+            # Beginner/Intermediate play all 6 sections; the global trim dropped Verse 3,
+            # the Instrumental and the Outro.
+            full_form_levels=["Beginner", "Intermediate"],
             default_groove="Jewish ballad",
             time_signature="4/4",
             repertoire_tags=[
