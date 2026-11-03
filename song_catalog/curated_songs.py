@@ -7630,12 +7630,16 @@ def _requested_verified_song_records() -> list[dict[str, Any]]:
         chart_status: str | None = None,
         default_bpm: int | None = None,
         default_groove: str | None = None,
+        section_order: list[str] | None = None,
+        full_form_levels: list[str] | None = None,
     ) -> dict[str, Any]:
         ext = note(notes or "Practice-level verified form; one chord cell equals one bar.")
         if default_bpm:
             ext["default_bpm"] = int(default_bpm)
         if default_groove:
             ext["default_groove"] = default_groove
+        if full_form_levels:
+            ext["full_form_levels"] = list(full_form_levels)
         return _s(
             title,
             artist,
@@ -7652,6 +7656,7 @@ def _requested_verified_song_records() -> list[dict[str, Any]]:
                 advanced=advanced or intermediate,
             ),
             extensions=ext,
+            section_order=section_order,
         )
 
     def core_ref(
@@ -8133,21 +8138,54 @@ def _requested_verified_song_records() -> list[dict[str, Any]]:
             "A",
             {
                 "Intro": ["A", "E", "A", "E"],
-                "Verse": ["A", "E", "F#m", "A7", "D", "Dm", "A", "A"],
-                "Chorus": ["F#m", "D", "G", "A", "F#m", "B7", "E", "E"],
+                "Verse 1": ["A", "E", "F#m", "A7", "D", "Dm", "A", "A"],
+                "Bridge 1": ["F#m", "D", "G", "A", "F#m", "B7", "Dm", "A"],
+                "Transition 1": ["A", "E"],
+                "Verse 2": ["A", "E", "F#m", "A7", "D", "Dm", "A", "A"],
+                "Bridge 2": ["F#m", "D", "G", "A", "F#m", "B7", "Dm", "A"],
                 "Piano Solo": ["A", "E", "F#m", "A7", "D", "Dm", "A", "A"],
-                "Outro": ["A", "E", "A", "A"],
+                "Bridge 3": ["F#m", "D", "G", "A", "F#m", "B7", "Dm", "A"],
+                "Transition 2": ["A", "E"],
+                "Coda": ["F#m", "B7", "Dm", "A", "A", "A"],
             },
             {
                 "Intro": ["A", "E/G#", "A", "E/G#"],
-                "Verse": ["A", "E/G#", "F#m7", "A7", "D", "Dm6", "A/E", "A"],
-                "Chorus": ["F#m7", "D", "G", "A", "F#m7", "B7", "E", "E7"],
+                "Verse 1": ["A", "E/G#", "F#m7", "A7", "D", "Dm6", "A/E", "A"],
+                "Bridge 1": ["F#m7", "D", "G", "A", "F#m7", "B7", "Dm", "A"],
+                "Transition 1": ["A", "E/G#"],
+                "Verse 2": ["A", "E/G#", "F#m7", "A7", "D", "Dm6", "A/E", "A"],
+                "Bridge 2": ["F#m7", "D", "G", "A", "F#m7", "B7", "Dm", "A"],
                 "Piano Solo": ["A", "E/G#", "F#m7", "A7", "D", "Dm6", "A/E", "A"],
-                "Outro": ["A", "E/G#", "A", "A"],
+                "Bridge 3": ["F#m7", "D", "G", "A", "F#m7", "B7", "Dm", "A"],
+                "Transition 2": ["A", "E/G#"],
+                "Coda": ["F#m7", "B7", "Dm", "A", "A", "A"],
             },
             composer="Lennon-McCartney",
-            lyric_cues={"Intro": ["guitar arpeggio setup"], "Verse": ["memory list phrase"], "Chorus": ["affection reflection"], "Piano Solo": ["baroque keyboard break"], "Outro": ["gentle final cadence"]},
-            notes="Beatles practice chart in A; verse keeps the A7-to-D and Dm6 modal-mixture color before resolving.",
+            lyric_cues={
+                "Intro": ["guitar arpeggio setup"],
+                "Verse 1": ["memory list phrase"],
+                "Bridge 1": ["affection reflection"],
+                "Transition 1": ["intro motif, halved"],
+                "Verse 2": ["memory list phrase"],
+                "Bridge 2": ["affection reflection"],
+                "Piano Solo": ["baroque keyboard break (verse harmony)"],
+                "Bridge 3": ["affection reflection, final pass"],
+                "Transition 2": ["intro motif, halved"],
+                "Coda": ["last four bridge bars, then the closing A"],
+            },
+            notes=(
+                "Beatles practice chart in A, ~102 BPM, 4/4; 62 bars in one pass "
+                "(~2:26): Intro 4, Verse 8, Bridge 8, Transition 2, Verse 8, Bridge 8, "
+                "Piano Solo 8 (verse harmony), Bridge 8, Transition 2, Coda 6. "
+                "The bridge is F#m-D-G-A | F#m-B7-Dm-A (Dm, not E, in bar 7); "
+                "verse keeps the A7-to-D and Dm6 modal-mixture color."
+            ),
+            default_bpm=102,
+            section_order=[
+                "Intro", "Verse 1", "Bridge 1", "Transition 1", "Verse 2", "Bridge 2",
+                "Piano Solo", "Bridge 3", "Transition 2", "Coda",
+            ],
+            full_form_levels=["Beginner", "Intermediate"],
         ),
         core_ref(
             "Across the Universe",
