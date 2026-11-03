@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
+from music_feature_icons import action_label
+
 from multitrack_history import (
     FLASH_KEY as MT_FLASH_KEY,
     default_project_name,
@@ -375,7 +377,7 @@ def render_multitrack_history_panel(st_obj: Any, *, song_title: str = "") -> Non
 
         new_cols = st_obj.columns([1, 1])
         with new_cols[0]:
-            if st_obj.button("New Project", key="mt_new_project_btn", use_container_width=True):
+            if st_obj.button(action_label("new", "New Project"), key="mt_new_project_btn", use_container_width=True):
                 try:
                     from multitrack_session_persistence import start_new_multitrack_project
 

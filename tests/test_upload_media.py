@@ -74,7 +74,12 @@ def test_streamlit_analysis_uploaders_use_canonical_types_and_size_limit():
     assert text.count("max_upload_size=UPLOAD_MAX_SIZE_MB") >= 3
     assert "analysis_audio_upload" in text
     assert "analysis_multitrack_upload" in text
-    assert "mt_upload_{slot}" in text
+    # The Multitrack slot uploader key is generated so a discarded take gets a fresh widget; the key
+    # itself is still mt_upload_<slot> (see multitrack_takes.recorder_widget_key).
+    assert 'recorder_widget_key(st.session_state, slot, "upload")' in text
+    from multitrack_takes import recorder_widget_key
+
+    assert recorder_widget_key({}, "Guitar", "upload") == "mt_upload_Guitar"
     assert "Maximum file size: 500 MB" in text or "upload_max_size_caption" in text
 
 

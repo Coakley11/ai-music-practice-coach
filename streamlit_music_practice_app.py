@@ -788,6 +788,7 @@ _APP_UI_LOADED = False
 _APP_UI_IMPORT_ERROR = None
 
 from music_feature_icons import (
+    action_label,
     FEATURE_ICONS,
     feature_label,
     page_feature_icon,
@@ -8766,7 +8767,14 @@ def mix_multitrack(backing_y, track_items, sr=44100):
 
         mix[: len(y)] += y.astype(np.float64)
 
-    peak = np.max(np.abs(mix)) + 1e-9
+    if mix.size == 0:
+        # Everything muted (or soloed away): a silent mix, not a crash on an empty array.
+        return np.zeros(0, dtype=np.float32)
+
+    peak = float(np.max(np.abs(mix)))
+
+    if peak <= 1e-9:
+        return mix.astype(np.float32)
 
     mix = (mix / peak * 0.95).astype(np.float32)
 
@@ -8983,7 +8991,7 @@ def _render_multitrack_session_setup_panel(
         )
     with _kbpm_c3:
         mt_groove = st.selectbox(
-            "Groove / feel",
+            action_label("feel", "Groove / feel"),
             [
                 "Auto",
                 "Pop groove",
@@ -9052,8 +9060,18 @@ def _render_multitrack_session_setup_panel(
     )
     if _prep_clicked:
         practice_level = str(st.session_state.get("level") or "Intermediate")
+        # Monitor backing is SOUNDING audio: render it from the concert progression, never from the
+        # written / capo-shape chart this page happens to be displaying.
+        try:
+            from multitrack_layer_chords import concert_sections_for_backing
+
+            _backing_sections = concert_sections_for_backing(
+                st.session_state, sections, chart_key=chart_key, concert_key=concert_key
+            ) or sections
+        except Exception:
+            _backing_sections = sections
         monitor_wav, _ = multitrack_monitor_backing_bytes(
-            sections,
+            _backing_sections,
             mt_selected_sections,
             bpm=mt_bpm,
             loops=mt_loops,
@@ -9118,6 +9136,9 @@ def multitrack_studio_html(
     backing_duration_sec=0,
 ):
     tracks_json = json.dumps(tracks)
+    from multitrack_layer_chords import transport_clock_script
+
+    clock_script = transport_clock_script()
     bar_duration = meter_timing(bpm, time_signature).bar_sec
     config = json.dumps({
         "bpm": bpm,
@@ -9194,6 +9215,7 @@ def multitrack_studio_html(
 
     let audioCtx = null;
     let startedAt = 0;
+    let countInStartedAt = 0;
     let rafId = null;
     let metroTimer = null;
     let trackNodes = [];
@@ -9201,6 +9223,7 @@ def multitrack_studio_html(
     let masterGain = null;
     let sessionDuration = 8;
 
+    {clock_script}
     function barDuration() {{ return cfg.barDuration; }}
     function beatDuration() {{ return 60 / cfg.bpm; }}
 
@@ -9285,10 +9308,15 @@ def multitrack_studio_html(
       cursorEl.style.width = "0%";
       timeEl.textContent = "0.0s";
       labelEl.textContent = "Stopped.";
+      // Layer chord strips follow this clock; a stopped transport must never advance them.
+      mtPublishClock(0, false);
     }}
 
     function updateTransport() {{
       if (!audioCtx) return;
+      // Seconds from the START OF THE COUNT-IN: the layer chord strips line their bars up against this,
+      // so count-in, loops and restarts all land where the musician hears them.
+      mtPublishClock(audioCtx.currentTime - countInStartedAt, true);
       const t = Math.max(0, audioCtx.currentTime - startedAt);
       const bd = barDuration();
       const barNum = Math.floor(t / bd) + 1;
@@ -9313,6 +9341,7 @@ def multitrack_studio_html(
       const countInStart = audioCtx.currentTime;
       const musicStart = scheduleCountIn(countInStart);
       startedAt = musicStart;
+      countInStartedAt = countInStart;
 
       let maxEnd = musicStart;
 
@@ -11052,13 +11081,17 @@ def _render_active_song_card(
         f'<p class="ui-chart-edit-cta-hint">{_edit_hint}</p></div>',
         unsafe_allow_html=True,
     )
-    if st.button(
-        _edit_label,
-        key="picker_card_edit_chart",
-        type="primary",
-        use_container_width=True,
-        help=_edit_hint,
-    ):
+    # Keyed by source so the CTA can carry its own page colour (Custom green, Composition black) -
+    # the button key itself has to stay stable for existing state/tests.
+    with st.container(key=f"picker_card_edit_chart_{_edit_mode}"):
+        _edit_clicked = st.button(
+            _edit_label,
+            key="picker_card_edit_chart",
+            type="primary",
+            use_container_width=True,
+            help=_edit_hint,
+        )
+    if _edit_clicked:
         _open_active_source_chart_editor(_edit_mode)
     if show_nav_actions:
         _render_songs_hub_nav_actions(
@@ -12704,9 +12737,9 @@ def _render_catalog_song_picker_block(
         ``filtered`` (closed over from ``_apply_picker_catalog_filters`` above)
         is the canonical-deduplicated union that narrows the Active Song
         dropdown's own options. Search, Genre, and Favorites contribute
-        independently. Only shown while a filter is actually active: with no
-        filter the dropdown already covers "browse everything" and a
-        119-row button list would just be noise. Each row commits through
+        independently. With no criterion active the list is empty (and says so):
+        opening Songs, or clearing the last filter, never dumps the whole
+        catalog here - the dropdown already covers "browse everything". Each row commits through
         ``_apply_catalog_pick`` — the identical canonical path the dropdown's
         own on_change uses — so this is a second entry point into the same
         active-song state, never a competing one.
@@ -12714,7 +12747,14 @@ def _render_catalog_song_picker_block(
         query = str(st.session_state.get("song_search_text") or "").strip()
         genres_active = bool(st.session_state.get(WORKSPACE_GENRE_FILTERS_KEY) or [])
         fav_active = bool(st.session_state.get(SONG_PICKER_FAVORITES_ONLY_KEY))
-        if not filtered and fav_active and not query:
+        if not filtered and not (query or genres_active or fav_active):
+            # Deliberate empty start: Browse lists what the musician asks for, nothing more.
+            st.caption(
+                "Search for a title or artist, tap a genre, or tap ★ Favorites to start building a list. "
+                "The **Active Song** dropdown always covers the whole catalog."
+            )
+            return
+        if not filtered and fav_active and not query and not genres_active:
             st.info("No favorite songs yet. Star a song with ☆ Favorite on its song card.")
             return
         if not filtered:
@@ -13011,8 +13051,11 @@ def _render_catalog_song_picker_block(
         )
 
     if not show_song_cards and not _developer_mode_enabled():
+        # Browse starts empty on purpose; the dropdown above is the full catalog either way.
         st.caption(
             f"**{len(filtered)}** songs in list · open **Practice** or **Backing Track** after you pick one."
+            if filtered
+            else "Search or filter to build a list · the dropdown above covers the whole catalog."
         )
 
     if _developer_mode_enabled():
@@ -27064,6 +27107,12 @@ elif _studio_page == "multitrack":
         st.session_state.mt_track_filenames = {
             slot: f"{slot.replace(' ', '_').lower()}.wav" for slot in MT_SLOTS
         }
+    try:
+        from multitrack_takes import adopt_restored_layers_as_saved
+
+        adopt_restored_layers_as_saved(st.session_state, MT_SLOTS)
+    except ImportError:
+        pass
 
     _default_mt_time_sig = default_time_signature(song, sections)
     _existing_mt_time_sig = str(st.session_state.get("mt_time_signature") or "").strip()
@@ -27170,6 +27219,35 @@ elif _studio_page == "multitrack":
                 "Loop section = repeat the selected section while recording"
             )
 
+            # --- Per-layer chord progression (concert audio, per-instrument reading) -------------
+            # The Practice chart this page holds is in the CHART key (written / capo shape), so the
+            # sounding progression is recovered once here and every layer projects from it.
+            try:
+                from multitrack_layer_chords import (
+                    LAYER_INSTRUMENT_KEY_PREFIX,
+                    concert_bar_chords,
+                    layer_chord_strip_html,
+                    layer_chord_timeline,
+                    layer_instrument,
+                    layer_instrument_options,
+                    layer_key_label,
+                    project_chords_for_layer,
+                )
+
+                _mt_concert_bars = concert_bar_chords(
+                    st.session_state,
+                    chart_sections=sections,
+                    selected_sections=mt_selected_sections,
+                    section_names=section_names_from_song(song_data),
+                    chart_key=chart_key,
+                    concert_key=concert_key,
+                )
+                _mt_bar_sec = meter_timing(mt_bpm, mt_time_sig).bar_sec
+                _mt_count_in_sec = float(mt_count_in_bars) * _mt_bar_sec
+                _mt_layer_chords_ok = bool(_mt_concert_bars)
+            except Exception:
+                _mt_layer_chords_ok = False
+
             for slot in MT_SLOTS:
                 _slot_ready = bool(st.session_state.mt_tracks.get(slot))
                 try:
@@ -27194,16 +27272,44 @@ elif _studio_page == "multitrack":
                             value=st.session_state.get(f"mt_name_{slot}", slot),
                             key=f"mt_name_{slot}",
                         )
+                        if _mt_layer_chords_ok:
+                            _layer_inst_options = layer_instrument_options()
+                            _layer_inst_default = layer_instrument(st.session_state, slot)
+                            st.selectbox(
+                                "Chart this layer for",
+                                _layer_inst_options,
+                                index=_layer_inst_options.index(_layer_inst_default)
+                                if _layer_inst_default in _layer_inst_options
+                                else 0,
+                                key=f"{LAYER_INSTRUMENT_KEY_PREFIX}{slot}",
+                                help=(
+                                    "Chord names this player reads. Transposing instruments read their "
+                                    "written chords; the backing keeps sounding in concert pitch."
+                                ),
+                            )
+
                         from upload_media import UPLOAD_AUDIO_FILE_TYPES, UPLOAD_MAX_SIZE_MB
 
+                        from multitrack_takes import (
+                            discard_button_label,
+                            discard_take,
+                            mark_take_saved,
+                            mark_take_unsaved,
+                            recorder_widget_key,
+                            take_status_line,
+                        )
+
                         uploaded = st.file_uploader(
-                            f"Upload — {slot}",
+                            action_label("upload", f"Upload — {slot}"),
                             type=UPLOAD_AUDIO_FILE_TYPES,
-                            key=f"mt_upload_{slot}",
+                            key=recorder_widget_key(st.session_state, slot, "upload"),
                             max_upload_size=UPLOAD_MAX_SIZE_MB,
                         )
                         try:
-                            recorded = st.audio_input(f"Record — {slot}", key=f"mt_record_{slot}")
+                            recorded = st.audio_input(
+                                f"Record — {slot}",
+                                key=recorder_widget_key(st.session_state, slot, "record"),
+                            )
                         except Exception:
                             recorded = None
                             st.caption("Recording unavailable in this build — upload still works.")
@@ -27218,6 +27324,7 @@ elif _studio_page == "multitrack":
                                 st.session_state.mt_track_filenames[slot] = getattr(
                                     _mt_audio_obj, "name", f"{slot}.wav"
                                 )
+                                mark_take_unsaved(st.session_state, slot)
                                 try:
                                     from music_persistent_state import force_save_music_state
                                     from studio_page_persistence import flush_current_page_snapshot
@@ -27227,13 +27334,49 @@ elif _studio_page == "multitrack":
                                 except Exception:
                                     pass
 
-                        if st.button(f"Save layer — {slot}", key=f"mt_save_{slot}"):
+                        _take_line = take_status_line(st.session_state, slot)
+                        if _take_line:
+                            st.caption(_take_line)
+                        _save_col, _discard_col = st.columns(2)
+                        if _discard_col.button(
+                            discard_button_label(st.session_state, slot),
+                            key=f"mt_discard_{slot}",
+                            use_container_width=True,
+                            disabled=not st.session_state.mt_tracks.get(slot),
+                            help=(
+                                "Throw this take away and record again. Only this layer is affected — "
+                                "other layers, the backing and saved projects are untouched."
+                            ),
+                        ):
+                            discard_take(st.session_state, slot)
+                            try:
+                                from music_persistent_state import force_save_music_state
+
+                                force_save_music_state(st, reason="multitrack_discard_take")
+                            except Exception:
+                                pass
+                            st.rerun()
+                        if _save_col.button(
+                            action_label("save", f"Save layer — {slot}"), key=f"mt_save_{slot}", use_container_width=True
+                        ):
                             audio_obj = recorded if recorded is not None else uploaded
+                            if audio_obj is None and st.session_state.mt_tracks.get(slot):
+                                # The take is already held for playback; saving keeps it for good.
+                                mark_take_saved(st.session_state, slot)
+                                st.success(f"{layer_name} saved.")
+                                try:
+                                    from music_persistent_state import force_save_music_state
+
+                                    force_save_music_state(st, reason="multitrack_layer_save")
+                                except Exception:
+                                    pass
+                                st.rerun()
                             if audio_obj is not None:
                                 st.session_state.mt_tracks[slot] = audio_obj.getvalue()
                                 st.session_state.mt_track_filenames[slot] = getattr(
                                     audio_obj, "name", f"{slot}.wav"
                                 )
+                                mark_take_saved(st.session_state, slot)
                                 st.success(f"{layer_name} saved.")
                                 try:
                                     from music_persistent_state import force_save_music_state
@@ -27293,6 +27436,31 @@ elif _studio_page == "multitrack":
                             ctrl["delay"] = float(st.session_state.get(f"mt_delay_{slot}", 0.0))
                             ctrl["mute"] = bool(st.session_state.get(f"mt_mute_{slot}", False))
                             ctrl["solo"] = bool(st.session_state.get(f"mt_solo_{slot}", False))
+
+                    if _mt_layer_chords_ok:
+                        # Chord progression for THIS player, highlighted from the real transport clock.
+                        _layer_inst = layer_instrument(st.session_state, slot)
+                        _layer_cells = layer_chord_timeline(
+                            project_chords_for_layer(
+                                _mt_concert_bars,
+                                concert_key=concert_key,
+                                instrument=_layer_inst,
+                                session_state=st.session_state,
+                            ),
+                            bar_duration=_mt_bar_sec,
+                            loops=mt_loops,
+                            count_in_sec=_mt_count_in_sec,
+                        )
+                        components.html(
+                            layer_chord_strip_html(
+                                _layer_cells,
+                                layer_id=slot,
+                                key_label=layer_key_label(concert_key, _layer_inst, st.session_state),
+                                instrument=_layer_inst,
+                            ),
+                            height=108,
+                            scrolling=False,
+                        )
 
                     saved_audio = st.session_state.mt_tracks.get(slot)
                     if saved_audio:
@@ -27471,23 +27639,60 @@ elif _studio_page == "multitrack":
             if not track_items_for_mix:
                 st.info("Save at least one layer above to export a mix.")
 
-            if st.button("Create mixed WAV", disabled=not track_items_for_mix, use_container_width=True):
+            from multitrack_audio_polish import (
+                REVERB_AMOUNT_KEY,
+                REVERB_ENABLED_KEY,
+                apply_reverb,
+                mix_reverb_amount,
+            )
+
+            _rv_a, _rv_b = st.columns([1, 2])
+            _rv_a.checkbox(
+                "Add reverb to the mix",
+                key=REVERB_ENABLED_KEY,
+                help=(
+                    "A finishing touch applied only when the mix is created — your recorded layers are "
+                    "never changed. It cannot bring back notes the recording did not capture."
+                ),
+            )
+            if st.session_state.get(REVERB_ENABLED_KEY):
+                _rv_b.slider("Reverb amount", 0.0, 1.0, 0.25, 0.05, key=REVERB_AMOUNT_KEY)
+
+            if st.button(action_label("create_mix", "Create mixed WAV"), disabled=not track_items_for_mix, use_container_width=True):
                 try:
                     backing_y = None
                     _include_backing_in_mix = bool(st.session_state.get("include_backing_mix", False))
                     _backing_volume = float(st.session_state.get("mt_backing_volume", 0.75))
                     if _include_backing_in_mix and mt_events:
+                        # The exported backing must sound the CONCERT chords (not the written/shape
+                        # chart this page displays) and must use the song's own meter - the default
+                        # 4/4 put the exported backing out of step with the recorded layers in 3/4.
+                        _export_events = mt_events
+                        try:
+                            from multitrack_layer_chords import concert_sections_for_backing
+
+                            _export_sections = concert_sections_for_backing(
+                                st.session_state, sections, chart_key=chart_key, concert_key=concert_key
+                            )
+                            if _export_sections:
+                                _export_events = chord_events_for_selected_sections(
+                                    _export_sections, mt_selected_sections, song_data=song_data
+                                ) or mt_events
+                        except Exception:
+                            _export_events = mt_events
                         backing_y = backing_bytes_to_float(
-                            mt_events,
+                            _export_events,
                             bpm=mt_bpm,
                             style=mt_resolved_groove,
                             level=level,
+                            time_signature=mt_time_sig,
                         )
                         if mt_loops > 1:
                             backing_y = np.tile(backing_y, int(mt_loops))
                         backing_y = backing_y * _backing_volume
 
                     mixed = mix_multitrack(backing_y, track_items_for_mix)
+                    mixed = apply_reverb(mixed, sr=44100, amount=mix_reverb_amount(st.session_state))
                     st.session_state.mixed_track_wav = wav_bytes_from_float(mixed)
                     from multitrack_activity import capture_mix
                     capture_mix(st.session_state, st.session_state.mixed_track_wav,
@@ -27506,7 +27711,7 @@ elif _studio_page == "multitrack":
             if mixed_export_wav:
                 st.audio(mixed_export_wav, format="audio/wav")
                 st.download_button(
-                    "Download mixed track WAV",
+                    action_label("download", "Download mixed track WAV"),
                     mixed_export_wav,
                     file_name=f"{song.replace(' ', '_')}_multitrack_mix.wav",
                     mime="audio/wav",
@@ -27527,7 +27732,7 @@ elif _studio_page == "multitrack":
 
             render_multitrack_export_library(st, st.session_state, song_title=str(song or ""))
 
-            if st.button("Clear all multitrack layers", use_container_width=True):
+            if st.button(action_label("delete", "Clear all multitrack layers"), use_container_width=True):
                 try:
                     from multitrack_session_persistence import clear_multitrack_persisted_state
                     from music_persistent_state import force_save_music_state

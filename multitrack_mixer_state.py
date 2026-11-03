@@ -39,12 +39,18 @@ def slots_with_audio(session_state: dict[str, Any]) -> list[str]:
 
 def _normalize_control(raw: dict[str, Any] | None) -> dict[str, Any]:
     src = raw if isinstance(raw, dict) else {}
-    return {
+    out = {
         "volume": float(src.get("volume", 1.0)),
         "delay": float(src.get("delay", 0.0)),
         "mute": bool(src.get("mute", False)),
         "solo": bool(src.get("solo", False)),
     }
+    # The layer's name is saved layer data, so it must survive normalization and merging - dropping it
+    # here is what let a renamed layer come back as its bare slot label.
+    name = str(src.get("layer_name") or "").strip()
+    if name:
+        out["layer_name"] = name[:120]
+    return out
 
 
 def resolve_slot_control(
@@ -84,6 +90,12 @@ def prepare_multitrack_mixer_widgets(
         if not slot_has_audio(session_state, slot) and not force:
             continue
         ctrl = resolve_slot_control(session_state, slot)
+        # The layer NAME is saved layer data, not just a widget value: a layer renamed on one device
+        # must come back named on the next one. Seed it from the canonical control the same way the
+        # mixer values are seeded, so the text input opens on the saved name instead of the slot label.
+        _saved_name = str(ctrl.get("layer_name") or "").strip()
+        if _saved_name and (force or f"mt_name_{slot}" not in session_state):
+            session_state[f"mt_name_{slot}"] = _saved_name
         if force or f"mt_vol_{slot}" not in session_state:
             session_state[f"mt_vol_{slot}"] = float(ctrl["volume"])
         if force or f"mt_delay_{slot}" not in session_state:
@@ -163,8 +175,9 @@ def commit_multitrack_mixer_widget(
     ctrl["delay"] = _widget_delay(session_state, slot)
     ctrl["mute"] = bool(session_state.get(f"mt_mute_{slot}", False))
     ctrl["solo"] = bool(session_state.get(f"mt_solo_{slot}", False))
-    if layer_name:
-        ctrl["layer_name"] = str(layer_name).strip()[:120]
+    name = str(layer_name or session_state.get(f"mt_name_{slot}") or "").strip()
+    if name:
+        ctrl["layer_name"] = name[:120]
     _controls_map(session_state)[slot] = ctrl
     return ctrl
 
