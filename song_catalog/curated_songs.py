@@ -69,6 +69,34 @@ def _levels(
     }
 
 
+_WMGGW_VERSE = [
+    "Am", "Am/G", "D/F#", "F", "Am", "G", "D", "E",
+    "Am", "Am/G", "D/F#", "F", "Am", "G", "C", "E",
+]
+_WMGGW_BRIDGE = ["A", "C#m", "F#m", "C#m", "Bm", "E", "A", "E"] * 2
+
+
+def _wmggw_sections() -> dict[str, list[str]]:
+    """Fresh 136-bar form (W3-16): one list per section, no shared lists."""
+    return {
+        "Intro": list(_WMGGW_VERSE[:8]),
+        "Verse 1": list(_WMGGW_VERSE),
+        "Bridge 1": list(_WMGGW_BRIDGE),
+        "Verse 2": list(_WMGGW_VERSE),
+        "Guitar Solo (Verse Form)": list(_WMGGW_VERSE),
+        "Bridge 2": list(_WMGGW_BRIDGE),
+        "Verse 3": list(_WMGGW_VERSE),
+        "Outro (Fade)": list(_WMGGW_VERSE) * 2,
+    }
+
+
+def _wmggw_beginner() -> dict[str, list[str]]:
+    return {
+        name: [c.split("/")[0] for c in bars] for name, bars in _wmggw_sections().items()
+    }
+
+
+
 def _perfect_chart_pack() -> dict[str, Any]:
     """Perfect — Ed Sheeran (G major, acoustic pop ballad)."""
     walk = ["G", "D/F#", "Em7", "D", "Cadd9", "D", "G"]
@@ -9848,11 +9876,34 @@ def curated_song_records() -> list[dict[str, Any]]:
                 riff_driven=True,
             ),
         ),
-        _s("While My Guitar Gently Weeps", "The Beatles", "Rock", "Am", {
-            "Verse": ["Am", "Am/G", "D/F#", "F", "Am", "G", "D", "E"],
-            "Chorus": ["A", "C#m", "F#m", "C#m", "Bm", "E", "A", "E"],
-            "Bridge": ["Am", "G", "D", "E"],
-        }, composer="George Harrison"),
+        _s("While My Guitar Gently Weeps", "The Beatles", "Rock", "Am", _wmggw_sections(), composer="George Harrison",
+            chart_status="practice_level_verified",
+            chart_versions=_levels(
+                beginner=_wmggw_beginner(),
+                intermediate=_wmggw_sections(),
+                advanced=_wmggw_sections(),
+            ),
+            lyric_cues={
+                "Intro": ["eight-bar guitar and piano intro, ends on E"],
+                "Verse 1": ["I look at you all..."],
+                "Bridge 1": ["A major lift (16 bars)"],
+                "Guitar Solo (Verse Form)": ["lead guitar plays the verse (16 bars)"],
+                "Outro (Fade)": ["two verse cycles, fade"],
+            },
+            section_order=list(_wmggw_sections()),
+            extensions=_ext(
+                default_bpm=114,
+                time_signature="4/4",
+                full_form_levels=["Beginner", "Intermediate"],
+                arrangement_notes=(
+                    "A minor, ~114 BPM, 4/4, 136 bars in one pass (~4:46): Intro 8, "
+                    "Verse 16, Bridge 16 (A major, 8-bar phrase twice), Verse 16, "
+                    "Guitar Solo 16 (verse form), Bridge 16, Verse 16, Outro ~32 fade "
+                    "(two verse cycles). Verse = Am Am/G D/F# F | Am G D E | "
+                    "Am Am/G D/F# F | Am G C E."
+                ),
+            ),
+        ),
         _s("Eleanor Rigby", "The Beatles", "Rock", "Em", {
             "Verse": ["Em", "Em", "C", "Em"],
             "Chorus": ["Em", "C", "Em", "C"],
