@@ -23,6 +23,7 @@ from collections.abc import MutableMapping
 from typing import Any
 
 from music_coach_ami import warmup_engine as we
+from music_coach_ami import warmup_chordline as wc
 from music_coach_ami import warmup_song as ws
 from music_coach_ami.session_scope import ensure_owner, owner_token
 from music_coach_ami.types import CoachIntent, CoachResponse
@@ -32,7 +33,8 @@ MAX_VERSIONS = 12
 DEFAULT_MINUTES = 10
 MIN_MINUTES, MAX_MINUTES = 2, 30
 MAX_REPS = 6
-FAMILY_CAP = {"long_tones": 3, "scale": 5, "intervals": 4, "articulation": 4, "guide_tones": 5}   # variants a family can supply before plays are repeated instead
+SONG_FAMILIES = ("guide_tones", "chord_tones", "approach_notes")
+FAMILY_CAP = {"long_tones": 3, "scale": 5, "intervals": 4, "articulation": 4, "guide_tones": 5, "chord_tones": 5, "approach_notes": 4}   # variants a family can supply before plays are repeated instead
 MAX_COMFORT_REPS = 3        # more plays of one exercise than this and another variant of the family is added instead
 MAX_ITEMS = 12
 TOLERANCE = 0.08            # a plan's total stays within 8% (or 20 s) of the requested length when the exercises allow it
@@ -50,6 +52,8 @@ _FAMILY_WORDS: dict[str, str] = {
     r"intervals?|interval\s+(?:work|training)|thirds|fourths|fifths|sixths|sevenths|octaves": "intervals",
     r"articulat\w*|tongu\w*|staccato|legato|slurs?|slurred|two[\s-]?note": "articulation",
     r"guide[\s-]?tones?": "guide_tones",
+    r"arpeggios?|chord[\s-]?tones?": "chord_tones",
+    r"approach(?:es)?(?:[\s-](?:notes?|tones?))?|enclosures?": "approach_notes",
 }
 _FAMILY_ANY = "|".join(f"(?:{p})" for p in _FAMILY_WORDS)
 
@@ -237,7 +241,8 @@ OP_REMOVE_FAMILY, OP_REMOVE_ITEM, OP_ADD_FAMILY, OP_MORE_FAMILY = "remove_family
 OP_ITEM_SLOWER, OP_ITEM_FASTER, OP_ITEM_TEMPO, OP_WHOLE_SLOWER, OP_WHOLE_FASTER = "item_slower", "item_faster", "item_tempo", "whole_slower", "whole_faster"
 OP_INTERVAL, OP_NEXT, OP_PREV, OP_ALL, OP_GOTO, OP_UNDO, OP_REDO, OP_UNSUPPORTED = "interval", "next", "prev", "all", "goto", "undo", "redo", "unsupported"
 OP_SECTION, OP_BARS, OP_TONES, OP_SMOOTH, OP_INSTRUMENT, OP_EXPLAIN = "section", "bars", "tones", "smooth", "instrument", "explain"
-SONG_OPS = {OP_SECTION, OP_BARS, OP_TONES, OP_SMOOTH, OP_EXPLAIN}
+OP_ARP_START, OP_APPROACH_KIND, OP_ITEM_LEVEL = "arp_start", "approach_kind", "item_level"
+SONG_OPS = {OP_SECTION, OP_BARS, OP_TONES, OP_SMOOTH, OP_EXPLAIN, OP_ARP_START, OP_APPROACH_KIND}
 
 _UNDO = re.compile(r"^\s*(?:please\s+)?(?:undo|revert)(?:\s+(?:that|it|this|the\s+last\s+(?:change|one|edit)|my\s+last\s+change))?[\s.!]*$|^\s*go\s+back\s+to\s+(?:before|the\s+previous\s+version)[\s.!]*$", re.I)
 _REDO = re.compile(r"^\s*(?:please\s+)?(?:redo|do\s+(?:that|it)\s+again|put\s+(?:that|it)\s+back)(?:\s+(?:that|it|this))?[\s.!]*$", re.I)
@@ -404,6 +409,13 @@ _SMOOTH = re.compile(r"\b(?:smoother|smooth(?:er)?\s+(?:voice[\s-]?leading|movem
 _EXPLAIN = re.compile(r"\b(?:explain|why)\b", re.I)
 _EXPLAIN_SUBJECT = re.compile(r"\b(?:notes?|work|works|line|chosen|choose|picked|guide|those|these|that)\b", re.I)
 _CHANGE_VERB = re.compile(r"\b(?:change|switch|move|put|transpose|convert|swap)\b", re.I)
+_CHORDLINE = re.compile(r"\barpeggios?\b|\bchord[\s-]?tones?\b|\bapproach(?:es|ing)?\b|\bapproach[\s-](?:notes?|tones?)\b|\benclosures?\b", re.I)
+_SONG_SCOPE_STRICT = re.compile(_SONG_SCOPE.pattern.replace(r"|warm[\s-]?up", ""), re.I)
+_WHOLE_SONG = re.compile(r"\b(?:the\s+)?(?:whole|entire|full|complete)\s+(?:song|tune|form|chorus|chart|progression)\b|\bwhole\s+thing\b", re.I)
+_PREPARE_FOR = re.compile(r"\bprepare\s+(?:me|us)\s+for\s+(?:soloing|improvis\w*)", re.I)
+_START_RE = re.compile(r"\b(?:start|begin)(?:ning)?\s+(?:each|every|all|the)?\s*(?:arpeggios?|one|chord|them)?s?\s*(?:on|with|from)\s+(?:the\s+)?(root|third|3rd|fifth|5th|seventh|7th)\b", re.I)
+_APPROACH_KIND_RE = re.compile(r"\b(?:add|include|use|try|put\s+in|give\s+me|switch\s+to|change\s+to|make\s+(?:them|it))\s+(?:in\s+)?(?:some\s+|an?\s+|the\s+)?"
+                               r"(chromatic\s+|diatonic\s+|double[\s-]chromatic\s+)?(approach(?:es)?(?:[\s-](?:notes?|tones?))?|enclosures?)(?:\s+(?:from\s+)?(below|above))?\b", re.I)
 _NAMED_OVER = re.compile(r"\bover\s+(?:the\s+changes\s+(?:of|to|from)\s+)?((?:[A-Z0-9][\w'’&.\-]*)(?:\s+(?!(?:please|with|using|at|chorus|changes|tune|song|and|today|now)\b)[A-Za-z0-9][\w'’&.\-]*){0,6})")
 
 
@@ -458,8 +470,33 @@ def song_request_info(question: str) -> dict[str, Any]:
     m = _NAMED_OVER.search(q)
     if m and m.group(1)[:1].isupper() and not _SPAN_CHORDS.search(q):
         named = m.group(1).strip(" .,!?;")
+    found = sorted(((m.start(), f) for pat, f in _FAMILY_WORDS.items() if f in SONG_FAMILIES or True for m in [re.search(rf"\b(?:{pat})\b", low, re.I)] if m), key=lambda t: t[0])
+    spoken = [f for _i, f in found]
+    song_fams = [f for f in spoken if f in SONG_FAMILIES]
     return {"wants_song": is_song_request(q), "guide_explicit": bool(_GUIDE.search(low)), "section": section_word(low, verbs=False) or section_word(low, verbs=True),
-            "bars": bars_spec(low), "tones": tones_word(low, strict=False), "named": named}
+            "bars": bars_spec(low), "tones": tones_word(low, strict=False), "named": named, "whole": bool(_WHOLE_SONG.search(low)), "song_families": song_fams, "spoken": spoken,
+            "chord_start": _start_word(low), "approach_kind": _approach_kind(low)}
+
+
+def _start_word(low: str) -> str:
+    m = _START_RE.search(low)
+    return {"root": "root", "third": "third", "3rd": "third", "fifth": "fifth", "5th": "fifth", "seventh": "seventh", "7th": "seventh"}[m.group(1).lower()] if m else ""
+
+
+def _approach_kind(low: str) -> str:
+    """'below' | 'above' | 'diatonic' | 'double' | 'enclosure' | '' for the approach the words ask for."""
+    if re.search(r"\benclosures?\b", low):
+        return "enclosure"
+    if re.search(r"\bdouble[\s-]chromatic\b", low):
+        return "double_above" if re.search(r"\babove\b", low) else "double"
+    if re.search(r"\bdiatonic\s+approach", low):
+        return "diatonic"
+    if re.search(r"\bapproach\w*", low) or re.search(r"\bchromatic\b", low):
+        if re.search(r"\bbelow\b", low) and not re.search(r"\babove\b", low):
+            return "below"
+        if re.search(r"\babove\b", low) and not re.search(r"\bbelow\b", low):
+            return "above"
+    return ""
 
 
 def is_song_request(question: str) -> bool:
@@ -479,6 +516,11 @@ def is_song_request(question: str) -> bool:
         return True
     if guide and asks and (scope or warm):
         return True
+    chordline = bool(_CHORDLINE.search(low))
+    if warm and (chordline or _SONG_SCOPE_STRICT.search(low)):
+        return True
+    if _PREPARE_FOR.search(low) or (guide and chordline and asks):
+        return True
     if th7 and asks and re.search(r"\b(?:these\s+chords|the\s+chords|the\s+changes|chord\s+changes|progression|chorus|song|tune|head|bridge|section)\b", low):
         return True
     return False
@@ -488,6 +530,16 @@ def song_revision(low: str, section_names: tuple[str, ...] | list[str] = ()) -> 
     """A change that only makes sense for a song-aware warmup (or an instrument change), read from the words; None when the message is not one."""
     if _EXPLAIN.search(low) and _EXPLAIN_SUBJECT.search(low) and not re.search(r"\b(?:make|change|add|remove|drop|set)\b", low):
         return {"op": OP_EXPLAIN}
+    sw = _start_word(low)
+    if sw and re.search(r"\b(?:arpeggios?|each|every|all|them)\b", low):
+        return {"op": OP_ARP_START, "start": sw}
+    ak = _APPROACH_KIND_RE.search(low)
+    if ak:
+        kind = _approach_kind(low)
+        if kind:
+            return {"op": OP_APPROACH_KIND, "kind": kind}
+    if _WHOLE_SONG.search(low) and re.search(r"\b(?:use|do|play|practice|go|switch|over|for|now|work|back|take|try)\b", low) and not re.search(r"\b(?:slower|faster|shorter|longer)\b", low):
+        return {"op": OP_SECTION, "section": "__whole__"}
     spec = bars_spec(low)
     if spec and re.search(r"\b(?:just|only|use|do|play|practice|work\s+on|limit|restrict|go\s+back|the|first|last|bars?)\b", low) and not re.search(r"\b(?:exercise|exercises|minutes?)\b", low):
         return {"op": OP_BARS, "spec": spec}
@@ -521,7 +573,7 @@ def is_warmup_message(question: str) -> bool:
     return is_warmup_request(question) or (parse_revision(question) or {}).get("op") in {
         OP_NEXT, OP_PREV, OP_ALL, OP_GOTO, OP_SHORTER, OP_LONGER, OP_MINUTES, OP_HARDER, OP_EASIER, OP_LEVEL, OP_REMOVE_FAMILY, OP_REMOVE_ITEM,
         OP_ADD_FAMILY, OP_MORE_FAMILY, OP_ITEM_SLOWER, OP_ITEM_FASTER, OP_ITEM_TEMPO, OP_WHOLE_SLOWER, OP_WHOLE_FASTER, OP_INTERVAL,
-        OP_SECTION, OP_BARS, OP_TONES, OP_SMOOTH, OP_INSTRUMENT, OP_EXPLAIN}
+        OP_SECTION, OP_BARS, OP_TONES, OP_SMOOTH, OP_INSTRUMENT, OP_EXPLAIN, OP_ARP_START, OP_APPROACH_KIND, OP_ITEM_LEVEL}
 
 
 # ---------------------------------------------------------------- the plan
@@ -529,7 +581,9 @@ def is_warmup_message(question: str) -> bool:
 
 DEFAULT_FAMILIES = {"Beginner": ["long_tones", "scale", "articulation"], "Intermediate": ["long_tones", "scale", "intervals", "articulation"],
                     "Advanced": ["long_tones", "scale", "intervals", "articulation"]}
-BASE_WEIGHT = {"long_tones": 1.0, "scale": 1.3, "intervals": 1.2, "articulation": 1.0, "guide_tones": 1.4}
+BASE_WEIGHT = {"long_tones": 1.0, "scale": 1.3, "intervals": 1.2, "articulation": 1.0, "guide_tones": 1.4, "chord_tones": 1.4, "approach_notes": 1.3}
+DEFAULT_SONG_FAMILIES = {"Beginner": ["guide_tones", "chord_tones"], "Intermediate": ["scale", "guide_tones", "chord_tones", "approach_notes"],
+                         "Advanced": ["scale", "guide_tones", "chord_tones", "approach_notes"]}
 PROGRESSIVE_INTERVALS = {"Beginner": ["thirds", "fourths"], "Intermediate": ["thirds", "fourths", "fifths"], "Advanced": ["thirds", "fourths", "fifths", "sixths"]}
 DEFAULT_INTERVALS = {"Beginner": ["thirds"], "Intermediate": ["thirds", "fourths"], "Advanced": ["thirds", "fourths", "fifths"]}
 DEFAULT_ARTIC = {"Beginner": ["repeated", "two_note"], "Intermediate": ["slur_tongue", "two_note", "repeated", "contrast"],
@@ -571,9 +625,9 @@ def _items_of(spec: dict[str, Any], family: str) -> list[dict[str, Any]]:
     return [it for it in spec["items"] if it["family"] == family]
 
 
-def _guide_combo(spec: dict[str, Any], variant: int) -> tuple[str, str, str]:
-    """(tones, first tone, rhythm style) of guide-tone variant ``variant`` at the plan's level, after any 'thirds only' / 'sevenths only' choice."""
-    table = ws.VARIANTS[spec["level"]]
+def _guide_combo(spec: dict[str, Any], variant: int, level: str | None = None) -> tuple[str, str, str]:
+    """(tones, first tone, rhythm style) of guide-tone variant ``variant`` at the plan's (or the item's) level, after any 'thirds only' / 'sevenths only' choice."""
+    table = ws.VARIANTS[level or spec["level"]]
     tones, first, style = table[int(variant) % len(table)]
     want = spec.get("tones") or ""
     if want in ("thirds", "sevenths"):
@@ -583,13 +637,33 @@ def _guide_combo(spec: dict[str, Any], variant: int) -> tuple[str, str, str]:
     return tones, first, style
 
 
+def _chord_combo(spec: dict[str, Any], variant: int, level: str | None = None) -> tuple[str, str, str, str]:
+    table = wc.CHORD_VARIANTS[level or spec["level"]]
+    direction, shape, start, art = table[int(variant) % len(table)]
+    return direction, shape, (spec.get("chord_start") or start), art
+
+
+def _approach_combo(spec: dict[str, Any], variant: int, level: str | None = None) -> tuple[str, str]:
+    table = wc.APPROACH_VARIANTS[level or spec["level"]]
+    kind, target = table[int(variant) % len(table)]
+    return (spec.get("approach_kind") or kind), target
+
+
+def _song_combo(spec: dict[str, Any], family: str, variant: int, level: str | None = None) -> tuple:
+    return {"guide_tones": _guide_combo, "chord_tones": _chord_combo, "approach_notes": _approach_combo}[family](spec, variant, level)
+
+
+def _variant_count(family: str, level: str) -> int:
+    return len({"guide_tones": ws.VARIANTS, "chord_tones": wc.CHORD_VARIANTS, "approach_notes": wc.APPROACH_VARIANTS}[family][level])
+
+
 def _dedupe_guide(spec: dict[str, Any]) -> None:
-    """After a level or tones change two guide-tone variants can mean the same music; keep the first of each."""
-    seen: set[tuple[str, str, str]] = set()
+    """After a level or tones / start / approach-kind change two variants can mean the same music; keep the first of each."""
+    seen: set[tuple] = set()
     kept = []
     for d in spec["items"]:
-        if d["family"] == "guide_tones":
-            combo = _guide_combo(spec, d["params"].get("variant", 0))
+        if d["family"] in SONG_FAMILIES:
+            combo = (d["family"], *_song_combo(spec, d["family"], d["params"].get("variant", 0), d.get("level")))
             if combo in seen:
                 continue
             seen.add(combo)
@@ -601,14 +675,14 @@ def _new_item(spec: dict[str, Any], family: str) -> dict[str, Any] | None:
     """The next exercise of ``family`` (a new variant of what the family already has); None when the family has no more variants."""
     have = _items_of(spec, family)
     n = len(have)
-    if n >= FAMILY_CAP.get(family, 4):
+    if n >= (spec.get("family_caps") or {}).get(family, FAMILY_CAP.get(family, 4)):
         return None
     if family == "intervals" and spec.get("widening") and n >= len(spec.get("intervals") or []):
         return None                       # a widening run ends at its widest interval; extra time becomes extra plays, never a narrower one again
     params: dict[str, Any] = {}
-    if family == "guide_tones":
-        taken = {_guide_combo(spec, d["params"].get("variant", 0)) for d in have}
-        v = next((i for i in range(len(ws.VARIANTS[spec["level"]])) if _guide_combo(spec, i) not in taken), None)
+    if family in SONG_FAMILIES:
+        taken = {_song_combo(spec, family, d["params"].get("variant", 0), d.get("level")) for d in have}
+        v = next((i for i in range(_variant_count(family, spec["level"])) if _song_combo(spec, family, i) not in taken), None)
         if v is None:
             return None                    # every distinct way of playing the line at this level is already in the plan
         return {"uid": _next_uid(spec), "family": family, "params": {"variant": v}, "tempo": None, "size": spec.get("size") or "full", "keep": n == 0}
@@ -663,7 +737,10 @@ def initial_items(spec: dict[str, Any]) -> None:
 
 def _ordered(spec: dict[str, Any]) -> list[dict[str, Any]]:
     """Exercises in a sensible order: tone first, then fingers, then the mouth, then the harder shapes; a family's variants stay in sequence."""
-    rank = {"long_tones": 0, "scale": 1, "guide_tones": 2, "intervals": 3, "articulation": 4}
+    rank = {"long_tones": 0, "scale": 1, "guide_tones": 2, "chord_tones": 2.5, "approach_notes": 2.8, "intervals": 3, "articulation": 4}
+    pref = spec.get("order_pref") or []
+    if pref:                                   # the musician named the exercises in an order: keep it
+        rank = {f: float(i) for i, f in enumerate(pref)} | {f: 100.0 + r for f, r in rank.items() if f not in pref}
     return sorted(spec["items"], key=lambda it: (rank.get(it["family"], 9), spec["items"].index(it)))
 
 
@@ -673,11 +750,11 @@ def _shift_key(tonic: str, tonality: str, k: int) -> tuple[str, str]:
 
 def build_item(player: we.Player, spec: dict[str, Any], desc: dict[str, Any]) -> dict[str, Any]:
     """One rendered exercise: notes, staff, tempo and the time one play takes. Raises ``WarmupUnavailable`` if it can't be built correctly."""
-    level = spec["level"]
+    level = (desc.get("level") if desc["family"] in SONG_FAMILIES else None) or spec["level"]
     fam = desc["family"]
     params = dict(desc["params"])
     base_tonic, base_tonality = we.practical_key(*we.split_key(player.written_key))
-    if fam == "guide_tones":
+    if fam in SONG_FAMILIES:
         tonic, tonality = base_tonic, base_tonality
     elif fam == "long_tones":
         tonic, tonality = base_tonic, base_tonality
@@ -697,18 +774,29 @@ def build_item(player: we.Player, spec: dict[str, Any], desc: dict[str, Any]) ->
         tones, first, style = _guide_combo(spec, int(params.get("variant") or 0))
         built = ws.build(player, level, spec["song"], sel["section"], tuple(sel["bars"]) if sel.get("bars") else None, tones=tones, first=first, style=style,
                          smooth=bool(spec.get("smooth")))
+    elif fam == "chord_tones":
+        sel = spec["song_sel"]
+        direction, shape, start, art = _chord_combo(spec, int(params.get("variant") or 0), level)
+        built = wc.build_chord_tones(player, level, spec["song"], sel["section"], tuple(sel["bars"]) if sel.get("bars") else None, direction=direction, shape=shape,
+                                     start=start, art=art, smooth=bool(spec.get("smooth")))
+    elif fam == "approach_notes":
+        sel = spec["song_sel"]
+        kind, target = _approach_combo(spec, int(params.get("variant") or 0), level)
+        built = wc.build_approach(player, level, spec["song"], sel["section"], tuple(sel["bars"]) if sel.get("bars") else None, kind=kind, target=target,
+                                  smooth=bool(spec.get("smooth")))
     else:
         built = we.BUILDERS[fam](player, level, tonic, tonality, **kwargs)
     scale = float(spec.get("tempo_scale") or 1.0)
     bpm = int(desc.get("tempo") or round(built.bpm * scale))
     bpm = max(36, min(160, bpm))
     abc, diag = we.render(player, built, tonic, tonality, title=built.title, bpm=bpm)
-    checks = ws.verify(player, level, built, diag) if fam == "guide_tones" else we.verify(player, level, built, tonic, tonality, diag)
+    checks = (ws.verify(player, level, built, diag) if fam == "guide_tones" else wc.verify(player, level, built, diag) if fam in SONG_FAMILIES
+              else we.verify(player, level, built, tonic, tonality, diag))
     seconds = we.pass_seconds(built, bpm)
     pitched = [n for n in built.notes if not n.rest]
     written = [n.midi for n in pitched]
     return {
-        "uid": desc["uid"], "family": fam, "params": params, "title": built.title, "abc": abc, "bpm": bpm, "base_bpm": built.bpm,
+        "uid": desc["uid"], "family": fam, "params": params, "item_level": level, "title": built.title, "abc": abc, "bpm": bpm, "base_bpm": built.bpm,
         "tempo_override": desc.get("tempo"), "size": desc.get("size") or "full", "key": we.key_text(tonic, tonality), "tonic": tonic, "tonality": tonality,
         "bars": int(round(float(we.total_beats(built.notes) / we.BEATS_PER_BAR))), "pass_seconds": round(seconds, 2), "how": list(built.how),
         "listen": list(built.listen), "meta": dict(built.meta), "written_midi": written, "sounding_midi": [m - player.offset for m in written],
@@ -956,7 +1044,7 @@ def _a(word: str) -> str:
 
 
 def _family_phrase(family: str, n: int) -> str:
-    base = {"long_tones": "long tones", "scale": "scale", "intervals": "interval", "articulation": "articulation", "guide_tones": "guide-tone"}[family]
+    base = {"long_tones": "long tones", "scale": "scale", "intervals": "interval", "articulation": "articulation", "guide_tones": "guide-tone", "chord_tones": "chord-tone arpeggio", "approach_notes": "approach-note"}[family]
     if family == "long_tones":
         return "long tones" + (f" ({n} exercises)" if n != 1 else "")
     return f"{n} {base} exercise{'s' if n != 1 else ''}"
@@ -990,7 +1078,9 @@ def _header(plan: dict[str, Any], label: str) -> str:
     if song:
         sel = plan["spec"]["song_sel"]
         bars = f"bars {sel['bars'][0]}–{sel['bars'][1]} of " if sel.get("bars") else ""
-        head += (f"\n\n**Built from “{song['title'] or 'the active song'}”** — {bars}{sel['section']}, in the song's Practice Key ({we.key_text(*we.split_key(song['practice_key']))}, concert pitch); "
+        parts = ws.section_parts(song, sel["section"])
+        where = sel["section"] if len(parts) == 1 else f"the whole form ({' + '.join(x[0] for x in parts)}, {parts[-1][2]} bars)"
+        head += (f"\n\n**Built from “{song['title'] or 'the active song'}”** — {bars}{where}, in the song's Practice Key ({we.key_text(*we.split_key(song['practice_key']))}, concert pitch); "
                  f"the chord symbols above each staff are written for your instrument. One play is one pass through that part of the chart (chart revision `{song['hash']}`).")
     return head
 
@@ -1056,21 +1146,14 @@ def _song_summary(plan: dict[str, Any]) -> dict[str, Any]:
     sel = plan["spec"]["song_sel"]
     return {"title": song["title"], "hash": song["hash"], "section": sel["section"], "bars": sel.get("bars"), "practice_key": song["practice_key"], "meter": song["meter"],
             "source": song.get("source"), "tones": plan["spec"].get("tones") or "", "smooth": bool(plan["spec"].get("smooth")),
-            "unsupported": [{"bar": p["bar"], "chord": p["concert"], "reason": p["reason"]} for r in plan["items"] if r["family"] == "guide_tones"
+            "unsupported": [{"bar": p["bar"], "chord": p["concert"], "reason": p["reason"]} for r in plan["items"] if r["family"] in SONG_FAMILIES
                             for p in (r.get("meta") or {}).get("unsupported", [])][:12]}
 
 
 _ROLE_WORD = {"3": "third", "7": "seventh", "6": "sixth"}
 
 
-def _explain_text(plan: dict[str, Any], view: dict[str, Any]) -> str:
-    """Why the notes work, from the chords and notes actually stored in this warmup (nothing is looked up or guessed)."""
-    guides = [r for r in plan["items"] if r["family"] == "guide_tones"]
-    if not guides:
-        r = plan["items"][max(0, min(int(view.get("index") or 0), len(plan["items"]) - 1))] if view.get("mode") == "item" else plan["items"][0]
-        lines = [f"**Why these notes work — {r['title']}**", *[f"- {h}" for h in r["how"]], *[f"- {x}" for x in r["listen"]]]
-        return "\n".join(lines) + "\n\n_This warmup isn't built from a song's chords; ask for “guide tones over the chorus” to get notes tied to a chart._"
-    r = guides[max(0, min(int(view.get("index") or 0), len(plan["items"]) - 1))] if view.get("mode") == "item" and plan["items"][min(int(view.get("index") or 0), len(plan["items"]) - 1)]["family"] == "guide_tones" else guides[0]
+def _explain_guide(r: dict[str, Any]) -> list[str]:
     meta = r["meta"]
     lines = [f"**Why these notes work — {r['title']}**",
              "The third says whether a chord is major or minor and the seventh gives its color (dominant, major-seventh, half-diminished...). A line that lands on them at each change outlines the harmony itself, so you hear the chords even with nothing else playing.",
@@ -1088,9 +1171,60 @@ def _explain_text(plan: dict[str, Any], view: dict[str, Any]) -> str:
         lines += ["", "**Where one chord leads to the next:**"]
         for x in meta["resolutions"]:
             lines.append(f"- Bar {x['from_bar']} → {x['to_bar']}: the {_ROLE_WORD[x['from_role']]} of {x['from_chord']} ({x['from_note']}) moves a {x['step']} to the third of {x['to_chord']} ({x['to_note']}).")
-    lines += ["", f"Voice-leading: the largest leap in this line is {meta['largest_leap']} semitones and the average {meta['mean_leap']} (say “make the guide-tone movement smoother” to reduce it)."]
-    return "\n".join(lines)
+    lines += ["", f"Voice-leading: the largest leap in this line is {meta['largest_leap']} semitones and the average {meta['mean_leap']} (say “make the movement smoother” to reduce it)."]
+    return lines
 
+
+def _explain_chordline(r: dict[str, Any]) -> list[str]:
+    meta = r["meta"]
+    approach = r["family"] == "approach_notes"
+    lines = [f"**Why these notes work — {r['title']}**",
+             ("Every note except the approach notes is a tone of the chord it sits under (root, third, fifth, seventh), so the line outlines each chord. "
+              "An approach note is the one kind of note that is NOT a chord tone: it sits a step away from a target chord tone and resolves onto it exactly where the chart changes chord.")
+             if approach else
+             "Each bar plays the notes of that chord in turn (root, third, fifth, seventh, with a sixth chord's sixth in the seventh's place), so you are playing the chord itself, and the line connects smoothly into the next chord.",
+             ""]
+    for p in meta["segments"]:
+        where = f"bar {p['bar']}" + (f", beat {p['beat'] + 1:g}" if p["beat"] else "")
+        if not p["supported"]:
+            lines.append(f"- {where}: **{p['concert']}** — rests: {p['reason']}.")
+            continue
+        tones = [f"{lab} {p[k]}" for lab, k in (("root", "root"), ("third", "third"), ("fifth", "fifth"), (_ROLE_WORD.get(p.get("upper_role"), "seventh"), "upper")) if p.get(k)]
+        conc = f" (concert {p['concert']})" if p["concert"] != p["written"] else ""
+        played = " ".join(n["name"] + ("*" if n["role"] == "approach" else "") for n in p["notes"])
+        lines.append(f"- {where}: **{p['written']}**{conc} — chord tones: {', '.join(tones)}. You play: {played}" + (" (* = approach note)" if approach and "*" in played else ""))
+    if approach:
+        lines += ["", "**Each approach and what it resolves to:**"]
+        for a in meta.get("approaches", []):
+            word = {"R": "root", "3": "third", "5": "fifth", "7": "seventh", "6": "sixth"}.get(a["target_role"], a["target_role"])
+            steps = " then ".join(f"{n} ({o:+d} semitone{'s' if abs(o) != 1 else ''} from the target)" for n, o in zip(a["approach"], a["offsets"]))
+            lines.append(f"- Bar {a['from_bar']} → {a['to_bar']} (beat {a['to_beat'] + 1:g}): {a['from_chord']} → {a['to_chord']}: {steps} → the {word} {a['target']}"
+                         + (" — back to the top of the form for the repeat" if a["loop_back"] else "") + (f". {a['note']}" if a.get("note") else "") + ".")
+        for sk in meta.get("skipped_approaches", []):
+            lines.append(f"- No approach into bar {sk['to_bar']} ({sk['to_chord']}): {sk['reason']}.")
+    lines += ["", f"Voice-leading: the largest leap is {meta['largest_leap']} semitones and the average {meta['mean_leap']} (say “make the movement smoother” to reduce it)."]
+    return lines
+
+
+def _explain_text(plan: dict[str, Any], view: dict[str, Any]) -> str:
+    """Why the notes work, from the chords and notes actually stored in this warmup (nothing is looked up or guessed)."""
+    songs = [r for r in plan["items"] if r["family"] in SONG_FAMILIES]
+    if not songs:
+        r = plan["items"][max(0, min(int(view.get("index") or 0), len(plan["items"]) - 1))] if view.get("mode") == "item" else plan["items"][0]
+        lines = [f"**Why these notes work — {r['title']}**", *[f"- {h}" for h in r["how"]], *[f"- {x}" for x in r["listen"]]]
+        return "\n".join(lines) + "\n\n_This warmup isn't built from a song's chords; ask for “guide tones over the chorus” to get notes tied to a chart._"
+    if view.get("mode") == "item" and plan["items"][min(int(view.get("index") or 0), len(plan["items"]) - 1)]["family"] in SONG_FAMILIES:
+        picks = [plan["items"][min(int(view.get("index") or 0), len(plan["items"]) - 1)]]
+    else:
+        picks, seen = [], set()
+        for r in songs:                                   # the whole plan: one explanation per kind of song exercise
+            if r["family"] not in seen:
+                seen.add(r["family"])
+                picks.append(r)
+    out: list[str] = []
+    for r in picks:
+        out += (_explain_guide(r) if r["family"] == "guide_tones" else _explain_chordline(r)) + [""]
+    return "\n".join(out).rstrip()
 
 
 def _item_summary(r: dict[str, Any]) -> dict[str, Any]:
@@ -1110,7 +1244,8 @@ def _simple(direct: str, steps: list[str] | None = None, *, failed: str = "", pl
 
 
 _SONG_SUPPORTED = ("; for a song-aware warmup also “just the first four bars” (or “the last four bars”, “bars 5 to 8”), “only the bridge” (any section of the song), "
-                   "“use thirds only”, “now practice the sevenths”, “make the guide-tone movement smoother”, “change it to tenor sax”, and “explain why those notes work”")
+                   "“the whole song”, “use thirds only”, “now practice the sevenths”, “start each arpeggio on the third”, “add approaches from below”, “use an enclosure before the next chord”, "
+                   "“make the arpeggio exercise more advanced”, “make the movement smoother”, “change it to tenor sax”, and “explain why those notes work”")
 _SUPPORTED = ("make the whole warmup shorter or longer (or “make it 5 minutes”), more advanced or easier, remove the long tones (or any family, or “remove exercise 2”), "
               "add more articulation work (or a scale, interval or long-tone exercise), make one exercise slower or faster (“make the second exercise slower”, "
               "“set exercise 3 to 80 BPM”), change the interval exercise to thirds, fourths, fifths and so on, go through the exercises one at a time "
@@ -1140,12 +1275,12 @@ def _song_refusal(why: str, offer_ordinary: bool = True) -> CoachResponse:
 
 def _song_setup(question: str, ctx: Any, req: dict[str, Any], sinfo: dict[str, Any], assumptions: list[str]) -> tuple[dict[str, Any] | None, dict[str, Any] | None, CoachResponse | None, str]:
     """(song record, selection, an early answer, why a song-aware warmup could not be built when an ordinary one is still fine)."""
-    explicit = sinfo["guide_explicit"] or "guide_tones" in req["families"]
+    explicit = bool(sinfo["guide_explicit"] or sinfo["song_families"] or set(req["families"]) & set(SONG_FAMILIES))
     song, why = ws.read_song(ctx)
     if song is None:
         if sinfo["named"] or explicit:
             who = f"“{sinfo['named']}”" if sinfo["named"] else "the song"
-            return None, None, _song_refusal(f"I can't build a guide-tone exercise over {who} yet: {why}. Select the song you want to practice (or open its chart), then ask again — "
+            return None, None, _song_refusal(f"I can't build a chord-aware exercise over {who} yet: {why}. Select the song you want to practice (or open its chart), then ask again — "
                                               "I only use the active song's chart and won't guess its chords."), ""
         return None, None, None, f"I couldn't read an active song's chart ({why})"
     if sinfo["named"]:
@@ -1157,9 +1292,21 @@ def _song_setup(question: str, ctx: Any, req: dict[str, Any], sinfo: dict[str, A
         msg = f"this chart is in {song.get('meter')}; chord-aware warmups are written in 4/4 for now"
         return (None, None, _song_refusal(f"I can't build that yet: {msg}."), "") if explicit else (None, None, None, msg)
     asked = ws.find_section(song["order"], question) or sinfo["section"]
-    name, how = ws.pick_section(song, asked)
+    if sinfo["whole"]:
+        song2, how_w, why_w = ws.with_whole_form(song)
+        if not how_w:
+            return None, None, _song_refusal(f"I can't build the whole form: {why_w}.", offer_ordinary=False), ""
+        parts = ws.whole_form(song)[0]
+        if song2 is song:
+            name, how = parts[0], "whole_named"
+            assumptions.append(f"The whole form is the chart's own “{name}” section ({len(ws.section_slots(song, name))} bars).")
+        else:
+            song, name, how = song2, ws.WHOLE_FORM_NAME, "whole_form"
+            assumptions.append(f"The whole form is the chart's sections in the order it lists them: {' + '.join(parts)} ({len(ws.section_slots(song, name))} bars). I haven't added or repeated anything the chart doesn't have.")
+    else:
+        name, how = ws.pick_section(song, asked)
     sel: dict[str, Any] = {"section": name, "how": how, "bars": None}
-    n_bars = len(song["sections"][name])
+    n_bars = len(ws.section_slots(song, name))
     b = sinfo["bars"] or {}
     if b.get("first"):
         sel["bars"] = [1, min(n_bars, int(b["first"]))]
@@ -1172,7 +1319,9 @@ def _song_setup(question: str, ctx: Any, req: dict[str, Any], sinfo: dict[str, A
         sel["bars"] = [a, z]
     if sel["bars"] == [1, n_bars]:
         sel["bars"] = None
-    if asked and how in ("active_section", "not_an_intro"):
+    if how in ("whole_named", "whole_form"):
+        pass
+    elif asked and how in ("active_section", "not_an_intro"):
         assumptions.append(f"I couldn't find a section called “{asked}” in this chart ({', '.join(song['order'])}), so I used {name}.")
     elif how == "named" and ws._norm(sinfo["section"]) in ("chorus", "choruses", "head", "form") and ws._norm(name) != ws._norm(sinfo["section"]):
         assumptions.append(f"This chart has no section named “{sinfo['section']}”, so I used {name} as the chorus.")
@@ -1210,7 +1359,7 @@ def create(question: str, session_ref: Any, ami_ctx: dict[str, Any] | None = Non
     sinfo = song_request_info(question)
     song = sel = None
     song_fallback = ""
-    explicit_guide = bool(sinfo["guide_explicit"] or "guide_tones" in req["families"])
+    explicit_guide = bool(sinfo["guide_explicit"] or sinfo["song_families"] or set(req["families"]) & set(SONG_FAMILIES))
     if (sinfo["wants_song"] or explicit_guide) and sinfo["tones"] and set(req["families"]) <= {"intervals", "guide_tones"}:
         # in a song-aware request "thirds" / "sevenths" name the guide tones to practice, not an interval exercise
         req = {**req, "families": [f for f in req["families"] if f != "intervals"], "intervals": []}
@@ -1218,8 +1367,8 @@ def create(question: str, session_ref: Any, ami_ctx: dict[str, Any] | None = Non
         song, sel, early, song_fallback = _song_setup(question, ctx, req, sinfo, assumptions)
         if early is not None:
             return early
-        if song is not None and req["families"] and "guide_tones" not in req["families"]:
-            song_fallback, song, sel = "guide tones over the song's chords are included only when you ask for them", None, None
+        if song is not None and req["families"] and not set(req["families"]) & set(SONG_FAMILIES):
+            song_fallback, song, sel = "song-aware exercises (guide tones, arpeggios, approach notes) are included only when you ask for them", None, None
     # length
     minutes = req["minutes"]
     if minutes is None:
@@ -1271,9 +1420,22 @@ def create(question: str, session_ref: Any, ami_ctx: dict[str, Any] | None = Non
                 return _song_refusal(f"I can't give you a trustworthy guide-tone exercise over {sel['section']} for {player.label}: {why_not}. I won't invent chord tones or drop harmonic time.")
             song_fallback, song, sel = why_not, None, None
     # families
-    families = ["guide_tones"] if song is not None and not req["families"] else (list(req["families"]) or list(DEFAULT_FAMILIES[level]))
-    if song is None and "guide_tones" in families:
-        families = [f for f in families if f != "guide_tones"] or list(DEFAULT_FAMILIES[level])
+    order_pref: list[str] = []
+    mixed_default = False
+    if song is not None and req["families"]:
+        families = list(req["families"])
+        order_pref = [f for f in sinfo["spoken"] if f in families]       # the exercises the musician named, in the order they named them
+    elif song is not None and (sinfo["tones"] or sinfo["guide_explicit"]):
+        families = ["guide_tones"]
+    elif song is not None:
+        families = list(DEFAULT_SONG_FAMILIES[level])
+        mixed_default = True
+        assumptions.append("Because you asked to be warmed up for soloing over a song, I mixed " + ", ".join(we.FAMILY_LABEL[f].lower() for f in families)
+                           + " — say “only guide tones” or “just arpeggios” to narrow it, or name the exercises you want.")
+    else:
+        families = list(req["families"]) or list(DEFAULT_FAMILIES[level])
+    if song is None and set(families) & set(SONG_FAMILIES):
+        families = [f for f in families if f not in SONG_FAMILIES] or list(DEFAULT_FAMILIES[level])
     dropped: list[str] = []
     for f in list(families):
         reason = we.supports(player, f)
@@ -1298,7 +1460,11 @@ def create(question: str, session_ref: Any, ami_ctx: dict[str, Any] | None = Non
         "intervals": _interval_pool(req, families, level, assumptions), "widening": _widening(req, families), "artic": list(req["artic"]), "more": dict(req.get("more") or {}), "tempo_scale": 1.0, "size": "full",
         "items": [], "uid_counter": 0, "song_aware_requested": bool(req["song_aware"]), "source_question": _clean(question)[:200],
         "song": song, "song_sel": sel, "tones": (sinfo["tones"] if song is not None else ""), "smooth": False,
+        "chord_start": (sinfo["chord_start"] if song is not None else ""), "approach_kind": (sinfo["approach_kind"] if song is not None else ""), "order_pref": order_pref,
+        "family_caps": ({"scale": 1} if mixed_default else {}),
     }
+    if mixed_default:
+        spec["more"] = {**spec["more"], "scale": 0.4}                  # a short scale to start, not a third of the warmup
     initial_items(spec)
     try:
         plan = build_plan(player, spec)
@@ -1340,6 +1506,12 @@ def _resolve_ref(items: list[dict[str, Any]], ref: dict[str, Any]) -> tuple[list
             return [], f"There's no {we.FAMILY_LABEL[ref['family']].lower()} exercise in this warmup."
         return hits, ""
     return [], ""
+
+
+def _song_item_of(spec: dict[str, Any], ref: dict[str, Any]) -> dict[str, Any] | None:
+    """The single song exercise a reference points at ('the arpeggio exercise', 'exercise 2' when that is one), or None."""
+    hits, err = _resolve_ref(spec["items"], ref)
+    return hits[0] if (not err and len(hits) == 1 and hits[0]["family"] in SONG_FAMILIES) else None
 
 
 def _index_of(plan: dict[str, Any], uid: str) -> int:
@@ -1447,6 +1619,7 @@ def revise(op: dict[str, Any], question: str, session_ref: Any, ami_ctx: dict[st
     replan = True
     touched: set[str] = set()
     tempo_uid = ""
+    lvl_uid = ""
     if kind in (OP_SHORTER, OP_LONGER, OP_MINUTES):
         old_m = float(spec["minutes"])
         if kind == OP_MINUTES:
@@ -1525,6 +1698,20 @@ def revise(op: dict[str, Any], question: str, session_ref: Any, ami_ctx: dict[st
         changed.append(f"added {_a(we.FAMILY_LABEL[fam].lower())} exercise" + (" and gave that kind of exercise more of the time" if kind == OP_MORE_FAMILY else ""))
         touched.add(it["uid"])
         kept = f"every existing exercise's notes; the warmup stays {spec['minutes']:g} minutes, so the plays are re-planned."
+    elif kind in (OP_ITEM_SLOWER, OP_ITEM_FASTER) and op.get("challenge") and _song_item_of(spec, op["ref"]) is not None:
+        d = _song_item_of(spec, op["ref"])
+        cur = d.get("level") or spec["level"]
+        new = LEVEL_UP.get(cur) if kind == OP_ITEM_FASTER else LEVEL_DOWN.get(cur)
+        idx = _index_of(plan0, d["uid"])
+        if not new:
+            return _unsupported(session, plan0, f"Exercise {idx} is already at {cur}, the " + ("top" if kind == OP_ITEM_FASTER else "easiest") + " level I have for it.")
+        d["level"] = new
+        _dedupe_guide(spec)
+        touched.add(d["uid"])
+        lvl_uid = d["uid"]
+        replan = False
+        changed.append(f"exercise {idx} ({we.FAMILY_LABEL[d['family']].lower()}) {cur} → {new}: its rhythm, tempo and shapes are the {new} ones, on the same chords")
+        kept = "every other exercise exactly as it was; this one keeps about the same time by adjusting how many times you play it."
     elif kind in (OP_ITEM_SLOWER, OP_ITEM_FASTER, OP_ITEM_TEMPO):
         hits, err = _resolve_ref(spec["items"], op["ref"])
         if err:
@@ -1591,11 +1778,19 @@ def revise(op: dict[str, Any], question: str, session_ref: Any, ami_ctx: dict[st
             return _unsupported(session, plan0, "This warmup isn't built from a song's chords, so there are no bars, sections or guide tones to change. "
                                                 "Ask for one first — for example “Give me a guide-tone warmup over the chorus”.")
         sel = dict(spec["song_sel"])
-        n_bars = len(song["sections"][sel["section"]])
-        guide_uids = {d["uid"] for d in spec["items"] if d["family"] == "guide_tones"}
+        n_bars = len(ws.section_slots(song, sel["section"]))
+        guide_uids = {d["uid"] for d in spec["items"] if d["family"] in SONG_FAMILIES}
         touched |= guide_uids
         if kind == OP_SECTION:
-            name, how = ws.pick_section(song, op["section"])
+            if op["section"] == "__whole__":
+                song2, how_w, why_w = ws.with_whole_form(song)
+                if not how_w:
+                    return _unsupported(session, plan0, f"I can't build the whole form: {why_w}.")
+                parts = ws.whole_form(song)[0]
+                name, how = (parts[0], "named") if song2 is song else (ws.WHOLE_FORM_NAME, "named")
+                spec["song"], song = song2, song2
+            else:
+                name, how = ws.pick_section(song, op["section"])
             if how not in ("named",):
                 names = ", ".join(song["order"])
                 return _unsupported(session, plan0, f"This chart has no section called “{op['section']}”. Its sections are: {names}.")
@@ -1624,18 +1819,48 @@ def revise(op: dict[str, Any], question: str, session_ref: Any, ami_ctx: dict[st
             new_t = f"bars {new_bars[0]}–{new_bars[1]}" if new_bars else f"all {n_bars} bars"
             changed.append(f"{sel['section']}: {old_t} → {new_t}")
             spec["song_sel"] = {**sel, "bars": new_bars}
+        elif kind == OP_ARP_START:
+            if not any(d["family"] == "chord_tones" for d in spec["items"]):
+                return _unsupported(session, plan0, "There are no chord-tone arpeggio exercises in this warmup. Say “add arpeggios” first.")
+            if (spec.get("chord_start") or "") == op["start"]:
+                return _unsupported(session, plan0, f"The arpeggios already start on the {op['start']}.")
+            spec["chord_start"] = op["start"]
+            _dedupe_guide(spec)
+            changed.append(f"every arpeggio now starts on the {op['start']} of its chord" + (" (where the chord has one)" if op["start"] in ("fifth", "seventh") else ""))
+            touched = {d["uid"] for d in spec["items"] if d["family"] == "chord_tones"}
+        elif kind == OP_APPROACH_KIND:
+            if "approach_notes" not in spec["families"]:
+                reason = we.supports(player, "approach_notes")
+                if reason:
+                    return _unsupported(session, plan0, f"I can't add approach notes for {player.label}: {reason}.")
+                spec["families"].append("approach_notes")
+                spec["excluded"] = [f for f in spec.get("excluded") or [] if f != "approach_notes"]
+                it = _new_item(spec, "approach_notes")
+                if it:
+                    spec["items"].append(it)
+                    spec["items"] = _ordered(spec)
+                changed.append("added an approach-note exercise")
+            if (spec.get("approach_kind") or "") == op["kind"] and not changed:
+                return _unsupported(session, plan0, f"The approach-note exercises already use {wc.KIND_LABEL[op['kind']]}.")
+            spec["approach_kind"] = op["kind"]
+            _dedupe_guide(spec)
+            changed.append(f"approach notes now use {wc.KIND_LABEL[op['kind']]}")
+            touched = {d["uid"] for d in spec["items"] if d["family"] == "approach_notes"}
         elif kind == OP_TONES:
+            if not any(d["family"] == "guide_tones" for d in spec["items"]):
+                return _unsupported(session, plan0, "There are no guide-tone exercises in this warmup, so there is no third or seventh line to narrow. Say “add guide tones” first.")
             if (spec.get("tones") or "") == op["tones"]:
                 return _unsupported(session, plan0, f"The guide-tone exercises already use {ws.TONES_LABEL[op['tones']]}.")
             spec["tones"] = op["tones"]
             _dedupe_guide(spec)
             changed.append(f"guide tones: {ws.TONES_LABEL[op['tones']]}" + (" only" if op["tones"] != "both" else ""))
+            touched = {d["uid"] for d in spec["items"] if d["family"] == "guide_tones"}
         else:
             if spec.get("smooth"):
                 return _unsupported(session, plan0, "The guide-tone line is already voice-led as smoothly as I can make it for this chart and register.")
             spec["smooth"] = True
-            changed.append("guide-tone voice-leading made smoother (smaller leaps between chords)")
-        kept = ("the song, key, level, instrument and tempos you set, and every exercise that isn't a guide-tone line; the warmup stays "
+            changed.append("voice-leading made smoother (smaller leaps between chords)")
+        kept = ("the song, key, level, instrument and tempos you set, and every exercise this change doesn't apply to; the warmup stays "
                 f"{spec['minutes']:g} minutes, so plays are re-planned.")
     elif kind == OP_INSTRUMENT:
         req_i = {"instrument_word": op["instrument_word"], "sax_type_word": op.get("sax_type_word") or "", "unverified": ""}
@@ -1663,7 +1888,9 @@ def revise(op: dict[str, Any], question: str, session_ref: Any, ami_ctx: dict[st
         plan1 = build_plan(player, spec, replan=replan)
     except we.WarmupUnavailable as exc:
         return _unsupported(session, plan0, f"I couldn't build that change correctly: {exc}.")
-    if kind in (OP_ITEM_SLOWER, OP_ITEM_FASTER, OP_ITEM_TEMPO):
+    if lvl_uid:
+        _retarget_reps_for_item(plan0, plan1, lvl_uid)
+    elif kind in (OP_ITEM_SLOWER, OP_ITEM_FASTER, OP_ITEM_TEMPO):
         _retarget_reps_for_item(plan0, plan1, tempo_uid)
     elif kind == OP_INTERVAL:
         uid = next(iter(touched))
@@ -1684,12 +1911,12 @@ def revise(op: dict[str, Any], question: str, session_ref: Any, ami_ctx: dict[st
         m1 = [(r.get("meta") or {}).get("mean_leap", 0) for r in plan1["items"] if r["family"] == "guide_tones"]
         if m0 and m1:
             changed.append(f"average leap {sum(m0) / len(m0):.1f} → {sum(m1) / len(m1):.1f} semitones")
-    if kind in (OP_SHORTER, OP_LONGER, OP_MINUTES, OP_REMOVE_FAMILY, OP_REMOVE_ITEM, OP_ADD_FAMILY, OP_MORE_FAMILY, OP_SECTION, OP_BARS, OP_TONES):
+    if kind in (OP_SHORTER, OP_LONGER, OP_MINUTES, OP_REMOVE_FAMILY, OP_REMOVE_ITEM, OP_ADD_FAMILY, OP_MORE_FAMILY, OP_SECTION, OP_BARS, OP_TONES, OP_ARP_START, OP_APPROACH_KIND):
         gained = [r for r in plan1["items"] if r["uid"] not in old_by]
         dropped_ = [r for r in plan0["items"] if r["uid"] not in {x["uid"] for x in plan1["items"]}]
-        if gained and kind in (OP_SHORTER, OP_LONGER, OP_MINUTES, OP_SECTION, OP_BARS, OP_TONES):
+        if gained and kind in (OP_SHORTER, OP_LONGER, OP_MINUTES, OP_SECTION, OP_BARS, OP_TONES, OP_ARP_START, OP_APPROACH_KIND):
             changed.append(f"{len(gained)} exercise{'s' if len(gained) != 1 else ''} added to fill the time")
-        if dropped_ and kind in (OP_SHORTER, OP_LONGER, OP_MINUTES, OP_SECTION, OP_BARS, OP_TONES):
+        if dropped_ and kind in (OP_SHORTER, OP_LONGER, OP_MINUTES, OP_SECTION, OP_BARS, OP_TONES, OP_ARP_START, OP_APPROACH_KIND):
             changed.append(f"{len(dropped_)} exercise{'s' if len(dropped_) != 1 else ''} dropped to fit")
     changed.append(f"total playing time now {_mmss(plan1['total_seconds'])}")
     _commit(session, plan1, question)
@@ -1725,7 +1952,7 @@ def handle(question: str, session_ref: Any, ami_ctx: dict[str, Any] | None = Non
         return None
     ensure_owner(session)
     active = is_active(session)
-    if not active and _WARM.search(question) and not _asks_for_a_new_warmup(question):
+    if not active and _WARM.search(question) and not _asks_for_a_new_warmup(question) and not is_song_request(question):
         guess = parse_revision(question)
         if guess is not None and guess["op"] not in (OP_UNSUPPORTED, OP_MINUTES, OP_ADD_FAMILY, OP_MORE_FAMILY):
             return _simple("There's no warmup from this conversation to change yet. Ask for one first — for example “Give me a 10-minute flute warmup” — and then "

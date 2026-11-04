@@ -25,7 +25,7 @@ from music_coach_ami import scale_pattern_harmony as sph
 
 LEVELS = ("Beginner", "Intermediate", "Advanced")
 FAMILIES = ("long_tones", "scale", "intervals", "articulation")
-FAMILY_LABEL = {"long_tones": "Long tones", "scale": "Scale", "intervals": "Intervals", "articulation": "Articulation", "guide_tones": "Guide tones"}
+FAMILY_LABEL = {"long_tones": "Long tones", "scale": "Scale", "intervals": "Intervals", "articulation": "Articulation", "guide_tones": "Guide tones", "chord_tones": "Chord tones", "approach_notes": "Approach notes"}
 INTERVALS = {"seconds": 1, "thirds": 2, "fourths": 3, "fifths": 4, "sixths": 5, "sevenths": 6, "octaves": 7}   # scale steps
 INTERVAL_SINGULAR = {"seconds": "second", "thirds": "third", "fourths": "fourth", "fifths": "fifth", "sixths": "sixth", "sevenths": "seventh",
                      "octaves": "octave"}
