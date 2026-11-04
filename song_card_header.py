@@ -203,7 +203,8 @@ def song_card_header_html(
     fav_html = '<span class="ui-sch-fav" title="Favorite" aria-label="Favorite">★</span>' if favorite else ""
     grid_html = ""
     bar_list = [str(b) for b in (bars or []) if str(b or "").strip()][:4]
-    if t["source"] == SOURCE_CUSTOM and bar_list:
+    # The bar grid sits beside the title: only with a short title, so it never runs into it.
+    if t["source"] == SOURCE_CUSTOM and bar_list and len(str(title or "")) <= 18:
         cells = "".join(f'<span class="ui-sch-bar">{esc(b)}</span>' for b in bar_list)
         grid_html = f'<div class="ui-sch-grid" aria-hidden="true">{cells}</div>'
     staff_html = _STAFF_STRIP if t["source"] == SOURCE_COMPOSITION else ""

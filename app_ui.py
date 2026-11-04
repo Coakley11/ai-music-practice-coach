@@ -1566,15 +1566,15 @@ div[data-testid="stTabs"] [data-baseweb="tab-list"] { flex-wrap: wrap; gap: 0.25
   container: backing-main / inline-size;
 }
 body:has(.st-key-backing_card_controls) .ui-backing-active-song {
-  padding-bottom: calc(150px + 0.9rem + 0.65rem) !important;
+  padding-bottom: calc(170px + 0.9rem + 0.65rem) !important;
 }
 .st-key-backing_card_controls {
   box-sizing: border-box !important;
-  height: 150px !important;
-  min-height: 150px !important;
-  max-height: 150px !important;
+  height: 170px !important;
+  min-height: 170px !important;
+  max-height: 170px !important;
   overflow: hidden;
-  margin: calc(2px - (150px + 0.9rem + 1rem)) 1rem 1.75rem calc(1rem + 96px + 0.9rem);
+  margin: calc(2px - (170px + 0.9rem + 1rem)) 1rem 1.75rem calc(1rem + 96px + 0.9rem);
   width: auto !important;
   padding: 0.3rem 0.75rem;
   border-radius: 12px;
@@ -1678,7 +1678,7 @@ body:has(.st-key-backing_card_controls) .ui-backing-active-song {
 }
 .st-key-backing_card_controls .st-key-backing_card_key_row [data-testid="stHorizontalBlock"] > [data-testid="stColumn"],
 .st-key-backing_card_controls .st-key-backing_card_key_row [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:first-child {
-  flex: 1 1 0 !important; padding: 8px 12px 6px; min-width: 0 !important;
+  flex: 1 1 0 !important; padding: 8px 12px calc(6px + 1rem); min-width: 0 !important;
 }
 .st-key-backing_card_key_row [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:first-child {
   border-right: 1px solid #e2e8f0;
@@ -1976,7 +1976,7 @@ body:has(.st-key-picker_active_song_favorite_row) .st-key-picker_active_song_car
   overflow: hidden;
 }
 .st-key-picker_active_song_key_row [data-testid="stHorizontalBlock"] { gap: 0 !important; }
-.st-key-picker_active_song_key_row [data-testid="stColumn"] { padding: 14px 18px 12px; }
+.st-key-picker_active_song_key_row [data-testid="stColumn"] { padding: 14px 18px calc(12px + 1rem); }
 .st-key-picker_active_song_key_row [data-testid="stColumn"]:first-child { border-right: 1px solid #e2e8f0; }
 .st-key-picker_active_song_key_row [data-testid="stVerticalBlock"] { gap: 0.4rem; }
 .st-key-picker_active_song_key_row .ui-skp-label {
@@ -2014,7 +2014,7 @@ body:has(.st-key-picker_active_song_favorite_row) .st-key-picker_active_song_car
   color: #0f172a !important; font-weight: 800 !important; font-size: 0.95rem !important;
 }
 @media (max-width: 720px) {
-  .st-key-picker_active_song_key_row [data-testid="stColumn"] { padding: 12px; }
+  .st-key-picker_active_song_key_row [data-testid="stColumn"] { padding: 12px 12px calc(12px + 1rem); }
   .st-key-picker_active_song_key_row .ui-skp-wide { display: none; }
   .st-key-picker_active_song_key_row .ui-skp-narrow { display: inline; }
   .st-key-picker_active_song_key_row .ui-skp-value,

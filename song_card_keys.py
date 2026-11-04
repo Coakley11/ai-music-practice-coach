@@ -53,3 +53,13 @@ def key_relation_caption(original: str, practice: str) -> str:
         return "a tritone away"
     n, way = (d, "higher") if d < 6 else (12 - d, "lower")
     return f"{n} semitone{'s' if n != 1 else ''} {way}"
+
+
+def key_token_from_name(name: str) -> str:
+    """Inverse of pretty_key_name: 'D♭ major' -> 'Db', 'C♯ minor' -> 'C#m'; a bare token is returned as is."""
+    m = _KEY_RE.match(str(name or ""))
+    parsed = _parse(name)
+    if not m or parsed is None:
+        return str(name or "")
+    acc = m.group(2).replace("♯", "#").replace("♭", "b")
+    return f"{m.group(1).upper()}{acc}{'m' if parsed[1] == 'minor' else ''}"

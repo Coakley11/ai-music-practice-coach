@@ -48,3 +48,11 @@ def test_key_relation_caption(orig: str, practice: str, want: str) -> None:
 def test_same_key_counts_enharmonics() -> None:
     assert same_key("Db", "C# major") and same_key("Ebm", "D#m")
     assert not same_key("D", "Dm")
+
+
+@pytest.mark.parametrize("token", ["Db", "C#m", "Eb", "Cm", "A", "F#", "Bbm", "G"])
+def test_key_token_round_trips(token: str) -> None:
+    from song_card_keys import key_token_from_name
+
+    assert key_token_from_name(pretty_key_name(token)) == token
+    assert key_token_from_name(token) == token
