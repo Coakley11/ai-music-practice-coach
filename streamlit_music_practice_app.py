@@ -10930,6 +10930,7 @@ def _render_active_song_card(
     _source_label = "Catalog Song"
     _art_source_cls = ""
     _card_source_cls = ""
+    _custom_header_bars: list[str] = []
     try:
         from custom_progression_lab import format_key_label as _format_key_label
         from app_ui import studio_song_meta_badges_html as _studio_song_meta_badges_html
@@ -10957,11 +10958,24 @@ def _render_active_song_card(
             details["visual_gradient"] = "linear-gradient(145deg,#10b981,#059669)"
             _art_source_cls = " source-custom"
             _card_source_cls = " source-custom"
-            _cpl_style = ensure_original_structure(
-                st.session_state.get(CPL_ACTIVE_KEY) or {}
-            ).get("progression_style")
+            _cpl_struct = ensure_original_structure(st.session_state.get(CPL_ACTIVE_KEY) or {})
+            _cpl_style = _cpl_struct.get("progression_style")
             if _cpl_style:
                 _style_label = str(_cpl_style)
+            # Header bar grid: the opening bars as written. Shown only while the
+            # practice key is the original key, so it never contradicts the chart.
+            try:
+                from song_card_keys import same_key as _same_key
+
+                if _same_key(_original_key, _practice_concert_key):
+                    for _sec_cells in (_cpl_struct.get("original_sections") or {}).values():
+                        _cells = [str((c or {}).get("chord") or "") for c in (_sec_cells or []) if isinstance(c, dict)]
+                        _cells = [c for c in _cells if c.strip()]
+                        if _cells:
+                            _custom_header_bars = _cells[:4]
+                            break
+            except Exception:
+                _custom_header_bars = []
         else:
             details["visual_emoji"] = _FEATURE_ICONS.get("songs", "🎼")
         if _song_key_ctx.shape_key:
@@ -11029,6 +11043,7 @@ def _render_active_song_card(
             title=str(details["title"]),
             artist=_header_artist,
             favorite=False,  # the card's Favorite button (top-right) shows the state
+            bars=_custom_header_bars,
         )
         + "</div>"
     )
