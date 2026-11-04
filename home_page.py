@@ -28,6 +28,9 @@ from home_destinations import (
     HomeDestination,
     apply_home_navigation,
 )
+from home_artwork import ART_CSS, card_art, destination_icon
+from music_feature_icons import page_feature_icon
+
 from home_recent_session import (
     ACTION_CAPTION,
     EMPTY_STATE_BODY,
@@ -235,6 +238,7 @@ def home_page_css() -> str:
 }}
 
 {card_accents}
+{ART_CSS}
 """
 
 
@@ -243,14 +247,14 @@ def _card_body_html(dest: HomeDestination) -> str:
         f'<p class="home-card-kicker">{html.escape(dest.kicker)}</p>' if dest.kicker else ""
     )
     return (
-        f"{kicker}"
+        f"{card_art(dest)}{kicker}"
         f'<p class="home-card-title">{html.escape(dest.title)}</p>'
         f'<p class="home-card-blurb">{html.escape(dest.blurb)}</p>'
     )
 
 
 def _nav_button(st: Any, session_state: Any, dest: HomeDestination, rerun_fn: Any) -> None:
-    if st.button(dest.cta, key=f"home_nav_{dest.key}", use_container_width=True):
+    if st.button(dest.cta, icon=destination_icon(dest), key=f"home_nav_{dest.key}", use_container_width=True):
         apply_home_navigation(session_state, dest)
         rerun_fn()
 
@@ -300,7 +304,7 @@ def _render_hero(st: Any, session_state: Any, rerun_fn: Any, *, owner: str) -> N
     cols = st.columns(2)
     for col, dest in zip(cols, HERO_ACTIONS):
         with col, st.container(key=f"home_hero_{dest.key.split('_', 1)[1]}"):
-            if st.button(dest.cta, key=f"home_hero_btn_{dest.key}", use_container_width=True):
+            if st.button(dest.cta, icon=destination_icon(dest), key=f"home_hero_btn_{dest.key}", use_container_width=True):
                 apply_home_navigation(session_state, dest)
                 rerun_fn()
 
@@ -343,7 +347,7 @@ def _render_continue(st: Any, session_state: Any, rerun_fn: Any) -> None:
     )
     with st.container(key="home_resume"):
         label = recent.action_label()
-        if st.button(label, key="home_resume_btn", use_container_width=False):
+        if st.button(label, icon=page_feature_icon(recent.page), key="home_resume_btn", use_container_width=False):
             dest = HomeDestination(
                 key="resume",
                 page=recent.page,
