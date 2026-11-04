@@ -36,7 +36,15 @@ def _utc_now_iso() -> str:
 
 
 # Startup/default pages that must not outrank a persisted current visit.
-_GENERIC_STARTUP_PAGES = frozenset({"", "picker", "practice"})
+# Where a launch lands when nothing else decides. Option A: new users and
+# confirmed-empty workspaces open on Home; a returning user's saved page still
+# wins, because the sites below only run when there is no saved page.
+DEFAULT_STUDIO_PAGE = "home"
+
+# Pages that are NOT a deliberate destination, so a more specific signal may win.
+# Home must be in here: without it every cold start would read as a deliberate
+# choice of Home and would suppress a legitimate Backing or Custom restore.
+_GENERIC_STARTUP_PAGES = frozenset({"", "picker", "practice", "home"})
 # Explicit page visits that beat generic Songs/Practice bootstrap on refresh.
 _PERSISTED_VISIT_PAGES = frozenset({"backing", "custom"})
 
@@ -209,8 +217,14 @@ def write_canonical_studio_nav_state(
     return normalized
 
 
-def prepare_studio_nav(session: dict[str, Any]) -> str:
-    """Reconcile ``studio_page`` with canonical nav state before widgets render."""
+def prepare_studio_nav(
+    session: dict[str, Any], *, default: str = DEFAULT_STUDIO_PAGE
+) -> str:
+    """Reconcile ``studio_page`` with canonical nav state before widgets render.
+
+    ``default`` is where a confirmed-empty workspace lands, so a caller that
+    asks for a specific landing page still gets it.
+    """
     try:
         from music_page_save_pipeline_trace import prepare_studio_nav_impl_marker, record_pipeline_event
 
@@ -543,7 +557,11 @@ def prepare_studio_nav(session: dict[str, Any]) -> str:
     except ImportError:
         pass
 
-    return _finish("empty_workspace_default", "practice", reason="empty_workspace_default")
+    return _finish(
+        "empty_workspace_default",
+        _normalize_page(default) or DEFAULT_STUDIO_PAGE,
+        reason="empty_workspace_default",
+    )
 
 
 def commit_studio_nav_from_session(session: dict[str, Any], *, reason: str = "autosave") -> str:
@@ -667,8 +685,10 @@ def resolve_studio_page_for_restore(
     if pre:
         _log_restore_page_choice(session, raw=pre, resolved=pre, source="session_page")
         return pre, "session_page"
-    _log_restore_page_choice(session, raw="", resolved="practice", source="default")
-    return "practice", "default"
+    _log_restore_page_choice(
+        session, raw="", resolved=DEFAULT_STUDIO_PAGE, source="default"
+    )
+    return DEFAULT_STUDIO_PAGE, "default"
 
 
 def _log_restore_page_choice(
@@ -699,7 +719,9 @@ def _log_restore_page_choice(
         pass
 
 
-def bootstrap_studio_page_session(session: dict[str, Any], *, default: str = "practice") -> str:
+def bootstrap_studio_page_session(
+    session: dict[str, Any], *, default: str = DEFAULT_STUDIO_PAGE
+) -> str:
     """
     Hydration-aware studio page for early script bootstrap.
 
@@ -709,7 +731,9 @@ def bootstrap_studio_page_session(session: dict[str, Any], *, default: str = "pr
         from music_workspace_hydration import can_finalize_music_restore, workspace_empty_confirmed
 
         if can_finalize_music_restore(session):
-            return prepare_studio_nav(session) or str(session.get("studio_page") or default)
+            return prepare_studio_nav(session, default=default) or str(
+                session.get("studio_page") or default
+            )
     except ImportError:
         return str(session.setdefault("studio_page", default))
 

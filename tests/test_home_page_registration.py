@@ -64,18 +64,26 @@ class TestRegisteredEverywhere(unittest.TestCase):
         self.assertTrue(studio_page_exempt_from_chart_bundle(HOME_PAGE_ID))
 
 
-class TestStartupDefaultHasNotMoved(unittest.TestCase):
-    def test_a_fresh_session_still_starts_on_practice(self):
-        self.assertEqual(app_ui.ensure_studio_page({}), "practice")
+class TestStartupDefault(unittest.TestCase):
+    """Home is the landing page; a session that already has a page keeps it.
 
-    def test_the_declared_default_is_still_practice(self):
+    The detailed landing rules live in tests/test_home_default_landing.py.
+    """
+
+    def test_a_fresh_session_starts_on_home(self):
+        self.assertEqual(app_ui.ensure_studio_page({}), "home")
+
+    def test_the_declared_default_is_home(self):
         import inspect
 
         sig = inspect.signature(app_ui.ensure_studio_page)
-        self.assertEqual(sig.parameters["default"].default, "practice")
+        self.assertEqual(sig.parameters["default"].default, "home")
 
     def test_an_existing_session_on_home_stays_on_home(self):
         self.assertEqual(app_ui.ensure_studio_page({"studio_page": "home"}), "home")
+
+    def test_a_returning_session_keeps_practice(self):
+        self.assertEqual(app_ui.ensure_studio_page({"studio_page": "practice"}), "practice")
 
 
 class TestBackAndForward(unittest.TestCase):

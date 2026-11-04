@@ -10470,6 +10470,13 @@ def _studio_page_active_nav_css() -> str:
 
 OPENAI_PAGE_ID = "openai"
 
+# Where a launch lands when nothing else decides. Owned by studio_nav_state so the
+# landing page has one definition; the fallback keeps app_ui importable alone.
+try:
+    from studio_nav_state import DEFAULT_STUDIO_PAGE as _DEFAULT_STUDIO_PAGE
+except ImportError:  # pragma: no cover - studio_nav_state always ships with app_ui
+    _DEFAULT_STUDIO_PAGE = "home"
+
 STUDIO_PAGES: list[tuple[str, str]] = [
     (page_id, f"{meta['icon']} {meta['label']}")
     for page_id, meta in STUDIO_PAGE_META.items()
@@ -11117,7 +11124,9 @@ def _resolve_nav_page_ids(
     return page_ids
 
 
-def ensure_studio_page(session_state: dict[str, Any], default: str = "practice") -> str:
+def ensure_studio_page(
+    session_state: dict[str, Any], default: str = _DEFAULT_STUDIO_PAGE
+) -> str:
     try:
         from studio_nav_state import bootstrap_studio_page_session, canonical_studio_page
 
