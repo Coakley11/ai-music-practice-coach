@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import html
+from music_feature_icons import action_label
 import io
 from typing import Any
 
@@ -73,7 +74,7 @@ def render_step4_save_export_panel(
 
     st_module.markdown("##### Save Export")
     export_name = st_module.text_input("Export name", key=MT_EXPORT_SAVE_NAME_KEY)
-    if st_module.button("Save Export", key="mt_export_save_btn", type="primary", use_container_width=True):
+    if st_module.button(action_label("save", "Save Export"), key="mt_export_save_btn", type="primary", use_container_width=True):
         ok, eid, err = save_multitrack_export_from_session(
             session_state,
             mixed,
@@ -150,7 +151,7 @@ def render_multitrack_export_library(
                 cached = session_state.get(dl_cache_key)
                 if cached:
                     st_module.download_button(
-                        "Download WAV",
+                        action_label("download", "Download WAV"),
                         cached,
                         file_name=f"{str(row.get('export_name') or 'export').replace(' ', '_')}.wav",
                         mime="audio/wav",

@@ -78,3 +78,43 @@ class TestSessionArgs(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestNotationExercisesStayComfortable(unittest.TestCase):
+    """Issue B: a Notation-tab exercise sits in a playable register, not across the whole envelope."""
+
+    CHORDS = ["Dm7", "G7", "Cmaj7", "A7"]
+
+    def _range(self, inst, level):
+        from chord_navigation_notation import build_connected_arpeggio_line
+
+        ev = build_connected_arpeggio_line(self.CHORDS, level=level, beats_per_measure=4, instrument=inst)
+        midis = [e.midi for e in ev if getattr(e, "midi", None)]
+        self.assertTrue(midis)
+        return min(midis), max(midis)
+
+    def test_beginner_flute_is_not_shrieking(self):
+        lo, hi = self._range("Flute", "Beginner")
+        self.assertLessEqual(hi, 84, "a Beginner flute exercise must stay well under the top of the flute")
+        self.assertGreaterEqual(lo, 60)
+
+    def test_every_wind_stays_inside_its_comfortable_window(self):
+        from instrument_register_fit import comfortable_written_range
+
+        for inst in INSTRUMENTS:
+            for level in ("Beginner", "Intermediate", "Advanced"):
+                with self.subTest(inst=inst, level=level):
+                    want = comfortable_written_range(inst, level)
+                    lo, hi = self._range(inst, level)
+                    self.assertGreaterEqual(lo, want[0])
+                    self.assertLessEqual(hi, want[1])
+
+    def test_chordal_instruments_are_unchanged(self):
+        from chord_navigation_notation import instrument_register
+
+        for inst in ("Piano", "Guitar", "Bass"):
+            with self.subTest(inst=inst):
+                reg_lo, reg_hi, _s = instrument_register(inst, "Intermediate")
+                lo, hi = self._range(inst, "Intermediate")
+                self.assertGreaterEqual(lo, reg_lo)
+                self.assertLessEqual(hi, reg_hi)

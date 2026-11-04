@@ -110,6 +110,12 @@ def compose_browse_results(
 ) -> list[dict[str, Any]]:
     """Compose Search union Genres union Favorites with canonical pick-key deduplication.
 
+    Browse is a *discovery* list the musician builds up: every active criterion contributes its matches and
+    the union is de-duplicated, so a song that matches several criteria still appears once. With **no**
+    criterion active the list is empty - opening Songs, or clearing the last filter, never dumps the whole
+    catalog into the browse list. (The Active Song dropdown is a separate control and always covers the
+    full catalog.)
+
     ``excluded_pick_keys`` are the user's temporary per-result X removals: they only hide rows from this
     composed view, whichever source(s) contributed them.
     """
@@ -129,9 +135,7 @@ def compose_browse_results(
             )
 
     contributors: list[dict[str, Any]] = []
-    if not any_source:
-        contributors.extend(rows)
-    else:
+    if any_source:
         if search_active:
             contributors.extend(search_records(rows, str(query), limit=max(500, len(rows))))
         if selected_genres:

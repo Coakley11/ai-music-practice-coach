@@ -358,6 +358,56 @@ def insert_draft_chord(
     return out
 
 
+def split_draft_chord(
+    draft: list[dict[str, Any]],
+    index: int,
+    *,
+    pattern: str,
+    second_chord: str,
+    first_chord: str = "",
+) -> list[dict[str, Any]]:
+    """Turn one bar of the draft into a two-chord split measure (the Custom page's own subdivisions).
+
+    The entry becomes a single weighted subdivided-bar token, e.g. ``"F7:2|B7:2"``, which the Composition
+    chart, notation and playback already understand. An unknown pattern or an empty second chord leaves
+    the draft untouched.
+    """
+    from chord_subdivisions import split_measure_token
+
+    out = snapshot_entries(draft)
+    if index < 0 or index >= len(out):
+        return out
+    row = dict(out[index]) if isinstance(out[index], dict) else {"chord": "", "bars": 1}
+    existing = str(row.get("chord") or "").strip()
+    head = existing.split("|", 1)[0].split(":", 1)[0] or "C"
+    first = str(first_chord or "").strip() or head
+    second = str(second_chord or "").strip()
+    if not second:
+        return out
+    token = split_measure_token(pattern, first, second)
+    if not token:
+        return out
+    row.pop("repeat", None)
+    row["chord"] = token
+    row["bars"] = 1                       # a split measure is always one bar
+    out[index] = row
+    return out
+
+
+def unsplit_draft_chord(draft: list[dict[str, Any]], index: int) -> list[dict[str, Any]]:
+    """Collapse a split measure back to its first chord."""
+    out = snapshot_entries(draft)
+    if index < 0 or index >= len(out):
+        return out
+    row = dict(out[index]) if isinstance(out[index], dict) else {}
+    chord = str(row.get("chord") or "")
+    if "|" not in chord:
+        return out
+    row["chord"] = chord.split("|", 1)[0].split(":", 1)[0]
+    out[index] = row
+    return out
+
+
 def remove_draft_chord(draft: list[dict[str, Any]], index: int) -> list[dict[str, Any]]:
     out = snapshot_entries(draft)
     if 0 <= index < len(out):

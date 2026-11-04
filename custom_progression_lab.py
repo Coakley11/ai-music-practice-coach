@@ -3890,7 +3890,7 @@ def cpl_split_measure_at_index(
     *first_chord* overrides the first part (defaults to existing chord).
     *second_chord* is the chord for the second part of the split.
     """
-    from chord_subdivisions import Subdivision, join_weighted_subdivisions
+    from chord_subdivisions import split_measure_token
 
     active = cpl_active_from_session(session_state)
     home = ensure_all_cpl_sections(active.get("original_sections"))
@@ -3903,34 +3903,8 @@ def cpl_split_measure_at_index(
     first = str(first_chord or "").strip() or head
     second = str(second_chord or head).strip() or head
 
-    if pattern == "2+2":
-        token = join_weighted_subdivisions([
-            Subdivision(first, 2.0, False),
-            Subdivision(second, 2.0, False),
-        ])
-    elif pattern == "3+1":
-        token = join_weighted_subdivisions([
-            Subdivision(first, 3.0, False),
-            Subdivision(second, 1.0, False),
-        ])
-    elif pattern == "1+3":
-        token = join_weighted_subdivisions([
-            Subdivision(first, 1.0, False),
-            Subdivision(second, 3.0, False),
-        ])
-    elif pattern == "push":
-        token = join_weighted_subdivisions([
-            Subdivision(first, 3.5, False),
-            Subdivision(second, 0.5, True),
-        ])
-    elif pattern == "4x1":
-        token = join_weighted_subdivisions([
-            Subdivision(first, 1.0, False),
-            Subdivision(second, 1.0, False),
-            Subdivision(first, 1.0, False),
-            Subdivision(second, 1.0, False),
-        ])
-    else:
+    token = split_measure_token(pattern, first, second)
+    if not token:
         return False
 
     entries[index] = {"chord": token, "bars": 1}

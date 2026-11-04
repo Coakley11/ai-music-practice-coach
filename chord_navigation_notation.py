@@ -450,6 +450,21 @@ def build_connected_arpeggio_line(
     profile = LEVEL_PROFILES[_normalize_level(level)]
     level_name = _normalize_level(level)
     reg_lo, reg_hi, reg_start = instrument_register(instrument, level)
+    # A notation EXERCISE should sit where the instrument is comfortable, not across its whole playable
+    # envelope: the flute profile is the full C4-C7 range, so a Beginner exercise could climb to C7.
+    # The comfortable window is the same one Mission examples and Practice Melodies are fitted to.
+    try:
+        from instrument_register_fit import comfortable_written_range
+
+        _comfort = comfortable_written_range(instrument, level)
+    except Exception:
+        _comfort = None
+    if _comfort:
+        _c_lo, _c_hi = int(_comfort[0]), int(_comfort[1])
+        _n_lo, _n_hi = max(reg_lo, _c_lo), min(reg_hi, _c_hi)
+        if _n_hi - _n_lo >= 12:                     # never collapse the window below an octave
+            reg_lo, reg_hi = _n_lo, _n_hi
+            reg_start = min(max(reg_start, reg_lo), reg_hi)
     n_measures = len(chords)
 
     # Phase 1: decide each measure's tone order (contour) up front.
