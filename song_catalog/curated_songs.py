@@ -4721,79 +4721,6 @@ def _attya_chart_pack() -> dict[str, Any]:
     }
 
 
-def _ipanema_chart_pack() -> dict[str, Any]:
-    """The Girl from Ipanema -- Jobim (F major, 4/4 bossa, AABA = 40 bars).
-
-    Standard lead-sheet form (Real Book key of F): A (8) + A (8) + B (16) + A (8).
-    Each A is six shared bars (Fmaj7 | Fmaj7 | G7 | G7 | Gm7 | Gb7) plus a
-    two-bar ending: 1st ending ``Fmaj7 | Gb7`` (turnaround into the repeat),
-    2nd ending ``Fmaj7 | Fmaj7`` (into the bridge), and the last A closes on two
-    bars of Fmaj7 (Fmaj9). The 16-bar bridge never states the tonic: Gbmaj7 (2) |
-    B7 (2) | F#m7 (2) | D7 (2) | Gm7 (2) | Eb7 (2) | Am7 | D7b9 | Gm7 | C7b9.
-    The previous 4-bar "Intro" was not part of the published lead sheet.
-    One list item = one bar. Edition: Real Book style lead sheet in F;
-    sources pianowithjonny.com (form/endings/bridge 12+4) and ladydpiano
-    blog chart (bridge chords) agree on the chord order.
-    """
-    a_core = ["Fmaj7", "Fmaj7", "G7", "G7", "Gm7", "Gb7"]
-    bridge = [
-        "Gbmaj7", "Gbmaj7", "B7", "B7", "F#m7", "F#m7", "D7", "D7",
-        "Gm7", "Gm7", "Eb7", "Eb7", "Am7", "D7b9", "Gm7", "C7b9",
-    ]
-    inter = {
-        "A Section": a_core + ["Fmaj7", "Gb7"],
-        "A Section (2nd ending)": a_core + ["Fmaj7", "Fmaj7"],
-        "B Section": list(bridge),
-        "Final A / Outro": a_core + ["Fmaj7", "Fmaj7"],
-    }
-    a_core_b = ["F", "F", "G7", "G7", "Gm", "Gb7"]
-    beg = {
-        "A Section": a_core_b + ["F", "Gb7"],
-        "A Section (2nd ending)": a_core_b + ["F", "F"],
-        "B Section": [
-            "Gb", "Gb", "B7", "B7", "F#m", "F#m", "D7", "D7",
-            "Gm", "Gm", "Eb7", "Eb7", "Am", "D7", "Gm", "C7",
-        ],
-        "Final A / Outro": a_core_b + ["F", "F"],
-    }
-    a_core_a = ["Fmaj9", "Fmaj9", "G13", "G13", "Gm9", "Gb13"]
-    adv = {
-        "A Section": a_core_a + ["Fmaj9", "Gb13"],
-        "A Section (2nd ending)": a_core_a + ["Fmaj9", "Fmaj9"],
-        "B Section": [
-            "Gbmaj9", "Gbmaj9", "B13", "B13", "F#m9", "F#m9", "D13", "D13",
-            "Gm9", "Gm9", "Eb13", "Eb13", "Am9", "D7b9", "Gm9", "C7b9",
-        ],
-        "Final A / Outro": a_core_a + ["Fmaj9", "Fmaj9"],
-    }
-    order = list(inter.keys())
-    return {
-        "key": "F",
-        "sections": inter,
-        "chart_versions": _levels(beginner=beg, intermediate=inter, advanced=adv),
-        "chart_status": "practice_simplified",
-        "section_order": order,
-        "lyric_cues": {
-            "A Section": ["Verse A (1st ending: Fmaj7 | Gb7 turnaround)"],
-            "A Section (2nd ending)": ["Verse A again (2nd ending: two bars of Fmaj7 into the bridge)"],
-            "B Section": ["Bridge (16 bars; no tonic: Db, E and F areas)"],
-            "Final A / Outro": ["Last A, closing on two bars of Fmaj7"],
-        },
-        "extensions": _ext(
-            default_bpm=130,
-            default_groove="Bossa nova",
-            full_form_levels=["Beginner", "Intermediate"],
-            arrangement_notes=(
-                "**AABA, 40 bars** in **F** (Real Book key): A 8 + A 8 + 16-bar "
-                "**bridge** + A 8. Tritone-substitute dominants **Gb7** after Gm7; "
-                "1st ending **Fmaj7 | Gb7**, 2nd ending two bars of **Fmaj7**. "
-                "The bridge moves through Db, E and F areas (**Gbmaj7 | B7 | F#m7 | "
-                "D7 | Gm7 | Eb7**) then **Am7 | D7b9 | Gm7 | C7b9**. Default ~130 BPM."
-            ),
-        ),
-    }
-
-
 def _satin_doll_chart_pack() -> dict[str, Any]:
     """Satin Doll — Duke Ellington / Strayhorn (AABA + turnaround, 4/4).
 
@@ -7653,7 +7580,26 @@ def _core_chart_overrides() -> dict[tuple[str, str], dict[str, Any]]:
         ("Hotel California", "Eagles"): _hotel_california_chart_pack(),
         ("California Dreamin'", "The Mamas & the Papas"): _california_dreamin_chart_pack(),
         ("Shallow", "Lady Gaga / Bradley Cooper"): _shallow_chart_pack(),
-        ("The Girl from Ipanema", "Antonio Carlos Jobim"): _ipanema_chart_pack(),
+        ("The Girl from Ipanema", "Antonio Carlos Jobim"): pack("F",
+            {
+                "Intro": ["Gm", "C7", "Gm", "C7"],
+                "A Section": ["F", "F", "G7", "G7", "Gm", "Gb7", "F", "Gb7"],
+                "B Section": ["Gb", "Gb", "B7", "B7", "F#m", "B7", "Gm", "C7"],
+                "Final A / Outro": ["Gm", "C7", "F", "F"],
+            },
+            {
+                "Intro": ["Gm7", "C7", "Gm7", "C7"],
+                "A Section": ["Fmaj7", "Fmaj7", "G7", "G7", "Gm7", "Gb7", "Fmaj7", "Gb7"],
+                "B Section": ["Gbmaj7", "Gbmaj7", "B7", "B7", "F#m7", "B7", "Gm7", "C7"],
+                "Final A / Outro": ["Gm7", "C7", "Fmaj7", "Fmaj7"],
+            },
+            {
+                "Intro": ["Gm9", "C13", "Gm9", "C13"],
+                "A Section": ["Fmaj9", "Fmaj9", "G13", "G13", "Gm9", "Gb13", "Fmaj9", "Gb13"],
+                "B Section": ["Gbmaj9", "Gbmaj9", "B13", "B13", "F#m9", "B13", "Gm9", "C13"],
+                "Final A / Outro": ["Gm9", "C13", "Fmaj9", "F6add9"],
+            },
+        ),
         ("Wave", "Antonio Carlos Jobim"): _wave_chart_pack(),
         ("Blue Bossa", "Kenny Dorham"): _blue_bossa_chart_pack(),
         ("Fly Me to the Moon", "Bart Howard"): pack("C",
@@ -10211,14 +10157,10 @@ def curated_song_records() -> list[dict[str, Any]]:
 
         # --- Jobim & bossa ---
         _s("The Girl from Ipanema", "Antonio Carlos Jobim", "Jazz", "F", {
-            # Shadowed by _ipanema_chart_pack() (core chart override wins).
-            "A Section": ["Fmaj7", "Fmaj7", "G7", "G7", "Gm7", "Gb7", "Fmaj7", "Gb7"],
-            "A Section (2nd ending)": ["Fmaj7", "Fmaj7", "G7", "G7", "Gm7", "Gb7", "Fmaj7", "Fmaj7"],
-            "B Section": [
-                "Gbmaj7", "Gbmaj7", "B7", "B7", "F#m7", "F#m7", "D7", "D7",
-                "Gm7", "Gm7", "Eb7", "Eb7", "Am7", "D7b9", "Gm7", "C7b9",
-            ],
-            "Final A / Outro": ["Fmaj7", "Fmaj7", "G7", "G7", "Gm7", "Gb7", "Fmaj7", "Fmaj7"],
+            "Intro (Turnaround)": ["Gm7", "C7", "Gm7", "C7"],
+            "Verse / A Section": ["Fmaj7", "G7", "Gm7", "C7", "Fmaj7", "G7", "Gm7", "C7"],
+            "Bridge / B Section": ["Dbmaj7", "B7", "F#m7", "B7", "Gm7", "Eb7", "Am7", "D7"],
+            "Last A (Recap)": ["Gm7", "C7", "Fmaj7", "Fmaj7"],
         }, composer="Antonio Carlos Jobim"),
         _s("Wave", "Antonio Carlos Jobim", "Jazz", "D", {
             "Intro": ["Dm7", "G13", "Dm7", "G13"],

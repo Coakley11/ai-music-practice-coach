@@ -627,10 +627,8 @@ class TestPhrasing(unittest.TestCase):
                         total += 1
                         if not ex.available:
                             failed += 1
-                            if not ex.limitation.startswith("No example here features the special note"):  # W3: honest note-check limitation (Ipanema Beginner)
-                                self.assertIn(ex.limitation, (LIMIT_UNAVAILABLE, LIMIT_EXPAND_RANGE), (name, level, focus, ex.kind))
-        # W3: Ipanema is now the full 40-bar AABA (two more honest note-check misses); ceiling 1.5% -> 2%.
-        self.assertLessEqual(failed / total, 0.02, (failed, total))
+                            self.assertIn(ex.limitation, (LIMIT_UNAVAILABLE, LIMIT_EXPAND_RANGE), (name, level, focus, ex.kind))
+        self.assertLessEqual(failed / total, 0.015, (failed, total))
 
 
 # --------------------------------------------------------------------------- limitations and honesty
