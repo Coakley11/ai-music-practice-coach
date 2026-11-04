@@ -1,10 +1,8 @@
 """The "Recent practice" card on Home - verified saved history only.
 
-A session the musician actually finished is one that was *written down*. The
-Practice Log is that record: it is persisted per workspace, it survives a reload
-and a different device, and each entry already stores the keys in the three forms
-that matter - the Practice/concert key, the written key for a transposing
-instrument, and the guitar shape key.
+Saved Practice Log rows and versioned Music practice-context events provide the
+history. Events describe recorded practice starts, not necessarily completed
+sessions. Artist and keys come only from the historical record.
 
 What this module deliberately does **not** do is build a card out of live session
 state. The song currently loaded in the workspace is simply the song that is
@@ -65,6 +63,7 @@ class VerifiedRecentSession:
     practice_type: str
     focus_area: str
     page: str
+    artist: str = ""
     creative_dest: str = ""
     when_label: str = ""
     #: ("Practice/Concert key", "F minor"), ("Written key", "G minor"), ...
@@ -96,7 +95,9 @@ def _relative_day_label(iso_date: str, *, today: date | None = None) -> str:
         when = date.fromisoformat(str(iso_date or "").strip())
     except ValueError:
         return ""
-    now = today or date.today()
+    from datetime import datetime
+    from activity_time import DISPLAY_TIMEZONE
+    now = today or datetime.now(DISPLAY_TIMEZONE).date()
     delta = (now - when).days
     if delta <= 0:
         return "Today"
@@ -153,6 +154,7 @@ def session_from_entry(
     return VerifiedRecentSession(
         session_id=session_id,
         song_title=song,
+        artist=str(entry.get("artist") or "").strip(),
         instrument=str(entry.get("instrument") or "").strip(),
         practice_type=practice_type,
         focus_area=str(entry.get("focus_area") or "").strip(),
@@ -169,9 +171,10 @@ def verified_recent_session(
     session_state: Any,
     *,
     entries: list[dict[str, Any]] | None = None,
+    activities: list[dict[str, Any]] | None = None,
     today: date | None = None,
 ) -> VerifiedRecentSession | None:
-    """Newest saved Practice Log session for this workspace, or None.
+    """Newest recorded practice from this workspace, or None.
 
     ``entries`` is for tests. In the app the rows come from
     ``practice_log_state.load_entries``, which is already workspace-scoped,
@@ -184,9 +187,32 @@ def verified_recent_session(
 
             rows = load_entries(session_state)
         except Exception:
-            return None
+            rows = []
 
-    for entry in rows or []:
+    from home_activity_history import load_practice_events, practice_entry_from_event
+    from activity_time import parse_activity_timestamp
+    from datetime import datetime, timezone, time
+    events = activities if activities is not None else (
+        load_practice_events(session_state) if entries is None else []
+    )
+    candidates = list(rows or []) + [entry for event in events
+                                    if (entry := practice_entry_from_event(event)) is not None]
+
+    def recorded_time(entry):
+        # Practice date wins over a later edit; within that date use creation time.
+        day = str(entry.get("date") or "")
+        stamp = parse_activity_timestamp(entry.get("created_at"))
+        if stamp:
+            from activity_time import to_display_local
+            if to_display_local(stamp).date().isoformat() == day:
+                return stamp
+        try:
+            from activity_time import DISPLAY_TIMEZONE
+            return datetime.combine(date.fromisoformat(day), time.min, tzinfo=DISPLAY_TIMEZONE)
+        except ValueError:
+            return datetime.min.replace(tzinfo=timezone.utc)
+
+    for entry in sorted((e for e in candidates if isinstance(e, dict)), key=recorded_time, reverse=True):
         built = session_from_entry(entry, today=today)
         if built is not None:
             return built
@@ -202,7 +228,7 @@ SECTION_EYEBROW = "Recent practice"
 EMPTY_STATE_TITLE = "Every great session starts somewhere."
 EMPTY_STATE_BODY = (
     "No saved practice session yet. Once you log a session in the Practice Log, "
-    "it will show up here."
+    "it will show up here. Recorded practice activity can appear here too."
 )
 
 #: Printed under the button so the action cannot be mistaken for a restore.

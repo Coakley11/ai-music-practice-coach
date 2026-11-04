@@ -93,7 +93,7 @@ def home_page_css() -> str:
         for d in JOURNEY_CARDS + DISCOVER_CARDS + MORE_CARDS + (BROWSE_ALL,)
     )
     return f"""
-.home-wrap {{ --home-purple: {BRAND_PURPLE}; --home-indigo: {BRAND_INDIGO};
+.st-key-home_page {{ --home-purple: {BRAND_PURPLE}; --home-indigo: {BRAND_INDIGO};
   --home-yellow: {BRAND_YELLOW}; --home-blue: {BRAND_BLUE}; --home-ink: {BRAND_INK}; }}
 
 /* ---- Hero ---- */
@@ -230,8 +230,8 @@ def home_page_css() -> str:
   [class*="st-key-home_card_"] {{ padding: 0.85rem 0.9rem 0.7rem 0.9rem; }}
 }}
 @media (max-width: 640px) {{
-  .home-wrap [data-testid="stHorizontalBlock"] {{ flex-wrap: wrap; gap: 0.6rem; }}
-  .home-wrap [data-testid="stHorizontalBlock"] > [data-testid="stColumn"] {{
+  .st-key-home_page [data-testid="stHorizontalBlock"] {{ flex-wrap: wrap; gap: 0.6rem; }}
+  .st-key-home_page [data-testid="stHorizontalBlock"] > [data-testid="stColumn"] {{
     flex: 1 1 100% !important; min-width: 100% !important;
   }}
   .home-hero h2 {{ font-size: 1.75rem; }}
@@ -324,7 +324,7 @@ def _render_continue(st: Any, session_state: Any, rerun_fn: Any) -> None:
         )
         return
 
-    bits = [b for b in (recent.when_label, recent.instrument, recent.focus_area) if b]
+    bits = [b for b in (recent.artist, recent.when_label, recent.instrument, recent.focus_area) if b]
     if recent.duration_minutes:
         bits.append(f"{recent.duration_minutes} min")
     if recent.section_label:
