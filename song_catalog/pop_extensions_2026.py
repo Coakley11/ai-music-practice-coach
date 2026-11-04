@@ -301,18 +301,19 @@ def _heal_the_world_a_major_chart_pack() -> dict[str, Any]:
 
 
 def _you_belong_with_me_block() -> list[str]:
-    """Verse/chorus cycle: I-V-ii-IV (F#, C#, D#m, B), each chord held TWO bars (8 bars).
+    """Verse/chorus cycle: I-V-ii-IV (F#, C#, G#m, B), each chord held TWO bars (8 bars).
 
     Source: Wikipedia "You Belong with Me" (Composition, citing the published sheet music):
     verse and chorus use I-V-ii-IV, "each chord held for two measures"; sections are
     built from eight-measure phrases.
     """
-    return _seq([("F#", 2), ("C#", 2), ("D#m", 2), ("B", 2)])
+    return _seq([("F#", 2), ("C#", 2), ("G#m", 2), ("B", 2)])
 
 
 def _you_belong_with_me_prechorus() -> list[str]:
-    """Pre-chorus: ii-IV-I-V (D#m, B, F#, C#), each chord ONE bar (4 bars) - same source."""
-    return ["D#m", "B", "F#", "C#"]
+    """Pre-chorus: ii-IV-I-V (G#m, B, F#, C#), each chord ONE bar; the source says every section is built of
+    eight-measure phrases, so the pre-chorus is the 4-bar cycle played twice (8 bars)."""
+    return ["G#m", "B", "F#", "C#"] * 2
 
 
 def _you_belong_with_me_chart_pack() -> dict[str, Any]:
@@ -320,7 +321,7 @@ def _you_belong_with_me_chart_pack() -> dict[str, Any]:
     cycle16 = block + block
     pre = _you_belong_with_me_prechorus()
     intro = _hold("F#", 4)
-    outro = _seq([("B", 2), ("F#", 2), ("C#", 2), ("D#m", 2)])
+    outro = _seq([("B", 2), ("F#", 2), ("C#", 2), ("G#m", 2)])
     sections = {
         "Intro": list(intro),
         "Verse 1": list(cycle16),
@@ -348,7 +349,7 @@ def _you_belong_with_me_chart_pack() -> dict[str, Any]:
         "guitar_tabs": {
             "F#": "244322",
             "C#": "x46664",
-            "D#m": "x68876",
+            "G#m": "466444",
             "B": "x24442",
         },
         "extensions": {
@@ -356,11 +357,13 @@ def _you_belong_with_me_chart_pack() -> dict[str, Any]:
             "default_groove": "Country Pop",
             "time_signature": "4/4",
             "arrangement_notes": (
-                "Country-pop, practice key initializes to F#. Verse and chorus: F# - C# - D#m - B "
-                "(I-V-ii-IV), each chord held two bars; pre-chorus D#m - B - F# - C# (ii-IV-I-V), "
+                "Country-pop, practice key initializes to F#. Verse and chorus: F# - C# - G#m - B "
+                "(I-V-ii-IV), each chord held two bars; pre-chorus G#m - B - F# - C# (ii-IV-I-V), "
                 "one bar per chord (published-score description, Wikipedia). Section repeat counts "
-                "(16-bar verse/chorus, 16-bar bridge, 8-bar link/outro) are fitted to the 3:51 "
-                "recording and are medium-confidence."
+                "(16-bar verse/chorus, 16-bar bridge, 4-bar intro, 8-bar link/outro) are NOT "
+                "independently documented (medium-confidence); only chord order, 2-bar/1-bar "
+                "holds and 8-bar phrases are sourced. ii is G#m (Wikipedia, Hooktheory, tab "
+                "sites in D with capo 4: D A Em G)."
             ),
         },
         "backing_character": "country_pop",
