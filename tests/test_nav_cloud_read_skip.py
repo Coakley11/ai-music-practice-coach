@@ -214,11 +214,13 @@ class NavCloudReadSkipTests(unittest.TestCase):
         self._sync(fetch_session, slow_cloud)
         fetch_ms = (time.perf_counter() - t1) * 1000.0
 
-        self.assertLess(skip_ms, 20.0)
-        self.assertGreaterEqual(fetch_ms, SIMULATED_CLOUD_LATENCY_S * 1000.0 - 5.0)
-        self.assertGreater(fetch_ms - skip_ms, 25.0)
-        self.assertEqual(skip_session[NAV_CLOUD_READ_TIMINGS_KEY][-1]["cloud_calls"], 0)
-        self.assertEqual(fetch_session[NAV_CLOUD_READ_TIMINGS_KEY][-1]["cloud_calls"], 1)
+        skip_row = skip_session[NAV_CLOUD_READ_TIMINGS_KEY][-1]
+        fetch_row = fetch_session[NAV_CLOUD_READ_TIMINGS_KEY][-1]
+        self.assertEqual(skip_row["cloud_calls"], 0)
+        self.assertLess(skip_row["elapsed_ms"], 15.0)
+        self.assertEqual(fetch_row["cloud_calls"], 1)
+        self.assertGreaterEqual(fetch_row["elapsed_ms"], SIMULATED_CLOUD_LATENCY_S * 1000.0 - 5.0)
+        self.assertGreater(fetch_ms - skip_ms, 20.0)
 
     def test_begin_run_promotes_only_previous_stamp(self) -> None:
         fresh = {
@@ -239,6 +241,83 @@ class NavCloudReadSkipTests(unittest.TestCase):
         }
         begin_script_run_navigation_markers(ancient)
         self.assertNotIn(NAV_CLOUD_READ_ONCE_KEY, ancient)
+
+    def test_one_shot_is_not_reusable(self) -> None:
+        calls: list[str] = []
+
+        def cloud(app_id: str):
+            calls.append(app_id)
+            return ({}, None)
+
+        session = _established_session()
+        self._sync(session, cloud)
+        self.assertEqual(calls, [])
+        self._sync(session, cloud)
+        self.assertEqual(calls, ["music"])
+
+    def test_refresh_drops_previous_token_and_reads_cloud(self) -> None:
+        calls: list[str] = []
+
+        def cloud(app_id: str):
+            calls.append(app_id)
+            return ({}, None)
+
+        session = _established_session(run_seq=8)
+        session["_script_run_seq"] = 9
+        begin_script_run_navigation_markers(session)
+        self.assertNotIn(NAV_CLOUD_READ_ONCE_KEY, session)
+        self._sync(session, cloud)
+        self.assertEqual(calls, ["music"])
+
+    def test_missing_identity_stamp_does_not_skip(self) -> None:
+        calls: list[str] = []
+
+        def cloud(app_id: str):
+            calls.append(app_id)
+            return ({}, None)
+
+        session = _established_session()
+        session.pop(NAV_CLOUD_READ_IDENTITY_KEY, None)
+        self._sync(session, cloud)
+        self.assertEqual(calls, ["music"])
+
+    def test_cloud_error_still_surfaces_before_hydration(self) -> None:
+        session = _established_session()
+        session[WORKSPACE_BLOB_HYDRATED_KEY] = False
+        session[USER_EDIT_TRACKING_ENABLED_KEY] = False
+
+        def cloud(app_id: str):
+            raise RuntimeError("simulated cloud outage")
+
+        with self.assertRaises(RuntimeError):
+            self._sync(session, cloud)
+
+    def test_skip_does_not_touch_song_ownership(self) -> None:
+        calls: list[str] = []
+
+        def cloud(app_id: str):
+            calls.append(app_id)
+            return ({"core": {"studio_page": "practice"}}, "2026-11-04T00:00:00Z")
+
+        session = _established_session()
+        session.update(
+            {
+                "studio_page": "composer",
+                "display_key": "Eb",
+                "active_catalog_pick_key": "composition::abc",
+                "backing_context": {"source": "composition_song", "practice_key": "Eb"},
+                "cpl_active": {"id": "custom-1", "name": "My Progression", "original_key_center": "D"},
+                "composer_active_document": {"id": "abc", "title": "New Song"},
+            }
+        )
+        self._sync(session, cloud)
+        self.assertEqual(calls, [])
+        self.assertEqual(session["studio_page"], "composer")
+        self.assertEqual(session["display_key"], "Eb")
+        self.assertEqual(session["active_catalog_pick_key"], "composition::abc")
+        self.assertEqual(session["backing_context"]["practice_key"], "Eb")
+        self.assertEqual(session["cpl_active"]["id"], "custom-1")
+        self.assertEqual(session["composer_active_document"]["id"], "abc")
 
     def test_page_change_save_call_unchanged(self) -> None:
         import inspect
