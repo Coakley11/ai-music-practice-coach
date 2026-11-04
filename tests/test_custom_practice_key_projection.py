@@ -630,10 +630,9 @@ class TestCustomPracticeKeyProjection(unittest.TestCase):
         st = SimpleNamespace(session_state=session)
         prepare_custom_workspace_sidebar_display_key(st, session)
 
-        # Sidebar must show Custom's key, not Catalog's
-        self.assertNotEqual(session.get("display_key"), "Eb")
-        self.assertNotEqual(session.get("display_key"), "G")
-        self.assertIn(session.get("display_key"), {"Fm", "F"})
+        # Custom preview uses its own widget; the active Catalog key stays intact.
+        self.assertEqual(session.get("display_key"), "Eb")
+        self.assertEqual(session.get("concert_key"), "Eb")
         widget = session.get(CUSTOM_WORKSPACE_PRACTICE_KEY_WIDGET)
         self.assertNotEqual(widget, "Eb")
         self.assertNotEqual(widget, "G")

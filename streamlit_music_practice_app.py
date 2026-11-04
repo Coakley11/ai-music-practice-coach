@@ -16023,8 +16023,15 @@ try:
 except Exception:
     pass
 
+from custom_progression_lab import _custom_workspace_may_project_global_key
+
+_custom_preview_only = (
+    str(st.session_state.get("studio_page") or "").strip().lower() == "custom"
+    and not _custom_workspace_may_project_global_key(st.session_state)
+)
+_sidebar_original_key_label = "Custom Original Key" if _custom_preview_only else "Song Original Key"
 st.sidebar.markdown(
-    f'<p class="ui-sidebar-key-caption">{FEATURE_ICONS["original_key"]} Song Original Key: '
+    f'<p class="ui-sidebar-key-caption">{FEATURE_ICONS["original_key"]} {_sidebar_original_key_label}: '
     f"<strong>{original_key}</strong></p>",
     unsafe_allow_html=True,
 )
@@ -16234,10 +16241,11 @@ else:
             }
         else:
             st.sidebar.selectbox(
-                "Practice / Concert Key",
+                "Custom workspace Practice / Concert Key" if _custom_preview_only else "Practice / Concert Key",
                 _display_key_options,
                 key=CUSTOM_WORKSPACE_PRACTICE_KEY_WIDGET,
-                help="Concert pitch for charts and backing audio.",
+                help=("Custom preview only; Set Active Song to make this the active song."
+                      if _custom_preview_only else "Concert pitch for charts and backing audio."),
                 on_change=_on_custom_workspace_practice_key_change,
             )
     else:

@@ -709,8 +709,8 @@ class TestCustomPageCatalogBleed(unittest.TestCase):
         self.assertEqual(str(active.get("name") or ""), "Trial Song")
         self.assertTrue(str(widget).upper().startswith("D"), msg=widget)
         self.assertNotIn(widget.lower(), {"bm", "b minor", "dm"})
-        self.assertTrue(str(live).upper().startswith("D"), msg=live)
-        self.assertNotIn("bm", str(live).lower())
+        self.assertEqual(live, "Bm")  # Global Catalog key is not a preview field.
+        self.assertEqual(session.get("_pending_display_key"), "Bm")
         self.assertIn("D", opts)
         self.assertNotIn("Bm", list(opts))
         pk = cpl_workspace_practice_key(session, active)
