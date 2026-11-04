@@ -11669,6 +11669,12 @@ def _apply_picker_catalog_filters(
     if not all_pick_options:
         return filtered, browse_pick_options, [], ""
 
+    if st.session_state.get("_home_catalog_browse"):
+        # Browsing cannot reconcile a stale dropdown into a new active song.
+        return filtered, browse_pick_options, all_pick_options, str(
+            st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or ""
+        )
+
     from songs.state import consume_uncommitted_catalog_dropdown
 
     consume_uncommitted_catalog_dropdown(
@@ -12631,6 +12637,8 @@ def _render_catalog_song_picker_block(
     # chart/level dropdowns must not remove songs before that union is resolved.
     visible_song_records = list(ALL_SONG_RECORDS) if show_song_cards else _picker_visible_records()
     available_genres = sorted({r.get("genre") for r in visible_song_records if r.get("genre")})
+    from songs.picker_session import apply_home_catalog_request
+    apply_home_catalog_request(st.session_state, available_genres)
     _migrate_workspace_genre_filters(set(available_genres))
     apply_picker_session_resets(st.session_state)
 
@@ -12832,7 +12840,7 @@ def _render_catalog_song_picker_block(
                 "refine your search to narrow further."
             )
 
-    if _library_polished and show_source_toggle:
+    if _library_polished and show_source_toggle and not st.session_state.get("_home_catalog_browse"):
         _src_hub = _render_picker_music_source_toggle(polished=True)
         # Composition before Custom — never let a stale Custom hub swallow a
         # live Composition radio / explicit stamp.
@@ -12870,7 +12878,7 @@ def _render_catalog_song_picker_block(
         else:
             active_pick_key = ""
 
-    if _library_polished:
+    if _library_polished and not st.session_state.get("_home_catalog_browse"):
         active_rec = (
             record_for_pick_key(visible_song_records, active_pick_key) if active_pick_key else None
         )
@@ -14156,7 +14164,7 @@ def _render_backing_step2_playback_action(
         # Advanced expander: do not force expanded=False when cycling is off —
         # that drops in-expander widget events on the next rerun. Leave open/closed
         # to Streamlit's own expander state.
-        with st.expander("Advanced playback settings"):
+        with st.expander("Advanced playback settings", expanded=bool(st.session_state.pop("_home_open_key_cycle", False))):
             st.markdown('<div class="ui-backing-feel-inline">', unsafe_allow_html=True)
             st.markdown("<div>", unsafe_allow_html=True)
             _feel_ico = html.escape(semantic_field_icon("style") or semantic_field_icon("feel"))
@@ -19756,14 +19764,21 @@ elif _studio_page == "picker":
             render_source_context_debug,
         )
 
-        hydrate_picker_source_for_page(
-            st.session_state,
-            st_like=st,
-            song_picker_catalog=SONG_PICKER_CATALOG,
-        )
+        if not st.session_state.get("_home_catalog_browse"):
+            hydrate_picker_source_for_page(
+                st.session_state,
+                st_like=st,
+                song_picker_catalog=SONG_PICKER_CATALOG,
+            )
         render_source_context_debug(st, st.session_state)
     except ImportError:
         pass
+
+    if st.session_state.get("_home_catalog_browse"):
+        st.caption("Catalog browsing ? Your active song changes only when you select a result.")
+        if st.button("Return to active song view", key="home_catalog_exit"):
+            st.session_state.pop("_home_catalog_browse", None)
+            st.rerun()
 
     _render_catalog_song_picker_block(
         show_source_toggle=True,

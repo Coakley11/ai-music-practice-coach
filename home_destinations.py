@@ -8,9 +8,9 @@ chart. Everything here therefore routes through the established contracts -
 ``studio_nav_history.apply_creative_history_destination`` for the Creative Lab
 workspace - and nothing else.
 
-The one exception is a Browse *view* filter: "Explore Jazz" ticks the Jazz genre
-pill on the Songs page, which is the same page-local, user-owned filter the pills
-themselves write. It selects nothing and activates no song.
+Home discovery requests establish an intentional Catalog browsing view. Search,
+genres and favorites are reset for that request without committing a music source.
+Key Cycling requests expanded controls without arming playback.
 """
 
 from __future__ import annotations
@@ -205,18 +205,6 @@ def destination_by_key(key: str) -> HomeDestination | None:
     return None
 
 
-def _apply_genre_filter(session_state: Any, genre: str) -> None:
-    """Tick one Browse genre pill - the same page-local view filter the pills write."""
-    try:
-        from songs.picker_session import WORKSPACE_GENRE_FILTERS_KEY
-    except ImportError:
-        return
-    current = [str(g) for g in (session_state.get(WORKSPACE_GENRE_FILTERS_KEY) or []) if g]
-    if genre not in current:
-        current.append(genre)
-    session_state[WORKSPACE_GENRE_FILTERS_KEY] = current
-    session_state["_genre_filters_user_touched"] = True
-
 
 def apply_home_navigation(
     session_state: Any,
@@ -246,8 +234,12 @@ def apply_home_navigation(
         except ImportError:
             pass
 
-    if destination.genre:
-        _apply_genre_filter(session_state, destination.genre)
+    if destination.page == "picker":
+        # This is a view request, never a source-selection intent.
+        session_state["_home_catalog_browse"] = True
+        session_state["_home_catalog_request"] = destination.genre or "all"
+    if destination.key == "more_keycycle":
+        session_state["_home_open_key_cycle"] = True
 
     return changed
 

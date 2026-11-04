@@ -260,3 +260,17 @@ def genre_filter_widget_key(genre: str) -> str:
     import re
 
     return re.sub(r"[^a-zA-Z0-9_]", "_", str(genre or "genre"))[:48] or "genre"
+
+
+def apply_home_catalog_request(session_state, available_genres):
+    """Establish one intentional Home view before widgets; ordinary union is unchanged."""
+    requested = session_state.pop("_home_catalog_request", None)
+    if requested is None:
+        return False
+    request_clear_browse_filters(session_state)
+    apply_picker_session_resets(session_state)
+    session_state[WORKSPACE_GENRE_FILTERS_KEY] = (
+        list(available_genres) if requested == "all" else [requested]
+    )
+    _save_picker_page_snapshot(session_state)
+    return True

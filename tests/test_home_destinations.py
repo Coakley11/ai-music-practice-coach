@@ -113,6 +113,9 @@ class TestMusicalStateIsUntouched(unittest.TestCase):
     def test_navigation_only_adds_view_state(self):
         allowed = {
             "studio_page",
+            "_home_catalog_browse",
+            "_home_catalog_request",
+            "_home_open_key_cycle",
             "workspace_genre_filters",
             "_genre_filters_user_touched",
             "improv_intelligence_tab",
@@ -139,13 +142,13 @@ class TestGenreCards(unittest.TestCase):
         hd.apply_home_navigation(session, hd.destination_by_key("discover_jazz"),
                                  navigate=_fake_navigate)
         self.assertEqual(session["studio_page"], "picker")
-        self.assertEqual(session["workspace_genre_filters"], ["Jazz"])
+        self.assertEqual(session["_home_catalog_request"], "Jazz")
 
     def test_browse_everything_adds_no_filter(self):
         session = _musical_state()
         hd.apply_home_navigation(session, hd.BROWSE_ALL, navigate=_fake_navigate)
         self.assertEqual(session["studio_page"], "picker")
-        self.assertNotIn("workspace_genre_filters", session)
+        self.assertEqual(session["_home_catalog_request"], "all")
 
     def test_a_genre_card_does_not_select_or_activate_a_song(self):
         session = _musical_state()
@@ -159,7 +162,7 @@ class TestGenreCards(unittest.TestCase):
         session["workspace_genre_filters"] = ["Jazz"]
         hd.apply_home_navigation(session, hd.destination_by_key("discover_jazz"),
                                  navigate=_fake_navigate)
-        self.assertEqual(session["workspace_genre_filters"], ["Jazz"])
+        self.assertEqual(session["_home_catalog_request"], "Jazz")
 
 
 class TestReturnValue(unittest.TestCase):
