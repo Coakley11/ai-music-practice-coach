@@ -411,17 +411,38 @@ def _emit(player: we.Player, segs: list[ws.Seg], bodies: dict[int, list[Note]], 
 def build_chord_tones(player: we.Player, level: str, song: dict[str, Any], section: str, bars: tuple[int, int] | None, *, direction: str, shape: str, start: str,
                       art: str = "", smooth: bool = False) -> we.Built:
     segs, good, b_lo, b_hi, share, lo, hi = _prepare(player, level, song, section, bars, "chord-tone")
-    options = [arpeggio_candidates(s.info, s.beats, level, lo, hi, direction, shape, start, art) for s in good]
-    if any(not o for o in options):                          # a fixed start tone may not fit one chord's register: let the best connecting tone stand in there
-        options = [o or arpeggio_candidates(s.info, s.beats, level, lo, hi, direction, shape, "auto", art) for o, s in zip(options, good)]
+    def candidates(lo_: int, hi_: int, how: str) -> list[list[Cand]]:
+        return [arpeggio_candidates(s.info, s.beats, level, lo_, hi_, direction, shape, how, art) for s in good]
+
+    options = candidates(lo, hi, start)
+    widened: list[int] | None = None
+    if start != "auto" and any(not o for o in options):
+        # the asked-for start tone would leave the level's comfort window on some chord: stretch the register a few semitones (inside the instrument's playable range)
+        lo2, hi2 = max(lo - 5, player.play_low), min(hi + 5, player.play_high)
+        wide = candidates(lo2, hi2, start)
+        if sum(1 for o in wide if not o) < sum(1 for o in options if not o):
+            options, lo, hi, widened = wide, lo2, hi2, [lo2, hi2]
+    fallbacks: list[dict[str, Any]] = []
+    if any(not o for o in options):                          # still no room: the best connecting tone stands in on that chord, and the answer says so
+        auto = candidates(lo, hi, "auto")
+        for i, (o, a) in enumerate(zip(options, auto)):
+            if not o:
+                options[i] = a
+                fallbacks.append({"bar": good[i].src_bar, "chord": good[i].info["symbol_written"], "asked": start})
     bounds = [i == 0 or good[i].chord != good[i - 1].chord for i in range(len(good))]
     chosen = lead_lines(options, lo, hi, smooth=smooth, loop=False, boundaries=bounds)
     bodies = {s.index: c.body for s, c in zip(good, chosen)}
     notes, placed = _emit(player, segs, bodies, {})
     meta = _meta(placed, section, (b_lo, b_hi), song, level, share, "song_chord_tones", {"direction": direction, "shape": shape, "start": start, "smooth": smooth, "art": art})
+    meta["window"], meta["start_fallbacks"] = widened, fallbacks
     title = (f"Chord tones: {_dir_word(direction, shape)} arpeggios from {START_WORD[start]} over {section}" + (f" (bars {b_lo}–{b_hi})" if bars else "")
              + (", smoother voice-leading" if smooth else ""))
     how, listen = _explain_chord_tones(placed, meta, level, direction, shape, start, art)
+    if widened:
+        listen.append(f"To keep every arpeggio starting on {START_WORD[start]}, a few notes sit up to {max(player.window(level)[0] - widened[0], widened[1] - player.window(level)[1], 0)} semitones outside this level's "
+                      "comfort range, still inside your instrument's playable range.")
+    for fb in fallbacks:
+        listen.append(f"{fb['chord']} (bar {fb['bar']}) starts on a different chord tone: starting on {START_WORD[fb['asked']]} would not fit your instrument's range there.")
     return we.Built(notes=notes, bpm=BPM[CHORD_TONES][level], title=title, how=how, listen=listen, meta=meta)
 
 
@@ -607,7 +628,7 @@ def _tone_pcs(chord: str) -> dict[int, str]:
 def verify(player: we.Player, level: str, built: we.Built, diag: dict[str, Any]) -> list[dict[str, Any]]:
     """Checks made against the chart's own chord symbols (``chord_tone_roles``), on the sounding pitch, with the stored rows tied note-for-note to the notation."""
     meta = built.meta
-    lo, hi = player.window(level)
+    lo, hi = (meta.get("window") or player.window(level))[:2]
     pitched = [n for n in built.notes if not n.rest]
     midi = [n.midi for n in pitched]
     checks = [

@@ -328,7 +328,10 @@ def parse_revision(question: str, section_names: tuple[str, ...] | list[str] = (
     sop = song_revision(low, section_names)
     if sop is not None and not (sop["op"] == OP_INSTRUMENT and _asks_for_a_new_warmup_text(low)):
         return sop
-    if _OTHER_INTENT.search(low) and not _WARMUP_TALK.search(low) and not ref:
+    if _SPAN_CHORDS.search(question) and not ref:
+        return None                       # a request about specific chords belongs to the exercise code, even when it says "exercise"
+    adds = re.match(r"^\s*(?:please\s+|also\s+|and\s+|can\s+you\s+|could\s+you\s+)*(?:add|include|put\s+in|throw\s+in|bring\s+in|work\s+in|insert)\b", low)
+    if _OTHER_INTENT.search(low) and not _WARMUP_TALK.search(low) and not ref and not (adds and not _SPAN_CHORDS.search(question)):
         return None                       # "give me a scale pattern over Blue Bossa" is not a change to the warmup
     fam_mention = [f for pattern, f in _FAMILY_WORDS.items() if re.search(rf"\b(?:{pattern})\b", low, re.I)]
     # removing

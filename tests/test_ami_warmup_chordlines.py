@@ -212,7 +212,7 @@ class TestArpeggios:
         d, sh, st, art = wc.CHORD_VARIANTS[level][0]
         pl, b, abc, song = build("ct", who, "Satin Doll", "A", level, direction=d, shape=sh, start=st, art=art)
         written = [n["midi"] for p in b.meta["segments"] if p["supported"] for n in p["notes"]]
-        lo, hi = pl.window(level)
+        lo, hi = (b.meta["window"] or pl.window(level))[:2]        # a requested start tone may stretch the comfort window a few semitones; that is recorded and explained
         assert pl.offset == offset and all(lo <= m <= hi for m in written) and all(pl.play_low <= m <= pl.play_high for m in written)
         assert oracle.check_chordline(abc, ws.section_slots(song, "A"), offset, approach=False) == []
 
@@ -608,6 +608,29 @@ class TestRevisions:
         for expect in versions[1:]:
             self.go(s, "Redo", level="Intermediate")
             assert plan_of(s) == expect
+
+    def test_add_arpeggios_and_add_a_chord_tone_exercise_join_the_open_warmup(self):
+        s = self.fresh("Give me a guide-tone warmup over Blue Bossa.", level="Intermediate")
+        self.go(s, "Add arpeggios.", level="Intermediate")
+        assert "chord_tones" in fams(plan_of(s)) and "guide_tones" in fams(plan_of(s))
+        check_plan(plan_of(s), 9)
+        self.go(s, "Remove the arpeggios.", level="Intermediate")
+        assert "chord_tones" not in fams(plan_of(s))
+
+    def test_adding_something_over_a_named_chord_is_still_an_ordinary_exercise_request(self):
+        s = self.fresh(level="Intermediate")
+        assert wp.parse_revision("Add a chord tone exercise over Dm7") is None
+
+    def test_a_requested_start_tone_is_honoured_even_where_it_needs_a_few_semitones_outside_the_comfort_window(self):
+        for title, section in (("Blue Bossa", "Section A"), ("Autumn Leaves", "A Section")):
+            pl, b, abc, song = build("ct", "flute", title, section, "Beginner", direction="up", shape="straight", start="third")
+            assert all(seg["notes"][0]["role"] == "3" for seg in b.meta["segments"] if seg["supported"]), title
+            assert not b.meta["start_fallbacks"]
+        pl, b, abc, song = build("ct", "flute", "Blue Bossa", "Section A", "Beginner", direction="up", shape="straight", start="third")
+        lo, hi = pl.window("Beginner")
+        assert b.meta["window"] and (b.meta["window"][0] < lo or b.meta["window"][1] > hi)
+        assert any("outside this level's comfort range" in x for x in b.listen)
+        assert all(pl.play_low <= n["midi"] <= pl.play_high for p in b.meta["segments"] for n in p["notes"])
 
     def test_unsupported_requests_are_refused_and_change_nothing(self):
         s = self.fresh(level="Intermediate")
