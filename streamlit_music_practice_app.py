@@ -18367,7 +18367,8 @@ elif _studio_page == "home":
             except ImportError:
                 st.rerun()
 
-        render_home_page(st, st.session_state, rerun_fn=_home_rerun)
+        with st.container(key="home_page"):
+            render_home_page(st, st.session_state, rerun_fn=_home_rerun)
     except ImportError:
         st.markdown("### Home")
         st.info("The Home page could not be loaded. Use the navigation above to pick a workspace.")

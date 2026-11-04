@@ -25,6 +25,10 @@ PROTECTED_STATE_KEYS: frozenset[str] = frozenset(
     {
         "selected_song",
         "active_catalog_pick",
+        "active_catalog_pick_key",
+        "active_song_state",
+        "active_music_source",
+        "song_picker_active_source",
         "explicit_catalog_pick_committed",
         "pending_matching_song_dropdown",
         "instrument",
@@ -139,7 +143,7 @@ BROWSE_ALL = HomeDestination(
     key="discover_all",
     page="picker",
     title="Browse entire catalog",
-    blurb="Open the Songs page with no filters applied.",
+    blurb="Browse every song in the catalog.",
     cta="Browse entire catalog",
 )
 
@@ -159,7 +163,7 @@ MORE_CARDS: tuple[HomeDestination, ...] = (
         title="Song-Aware Coaching",
         blurb="Improvise in song context.",
         cta="Open Song-Aware Coaching",
-        creative_dest="creative::SBI",
+        creative_dest="creative::Song-Aware Coaching",
     ),
     HomeDestination(
         key="more_keycycle",
@@ -214,9 +218,8 @@ def apply_home_navigation(
 ) -> bool:
     """Route a Home card click. Returns True when the page actually changed.
 
-    Writes exactly three kinds of state and nothing else: the studio page (through
-    the normal navigation entrypoint), the Creative Lab workspace selection, and
-    an optional Browse genre view filter.
+    Changes route, tool-selection and browsing-view state. Explicit clicks also
+    clear automatic-rerun diagnostics. Musical ownership and keys are preserved.
     """
     nav = navigate
     if nav is None:
@@ -224,15 +227,31 @@ def apply_home_navigation(
 
         nav = _nav
 
+    # A fresh button press is new intent, even when it repeats a destination.
+    # Otherwise the third Home -> Songs visit has the same restore fingerprint
+    # and the automatic-rerun guard mistakes deliberate navigation for a loop.
+    from music_rerun_loop_guard import clear_rerun_loop_block
+    clear_rerun_loop_block(session_state)
     changed = bool(nav(session_state, destination.page))
 
     if destination.creative_dest:
-        try:
-            from studio_nav_history import apply_creative_history_destination
-
-            apply_creative_history_destination(session_state, destination.creative_dest)
-        except ImportError:
-            pass
+        from studio_nav_history import apply_creative_history_destination, clear_creative_history_seal
+        clear_creative_history_seal(session_state)
+        session_state.pop("_pending_history_creative_dest", None)
+        apply_creative_history_destination(session_state, destination.creative_dest)
+        # Commit the real tool selectors so the next Creative hydration cannot
+        # restore a previous tool over this explicit Home request.
+        if destination.key == "more_sbi":
+            from studio_page_state import request_song_aware_coaching
+            request_song_aware_coaching(session_state, reason="home_song_aware_coaching")
+        else:
+            from creative_tab_tool_persistence import commit_creative_selector_to_canonical
+            for field, value in (
+                ("creative_lab_analysis_mode", "Improvisation Intelligence"),
+                ("creative_lab_last_mode", "Improvisation Intelligence"),
+                ("improv_intelligence_tab", destination.creative_dest.split("::", 1)[1]),
+            ):
+                commit_creative_selector_to_canonical(session_state, field, value, reason="home_navigation")
 
     if destination.page == "picker":
         # This is a view request, never a source-selection intent.

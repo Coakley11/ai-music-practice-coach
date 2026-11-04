@@ -11,6 +11,10 @@ FEATURE_BY_CARD = {
 
 def destination_icon(dest):
     feature = FEATURE_BY_CARD.get(dest.key)
+    if dest.creative_dest == 'creative::Missions':
+        feature = 'mission'
+    elif dest.creative_dest in {'creative::SBI', 'creative::Song-Aware Coaching'}:
+        feature = 'song_aware_coaching'
     return FEATURE_ICONS[feature] if feature else page_feature_icon(dest.page)
 
 

@@ -80,9 +80,9 @@ class TestMissionsAndCoachingAreDistinct(unittest.TestCase):
         hd.apply_home_navigation(session, hd.destination_by_key("more_sbi"),
                                  navigate=_fake_navigate)
         self.assertEqual(session["studio_page"], "creative")
-        self.assertEqual(session["improv_intelligence_tab"], "Entry & Jam")
+        self.assertEqual(session["improv_intelligence_tab"], "Song-Aware Coaching")
         self.assertEqual(session["improv_entry_mode"], "Song-Based Improvisation")
-        self.assertEqual(history_destination_id(session), "creative::SBI")
+        self.assertEqual(history_destination_id(session), "creative::Song-Aware Coaching")
 
     def test_the_two_do_not_land_on_the_same_generic_page(self):
         a, b = _musical_state(), _musical_state()
@@ -125,6 +125,9 @@ class TestMusicalStateIsUntouched(unittest.TestCase):
             "_history_prev_entry_mode",
             "improv_intelligence_tab_for_render",
             "_history_live_creative_dest",
+            "creative_lab_last_mode", "creative_lab_analysis_mode",
+            "_creative_tab_tool_diag", "_creative_selector_overwrite_journal",
+            "creative_workspace_state", "_creative_workspace_last_save_reason",
         }
         for dest in hd.all_destinations():
             with self.subTest(card=dest.key):

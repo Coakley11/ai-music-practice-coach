@@ -29,7 +29,6 @@ from home_destinations import (
     apply_home_navigation,
 )
 from home_artwork import ART_CSS, card_art, destination_icon
-from music_feature_icons import page_feature_icon
 
 from home_recent_session import (
     ACTION_CAPTION,
@@ -347,14 +346,14 @@ def _render_continue(st: Any, session_state: Any, rerun_fn: Any) -> None:
     )
     with st.container(key="home_resume"):
         label = recent.action_label()
-        if st.button(label, icon=page_feature_icon(recent.page), key="home_resume_btn", use_container_width=False):
-            dest = HomeDestination(
-                key="resume",
-                page=recent.page,
-                title=label,
-                blurb="",
-                creative_dest=recent.creative_dest,
-            )
+        dest = HomeDestination(
+            key="resume",
+            page=recent.page,
+            title=label,
+            blurb="",
+            creative_dest=recent.creative_dest,
+        )
+        if st.button(label, icon=destination_icon(dest), key="home_resume_btn", use_container_width=False):
             apply_home_navigation(session_state, dest)
             rerun_fn()
     st.caption(ACTION_CAPTION.format(destination=recent.destination_label()))

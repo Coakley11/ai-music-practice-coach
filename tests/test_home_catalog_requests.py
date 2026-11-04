@@ -35,3 +35,35 @@ def test_key_cycle_only_requests_controls():
     state={}
     apply_home_navigation(state,destination_by_key('more_keycycle'),navigate=lambda s,p: s.update(studio_page=p) or True)
     assert state=={'studio_page':'backing','_home_open_key_cycle':True}
+
+def test_real_navigation_preserves_custom_and_composition_identity():
+    for pick in ('custom::mine', 'composition::mine'):
+        state={'studio_page':'home', 'active_catalog_pick_key':pick,
+               'selected_song':{'title':'Owned song','pick_key':pick},
+               'display_key':'Eb','instrument':'Clarinet',
+               'active_music_source':'custom_progression' if pick.startswith('custom') else 'composition_song'}
+        before=deepcopy(state)
+        apply_home_navigation(state,destination_by_key('discover_jazz'))
+        apply_home_catalog_request(state,['Pop','Jazz'])
+        for key in before:
+            if key!='studio_page':
+                assert state[key]==before[key]
+        assert state['studio_page']=='picker'
+
+
+def test_repeated_explicit_home_clicks_are_not_automatic_rerun_loops():
+    from music_rerun_loop_guard import should_block_rerun
+    state={}
+    for _ in range(5):
+        apply_home_navigation(state,destination_by_key('discover_all'),navigate=lambda s,p: s.update(studio_page=p) or True)
+        assert not should_block_rerun(state,reason='home_nav',fingerprint='same-picker-destination')
+
+
+def test_creative_navigation_survives_a_previous_tool_canonical_restore():
+    from creative_tab_tool_persistence import canonical_creative_selector_value
+    state={'studio_page':'home', '_pending_history_creative_dest':'creative::Missions'}
+    for card, expected in [('more_missions','Missions'), ('more_sbi','Song-Aware Coaching'), ('more_missions','Missions')]:
+        apply_home_navigation(state,destination_by_key(card),navigate=lambda s,p: s.update(studio_page=p) or True)
+        assert '_pending_history_creative_dest' not in state
+        assert canonical_creative_selector_value(state,'improv_intelligence_tab')==expected
+        assert canonical_creative_selector_value(state,'creative_lab_analysis_mode')=='Improvisation Intelligence'
