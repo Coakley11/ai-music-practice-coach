@@ -1654,7 +1654,11 @@ def _selected_arrangement_triplet(
         selected_groove = canon_groove
     selected_meter = str(
         meter
-        or (canon.get("backing_time_signature") if canon else "")
+        or (
+            canon.get("backing_time_signature")
+            if canon and canon.get("backing_time_signature_override")
+            else ""
+        )
         or session.get("backing_time_signature")
         or session.get("time_signature")
         or ""

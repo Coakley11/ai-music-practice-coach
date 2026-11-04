@@ -218,6 +218,42 @@ def _generated_source_bpm(session: dict[str, Any], ctx: Any | None = None) -> in
     return 0
 
 
+def _catalog_song_meter_from_session(session: dict[str, Any], *, fallback: str = "4/4") -> str:
+    """Time signature of the active Catalog song (``selected_song`` row), else ``fallback``."""
+    try:
+        from songs.meter import default_time_signature_for_record
+        from songs.state import SELECTED_SONG_STATE_KEY
+
+        from songs.music_source import composition_song_is_active, is_custom_progression
+
+        if is_custom_progression(session) or composition_song_is_active(session):
+            return fallback
+        sel = session.get(SELECTED_SONG_STATE_KEY)
+        if not isinstance(sel, dict) or not sel:
+            return fallback
+        sel_pick = str(sel.get("pick_key") or "").strip()
+        active_pick = str(session.get("active_catalog_pick_key") or "").strip()
+        if sel_pick and active_pick and sel_pick != active_pick:
+            return fallback
+        sections = sel.get("sections") if isinstance(sel.get("sections"), dict) else None
+        return default_time_signature_for_record(sel, sections) or fallback
+    except Exception:
+        return fallback
+
+
+def _custom_song_meter_from_session(session: dict[str, Any], *, fallback: str = "4/4") -> str:
+    """Time signature of the active Custom song document, else ``fallback``."""
+    try:
+        from custom_progression_lab import CPL_ACTIVE_KEY
+        from songs.meter import normalize_time_signature
+
+        active = session.get(CPL_ACTIVE_KEY)
+        raw = str((active or {}).get("time_signature") or "").strip() if isinstance(active, dict) else ""
+        return normalize_time_signature(raw) if raw else fallback
+    except Exception:
+        return fallback
+
+
 def _source_defaults_from_session(session: dict[str, Any]) -> dict[str, Any]:
     bpm = 0
     groove = ""
@@ -299,6 +335,23 @@ def _source_defaults_from_session(session: dict[str, Any]) -> dict[str, Any]:
             meter = str(getattr(ctx, "meter", "") or meter).strip() or meter
     except ImportError:
         pass
+    _custom_active = ctx_source == "custom_progression"
+    if not _custom_active and ctx_source in {"", "regular_song"}:
+        try:
+            from songs.music_source import is_custom_progression
+
+            _custom_active = bool(is_custom_progression(session))
+        except Exception:
+            _custom_active = False
+    if ctx_source in {"", "regular_song"} and not _custom_active:
+        # A plain Catalog song's source-default meter is the song's own time
+        # signature, not the transport "4/4" (that made every 3/4 / 6/8 song look
+        # like a user override and let the "default" overwrite the song meter).
+        meter = _catalog_song_meter_from_session(session, fallback=meter)
+    elif _custom_active:
+        # A Custom song owns its document meter (meter v3 left the transport "4/4"
+        # here, which reset the widgets / saved blob of a 3/4 or 6/8 Custom song).
+        meter = _custom_song_meter_from_session(session, fallback=meter)
     if int(bpm or 0) <= 0:
         bpm = 100
     if not groove:
@@ -1097,7 +1150,25 @@ def capture_backing_play_session_overrides(
     meter = str(session.get("backing_time_signature") or "").strip()
     prev_meter = str(overrides.get("meter") or "").strip()
     meter_override_flag = bool(session.get("backing_time_signature_override"))
-    if meter:
+    # ``default_meter`` is the transport default ("4/4") unless a Creative
+    # (Jam / Mission / SBI) context owns the meter; for a plain Catalog / Custom
+    # song it is NOT the song's meter, so ``meter != default_meter`` would turn
+    # every 3/4 or 6/8 song into a fake user override. There the live flag (set
+    # only by the Time signature radio) is the sole evidence of a user choice.
+    try:
+        from backing_context import active_creative_backing_context
+
+        _creative_meter_owner = active_creative_backing_context(session) is not None
+    except Exception:
+        _creative_meter_owner = False
+    if meter and not _creative_meter_owner:
+        if meter_override_flag:
+            overrides["meter"] = meter
+            overrides["meter_override"] = True
+        else:
+            overrides.pop("meter", None)
+            overrides.pop("meter_override", None)
+    elif meter:
         if meter == default_meter and not meter_override_flag:
             if prev_meter and prev_meter != meter:
                 overrides["meter"] = prev_meter
@@ -1241,8 +1312,52 @@ def seal_live_backing_tempo_for_persist(session: dict[str, Any]) -> int:
     return live
 
 
+def _capture_meter_override_to_keep(session: dict[str, Any]) -> dict[str, str] | None:
+    try:
+        from backing_context import active_creative_backing_context
+        from songs.meter_state import capture_saved_meter_override
+
+        if active_creative_backing_context(session) is None:
+            return capture_saved_meter_override(session)
+    except Exception:
+        pass
+    return None
+
+
+def _restore_meter_override_kept(session: dict[str, Any], kept: dict[str, str] | None, song_default: str) -> None:
+    if not kept:
+        return
+    try:
+        from songs.meter_state import restore_saved_meter_override
+
+        restore_saved_meter_override(
+            session,
+            kept,
+            sync_id=str(session.get("_canonical_active_backing_song_id") or ""),
+            song_default_meter=str(song_default or "4/4"),
+            untagged_ok=False,
+        )
+    except Exception:
+        pass
+
+
 def apply_backing_play_session_to_widgets(session: dict[str, Any]) -> None:
-    """Project current play-session defaults+overrides onto Backing widget keys."""
+    """Project current play-session defaults+overrides onto Backing widget keys.
+
+    A genuine saved meter override (chosen for the active song) is a song-level
+    choice, not a per-play-session knob: a fresh play session has no meter
+    override in its bag, so projecting its defaults would silently replace it.
+    """
+    kept = _capture_meter_override_to_keep(session)
+    _apply_backing_play_session_to_widgets_raw(session)
+    if kept:
+        defaults = (get_backing_play_session(session) or {}).get("defaults") or {}
+        _restore_meter_override_kept(
+            session, kept, _catalog_song_meter_from_session(session, fallback=str(defaults.get("meter") or "4/4"))
+        )
+
+
+def _apply_backing_play_session_to_widgets_raw(session: dict[str, Any]) -> None:
     resolved = effective_backing_play_overrides(session)
     if resolved.get("bpm"):
         bpm = int(resolved["bpm"])
@@ -1343,6 +1458,19 @@ def apply_backing_play_session_to_widgets(session: dict[str, Any]) -> None:
 
 
 def _apply_defaults_to_widgets(session: dict[str, Any], defaults: dict[str, Any]) -> None:
+    """Seed the Backing widget keys from the source defaults.
+
+    A genuine meter override is a song-level choice, not a per-play-session knob:
+    leaving the Backing page (expire) and entering it again (new play session)
+    both come through here and must neither forget it nor SAVE the reset widgets
+    over it. It is put back when it was chosen for the active song.
+    """
+    kept = _capture_meter_override_to_keep(session)
+    _apply_defaults_to_widgets_raw(session, defaults)
+    _restore_meter_override_kept(session, kept, str(defaults.get("meter") or "4/4"))
+
+
+def _apply_defaults_to_widgets_raw(session: dict[str, Any], defaults: dict[str, Any]) -> None:
     bpm = int(defaults.get("bpm") or 100)
     session["backing_track_bpm"] = bpm
     session["bpm"] = bpm

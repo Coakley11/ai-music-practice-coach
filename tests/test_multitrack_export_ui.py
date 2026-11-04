@@ -106,7 +106,9 @@ class TestStep4SaveExportRender(unittest.TestCase):
         self.assertEqual(st.text_input.call_args.kwargs.get("key"), MT_EXPORT_SAVE_NAME_KEY)
         self.assertNotIn("value", st.text_input.call_args.kwargs)
         st.button.assert_called_once()
-        self.assertEqual(st.button.call_args.args[0], "Save Export")
+        from music_feature_icons import action_label
+
+        self.assertEqual(st.button.call_args.args[0], action_label("save", "Save Export"))
 
     def test_save_export_skipped_without_mixed_wav(self) -> None:
         st = MagicMock()

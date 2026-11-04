@@ -70,6 +70,7 @@ __all__ = [
     "is_subdivided_bar",
     "subdivisions",
     "subdivision_count",
+    "bare_chord_token",
     "primary_chord",
     "display_label",
     "chord_at_pulse",
@@ -87,6 +88,8 @@ __all__ = [
     "is_hit_token",
     "hit_underlying_chord",
     "make_hit_token",
+    "SPLIT_MEASURE_PATTERNS",
+    "split_measure_token",
 ]
 
 
@@ -161,8 +164,31 @@ def subdivisions(token: object) -> list[str]:
     if not s:
         return []
     if SUBDIVISION_SEPARATOR not in s:
-        return [s]
+        return [bare_chord_token(s)]
     return [p.strip() for p in s.split(SUBDIVISION_SEPARATOR) if p.strip()]
+
+
+def bare_chord_token(token: object) -> str:
+    """Strip a lone ``:weight`` suffix from a single-chord (no ``|``) token.
+
+    ``"C:4"`` -> ``"C"``; ``"B:2"`` -> ``"B"``. A weight only means something
+    relative to sibling chords, so on its own it is timing metadata, never part
+    of the chord name (the bar is still filled by the one chord, exactly as for
+    a plain ``"C"``). Only a numeric ``:weight`` is stripped; any other token
+    (plain chords, ``"A|B"`` bars, ``.hit`` tokens, text) is returned unchanged
+    apart from surrounding whitespace.
+    """
+    s = str(token or "").strip()
+    if not s or SUBDIVISION_SEPARATOR in s or WEIGHT_SEPARATOR not in s:
+        return s
+    chord_part, weight_part = s.split(WEIGHT_SEPARATOR, 1)
+    raw_weight, _ = _strip_push_marker(weight_part)
+    try:
+        float(raw_weight)
+    except ValueError:
+        return s
+    chord_clean = chord_part.strip()
+    return chord_clean or s
 
 
 def subdivision_count(token: object) -> int:
@@ -296,7 +322,7 @@ def chord_stream(chords: Iterable[object]) -> list[str]:
         if is_subdivided_bar(s):
             out.extend(p.chord for p in parse_subdivisions(s) if p.chord)
         else:
-            out.append(_strip_single_bar_weight(s))
+            out.append(bare_chord_token(s))
     return out
 
 
@@ -377,7 +403,12 @@ def parse_subdivisions(
     if not raw:
         return []
     if SUBDIVISION_SEPARATOR not in raw:
-        chord_clean, push = _strip_push_marker(raw)
+        # A lone ``X:w`` is chord X filling the bar (see ``bare_chord_token``).
+        # A push marker on the weight (``X:4p``) still marks the chord a push.
+        stripped = bare_chord_token(raw)
+        push_weight = stripped != raw and raw[-1] in PUSH_MARKERS
+        chord_clean, push = _strip_push_marker(stripped)
+        push = push or push_weight
         if not chord_clean:
             return []
         return [Subdivision(chord=chord_clean, weight=float(beats_per_bar), push=push)]
@@ -568,3 +599,40 @@ def join_weighted_subdivisions(
         # Single-chord; don't render weight - keep simple bar token.
         return pieces[0].split(WEIGHT_SEPARATOR, 1)[0]
     return SUBDIVISION_SEPARATOR.join(pieces)
+
+
+# How a single bar can be split between two chords. One definition shared by the Custom Progression Lab
+# and the Composition chord editor, so both pages offer (and write) exactly the same subdivisions.
+SPLIT_MEASURE_PATTERNS: dict[str, str] = {
+    "2+2": "Two halves — two beats each",
+    "3+1": "Three beats, then one",
+    "1+3": "One beat, then three",
+    "push": "Second chord pushed in early (anticipated)",
+    "4x1": "One chord per beat, alternating",
+}
+
+
+def split_measure_token(pattern: str, first_chord: str, second_chord: str) -> str:
+    """Weighted subdivided-bar token for one of ``SPLIT_MEASURE_PATTERNS`` (empty for an unknown pattern)."""
+    first = str(first_chord or "").strip()
+    second = str(second_chord or "").strip() or first
+    if not first:
+        return ""
+    if pattern == "2+2":
+        parts = [Subdivision(first, 2.0, False), Subdivision(second, 2.0, False)]
+    elif pattern == "3+1":
+        parts = [Subdivision(first, 3.0, False), Subdivision(second, 1.0, False)]
+    elif pattern == "1+3":
+        parts = [Subdivision(first, 1.0, False), Subdivision(second, 3.0, False)]
+    elif pattern == "push":
+        parts = [Subdivision(first, 3.5, False), Subdivision(second, 0.5, True)]
+    elif pattern == "4x1":
+        parts = [
+            Subdivision(first, 1.0, False),
+            Subdivision(second, 1.0, False),
+            Subdivision(first, 1.0, False),
+            Subdivision(second, 1.0, False),
+        ]
+    else:
+        return ""
+    return join_weighted_subdivisions(parts)

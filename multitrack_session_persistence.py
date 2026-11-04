@@ -483,6 +483,46 @@ def clear_multitrack_persisted_state(session_state: dict[str, Any]) -> None:
         store["multitrack"] = snap
 
 
+def restore_multitrack_layer_names_from_snapshot(session_state: dict[str, Any]) -> int:
+    """Bring saved per-layer names (and mixer controls) back when layers are hydrated from a sync payload.
+
+    Layer audio arrives through the persisted blob, but the layer's NAME lives in the multitrack page
+    snapshot that travels with the same payload. Restoring only the audio left a layer renamed on one
+    device showing its generic slot label ("Extra layer") on the next one. Never overwrites a name that
+    is already live in this session, so a rename in progress is not clobbered.
+    """
+    from multitrack_slots import MULTITRACK_SLOTS
+
+    store = session_state.get("_studio_page_snapshots")
+    snap = store.get("multitrack") if isinstance(store, dict) else None
+    if not isinstance(snap, dict):
+        return 0
+    restored = 0
+    controls = snap.get("mt_track_controls")
+    if isinstance(controls, dict) and controls:
+        try:
+            from multitrack_mixer_state import merge_mt_track_controls
+
+            session_state["mt_track_controls"] = merge_mt_track_controls(
+                controls, session_state.get("mt_track_controls")
+            )
+        except ImportError:
+            pass
+    for slot in MULTITRACK_SLOTS:
+        key = f"mt_name_{slot}"
+        if key in session_state:
+            continue
+        name = str(snap.get(key) or "").strip()
+        if not name:
+            ctrl = (session_state.get("mt_track_controls") or {}).get(slot)
+            if isinstance(ctrl, dict):
+                name = str(ctrl.get("layer_name") or "").strip()
+        if name and name != slot:
+            session_state[key] = name
+            restored += 1
+    return restored
+
+
 def restore_multitrack_layers_from_workspace(session_state: dict[str, Any]) -> bool:
     """Hydrate multitrack layers from cloud/disk payload (top-level blob or page snapshot)."""
     skip_count = session_state.get("_mt_skip_layer_restore_count")
@@ -503,6 +543,7 @@ def restore_multitrack_layers_from_workspace(session_state: dict[str, Any]) -> b
         record_multitrack_restore_diag(session_state, source="session_already_hydrated")
         return False
     if restore_multitrack_session_if_needed(session_state):
+        restore_multitrack_layer_names_from_snapshot(session_state)
         try:
             from multitrack_project_load_trace import record_restore_event
 
@@ -522,6 +563,7 @@ def restore_multitrack_layers_from_workspace(session_state: dict[str, Any]) -> b
                 filenames = snap.get("mt_track_filenames")
                 if isinstance(filenames, dict):
                     session_state["mt_track_filenames"] = copy.deepcopy(filenames)
+                restore_multitrack_layer_names_from_snapshot(session_state)
                 record_multitrack_restore_diag(session_state, source="multitrack_page_snapshot")
                 record_multitrack_workspace_restore(session_state, source="multitrack_page_snapshot")
                 try:
