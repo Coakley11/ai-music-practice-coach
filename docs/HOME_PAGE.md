@@ -3,9 +3,10 @@
 Home is the app's welcome screen: a signpost that points at every workspace and,
 when there is one on record, offers to pick up the last practice session.
 
-It is a real studio page (`studio_page == "home"`), reachable from the top nav,
-the quick-nav art row and the simple-nav fallback, and it participates in
-back/forward history like any other destination.
+It is a real studio page (`studio_page == "home"`), and it participates in
+back/forward history like any other destination. It leads every navigation — the
+top nav, the quick-nav art row and the simple-nav fallback — with Practice
+immediately after it.
 
 **Practice is still the startup default.** Home is somewhere you can go, not
 somewhere you are put. Making it the landing page is a separate change; what that
@@ -56,7 +57,7 @@ Both live under `studio_page == "creative"`, but they select different
 workspaces, and `history_destination_id` reports them separately, so back/forward
 distinguishes them.
 
-## Continue practicing
+## Recent practice
 
 The card is built by `home_recent_session.verified_recent_session`, which reads
 **saved Practice Log entries only**. A song loaded in the workspace is not
@@ -68,15 +69,17 @@ the Practice Log itself does: *Practice/Concert key*, *Written key* for a
 transposing instrument, *Shape key* for guitar, and *Original key*. The concert
 key is never presented as the written key.
 
-Pressing **Continue practicing** opens the workspace that session was recorded in
-(`practice_type` → page). It restores no musical state: the current song,
-instrument and keys are left exactly as they are, and the caption on the card
-says so.
+**This slice reports; it does not resume.** The heading is "Recent practice", not
+"Continue practicing", and the button names its destination — *Go to Practice*,
+*Go to Backing*, *Go to Missions* — because that is all it does. It opens the
+workspace that session was recorded in (`practice_type` → page) and restores no
+musical state; the caption says the song is not reloaded. Nothing on the card
+should read as a promise to put the workspace back the way it was.
 
-Restoring the song itself would be a further step. It should go through
+Genuine resume is a later slice. It should go through
 `music_resume_payload.apply_music_resume_payload` rather than anything new, and
 it needs its own acceptance pass, because it necessarily writes the protected
-state above.
+state above. Only then should the wording change.
 
 ## Branding and assets
 

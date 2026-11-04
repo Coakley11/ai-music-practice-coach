@@ -1,4 +1,4 @@
-"""The "Continue practicing" card on Home - verified saved history only.
+"""The "Recent practice" card on Home - verified saved history only.
 
 A session the musician actually finished is one that was *written down*. The
 Practice Log is that record: it is persisted per workspace, it survives a reload
@@ -12,9 +12,12 @@ loaded; it is not evidence that a previous session happened, and presenting it a
 "where you left off" would be a guess dressed as a fact. With no saved entry,
 :func:`verified_recent_session` returns ``None`` and Home shows its empty state.
 
-Resuming never restores musical state. The card routes to the workspace that
-session was recorded in; the song, instrument and keys stay exactly as the
-musician left them.
+This card reports; it does not resume. It routes to the workspace that session
+was recorded in, and the song, instrument and keys stay exactly as the musician
+left them. The heading says "Recent practice" and the button names its
+destination for that reason: nothing here should read as a promise to put the
+workspace back the way it was. Genuine resume is a later slice, and it belongs
+on ``music_resume_payload.apply_music_resume_payload``.
 """
 
 from __future__ import annotations
@@ -41,6 +44,16 @@ _TYPE_TO_CREATIVE_DEST: dict[str, str] = {
     "mission practice": "creative::Missions",
 }
 
+#: What to call each destination on the button, so the action names where it goes.
+_PAGE_LABEL: dict[str, str] = {
+    "practice": "Practice",
+    "backing": "Backing",
+    "custom": "Custom Progressions",
+    "multitrack": "Multitrack",
+    "composer": "Composition",
+    "creative": "Creative Lab",
+}
+
 
 @dataclass(frozen=True)
 class VerifiedRecentSession:
@@ -65,6 +78,17 @@ class VerifiedRecentSession:
 
     def key_summary(self) -> str:
         return " · ".join(f"{label}: {value}" for label, value in self.key_parts)
+
+    def destination_label(self) -> str:
+        """Where the button goes, by name - Home never promises more than it does."""
+        if self.creative_dest == "creative::Missions":
+            return "Missions"
+        if self.creative_dest == "creative::SBI":
+            return "Song-Aware Coaching"
+        return _PAGE_LABEL.get(self.page, "Practice")
+
+    def action_label(self) -> str:
+        return f"Go to {self.destination_label()}"
 
 
 def _relative_day_label(iso_date: str, *, today: date | None = None) -> str:
@@ -169,11 +193,22 @@ def verified_recent_session(
     return None
 
 
+#: The section heading. "Recent Practice" reports what the Practice Log holds; it
+#: does not promise to put the workspace back the way it was, because this slice
+#: does not restore the song, the instrument or the keys.
+SECTION_EYEBROW = "Recent practice"
+
 #: Shown when nothing is on record. Honest about why, and offers a way forward.
 EMPTY_STATE_TITLE = "Every great session starts somewhere."
 EMPTY_STATE_BODY = (
-    "No saved practice session yet. Once you log a session it will show up here, "
-    "ready to pick up where you left off."
+    "No saved practice session yet. Once you log a session in the Practice Log, "
+    "it will show up here."
+)
+
+#: Printed under the button so the action cannot be mistaken for a restore.
+ACTION_CAPTION = (
+    "Opens {destination}. Your current song, instrument and keys stay exactly as "
+    "they are — this does not reload the song from that session."
 )
 
 
@@ -181,6 +216,8 @@ __all__ = (
     "VerifiedRecentSession",
     "verified_recent_session",
     "session_from_entry",
+    "SECTION_EYEBROW",
     "EMPTY_STATE_TITLE",
     "EMPTY_STATE_BODY",
+    "ACTION_CAPTION",
 )

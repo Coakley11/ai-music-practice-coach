@@ -44,6 +44,16 @@ class TestRegisteredEverywhere(unittest.TestCase):
         self.assertIn(HOME_PAGE_ID, app_ui.QUICK_NAV_ROW_PRIMARY)
         self.assertIn(HOME_PAGE_ID, app_ui.SIMPLE_NAV_PAGE_IDS)
 
+    def test_home_leads_every_nav_and_practice_follows_it(self):
+        for name, row in (
+            ("top nav", app_ui.TOP_NAV_PAGE_IDS),
+            ("quick nav", app_ui.QUICK_NAV_ROW_PRIMARY),
+            ("simple nav", app_ui.SIMPLE_NAV_PAGE_IDS),
+        ):
+            with self.subTest(nav=name):
+                self.assertEqual(row[0], HOME_PAGE_ID)
+                self.assertEqual(row[1], "practice")
+
     def test_home_has_a_compact_nav_label(self):
         self.assertEqual(app_ui.nav_compact_button_label(HOME_PAGE_ID), "Home")
 

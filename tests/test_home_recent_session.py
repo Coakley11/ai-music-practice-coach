@@ -73,6 +73,48 @@ class TestOnlySavedHistoryCounts(unittest.TestCase):
         self.assertIn("no saved practice session", text)
 
 
+class TestTheCardDoesNotPromiseARestore(unittest.TestCase):
+    """This slice navigates; it does not reload the song. The words must match."""
+
+    def test_the_heading_reports_rather_than_promising_to_resume(self):
+        self.assertEqual(hrs.SECTION_EYEBROW, "Recent practice")
+
+    def test_no_user_facing_string_implies_the_session_is_restored(self):
+        blob = " ".join([hrs.SECTION_EYEBROW, hrs.EMPTY_STATE_TITLE,
+                         hrs.EMPTY_STATE_BODY, hrs.ACTION_CAPTION]).lower()
+        for word in ("continue practicing", "pick up where you left off", "resume"):
+            self.assertNotIn(word, blob)
+
+    def test_the_action_names_where_it_goes(self):
+        got = hrs.verified_recent_session({}, entries=[_entry()])
+        self.assertEqual(got.destination_label(), "Practice")
+        self.assertEqual(got.action_label(), "Go to Practice")
+
+    def test_each_destination_gets_its_own_name(self):
+        cases = {
+            "song practice": "Practice",
+            "backing track": "Backing",
+            "custom progression": "Custom Progressions",
+            "multitrack/upload": "Multitrack",
+            "composition practice": "Composition",
+            "mission practice": "Missions",
+        }
+        for ptype, label in cases.items():
+            with self.subTest(practice_type=ptype):
+                got = hrs.session_from_entry(_entry(practice_type=ptype))
+                self.assertEqual(got.destination_label(), label)
+
+    def test_the_caption_says_the_song_is_not_reloaded(self):
+        caption = hrs.ACTION_CAPTION.format(destination="Practice").lower()
+        self.assertIn("does not reload the song", caption)
+        self.assertIn("stay exactly as they are", caption)
+
+    def test_the_label_never_comes_back_empty(self):
+        got = hrs.session_from_entry(_entry(practice_type="interpretive dance"))
+        self.assertTrue(got.destination_label().strip())
+        self.assertTrue(got.action_label().startswith("Go to "))
+
+
 class TestConcertAndWrittenKeysAreDistinguished(unittest.TestCase):
     def test_a_transposing_instrument_shows_both_keys_with_distinct_labels(self):
         got = hrs.verified_recent_session({}, entries=[_entry()])

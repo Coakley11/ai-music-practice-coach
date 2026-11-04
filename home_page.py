@@ -7,7 +7,7 @@ emblem. Each card additionally wears the canonical accent of the page it opens
 that greets them when they arrive.
 
 Every tap target is at least 44x44 CSS pixels. Navigation goes through
-``home_destinations.apply_home_navigation``; the "Continue practicing" card comes
+``home_destinations.apply_home_navigation``; the "Recent practice" card comes
 from ``home_recent_session`` and shows only what the Practice Log has on record.
 """
 
@@ -29,8 +29,10 @@ from home_destinations import (
     apply_home_navigation,
 )
 from home_recent_session import (
+    ACTION_CAPTION,
     EMPTY_STATE_BODY,
     EMPTY_STATE_TITLE,
+    SECTION_EYEBROW,
     VerifiedRecentSession,
     verified_recent_session,
 )
@@ -309,7 +311,7 @@ def _render_continue(st: Any, session_state: Any, rerun_fn: Any) -> None:
         st.markdown(
             f"""
 <div class="home-continue">
-  <p class="home-continue-eyebrow">Pick up your practice</p>
+  <p class="home-continue-eyebrow">{html.escape(SECTION_EYEBROW)}</p>
   <h3>{html.escape(EMPTY_STATE_TITLE)}</h3>
   <p>{html.escape(EMPTY_STATE_BODY)}</p>
 </div>
@@ -331,7 +333,7 @@ def _render_continue(st: Any, session_state: Any, rerun_fn: Any) -> None:
     st.markdown(
         f"""
 <div class="home-continue">
-  <p class="home-continue-eyebrow">Pick up your practice</p>
+  <p class="home-continue-eyebrow">{html.escape(SECTION_EYEBROW)}</p>
   <h3>{html.escape(heading)}</h3>
   <p>{html.escape(" · ".join(bits))}</p>
   <div class="home-continue-keys">{chips}</div>
@@ -340,7 +342,7 @@ def _render_continue(st: Any, session_state: Any, rerun_fn: Any) -> None:
         unsafe_allow_html=True,
     )
     with st.container(key="home_resume"):
-        label = "Continue practicing"
+        label = recent.action_label()
         if st.button(label, key="home_resume_btn", use_container_width=False):
             dest = HomeDestination(
                 key="resume",
@@ -351,10 +353,7 @@ def _render_continue(st: Any, session_state: Any, rerun_fn: Any) -> None:
             )
             apply_home_navigation(session_state, dest)
             rerun_fn()
-    st.caption(
-        "Opens the workspace this session was recorded in. Your current song, "
-        "instrument and keys are left exactly as they are."
-    )
+    st.caption(ACTION_CAPTION.format(destination=recent.destination_label()))
 
 
 def render_home_page(
