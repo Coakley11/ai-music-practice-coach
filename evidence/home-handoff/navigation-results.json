@@ -1,0 +1,39 @@
+[
+  {
+    "route": "discover_pop",
+    "verified_destination_content": "MATCHING SONGS (50)",
+    "exceptions": false
+  },
+  {
+    "route": "discover_jazz",
+    "verified_destination_content": "MATCHING SONGS (25)",
+    "exceptions": false
+  },
+  {
+    "route": "discover_all",
+    "verified_destination_content": "MATCHING SONGS (119)",
+    "exceptions": false
+  },
+  {
+    "route": "more_missions",
+    "verified_destination_content": "Mission instructions",
+    "exceptions": false
+  },
+  {
+    "route": "more_sbi",
+    "verified_destination_content": "Build My Coaching Plan",
+    "exceptions": false
+  },
+  {
+    "route": "more_analysis",
+    "verified_destination_content": "Run AI coach analysis",
+    "exceptions": false
+  },
+  {
+    "route": "more_keycycle",
+    "verified_destination_content": "Press Play Backing Track to generate and play.",
+    "exceptions": false,
+    "controls_expanded": true,
+    "audio_paused": true
+  }
+]

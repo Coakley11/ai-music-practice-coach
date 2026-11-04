@@ -1,0 +1,207 @@
+←
+
+→
+
+keyboard_arrow_right
+
+Account & Workspace
+
+Membership
+
+Current access: Open access
+
+View plans
+
+🎼 ACTIVE SONG
+
+SONG
+Say — John Mayer
+
+🎼 Songs
+
+Say · Pop
+
+📜 Song Original Key: G
+
+🗝️ Practice / Concert Key
+
+🎸 YOUR PRACTICE SETUP
+
+Instrument
+
+Level
+
+🔍 Practice focus
+
+💬 MUSIC COACH
+
+💬 Ask the Music Coach
+
+Get help with practice, theory, navigation, backing tracks, karaoke, or this app.
+
+Question
+
+💬 Ask the Music Coach
+
+☰ Pages
+
+⏱️ SESSION
+
+⏱️ Session: 30 min (adjust on the Practice page)
+
+Deploy
+🎵 Daniel Cohen Music Practice Coach AI
+
+AI-powered practice studio for songs, backing tracks, harmony, improvisation, recording, and instrument-specific coaching.
+
+📖 Tutorial
+
+🏠
+Home
+
+Open
+
+🎯
+Practice
+
+Open
+
+🎼
+Songs
+
+Open
+
+🎧
+Backing
+
+Open
+
+✍️
+Custom
+
+Open
+
+🪶
+Compose
+
+Open
+
+🎨
+Creative
+
+Open
+
+🎙️
+Upload
+
+Open
+
+🎚️
+Multitrack
+
+Open
+
+📓
+Log
+
+Open
+
+🎙️
+
+RECORDING COACH
+
+Upload
+
+Upload & AI Coach
+
+Drop a take, get timing and pitch feedback, then jump to practice or multitrack.
+
+🎹
+Piano practice mode · Voicings — Left-hand roots vs inversions; right-hand chord tones and voice leading. · Review recordings with AI coaching feedback.
+Say · John Mayer · Key G · Piano
+Step 1 — What should the coach evaluate?
+
+Tell the coach what this recording represents before capturing audio. These answers are saved with the recording for Practice Log.
+
+Workflow
+
+Single recording
+
+Multitrack recording
+
+Recording type
+
+Instrument to evaluate
+
+Player level
+
+Practice Focus
+
+Voicings
+
+What music/song is this recording?
+
+Catalog song
+
+Concert Key of this recording
+
+Evaluating Criteria / Metrics
+AI Improvisation Metrics
+
+Choose the improvisation skills you practiced in this take.
+
+Include active Creative Lab / Practice mission
+
+Inherited from AI Metrics
+
+No AI Metrics selected yet on Metrics & AI — add metrics below.
+
+Add metrics for this take
+
+Additional metrics (this recording only)
+
+Choose options
+
+AI will evaluate
+
+Chord-tone targeting
+
+Active mission: Improvise using only chord tones over G
+
+Add custom goal
+
+Progress history appears after you analyze takes with metrics selected.
+
+Step 2 — Capture audio
+
+UPLOAD OR RECORD THE TAKE TO ANALYZE
+
+WAV
+MP3
+M4A
+MP4
+MOV
+OGG
+FLAC
+
+Maximum file size: 500 MB
+
+Drag and drop a take, or record live. WAV gives the most accurate timing analysis. MP4/MOV uploads extract audio automatically. Maximum file size: 500 MB.
+
+Drop your recording here
+
+upload
+
+Upload
+
+500MB per file • WAV, MP3, M4A, MP4, MOV, OGG, FLAC
+
+Or record live
+
+00:00
+
+Run AI coach analysis
+
+keyboard_arrow_right
+
+Upload History
