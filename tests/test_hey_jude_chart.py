@@ -4,10 +4,13 @@ HEY JUDE (74 BPM, 4/4; recording 7:11 = 431 s, Walter Everett via Wikipedia, inf
   Form (Alan W. Pollack, "Notes on Hey Jude", recmusicbeatles.com/public/files/awp/hj-1.html;
   Wikipedia "Hey Jude": four verses, two bridges, ~3 min then a ~4 min coda of 19 rounds):
   Verse 1 (8) | Verse 2 (9) | Bridge (11.5) | Verse 3 (9) | Bridge (11.5) | Verse 4 (8) |
-  Coda 19 x 4 bars F Eb Bb F (Pollack: 18.5-19; the record fades from ~ the 10th round).
+  Coda 19 x 4 bars F Eb Bb F.  Count and cycle length are from the analyses, NOT fitted to the
+  length: Pollack's form line "19X", "no less than nineteen repetitions of a four measure
+  phrase" (walkthrough says "eighteen and a half"), Everett via Wikipedia "nineteen rounds of
+  the double plagal cadence"; Pollack: fade begins as early as the 10th repetition.
   Tempo 74: Hooktheory (74/75), SongBPM/Tunebat Love-version listings; the 2009/2015
-  remaster analyzers report ~147 = double time.  Length proves it: 133.5 bars * 3.243 s =
-  433 s vs 431 s.  Old chart: 28 bars at the fallback 100 BPM = 67 s (ratio 0.16), no coda.
+  remaster analyzers report ~147 = double time.  Length is only a consistency check: 133.5 bars *
+  3.243 s = 433 s vs 431 s.  Old chart: 28 bars at the fallback 100 BPM = 67 s (ratio 0.16), no coda.
   Push / split bars: none in the verse.  Bridge bar 10 is ``F7:2|C7:2`` - Pollack halves the F7
   bar and adds a 2-bar C7 na-na tag, but the half bar cannot be a bar here so the
   bridge is 12 bars (0.5 bar over); beat placement of the C7 change on beat 3 is derived from
