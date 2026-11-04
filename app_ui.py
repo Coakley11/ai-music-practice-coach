@@ -1699,10 +1699,10 @@ body:has(.st-key-backing_card_controls) .ui-backing-active-song {
 }
 .st-key-backing_card_key_row .ui-skp-cap { margin: 0; font-size: 0.8rem; line-height: 1.3; color: #64748b; }
 .st-key-backing_card_key_row .ui-skp-cap-fixed { color: #4338ca; font-weight: 600; }
-.st-key-backing_card_controls .st-key-backing_card_key_row [data-baseweb="select"] > div {
+.st-key-backing_card_controls .st-key-backing_card_key_row [data-testid="stSelectbox"] .react-aria-ComboBox [role="group"] {
   min-height: 40px !important; border-radius: 10px; border: 1px solid #94a3b8 !important; background: #ffffff !important;
 }
-.st-key-backing_card_key_row [data-baseweb="select"] *:not(svg):not(path) {
+.st-key-backing_card_key_row [data-testid="stSelectbox"] input[role="combobox"] {
   font-size: 1.3rem !important; font-weight: 800 !important; color: #0f172a !important; line-height: 1.2 !important;
 }
 @container backing-main (max-width: 800px) {
@@ -1994,10 +1994,10 @@ body:has(.st-key-picker_active_song_favorite_row) .st-key-picker_active_song_car
 }
 /* Streamlit pulls the element after a markdown block up by 1rem; the label keeps its own line. */
 .st-key-picker_active_song_practice_key_row .ui-skp-label { margin-bottom: 1rem !important; }
-.st-key-picker_active_song_practice_key_row [data-baseweb="select"] > div {
+.st-key-picker_active_song_practice_key_row [data-testid="stSelectbox"] .react-aria-ComboBox [role="group"] {
   min-height: 52px; border-radius: 10px; border: 1px solid #94a3b8 !important; background: #ffffff !important;
 }
-.st-key-picker_active_song_practice_key_row [data-baseweb="select"] *:not(svg):not(path) {
+.st-key-picker_active_song_practice_key_row [data-testid="stSelectbox"] input[role="combobox"] {
   font-size: 1.6rem !important; font-weight: 800 !important; color: #0f172a !important; line-height: 1.2 !important;
 }
 /* Meta badges inside the v12 card: quiet neutral pills (Tempo / Meter / Style / Source). */
@@ -2019,10 +2019,10 @@ body:has(.st-key-picker_active_song_favorite_row) .st-key-picker_active_song_car
   .st-key-picker_active_song_key_row .ui-skp-narrow { display: inline; }
   .st-key-picker_active_song_key_row .ui-skp-value,
   .st-key-picker_active_song_key_row .ui-skp-locked,
-  .st-key-picker_active_song_practice_key_row [data-baseweb="select"] *:not(svg):not(path) { font-size: 1.25rem !important; }
+  .st-key-picker_active_song_practice_key_row [data-testid="stSelectbox"] input[role="combobox"] { font-size: 1.25rem !important; }
   .st-key-picker_active_song_key_row .ui-skp-value,
   .st-key-picker_active_song_key_row .ui-skp-locked,
-  .st-key-picker_active_song_practice_key_row [data-baseweb="select"] > div { height: 46px; min-height: 46px; }
+  .st-key-picker_active_song_practice_key_row [data-testid="stSelectbox"] .react-aria-ComboBox [role="group"] { height: 46px; min-height: 46px; }
   .st-key-picker_active_song_key_row .ui-song-library-genre-chips-label { min-height: 0; }
 }
 /* v12 header: the Favorite sits in the header's top-right slot, level with the chips. */
