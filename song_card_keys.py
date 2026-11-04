@@ -63,3 +63,61 @@ def key_token_from_name(name: str) -> str:
         return str(name or "")
     acc = m.group(2).replace("♯", "#").replace("♭", "b")
     return f"{m.group(1).upper()}{acc}{'m' if parsed[1] == 'minor' else ''}"
+
+
+# --- Search aliases for the Practice Key dropdowns ---------------------------------
+# Streamlit 1.61's selectbox filters only on the visible option text, so "Eb" never
+# matched "E♭ major". This script, installed once per page, rewrites what the user
+# types in the two key dropdowns: a b / # right after a note letter becomes ♭ / ♯
+# ("Eb" -> "E♭", "F#m" -> "F♯m"). Only the search text changes; the options, the
+# stored key values, saved keys and callbacks are untouched.
+KEY_SEARCH_ALIAS_SLOT_KEY = "key_search_alias_slot"
+KEY_SEARCH_INPUT_SELECTOR = (
+    '.st-key-picker_active_song_practice_key_row input[role="combobox"], '
+    '.st-key-backing_card_key_row input[role="combobox"]'
+)
+KEY_SEARCH_ALIAS_JS = """
+<script>
+(function () {
+  var W = window.parent, D;
+  try { D = W.document; } catch (e) { return; }
+  if (W.__keySearchAliasInstalled) return;
+  W.__keySearchAliasInstalled = true;
+  var SEL = %s;
+  var setter = Object.getOwnPropertyDescriptor(W.HTMLInputElement.prototype, 'value').set;
+  D.addEventListener('input', function (e) {
+    var el = e.target;
+    if (!el || e.__keySearchAlias || !el.matches || !el.matches(SEL)) return;
+    var v = String(el.value || '');
+    var nv = v.replace(/([A-Ga-g])b/g, '$1\u266d').replace(/([A-Ga-g])#/g, '$1\u266f');
+    if (nv === v) return;
+    // Replace the typed text before the combo box sees it, then let it filter.
+    e.stopImmediatePropagation();
+    var pos = el.selectionStart;
+    setter.call(el, nv);
+    try { el.setSelectionRange(pos, pos); } catch (e2) {}
+    var ev = new W.Event('input', { bubbles: true });
+    ev.__keySearchAlias = true;
+    el.dispatchEvent(ev);
+  }, true);
+})();
+</script>
+"""
+
+
+def key_search_alias_html() -> str:
+    import json
+
+    return KEY_SEARCH_ALIAS_JS % json.dumps(KEY_SEARCH_INPUT_SELECTOR)
+
+
+def render_key_search_alias(st) -> None:
+    """Install the search-alias script (idempotent in the page). Call it on every run of
+    a render path that draws a key dropdown, so its element slot is always present."""
+    slot = st.container(key=KEY_SEARCH_ALIAS_SLOT_KEY)
+    try:
+        import streamlit.components.v1 as components
+    except ImportError:  # pragma: no cover
+        return
+    with slot:
+        components.html(key_search_alias_html(), height=0)

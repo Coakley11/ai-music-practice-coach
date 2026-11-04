@@ -1610,6 +1610,16 @@ body:has(.st-key-backing_card_controls) .ui-backing-active-song {
   height: 0 !important;
   overflow: hidden !important;
 }
+/* Key search-alias script slot (song_card_keys): out of flow, so it costs the key
+   strips and the fixed-height Backing panel no space. */
+.st-key-key_search_alias_slot,
+[data-testid="stLayoutWrapper"]:has(> .st-key-key_search_alias_slot),
+[data-testid="stElementContainer"]:has(> .st-key-key_search_alias_slot) {
+  position: absolute !important;
+  width: 0 !important;
+  height: 0 !important;
+  overflow: hidden !important;
+}
 /* The card's Practice Key ▼ (the sidebar control in a second place):
    Original key | Practice key side by side in every layout, compact select. */
 .st-key-backing_card_controls .st-key-backing_card_key_row [data-testid="stHorizontalBlock"] {

@@ -10133,7 +10133,10 @@ def _render_backing_card_practice_key(original_key: str, practice_key: str) -> N
     reruns and reverted the key. Without an owner widget this run, the row
     shows the keys as text, as before.
     """
-    from song_card_keys import key_relation_caption, pretty_key_name
+    from song_card_keys import key_relation_caption, pretty_key_name, render_key_search_alias
+
+    # Every run of this card, both branches: "Eb" / "F#" find E♭ / F♯ in the dropdown.
+    render_key_search_alias(st)
 
     orig_name = pretty_key_name(original_key) or str(original_key or "")
     orig_cell = (
@@ -11290,7 +11293,10 @@ def _render_card_practice_key_selector(rec: dict, *, pick_key: str) -> None:
     original_key = str(rec.get("key") or "C").strip() or "C"
     from practice_key_mode import practice_key_edit_locked, resolve_practice_concert_key_for_song
 
-    from song_card_keys import key_relation_caption, pretty_key_name
+    from song_card_keys import key_relation_caption, pretty_key_name, render_key_search_alias
+
+    # Every run of this card, both branches: "Eb" / "F#" find E♭ / F♯ in the dropdown.
+    render_key_search_alias(st)
 
     _pk_label_html = (
         '<p class="ui-skp-label"><span class="ui-skp-wide">Practice / Concert key</span>'
