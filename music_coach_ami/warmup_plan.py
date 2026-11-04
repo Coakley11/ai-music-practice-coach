@@ -681,11 +681,16 @@ def _new_item(spec: dict[str, Any], family: str) -> dict[str, Any] | None:
         return None                       # a widening run ends at its widest interval; extra time becomes extra plays, never a narrower one again
     params: dict[str, Any] = {}
     if family in SONG_FAMILIES:
+        own = {h.get("level") for h in have}
+        fam_level = own.pop() if len(own) == 1 else None                 # a kind raised to a higher level keeps that level for the variants added to it
         taken = {_song_combo(spec, family, d["params"].get("variant", 0), d.get("level")) for d in have}
-        v = next((i for i in range(_variant_count(family, spec["level"])) if _song_combo(spec, family, i) not in taken), None)
+        v = next((i for i in range(_variant_count(family, fam_level or spec["level"])) if _song_combo(spec, family, i, fam_level) not in taken), None)
         if v is None:
             return None                    # every distinct way of playing the line at this level is already in the plan
-        return {"uid": _next_uid(spec), "family": family, "params": {"variant": v}, "tempo": None, "size": spec.get("size") or "full", "keep": n == 0}
+        item = {"uid": _next_uid(spec), "family": family, "params": {"variant": v}, "tempo": None, "size": spec.get("size") or "full", "keep": n == 0}
+        if fam_level:
+            item["level"] = fam_level
+        return item
     if family == "intervals":
         pool = spec.get("intervals") or DEFAULT_INTERVALS[spec["level"]]
         iv = pool[n % len(pool)]
@@ -1508,10 +1513,10 @@ def _resolve_ref(items: list[dict[str, Any]], ref: dict[str, Any]) -> tuple[list
     return [], ""
 
 
-def _song_item_of(spec: dict[str, Any], ref: dict[str, Any]) -> dict[str, Any] | None:
-    """The single song exercise a reference points at ('the arpeggio exercise', 'exercise 2' when that is one), or None."""
+def _song_items_of(spec: dict[str, Any], ref: dict[str, Any]) -> list[dict[str, Any]]:
+    """The song exercises a reference points at: 'exercise 2' (when that is one) or every exercise of a named kind ('the arpeggio exercise'); [] otherwise."""
     hits, err = _resolve_ref(spec["items"], ref)
-    return hits[0] if (not err and len(hits) == 1 and hits[0]["family"] in SONG_FAMILIES) else None
+    return list(hits) if (not err and hits and all(h["family"] in SONG_FAMILIES for h in hits) and (ref.get("family") or len(hits) == 1)) else []
 
 
 def _index_of(plan: dict[str, Any], uid: str) -> int:
@@ -1532,16 +1537,16 @@ def _rebuild(plan: dict[str, Any], spec: dict[str, Any], *, replan: bool) -> dic
     return build_plan(_player_of(plan), spec, replan=replan)
 
 
-def _retarget_reps_for_item(old_plan: dict[str, Any], new_plan: dict[str, Any], uid: str) -> None:
-    """A tempo change on one exercise keeps its share of the time (fewer plays when it's slower) and leaves every other exercise's plays alone."""
+def _retarget_reps_for_item(old_plan: dict[str, Any], new_plan: dict[str, Any], uid: "str | set[str]") -> None:
+    """A tempo or level change on some exercises keeps each one's share of the time (fewer plays when it is slower) and leaves every other exercise's plays alone."""
+    uids = {uid} if isinstance(uid, str) else set(uid)
     old_by = {r["uid"]: r for r in old_plan["items"]}
-    old_share = old_by[uid]["seconds"]
     for r in new_plan["items"]:
-        if r["uid"] != uid:
+        if r["uid"] not in uids and r["uid"] in old_by:
             r["reps"] = old_by[r["uid"]]["reps"]
-    tgt = next(r for r in new_plan["items"] if r["uid"] == uid)
-    best = min(range(1, MAX_REPS + 1), key=lambda k: abs(k * tgt["pass_seconds"] + (k - 1) * we.GAP_SECONDS - old_share))
-    tgt["reps"] = best
+    for tgt in (r for r in new_plan["items"] if r["uid"] in uids and r["uid"] in old_by):
+        old_share = old_by[tgt["uid"]]["seconds"]
+        tgt["reps"] = min(range(1, MAX_REPS + 1), key=lambda k: abs(k * tgt["pass_seconds"] + (k - 1) * we.GAP_SECONDS - old_share))
     for r in new_plan["items"]:
         r["seconds"] = round(r["reps"] * r["pass_seconds"] + (r["reps"] - 1) * we.GAP_SECONDS, 1)
     new_plan["total_seconds"] = round(_total(new_plan["items"]), 1)
@@ -1619,7 +1624,7 @@ def revise(op: dict[str, Any], question: str, session_ref: Any, ami_ctx: dict[st
     replan = True
     touched: set[str] = set()
     tempo_uid = ""
-    lvl_uid = ""
+    lvl_uids: set[str] = set()
     if kind in (OP_SHORTER, OP_LONGER, OP_MINUTES):
         old_m = float(spec["minutes"])
         if kind == OP_MINUTES:
@@ -1698,20 +1703,30 @@ def revise(op: dict[str, Any], question: str, session_ref: Any, ami_ctx: dict[st
         changed.append(f"added {_a(we.FAMILY_LABEL[fam].lower())} exercise" + (" and gave that kind of exercise more of the time" if kind == OP_MORE_FAMILY else ""))
         touched.add(it["uid"])
         kept = f"every existing exercise's notes; the warmup stays {spec['minutes']:g} minutes, so the plays are re-planned."
-    elif kind in (OP_ITEM_SLOWER, OP_ITEM_FASTER) and op.get("challenge") and _song_item_of(spec, op["ref"]) is not None:
-        d = _song_item_of(spec, op["ref"])
-        cur = d.get("level") or spec["level"]
-        new = LEVEL_UP.get(cur) if kind == OP_ITEM_FASTER else LEVEL_DOWN.get(cur)
-        idx = _index_of(plan0, d["uid"])
-        if not new:
-            return _unsupported(session, plan0, f"Exercise {idx} is already at {cur}, the " + ("top" if kind == OP_ITEM_FASTER else "easiest") + " level I have for it.")
-        d["level"] = new
+    elif kind in (OP_ITEM_SLOWER, OP_ITEM_FASTER) and op.get("challenge") and _song_items_of(spec, op["ref"]):
+        group = _song_items_of(spec, op["ref"])
+        moves = []
+        for d in group:
+            cur = d.get("level") or spec["level"]
+            new = LEVEL_UP.get(cur) if kind == OP_ITEM_FASTER else LEVEL_DOWN.get(cur)
+            if new:
+                moves.append((d, cur, new))
+        if not moves:
+            cur = group[0].get("level") or spec["level"]
+            return _unsupported(session, plan0, f"The {we.FAMILY_LABEL[group[0]['family']].lower()} exercise{'s are' if len(group) > 1 else ' is'} already at {cur}, the "
+                                                + ("top" if kind == OP_ITEM_FASTER else "easiest") + " level I have for " + ("them." if len(group) > 1 else "it."))
+        keep_ids = {d["uid"] for d, _c, _n in moves}
+        for d, _cur, new in moves:
+            d["level"] = new
         _dedupe_guide(spec)
-        touched.add(d["uid"])
-        lvl_uid = d["uid"]
+        keep_ids &= {d["uid"] for d in spec["items"]}
+        touched |= keep_ids
+        lvl_uids = set(keep_ids)
         replan = False
-        changed.append(f"exercise {idx} ({we.FAMILY_LABEL[d['family']].lower()}) {cur} → {new}: its rhythm, tempo and shapes are the {new} ones, on the same chords")
-        kept = "every other exercise exactly as it was; this one keeps about the same time by adjusting how many times you play it."
+        for d, cur, new in moves:
+            if d["uid"] in keep_ids:
+                changed.append(f"exercise {_index_of(plan0, d['uid'])} ({we.FAMILY_LABEL[d['family']].lower()}) {cur} → {new}: its rhythm, tempo and shapes are the {new} ones, on the same chords")
+        kept = "every other exercise exactly as it was; these keep about the same time by adjusting how many times you play them."
     elif kind in (OP_ITEM_SLOWER, OP_ITEM_FASTER, OP_ITEM_TEMPO):
         hits, err = _resolve_ref(spec["items"], op["ref"])
         if err:
@@ -1888,8 +1903,8 @@ def revise(op: dict[str, Any], question: str, session_ref: Any, ami_ctx: dict[st
         plan1 = build_plan(player, spec, replan=replan)
     except we.WarmupUnavailable as exc:
         return _unsupported(session, plan0, f"I couldn't build that change correctly: {exc}.")
-    if lvl_uid:
-        _retarget_reps_for_item(plan0, plan1, lvl_uid)
+    if lvl_uids:
+        _retarget_reps_for_item(plan0, plan1, lvl_uids)
     elif kind in (OP_ITEM_SLOWER, OP_ITEM_FASTER, OP_ITEM_TEMPO):
         _retarget_reps_for_item(plan0, plan1, tempo_uid)
     elif kind == OP_INTERVAL:
@@ -1916,7 +1931,9 @@ def revise(op: dict[str, Any], question: str, session_ref: Any, ami_ctx: dict[st
         dropped_ = [r for r in plan0["items"] if r["uid"] not in {x["uid"] for x in plan1["items"]}]
         if gained and kind in (OP_SHORTER, OP_LONGER, OP_MINUTES, OP_SECTION, OP_BARS, OP_TONES, OP_ARP_START, OP_APPROACH_KIND):
             changed.append(f"{len(gained)} exercise{'s' if len(gained) != 1 else ''} added to fill the time")
-        if dropped_ and kind in (OP_SHORTER, OP_LONGER, OP_MINUTES, OP_SECTION, OP_BARS, OP_TONES, OP_ARP_START, OP_APPROACH_KIND):
+        if dropped_ and kind in (OP_TONES, OP_ARP_START, OP_APPROACH_KIND):
+            changed.append(f"{len(dropped_)} exercise{'s' if len(dropped_) != 1 else ''} that became the same music as another {'were' if len(dropped_) != 1 else 'was'} merged into it")
+        elif dropped_ and kind in (OP_SHORTER, OP_LONGER, OP_MINUTES, OP_SECTION, OP_BARS):
             changed.append(f"{len(dropped_)} exercise{'s' if len(dropped_) != 1 else ''} dropped to fit")
     changed.append(f"total playing time now {_mmss(plan1['total_seconds'])}")
     _commit(session, plan1, question)

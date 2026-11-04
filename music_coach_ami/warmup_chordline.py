@@ -232,6 +232,12 @@ def arpeggio_candidates(info: dict[str, Any], beats: Fraction, level: str, lo: i
                 continue
             mids = _ladder_midis(ladder, base, direction)
             line = [mids[p] for p in seq]
+            if shape == "straight" and n > len(ladder):
+                # a straight arpeggio that runs past the chord's last tone goes on into the next octave when the register allows (R-3-5-R'), otherwise it repeats
+                step = 12 if direction == "up" else -12
+                longer = [mids[i % len(ladder)] + step * (i // len(ladder)) for i in range(n)]
+                if min(longer) >= lo and max(longer) <= hi:
+                    line = longer
             if min(line) < lo or max(line) > hi:
                 continue
             notes = [Note(line[i], ladder[seq[i]].name, ladder[seq[i]].role, u) for i in range(n)]
