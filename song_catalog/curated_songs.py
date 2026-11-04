@@ -7134,8 +7134,12 @@ def _hey_jude_pack(pack):
     Form (Alan W. Pollack, "Notes on Hey Jude"; Wikipedia agrees: four verses,
     two bridges, then a ~4 minute coda of nineteen rounds): Verse 1 (8 bars),
     Verse 2 (9), Bridge (11.5), Verse 3 (9), Bridge (11.5), Verse 4 (8), Coda
-    (19 x 4 bars F | Eb | Bb | F; Pollack says 18.5-19 repeats and the
-    recording fades from about the 10th round).  The song has NO intro (the
+    (19 x 4 bars F | Eb | Bb | F).  Round count and cycle length come from
+    the analyses, not from the recording length: Pollack's form line "19X",
+    "no less than nineteen repetitions" of "a four measure phrase" (his
+    walkthrough also says "eighteen and a half"), and Everett via Wikipedia
+    "nineteen rounds of the double plagal cadence".  Pollack: the fade starts
+    as early as the 10th repetition.  The song has NO intro (the
     old "Intro" bars were the first half of the verse).  Verses that lead into
     a bridge carry one extra bar of F7 (V of IV).  The bridge is Bb Gm C F F7
     (5 bars) + Bb Gm C F (4) + a half bar of F7 + a 2-bar C7 "na-na" tag; the
@@ -7193,8 +7197,9 @@ def _hey_jude_pack(pack):
                 "134 bars = 434 s at 74 BPM against the 7:11 (431 s) recording. "
                 "No intro. The bridge is 11.5 bars in the recording (Pollack); here it "
                 "is 12 bars with F7:2|C7:2 for the shortened F7 bar. Coda: the "
-                "recording fades from about the 10th round; 19 rounds are written so "
-                "the one-pass length matches the record, stop earlier if you prefer."
+                "recording fades from about the 10th round (Pollack), so the last rounds are "
+                "barely audible; 19 rounds x 4 bars are the documented count "
+                "(Pollack '19X', Everett), 18.5 in Pollack's walkthrough. Stop earlier if you prefer."
             ),
         ),
         section_order=order,
