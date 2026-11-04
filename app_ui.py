@@ -10290,6 +10290,7 @@ def sidebar_goto_song_selection(*, on_navigate: Any) -> None:
 
 
 STUDIO_PAGE_META: dict[str, dict[str, str]] = {
+    "home": {"label": "Home", "icon": page_feature_icon("home"), "nav_class": "home"},
     "practice": {"label": "Practice", "icon": page_feature_icon("practice"), "nav_class": "practice"},
     "picker": {"label": "Song Selection", "icon": page_feature_icon("picker"), "nav_class": "picker"},
     "backing": {"label": "Backing Track", "icon": page_feature_icon("backing"), "nav_class": "backing"},
@@ -10304,6 +10305,7 @@ STUDIO_PAGE_META: dict[str, dict[str, str]] = {
 
 # Canonical page accent colors (SSOT for headers + active nav treatment).
 STUDIO_PAGE_ACCENTS: dict[str, str] = {
+    "home": "#312e81",
     "practice": "#dc2626",
     "picker": "#4f46e5",
     "backing": "#2563eb",
@@ -10491,6 +10493,7 @@ QUICK_NAV_DIAG_KEY = "_quick_nav_render_diag"
 _QUICK_NAV_RENDERED_THIS_EXEC = False
 _MUSIC_INSIGHT_RENDERED_THIS_EXEC = False
 SIMPLE_NAV_PAGE_IDS: list[str] = [
+    "home",
     "practice",
     "picker",
     "backing",
@@ -10502,7 +10505,7 @@ SIMPLE_NAV_PAGE_IDS: list[str] = [
     "log",
 ]
 
-QUICK_NAV_ROW_PRIMARY: list[str] = ["practice", "picker", "backing", "custom"]
+QUICK_NAV_ROW_PRIMARY: list[str] = ["home", "practice", "picker", "backing", "custom"]
 QUICK_NAV_ROW_SECONDARY: list[str] = ["composer", "creative", "analysis", "multitrack", "log"]
 
 
@@ -10613,6 +10616,7 @@ def navigate_studio_page(session_state: Any, page_id: str) -> bool:
 
 
 _NAV_COMPACT_TITLE: dict[str, str] = {
+    "home": "Home",
     "practice": "Practice",
     "picker": "Songs",
     "backing": "Backing",

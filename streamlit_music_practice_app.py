@@ -18344,6 +18344,26 @@ except ImportError:
 if _monetization_surface_rendered:
     pass
 
+elif _studio_page == "home":
+
+    # Home is a signpost, not a workspace. It reads state and renders; it hydrates
+    # no song source, claims no backing ownership and commits no musical key.
+    try:
+        from home_page import render_home_page
+
+        def _home_rerun() -> None:
+            try:
+                from music_app_rerun import request_app_rerun
+
+                request_app_rerun(st, st.session_state, reason="home_nav", stage="page_dispatch")
+            except ImportError:
+                st.rerun()
+
+        render_home_page(st, st.session_state, rerun_fn=_home_rerun)
+    except ImportError:
+        st.markdown("### Home")
+        st.info("The Home page could not be loaded. Use the navigation above to pick a workspace.")
+
 elif _studio_page == "practice":
 
     try:

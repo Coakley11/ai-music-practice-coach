@@ -15,6 +15,7 @@ CHART_BUNDLE_RECOVERY_STOP_REASON_KEY = "_chart_bundle_recovery_stop_reason"
 # Composition Studio page id is ``composer`` (label: Composition Studio).
 CHART_BUNDLE_EXEMPT_STUDIO_PAGES = frozenset(
     {
+        "home",
         "analysis",
         "openai",
         "picker",

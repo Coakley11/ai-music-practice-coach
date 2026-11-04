@@ -39,6 +39,7 @@ def test_nav_history_public_exports():
 
 def test_studio_page_order_includes_all_pages():
     expected = {
+        "home",
         "practice",
         "picker",
         "backing",
@@ -237,6 +238,7 @@ def test_simple_nav_mode_uses_plain_button_keys():
     assert not use_simple_music_nav({USE_SIMPLE_MUSIC_NAV_KEY: False})
     keys = [_studio_simple_nav_button_key(page_id) for page_id in SIMPLE_NAV_PAGE_IDS]
     assert keys == [
+        "studio_simple_nav_btn_home",
         "studio_simple_nav_btn_practice",
         "studio_simple_nav_btn_picker",
         "studio_simple_nav_btn_backing",
