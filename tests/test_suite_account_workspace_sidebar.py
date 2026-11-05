@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import unittest
+from html.parser import HTMLParser
 from unittest.mock import MagicMock, patch
 
 from suite_account_settings import (
@@ -12,6 +13,24 @@ from suite_account_settings import (
 from suite_app_shell import render_suite_sidebar_account_shell
 from suite_command_center_link import command_center_url, render_command_center_sidebar_link
 from suite_user_persistence import render_reset_controls
+
+
+class _Anchors(HTMLParser):
+    """Capture actual branded HTML navigation as well as native link buttons."""
+    def __init__(self, target, where):
+        super().__init__()
+        self.target, self.where, self.link = target, where, None
+    def handle_starttag(self, tag, attrs):
+        if tag == 'a':
+            self.link = {'label':'', 'url':dict(attrs).get('href',''), 'where':self.where}
+    def handle_data(self, data):
+        if self.link is not None:
+            self.link['label'] += data
+    def handle_endtag(self, tag):
+        if tag == 'a' and self.link is not None:
+            self.link['label'] = self.link['label'].strip()
+            self.target.append(self.link)
+            self.link = None
 
 
 class _FakeExpander:
@@ -46,6 +65,7 @@ class _FakeSidebar:
 
     def markdown(self, *args, **kwargs):
         self.parent.markdowns.append(args[0] if args else "")
+        _Anchors(self.parent.link_buttons, 'sidebar').feed(str(args[0] if args else ''))
 
     def button(self, *args, **kwargs):
         self.parent.buttons.append({"args": args, "kwargs": kwargs, "where": "sidebar"})
@@ -84,6 +104,7 @@ class _FakeSt:
 
     def markdown(self, *args, **kwargs):
         self.markdowns.append(args[0] if args else "")
+        _Anchors(self.link_buttons, 'nested').feed(str(args[0] if args else ''))
 
     def caption(self, *args, **kwargs):
         self.captions.append(args[0] if args else "")

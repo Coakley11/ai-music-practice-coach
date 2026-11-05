@@ -297,13 +297,20 @@ def _render_nested_account_utilities(
         try:
             from suite_command_center_link import render_command_center_sidebar_link
 
-            st.markdown("**Command Center**")
             render_command_center_sidebar_link(
                 st,
                 label="Command Center",
                 show_divider=False,
                 use_sidebar=False,
             )
+            if saved_session_app_id == "music":
+                from music_feature_icons import FEATURE_ICONS
+                from studio_nav_history import navigate_studio_page
+                def open_music_home():
+                    navigate_studio_page(st.session_state, "home")
+                st.button("Home", icon=FEATURE_ICONS["home"], key="account_music_home",
+                          use_container_width=True, on_click=open_music_home)
+
         except ImportError:
             pass
 
