@@ -114,10 +114,22 @@ def prepare_restore(record: dict, session: Any, catalog: dict) -> tuple[RestoreP
             return None, 'The saved guitar shape is incomplete.'
         if capo_fret_for_shape(normalized_key,shape) != capo:
             return None, 'The recorded shape, capo and concert key disagree.'
-    # Home Resume restores a practice session; never import arbitrary tool/engine fields.
+    from home_recent_session import session_from_entry
+    recent = session_from_entry(record)
+    target = recent.page if recent else 'practice'
+    if target in {'multitrack', 'analysis'}:
+        return None, 'Open the saved workflow to select its verified project or recording; no audio restoration is promised by this history record.'
+    # Only allow recorded workflow controls, never arbitrary engine/document fields.
     payload = dict(version=1,workspace_id=ws,pick_key=pick,source_id=pick,source_type=source,
-                   resume_kind='practice',studio_page='practice',key_kind='concert',
+                   resume_kind='backing' if target=='backing' else 'practice',studio_page=target,key_kind='concert',
                    display_key=normalized_key,instrument=instrument)
+    if target == 'backing':
+        for field in ('bpm', 'backing_track_bpm', 'backing_track_scope', 'backing_track_single_section',
+                      'backing_track_multi_sections', 'backing_track_loops', 'backing_groove_style'):
+            if field in p: payload[field] = p[field]
+    if recent and recent.creative_dest:
+        payload.update(resume_kind='creative', activity_destination='missions' if recent.creative_dest=='creative::Missions' else 'coaching')
+        if p.get('mission'): payload['mission'] = p['mission']
     section = str(record.get('section_name') or p.get('practice_focus_section') or '').strip()
     if section:payload['practice_focus_section']=section
     return RestorePlan(payload,instrument,subtype,focus,shape,capo), ''
@@ -258,4 +270,24 @@ def finalize_recent_practice(st: Any, catalog: dict, library: dict | None=None) 
         session[ERROR]=reason;return False
     from songs.state import persist_music_local_state
     persist_music_local_state(st,save_reason='music_source_switch')
+    return True
+
+
+def queue_recent_project(session: Any, record: dict) -> bool:
+    """Explicit navigation may queue the canonical project loader, never invent audio."""
+    from home_recent_session import session_from_entry
+    from music_workspace_hydration import workspace_blob_hydrated, workspace_empty_confirmed, workspace_hydration_failed
+    from music_resume_payload import _resolve_workspace_id, payload_workspace_matches
+    recent = session_from_entry(record)
+    mid = str(record.get('multitrack_id') or '').strip()
+    if not recent or recent.page != 'multitrack' or not mid or not record.get('workspace_id'):
+        return False
+    if not payload_workspace_matches(record, _resolve_workspace_id(session=session)):
+        return False
+    if workspace_hydration_failed(session) or not (workspace_blob_hydrated(session) or workspace_empty_confirmed(session)):
+        return False
+    from media_multitrack_catalog import queue_multitrack_project_catalog_load
+    queue_multitrack_project_catalog_load(session, mid)
+    # The existing loader checks the workspace catalog and reports missing/
+    # metadata-only audio. This queue is not a claim of restored recordings.
     return True

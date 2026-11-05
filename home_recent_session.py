@@ -32,11 +32,14 @@ _TYPE_TO_PAGE: dict[str, str] = {
     "multitrack/upload": "multitrack",
     "composition practice": "composer",
     "mission practice": "creative",
+    "song-aware coaching": "creative",
+    "upload analysis": "analysis",
 }
 
 #: Practice types that additionally select a Creative Lab workspace.
 _TYPE_TO_CREATIVE_DEST: dict[str, str] = {
     "mission practice": "creative::Missions",
+    "song-aware coaching": "creative::SBI",
 }
 
 #: What to call each destination on the button, so the action names where it goes.
@@ -47,6 +50,7 @@ _PAGE_LABEL: dict[str, str] = {
     "multitrack": "Multitrack",
     "composer": "Composition",
     "creative": "Creative Lab",
+    "analysis": "Upload Analysis",
 }
 
 
@@ -212,6 +216,10 @@ def verified_recent_session(
             return datetime.min.replace(tzinfo=timezone.utc)
 
     for entry in sorted((e for e in candidates if isinstance(e, dict)), key=recorded_time, reverse=True):
+        if entry.get('workspace_id'):
+            from music_resume_payload import _resolve_workspace_id, payload_workspace_matches
+            if not payload_workspace_matches(entry, _resolve_workspace_id(session=session_state)):
+                continue
         built = session_from_entry(entry, today=today)
         if built is not None:
             return built

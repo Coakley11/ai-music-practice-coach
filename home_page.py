@@ -323,7 +323,7 @@ def _render_continue(st: Any, session_state: Any, rerun_fn: Any, catalog: dict |
         )
         return
 
-    bits = [b for b in (recent.artist, recent.when_label, recent.instrument, recent.focus_area) if b]
+    bits = [b for b in (recent.destination_label(), recent.artist, recent.when_label, recent.instrument, recent.focus_area) if b]
     if recent.duration_minutes:
         bits.append(f"{recent.duration_minutes} min")
     if recent.section_label:
@@ -347,7 +347,7 @@ def _render_continue(st: Any, session_state: Any, rerun_fn: Any, catalog: dict |
     from home_practice_resume import prepare_restore, REQUEST, ERROR
     plan, unavailable = prepare_restore(recent.restore_record, session_state, catalog or {})
     with st.container(key="home_resume"):
-        label = "Resume Practice" if plan else recent.action_label()
+        label = recent.action_label()
         dest = HomeDestination(
             key="resume",
             page=recent.page,
@@ -363,6 +363,8 @@ def _render_continue(st: Any, session_state: Any, rerun_fn: Any, catalog: dict |
                 session_state.pop(ERROR, None)
             else:
                 apply_home_navigation(session_state, dest)
+                from home_practice_resume import queue_recent_project
+                queue_recent_project(session_state, recent.restore_record)
             rerun_fn()
     if session_state.get(ERROR):
         st.info(session_state[ERROR])
