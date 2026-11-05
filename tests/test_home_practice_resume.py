@@ -186,3 +186,39 @@ def test_new_activity_captures_sax_subtype_for_genuine_repeated_resume(catalog):
     assert plan.transposing_type=='Alto saxophone (Eb)'
     assert plan.focus=='Improvisation'
     assert plan.payload['display_key']=='F'
+
+
+def test_recent_context_alone_cannot_replace_whole_workspace(catalog):
+    ss=current();ss.pop('_music_workspace_empty_confirmed')
+    ss['_music_workspace_resume_context_confirmed']=True
+    ss[REQUEST]=saved();before=deepcopy(ss)
+    with patch('songs.state.persist_music_local_state') as persist:
+        assert not finalize_recent_practice(SimpleNamespace(session_state=ss),catalog)
+    assert ss==before
+    persist.assert_not_called()
+
+
+def test_hydrated_rerun_does_not_clear_unsaved_user_changes():
+    from music_workspace_restore_mode import prepare_music_cold_start_restore
+    ss={'_music_workspace_blob_hydrated':True,'_music_user_edit_tracking_enabled':True,
+        '_suite_persist_local_dirty::music':True,'_active_song_local_edit':True}
+    before=deepcopy(ss);prepare_music_cold_start_restore(ss,'music')
+    assert ss==before
+
+
+def test_catalog_resume_preserves_saved_projects_and_inactive_source_selections(catalog):
+    from custom_progression_lab import default_active_progression
+    doc=default_active_progression();doc.update(id='trial',name='Trial Song',original_key_center='Eb')
+    doc['original_sections']['Verse']=[{'chord':'Eb','bars':1}]
+    protected={'cpl_saved_progressions':{'Trial Song':doc,'Other':dict(doc,id='other')},
+               'cpl_active_progression':doc,'cpl_last_display_key':'Bb',
+               'composer_saved_compositions':{'piece':{'id':'piece','title':'My piece','key':'D'}},
+               'composer_active_document':{'id':'piece','title':'My piece','key':'D'},
+               'mt_tracks':[{'id':'tenor-layer','audio':b'fixture-audio'}],
+               'mt_track_filenames':['tenor.wav'],'mixed_track_wav':b'fixture-mix',
+               'last_analysis_result':{'id':'take-1'},'practice_minutes':45}
+    ss=current();ss.update(deepcopy(protected))
+    with patch('songs.state.persist_music_local_state'),patch('suite_activity_client.record_activity'):
+        ok,why=restore_recent_practice(ss,saved(),catalog)
+    assert ok,why
+    assert {key:ss.get(key) for key in protected}==protected

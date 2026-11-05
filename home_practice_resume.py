@@ -146,6 +146,9 @@ def restore_recent_practice(session: Any, record: dict, catalog: dict, library: 
     # These are previous-run widget guards, not current widgets: this runs pre-widget.
     stage['_streamlit_widgets_locked_this_run']=False
     try:
+        from studio_page_persistence import capture_page_snapshot, apply_page_snapshot
+        # Preserve the independent editor through its existing snapshot contract.
+        multitrack_snapshot = capture_page_snapshot(stage, 'multitrack')
         proxy=SimpleNamespace(session_state=stage)
         if not apply_music_resume_payload(stage,plan.payload,song_picker_catalog=catalog,song_library=library,st=proxy):
             return False,'The historical source could not be activated; your current setup is unchanged.'
@@ -220,6 +223,8 @@ def restore_recent_practice(session: Any, record: dict, catalog: dict, library: 
         # Activation may have captured Backing before the historical key was applied.
         save_page_snapshot(stage,'backing')
         save_page_snapshot(stage,'practice')
+        apply_page_snapshot(stage, multitrack_snapshot)
+        save_page_snapshot(stage, 'multitrack')
         stage.pop(STAGING,None);stage.pop(REQUEST,None);stage.pop(ERROR,None)
     except Exception:
         return False,'The historical session could not be restored; your current setup is unchanged.'
@@ -242,8 +247,11 @@ def restore_recent_practice(session: Any, record: dict, catalog: dict, library: 
 def finalize_recent_practice(st: Any, catalog: dict, library: dict | None=None) -> bool:
     session=st.session_state;request=session.get(REQUEST)
     if not request:return False
-    from music_workspace_hydration import can_finalize_music_restore
-    if not can_finalize_music_restore(session):return False
+    from music_workspace_hydration import workspace_blob_hydrated, workspace_empty_confirmed, workspace_hydration_failed
+    # A historical task is not an authoritative whole-workspace payload. Do not
+    # publish/save it while Custom, Composition and media hydration is unknown.
+    if workspace_hydration_failed(session) or not (workspace_blob_hydrated(session) or workspace_empty_confirmed(session)):
+        return False
     session.pop(REQUEST,None)
     ok,reason=restore_recent_practice(session,request,catalog,library)
     if not ok:
