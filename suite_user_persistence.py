@@ -10,6 +10,7 @@ from __future__ import annotations
 import copy
 import json
 import os
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
@@ -603,6 +604,107 @@ def _record_startup_restore_diagnostics(
     st.session_state["_suite_post_restore_comparison_players"] = _session_comparison_players(st) or None
 
 
+NAV_CLOUD_READ_IDENTITY_KEY = "_music_nav_cloud_read_identity"
+NAV_CLOUD_READ_TIMINGS_KEY = "_music_nav_cloud_read_timings"
+USER_NAV_CLOUD_SKIP_REASON = "user page navigation — workspace sync skipped"
+
+
+def _nav_cloud_identity(session: dict[str, Any]) -> dict[str, str]:
+    try:
+        from music_workspace_restore_mode import ACCOUNT_RESOLUTION_DIAG_KEY
+    except ImportError:
+        return {"account_hint": "", "workspace_key": ""}
+    diag = session.get(ACCOUNT_RESOLUTION_DIAG_KEY)
+    if not isinstance(diag, dict):
+        diag = {}
+    return {
+        "account_hint": str(diag.get("account_hint") or ""),
+        "workspace_key": str(diag.get("workspace_key") or ""),
+    }
+
+
+def _stamp_nav_cloud_read_identity(session: dict[str, Any]) -> None:
+    session[NAV_CLOUD_READ_IDENTITY_KEY] = _nav_cloud_identity(session)
+
+
+def _record_nav_cloud_read_timing(
+    st: Any,
+    *,
+    skipped: bool,
+    elapsed_ms: float,
+    reason: str,
+    cloud_calls: int,
+) -> None:
+    row = {
+        "skipped": bool(skipped),
+        "elapsed_ms": round(float(elapsed_ms), 2),
+        "reason": str(reason or ""),
+        "cloud_calls": int(cloud_calls),
+        "simulated": False,
+    }
+    rows = st.session_state.get(NAV_CLOUD_READ_TIMINGS_KEY)
+    if not isinstance(rows, list):
+        rows = []
+    rows.append(row)
+    st.session_state[NAV_CLOUD_READ_TIMINGS_KEY] = rows[-20:]
+    try:
+        from music_perf_diagnostics import record_span
+
+        record_span(
+            st,
+            "nav_cloud_read_skipped" if skipped else "nav_cloud_full_session",
+            elapsed_ms,
+            detail=reason,
+        )
+    except Exception:
+        pass
+
+
+def established_user_nav_cloud_read_skip_reason(st: Any, app_id: str) -> str | None:
+    """Skip a cloud read only for this run's navigation, after hydration is real.
+
+    ``_suite_page_user_nav`` can stick until a page-change save succeeds. That
+    flag alone must not suppress cold start, a workspace/account change, or a
+    cloud-versus-disk check while local edits are pending.
+    """
+    if str(app_id or "").strip().lower() != "music":
+        return None
+    session = st.session_state
+    run_seq = int(session.get("_script_run_seq") or 0)
+    try:
+        from music_persistent_state import NAV_CLOUD_READ_ONCE_KEY
+    except ImportError:
+        return None
+    token = session.get(NAV_CLOUD_READ_ONCE_KEY)
+    if not isinstance(token, dict) or int(token.get("for_run") or -1) != run_seq:
+        return None
+    session.pop(NAV_CLOUD_READ_ONCE_KEY, None)
+    if not session.get("_suite_page_user_nav"):
+        return None
+    try:
+        from music_workspace_hydration import workspace_blob_hydrated
+        from music_workspace_restore_mode import (
+            PENDING_USER_EDITS_KEY,
+            user_edit_tracking_enabled,
+        )
+    except ImportError:
+        return None
+    if not workspace_blob_hydrated(session) or not user_edit_tracking_enabled(session):
+        return None
+    if session.get(PENDING_USER_EDITS_KEY) or session.get(_local_dirty_key(app_id)):
+        return None
+    stamp = session.get(NAV_CLOUD_READ_IDENTITY_KEY)
+    if not isinstance(stamp, dict):
+        return None
+    current = _nav_cloud_identity(session)
+    if (
+        str(stamp.get("account_hint") or "") != current["account_hint"]
+        or str(stamp.get("workspace_key") or "") != current["workspace_key"]
+    ):
+        return None
+    return USER_NAV_CLOUD_SKIP_REASON
+
+
 def sync_workspace_protocol(
     st: Any,
     app_id: str,
@@ -688,17 +790,62 @@ def sync_workspace_protocol(
 
     try:
         if str(app_id or "").strip().lower() == "music":
-            from music_workspace_restore_mode import (
-                prepare_music_cold_start_restore,
-                record_account_workspace_identity,
-            )
+            from music_workspace_restore_mode import record_account_workspace_identity
 
             record_account_workspace_identity(st.session_state, app_id)
+    except ImportError:
+        pass
+    nav_skip_reason = established_user_nav_cloud_read_skip_reason(st, app_id)
+    try:
+        if str(app_id or "").strip().lower() == "music":
+            from music_workspace_restore_mode import prepare_music_cold_start_restore
+
             prepare_music_cold_start_restore(st.session_state, app_id)
     except ImportError:
         pass
 
+    if nav_skip_reason:
+        t0 = time.perf_counter()
+        disk_state, disk_warn, disk_ts = _load_raw(app_id)
+        if disk_warn:
+            st.session_state[_SESSION_INVALID_WARN_KEY] = disk_warn
+        _mark_user_nav_sync_skipped(st, nav_skip_reason)
+        _record_workspace_sync_trace(
+            st,
+            app_id,
+            cloud_state={},
+            cloud_ts=None,
+            disk_state=disk_state if isinstance(disk_state, dict) else {},
+            disk_ts=disk_ts,
+            winner="none",
+            reason=nav_skip_reason,
+            applied=False,
+        )
+        st.session_state["_music_nav_cloud_read_skipped"] = True
+        st.session_state["_suite_cloud_fetch_attempted"] = False
+        st.session_state["_suite_restore_decision"] = "skipped"
+        st.session_state["_suite_restore_skip_reason"] = nav_skip_reason
+        st.session_state["_suite_restore_should_apply"] = False
+        _record_nav_cloud_read_timing(
+            st,
+            skipped=True,
+            elapsed_ms=(time.perf_counter() - t0) * 1000.0,
+            reason=nav_skip_reason,
+            cloud_calls=0,
+        )
+        return False
+
+    t_cloud = time.perf_counter()
     cloud_state, cloud_ts = load_cloud_full_session(app_id)
+    if str(app_id or "").strip().lower() == "music":
+        _stamp_nav_cloud_read_identity(st.session_state)
+    _record_nav_cloud_read_timing(
+        st,
+        skipped=False,
+        elapsed_ms=(time.perf_counter() - t_cloud) * 1000.0,
+        reason="cloud_full_session",
+        cloud_calls=1,
+    )
     disk_state, disk_warn, disk_ts = _load_raw(app_id)
     if disk_warn:
         st.session_state[_SESSION_INVALID_WARN_KEY] = disk_warn

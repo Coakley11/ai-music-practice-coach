@@ -1,0 +1,20 @@
+{
+  "cached_compile_seconds": 4.3640136999893,
+  "warm_navigation_seconds": {
+    "min": 4.235,
+    "median": 5.086,
+    "max": 9.995
+  },
+  "completed_runs": 14,
+  "reruns": 11,
+  "completed_wall_median": 2.1654999999999998,
+  "completed_cpu_median": 1.9144999999999999,
+  "guest_cloud_read_ms_range": [
+    0.05,
+    0.13
+  ],
+  "strict_flusher_ms": {
+    "median": 367.5,
+    "max": 735
+  }
+}

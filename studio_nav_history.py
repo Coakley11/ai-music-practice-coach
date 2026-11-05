@@ -24,6 +24,7 @@ from studio_page_persistence import (
 
 STUDIO_PAGE_IDS: frozenset[str] = frozenset(
     {
+        "home",
         "practice",
         "picker",
         "backing",

@@ -9008,7 +9008,7 @@ def _brand_emblem_data_uri() -> str:
     import base64
     from pathlib import Path
 
-    png_path = Path(__file__).resolve().parent / "static" / "branding" / "mpc_logo_emblem.png"
+    png_path = Path(__file__).resolve().parent / "static" / "branding" / "mpc_logo_emblem_256.png"
     try:
         encoded = base64.b64encode(png_path.read_bytes()).decode("ascii")
     except OSError:
@@ -10441,6 +10441,7 @@ def sidebar_goto_song_selection(*, on_navigate: Any) -> None:
 
 
 STUDIO_PAGE_META: dict[str, dict[str, str]] = {
+    "home": {"label": "Home", "icon": page_feature_icon("home"), "nav_class": "home"},
     "practice": {"label": "Practice", "icon": page_feature_icon("practice"), "nav_class": "practice"},
     "picker": {"label": "Song Selection", "icon": page_feature_icon("picker"), "nav_class": "picker"},
     "backing": {"label": "Backing Track", "icon": page_feature_icon("backing"), "nav_class": "backing"},
@@ -10455,6 +10456,7 @@ STUDIO_PAGE_META: dict[str, dict[str, str]] = {
 
 # Canonical page accent colors (SSOT for headers + active nav treatment).
 STUDIO_PAGE_ACCENTS: dict[str, str] = {
+    "home": "#312e81",
     "practice": "#dc2626",
     "picker": "#4f46e5",
     "backing": "#2563eb",
@@ -10619,6 +10621,13 @@ def _studio_page_active_nav_css() -> str:
 
 OPENAI_PAGE_ID = "openai"
 
+# Where a launch lands when nothing else decides. Owned by studio_nav_state so the
+# landing page has one definition; the fallback keeps app_ui importable alone.
+try:
+    from studio_nav_state import DEFAULT_STUDIO_PAGE as _DEFAULT_STUDIO_PAGE
+except ImportError:  # pragma: no cover - studio_nav_state always ships with app_ui
+    _DEFAULT_STUDIO_PAGE = "home"
+
 STUDIO_PAGES: list[tuple[str, str]] = [
     (page_id, f"{meta['icon']} {meta['label']}")
     for page_id, meta in STUDIO_PAGE_META.items()
@@ -10642,6 +10651,7 @@ QUICK_NAV_DIAG_KEY = "_quick_nav_render_diag"
 _QUICK_NAV_RENDERED_THIS_EXEC = False
 _MUSIC_INSIGHT_RENDERED_THIS_EXEC = False
 SIMPLE_NAV_PAGE_IDS: list[str] = [
+    "home",
     "practice",
     "picker",
     "backing",
@@ -10653,7 +10663,7 @@ SIMPLE_NAV_PAGE_IDS: list[str] = [
     "log",
 ]
 
-QUICK_NAV_ROW_PRIMARY: list[str] = ["practice", "picker", "backing", "custom"]
+QUICK_NAV_ROW_PRIMARY: list[str] = ["home", "practice", "picker", "backing", "custom"]
 QUICK_NAV_ROW_SECONDARY: list[str] = ["composer", "creative", "analysis", "multitrack", "log"]
 
 
@@ -10764,6 +10774,7 @@ def navigate_studio_page(session_state: Any, page_id: str) -> bool:
 
 
 _NAV_COMPACT_TITLE: dict[str, str] = {
+    "home": "Home",
     "practice": "Practice",
     "picker": "Songs",
     "backing": "Backing",
@@ -11264,7 +11275,9 @@ def _resolve_nav_page_ids(
     return page_ids
 
 
-def ensure_studio_page(session_state: dict[str, Any], default: str = "practice") -> str:
+def ensure_studio_page(
+    session_state: dict[str, Any], default: str = _DEFAULT_STUDIO_PAGE
+) -> str:
     try:
         from studio_nav_state import bootstrap_studio_page_session, canonical_studio_page
 

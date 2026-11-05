@@ -736,6 +736,19 @@ def seed_cpl_presets_key_widget(session_state: dict, practice_key: str, *, song_
     return str(session_state.get(CPL_PRESETS_KEY_WIDGET) or pk).strip() or pk
 
 
+def _custom_workspace_may_project_global_key(session: dict) -> bool:
+    """Only the active Custom song (or an unowned workspace) owns global keys."""
+    from songs.music_source import custom_progression_is_active, is_custom_progression
+
+    if custom_progression_is_active(session) or is_custom_progression(session):
+        return True
+    # Standalone/new workspaces have no external song to preserve. A Custom
+    # preview under Catalog or Composition must stay on its dedicated widget.
+    return not any(session.get(k) for k in (
+        "active_catalog_pick_key", "selected_song", "active_music_source", "active_song_state"
+    ))
+
+
 def sync_custom_workspace_practice_key(
     session_state: dict,
     *,
@@ -745,6 +758,7 @@ def sync_custom_workspace_practice_key(
 ) -> str:
     """Set sidebar Practice Key for the current Custom identity (does not rewrite Original Key)."""
     token = str(practice_key or "").strip() or "C"
+    project_global = _custom_workspace_may_project_global_key(session_state)
     active = ensure_original_structure(active or session_state.get(CPL_ACTIVE_KEY) or {})
     session_state[CPL_LAST_DISPLAY_KEY] = token
     session_state["_cpl_editing_display_key"] = token
@@ -778,15 +792,14 @@ def sync_custom_workspace_practice_key(
                 token,
                 widget_safe=True,
             )
-        # Custom page UX still mirrors display_key; Catalog sticky contamination is
-        # prevented by always writing set_practice_concert_key with custom pick below
-        # and by skipping on_sidebar sync when Custom is not Global Active.
-        safe_assign_display_key(session_state, token, widget_safe=True, st_like=None)
+        if project_global:
+            safe_assign_display_key(session_state, token, widget_safe=True, st_like=None)
     except ImportError:
         session_state[CUSTOM_WORKSPACE_PRACTICE_KEY_WIDGET] = token
-        session_state["display_key"] = token
-        session_state["concert_key"] = token
-        session_state["_pending_display_key"] = token
+        if project_global:
+            session_state["display_key"] = token
+            session_state["concert_key"] = token
+            session_state["_pending_display_key"] = token
     try:
         from songs.music_source import custom_pick_key_for
         from songs.practice_key_state import mark_practice_key_user_override, set_practice_concert_key
@@ -961,7 +974,8 @@ def prepare_custom_workspace_sidebar_display_key(st: Any, session: dict[str, Any
         # Custom is not Global Active — live_global belongs to the Catalog song.
         # Never inherit it; prefer the Custom widget, sticky, or home key.
         live = live_widget if live_widget else (sticky or home)
-    pending = session.pop(PENDING_DISPLAY_KEY, None)
+    project_global = _custom_workspace_may_project_global_key(session)
+    pending = session.pop(PENDING_DISPLAY_KEY, None) if project_global else None
     pending_s = str(pending or "").strip() if pending is not None else ""
     if not custom_is_ga:
         # Global PENDING_DISPLAY_KEY is Catalog overlay, not Custom workspace PK.
@@ -1091,41 +1105,11 @@ def prepare_custom_workspace_sidebar_display_key(st: Any, session: dict[str, Any
     if force_seed_widget or not widget_now or widget_now not in options:
         session[CUSTOM_WORKSPACE_PRACTICE_KEY_WIDGET] = selected
 
-    # Project Custom PK into the left-panel sidebar for this Custom visit.
-    # Seal catalog sticky first so Shape Dm/F survives when the user leaves Custom.
-    if not custom_is_ga:
-        try:
-            from songs.practice_key_state import (
-                get_practice_concert_key,
-                resolve_practice_source_pick,
-                set_practice_concert_key,
-            )
-
-            catalog_pick = str(resolve_practice_source_pick(session) or "").strip()
-            live_catalog = str(
-                session.get("display_key") or session.get("concert_key") or ""
-            ).strip()
-            # Seal catalog sticky once on enter — never overwrite an existing Shape
-            # sticky with Custom live (E / C# / Eb → Shape contamination).
-            if (
-                catalog_pick
-                and not catalog_pick.startswith("custom::")
-                and live_catalog
-                and not session.get("_custom_page_sidebar_overlay")
-            ):
-                existing = str(get_practice_concert_key(session, catalog_pick) or "").strip()
-                if not existing:
-                    set_practice_concert_key(
-                        session,
-                        live_catalog,
-                        pick_key=catalog_pick,
-                        allow_catalog_during_sbi_custom=True,
-                    )
-            session["_custom_page_sidebar_overlay"] = True
-        except ImportError:
-            pass
-    session["display_key"] = selected
-    session["concert_key"] = selected
+    # The dedicated Custom widget owns this preview. Do not overwrite the active
+    # Catalog/Composition key, or install a global pending key/overlay to undo later.
+    if project_global:
+        session["display_key"] = selected
+        session["concert_key"] = selected
     session[CPL_LAST_DISPLAY_KEY] = selected
     try:
         from songs.music_source import custom_pick_key_for
@@ -1150,7 +1134,8 @@ def prepare_custom_workspace_sidebar_display_key(st: Any, session: dict[str, Any
     try:
         from songs.key_state import PENDING_DISPLAY_KEY, _apply_display_key_before_widget
 
-        session[PENDING_DISPLAY_KEY] = selected
+        if project_global:
+            session[PENDING_DISPLAY_KEY] = selected
         if custom_is_ga:
             _apply_display_key_before_widget(st, selected, source="custom_workspace_sidebar")
     except Exception:
@@ -2157,9 +2142,10 @@ def apply_cpl_session_progression(
             from practice_setup_globals import DISPLAY_KEY_CHANGE_SOURCE_KEY
             from songs.key_state import DISPLAY_KEY_OWNER_IDENTITY_KEY, PENDING_DISPLAY_KEY
 
-            session_state.pop(PENDING_DISPLAY_KEY, None)
-            session_state.pop(DISPLAY_KEY_OWNER_IDENTITY_KEY, None)
-            session_state.pop(DISPLAY_KEY_CHANGE_SOURCE_KEY, None)
+            if _custom_workspace_may_project_global_key(session_state):
+                session_state.pop(PENDING_DISPLAY_KEY, None)
+                session_state.pop(DISPLAY_KEY_OWNER_IDENTITY_KEY, None)
+                session_state.pop(DISPLAY_KEY_CHANGE_SOURCE_KEY, None)
         except ImportError:
             pass
         widgets_locked = False

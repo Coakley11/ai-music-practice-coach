@@ -19,6 +19,7 @@ CLARINET_ICON_SVG = """<svg class="ui-instrument-icon-clarinet" xmlns="http://ww
 
 # Major product concepts — keep values unique across this map.
 FEATURE_ICONS: dict[str, str] = {
+    "home": "🏠",
     "practice": "🎯",
     "practice_setup": "🎸",
     "practice_focus": "🔍",
@@ -244,6 +245,7 @@ def semantic_field_icon(field: str, *, instrument: str = "") -> str:
 
 # Studio page id → concept key (nav, headers, compact buttons).
 PAGE_FEATURE_KEYS: dict[str, str] = {
+    "home": "home",
     "practice": "practice",
     "picker": "songs",
     "backing": "backing",

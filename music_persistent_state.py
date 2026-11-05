@@ -955,6 +955,7 @@ _PAGE_CHANGE_STAMP_TARGET_KEY = "_suite_page_change_stamp_target"
 _PAGE_CHANGE_WRITE_PENDING_KEY = "_suite_page_change_write_pending"
 MUSIC_USER_NAVIGATED_PAGE_THIS_RUN_KEY = "_music_user_navigated_page_this_run"
 MUSIC_USER_NAVIGATED_PAGE_RUN_SEQ_KEY = "_music_user_navigated_page_run_seq"
+NAV_CLOUD_READ_ONCE_KEY = "_music_nav_cloud_read_once"
 
 
 def mark_user_navigated_page_this_run(session: dict[str, Any], page: str) -> str:
@@ -993,7 +994,28 @@ def begin_script_run_navigation_markers(session: dict[str, Any]) -> None:
     Clearing it every run let a stale canonical ``practice`` overwrite the
     restored page (Songs/Custom/Creative/Backing → Practice on reboot/refresh).
     True new-session reset remains in ``begin_music_script_run`` only.
+
+    A click callback stamps the pre-increment run seq. Promote only that
+    immediately previous stamp into a one-shot cloud-read token, then clear
+    the marker. A sticky ``_suite_page_user_nav`` flag is not enough.
     """
+    run_seq = int(session.get("_script_run_seq") or 0)
+    stamped_page = str(session.get(MUSIC_USER_NAVIGATED_PAGE_THIS_RUN_KEY) or "").strip()
+    stamp_raw = session.get(MUSIC_USER_NAVIGATED_PAGE_RUN_SEQ_KEY)
+    try:
+        stamp = int(stamp_raw) if stamp_raw is not None else None
+    except (TypeError, ValueError):
+        stamp = None
+    if stamped_page and stamp is not None and run_seq > 0 and stamp == run_seq - 1:
+        session[NAV_CLOUD_READ_ONCE_KEY] = {
+            "page": stamped_page,
+            "from_run": stamp,
+            "for_run": run_seq,
+        }
+    else:
+        prior = session.get(NAV_CLOUD_READ_ONCE_KEY)
+        if isinstance(prior, dict) and int(prior.get("for_run") or -1) != run_seq:
+            session.pop(NAV_CLOUD_READ_ONCE_KEY, None)
     session.pop(MUSIC_USER_NAVIGATED_PAGE_THIS_RUN_KEY, None)
     session.pop(MUSIC_USER_NAVIGATED_PAGE_RUN_SEQ_KEY, None)
 

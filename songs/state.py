@@ -2598,7 +2598,13 @@ def get_song_context(
             if deferred is not None:
                 return deferred
             raise RuntimeError("Master song not initialized — workspace restore pending.")
-        return _commit(fallback, notice="No saved song selection; restored default catalog song.")
+        # No notice here. This branch is already gated by _may_apply_catalog_default()
+        # -> workspace_is_truly_empty(), so it runs only on a genuine first launch,
+        # where there was no saved selection to lose. The other notices in this
+        # module report something that actually changed - a song that went missing,
+        # a catalog rename, a restore - and are left alone. Seeding the default song
+        # is unchanged; only the warning about it is dropped.
+        return _commit(fallback)
 
     resolved_pk = resolve_pick_key(pk, song_picker_catalog=song_picker_catalog)
     if resolved_pk:

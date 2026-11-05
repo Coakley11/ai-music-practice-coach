@@ -50,12 +50,12 @@ from typing import Any, Callable
 
 st.set_page_config(
     page_title="Daniel Cohen AI Music Practice Coach",
-    page_icon="🎵",
+    page_icon=str(Path(__file__).resolve().parent / "static/branding/mpc_logo_emblem_96.png"),
     layout="wide"
 )
 
 try:
-    st.logo("static/branding/mpc_logo.png", size="medium")
+    st.logo(str(Path(__file__).resolve().parent / "static/branding/mpc_logo_emblem_256.png"), size="medium")
 except Exception:
     pass
 
@@ -11757,6 +11757,12 @@ def _apply_picker_catalog_filters(
     if not all_pick_options:
         return filtered, browse_pick_options, [], ""
 
+    if st.session_state.get("_home_catalog_browse"):
+        # Browsing cannot reconcile a stale dropdown into a new active song.
+        return filtered, browse_pick_options, all_pick_options, str(
+            st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or ""
+        )
+
     from songs.state import consume_uncommitted_catalog_dropdown
 
     consume_uncommitted_catalog_dropdown(
@@ -12719,6 +12725,8 @@ def _render_catalog_song_picker_block(
     # chart/level dropdowns must not remove songs before that union is resolved.
     visible_song_records = list(ALL_SONG_RECORDS) if show_song_cards else _picker_visible_records()
     available_genres = sorted({r.get("genre") for r in visible_song_records if r.get("genre")})
+    from songs.picker_session import apply_home_catalog_request
+    apply_home_catalog_request(st.session_state, available_genres)
     _migrate_workspace_genre_filters(set(available_genres))
     apply_picker_session_resets(st.session_state)
 
@@ -12920,7 +12928,7 @@ def _render_catalog_song_picker_block(
                 "refine your search to narrow further."
             )
 
-    if _library_polished and show_source_toggle:
+    if _library_polished and show_source_toggle and not st.session_state.get("_home_catalog_browse"):
         _src_hub = _render_picker_music_source_toggle(polished=True)
         # Composition before Custom — never let a stale Custom hub swallow a
         # live Composition radio / explicit stamp.
@@ -12958,7 +12966,7 @@ def _render_catalog_song_picker_block(
         else:
             active_pick_key = ""
 
-    if _library_polished:
+    if _library_polished and not st.session_state.get("_home_catalog_browse"):
         active_rec = (
             record_for_pick_key(visible_song_records, active_pick_key) if active_pick_key else None
         )
@@ -14244,7 +14252,7 @@ def _render_backing_step2_playback_action(
         # Advanced expander: do not force expanded=False when cycling is off —
         # that drops in-expander widget events on the next rerun. Leave open/closed
         # to Streamlit's own expander state.
-        with st.expander("Advanced playback settings"):
+        with st.expander("Advanced playback settings", expanded=bool(st.session_state.pop("_home_open_key_cycle", False))):
             st.markdown('<div class="ui-backing-feel-inline">', unsafe_allow_html=True)
             st.markdown("<div>", unsafe_allow_html=True)
             _feel_ico = html.escape(semantic_field_icon("style") or semantic_field_icon("feel"))
@@ -16103,8 +16111,15 @@ try:
 except Exception:
     pass
 
+from custom_progression_lab import _custom_workspace_may_project_global_key
+
+_custom_preview_only = (
+    str(st.session_state.get("studio_page") or "").strip().lower() == "custom"
+    and not _custom_workspace_may_project_global_key(st.session_state)
+)
+_sidebar_original_key_label = "Custom Original Key" if _custom_preview_only else "Song Original Key"
 st.sidebar.markdown(
-    f'<p class="ui-sidebar-key-caption">{FEATURE_ICONS["original_key"]} Song Original Key: '
+    f'<p class="ui-sidebar-key-caption">{FEATURE_ICONS["original_key"]} {_sidebar_original_key_label}: '
     f"<strong>{original_key}</strong></p>",
     unsafe_allow_html=True,
 )
@@ -16314,10 +16329,11 @@ else:
             }
         else:
             st.sidebar.selectbox(
-                "Practice / Concert Key",
+                "Custom workspace Practice / Concert Key" if _custom_preview_only else "Practice / Concert Key",
                 _display_key_options,
                 key=CUSTOM_WORKSPACE_PRACTICE_KEY_WIDGET,
-                help="Concert pitch for charts and backing audio.",
+                help=("Custom preview only; Set Active Song to make this the active song."
+                      if _custom_preview_only else "Concert pitch for charts and backing audio."),
                 on_change=_on_custom_workspace_practice_key_change,
             )
     else:
@@ -18432,6 +18448,27 @@ except ImportError:
 if _monetization_surface_rendered:
     pass
 
+elif _studio_page == "home":
+
+    # Home is a signpost, not a workspace. It reads state and renders; it hydrates
+    # no song source, claims no backing ownership and commits no musical key.
+    try:
+        from home_page import render_home_page
+
+        def _home_rerun() -> None:
+            try:
+                from music_app_rerun import request_app_rerun
+
+                request_app_rerun(st, st.session_state, reason="home_nav", stage="page_dispatch")
+            except ImportError:
+                st.rerun()
+
+        with st.container(key="home_page"):
+            render_home_page(st, st.session_state, rerun_fn=_home_rerun)
+    except ImportError:
+        st.markdown("### Home")
+        st.info("The Home page could not be loaded. Use the navigation above to pick a workspace.")
+
 elif _studio_page == "practice":
 
     try:
@@ -19824,14 +19861,21 @@ elif _studio_page == "picker":
             render_source_context_debug,
         )
 
-        hydrate_picker_source_for_page(
-            st.session_state,
-            st_like=st,
-            song_picker_catalog=SONG_PICKER_CATALOG,
-        )
+        if not st.session_state.get("_home_catalog_browse"):
+            hydrate_picker_source_for_page(
+                st.session_state,
+                st_like=st,
+                song_picker_catalog=SONG_PICKER_CATALOG,
+            )
         render_source_context_debug(st, st.session_state)
     except ImportError:
         pass
+
+    if st.session_state.get("_home_catalog_browse"):
+        st.caption("Catalog browsing ? Your active song changes only when you select a result.")
+        if st.button("Return to active song view", key="home_catalog_exit"):
+            st.session_state.pop("_home_catalog_browse", None)
+            st.rerun()
 
     _render_catalog_song_picker_block(
         show_source_toggle=True,

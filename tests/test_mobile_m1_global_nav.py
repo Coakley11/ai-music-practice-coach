@@ -93,7 +93,10 @@ class TestMobileM1NavSemanticsUnchanged(unittest.TestCase):
         self.assertEqual(
             set(QUICK_NAV_ROW_PRIMARY + QUICK_NAV_ROW_SECONDARY), set(TOP_NAV_PAGE_IDS)
         )
-        self.assertEqual(QUICK_NAV_ROW_PRIMARY[0], "practice")
+        # Home leads the primary row; Practice keeps its place directly after it,
+        # and the rows still partition the top nav exactly.
+        self.assertEqual(QUICK_NAV_ROW_PRIMARY[0], "home")
+        self.assertEqual(QUICK_NAV_ROW_PRIMARY[1], "practice")
         self.assertEqual(QUICK_NAV_ROW_SECONDARY[0], "composer")
 
     def test_no_parallel_mobile_router(self) -> None:

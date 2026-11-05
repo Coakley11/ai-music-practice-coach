@@ -1,0 +1,2845 @@
+[
+  {
+    "action": "cold_load",
+    "seconds": 22.842,
+    "state": {
+      "studio_page": "home",
+      "active_catalog_pick_key": "Pop\u001fSay \u2014 John Mayer",
+      "active_music_source": "catalog_song",
+      "instrument": "Piano",
+      "display_key": "G",
+      "concert_key": "G",
+      "concert_practice_key": "G",
+      "_pending_display_key": null,
+      "cpl_workspace_practice_key": null,
+      "_music_nav_cloud_read_timings": [
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        }
+      ],
+      "_script_run_seq": 1,
+      "song": {
+        "title": "Say",
+        "key": "G",
+        "pick_key": "Pop\u001fSay \u2014 John Mayer"
+      },
+      "observed_at": 1793819725.1409817,
+      "custom_preview_key": null
+    }
+  },
+  {
+    "action": "more_custom",
+    "home_card": true,
+    "seconds": 6.561,
+    "before": {
+      "studio_page": "home",
+      "active_catalog_pick_key": "Pop\u001fSay \u2014 John Mayer",
+      "active_music_source": "catalog_song",
+      "instrument": "Guitar",
+      "display_key": "G",
+      "concert_key": "G",
+      "concert_practice_key": "G",
+      "_pending_display_key": null,
+      "cpl_workspace_practice_key": null,
+      "_music_nav_cloud_read_timings": [
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.12,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        }
+      ],
+      "_script_run_seq": 2,
+      "song": {
+        "title": "Say",
+        "key": "G",
+        "pick_key": "Pop\u001fSay \u2014 John Mayer"
+      },
+      "observed_at": 1793819734.3208704,
+      "custom_preview_key": null
+    },
+    "after": {
+      "studio_page": "custom",
+      "active_catalog_pick_key": "Pop\u001fSay \u2014 John Mayer",
+      "active_music_source": "catalog_song",
+      "instrument": "Guitar",
+      "display_key": "G",
+      "concert_key": "G",
+      "concert_practice_key": "G",
+      "_pending_display_key": "G",
+      "cpl_workspace_practice_key": null,
+      "_music_nav_cloud_read_timings": [
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.12,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.05,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.11,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        }
+      ],
+      "_script_run_seq": 4,
+      "song": {
+        "title": "Say",
+        "key": "G",
+        "pick_key": "Pop\u001fSay \u2014 John Mayer"
+      },
+      "observed_at": 1793819740.93084,
+      "custom_preview_key": "C"
+    },
+    "changes": {},
+    "exceptions": 0
+  },
+  {
+    "action": "practice",
+    "home_card": false,
+    "seconds": 9.995,
+    "before": {
+      "studio_page": "custom",
+      "active_catalog_pick_key": "Pop\u001fSay \u2014 John Mayer",
+      "active_music_source": "catalog_song",
+      "instrument": "Guitar",
+      "display_key": "G",
+      "concert_key": "G",
+      "concert_practice_key": "G",
+      "_pending_display_key": "G",
+      "cpl_workspace_practice_key": null,
+      "_music_nav_cloud_read_timings": [
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.12,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.05,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.11,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        }
+      ],
+      "_script_run_seq": 4,
+      "song": {
+        "title": "Say",
+        "key": "G",
+        "pick_key": "Pop\u001fSay \u2014 John Mayer"
+      },
+      "observed_at": 1793819740.93084,
+      "custom_preview_key": "C"
+    },
+    "after": {
+      "studio_page": "practice",
+      "active_catalog_pick_key": "Pop\u001fSay \u2014 John Mayer",
+      "active_music_source": "catalog_song",
+      "instrument": "Guitar",
+      "display_key": "G",
+      "concert_key": "G",
+      "concert_practice_key": "G",
+      "_pending_display_key": null,
+      "cpl_workspace_practice_key": null,
+      "_music_nav_cloud_read_timings": [
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.12,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.05,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.11,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.11,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.11,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        }
+      ],
+      "_script_run_seq": 6,
+      "song": {
+        "title": "Say",
+        "key": "G",
+        "pick_key": "Pop\u001fSay \u2014 John Mayer"
+      },
+      "observed_at": 1793819752.7013645,
+      "custom_preview_key": "C"
+    },
+    "changes": {},
+    "exceptions": 0
+  },
+  {
+    "action": "backing",
+    "home_card": false,
+    "seconds": 9.461,
+    "before": {
+      "studio_page": "practice",
+      "active_catalog_pick_key": "Pop\u001fSay \u2014 John Mayer",
+      "active_music_source": "catalog_song",
+      "instrument": "Guitar",
+      "display_key": "G",
+      "concert_key": "G",
+      "concert_practice_key": "G",
+      "_pending_display_key": null,
+      "cpl_workspace_practice_key": null,
+      "_music_nav_cloud_read_timings": [
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.12,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.05,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.11,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.11,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.11,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        }
+      ],
+      "_script_run_seq": 6,
+      "song": {
+        "title": "Say",
+        "key": "G",
+        "pick_key": "Pop\u001fSay \u2014 John Mayer"
+      },
+      "observed_at": 1793819752.7013645,
+      "custom_preview_key": "C"
+    },
+    "after": {
+      "studio_page": "backing",
+      "active_catalog_pick_key": "Pop\u001fSay \u2014 John Mayer",
+      "active_music_source": "catalog_song",
+      "instrument": "Guitar",
+      "display_key": "G",
+      "concert_key": "G",
+      "concert_practice_key": "G",
+      "_pending_display_key": null,
+      "cpl_workspace_practice_key": null,
+      "_music_nav_cloud_read_timings": [
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.12,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.05,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.11,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.11,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.11,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.12,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        }
+      ],
+      "_script_run_seq": 8,
+      "song": {
+        "title": "Say",
+        "key": "G",
+        "pick_key": "Pop\u001fSay \u2014 John Mayer"
+      },
+      "observed_at": 1793819761.793025,
+      "custom_preview_key": null
+    },
+    "changes": {},
+    "exceptions": 0
+  },
+  {
+    "action": "picker",
+    "home_card": false,
+    "seconds": 8.314,
+    "before": {
+      "studio_page": "backing",
+      "active_catalog_pick_key": "Pop\u001fSay \u2014 John Mayer",
+      "active_music_source": "catalog_song",
+      "instrument": "Guitar",
+      "display_key": "G",
+      "concert_key": "G",
+      "concert_practice_key": "G",
+      "_pending_display_key": null,
+      "cpl_workspace_practice_key": null,
+      "_music_nav_cloud_read_timings": [
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.12,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.05,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.11,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.11,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.11,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.12,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        }
+      ],
+      "_script_run_seq": 8,
+      "song": {
+        "title": "Say",
+        "key": "G",
+        "pick_key": "Pop\u001fSay \u2014 John Mayer"
+      },
+      "observed_at": 1793819761.793025,
+      "custom_preview_key": null
+    },
+    "after": {
+      "studio_page": "picker",
+      "active_catalog_pick_key": "Pop\u001fSay \u2014 John Mayer",
+      "active_music_source": "catalog_song",
+      "instrument": "Guitar",
+      "display_key": "G",
+      "concert_key": "G",
+      "concert_practice_key": "G",
+      "_pending_display_key": null,
+      "cpl_workspace_practice_key": null,
+      "_music_nav_cloud_read_timings": [
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.12,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.05,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.11,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.11,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.11,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.12,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.1,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        }
+      ],
+      "_script_run_seq": 10,
+      "song": {
+        "title": "Say",
+        "key": "G",
+        "pick_key": "Pop\u001fSay \u2014 John Mayer"
+      },
+      "observed_at": 1793819770.694697,
+      "custom_preview_key": null
+    },
+    "changes": {},
+    "exceptions": 0
+  },
+  {
+    "action": "custom",
+    "home_card": false,
+    "seconds": 4.531,
+    "before": {
+      "studio_page": "picker",
+      "active_catalog_pick_key": "Pop\u001fSay \u2014 John Mayer",
+      "active_music_source": "catalog_song",
+      "instrument": "Guitar",
+      "display_key": "G",
+      "concert_key": "G",
+      "concert_practice_key": "G",
+      "_pending_display_key": null,
+      "cpl_workspace_practice_key": null,
+      "_music_nav_cloud_read_timings": [
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.12,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.05,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.11,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.11,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.11,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.12,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.1,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        }
+      ],
+      "_script_run_seq": 10,
+      "song": {
+        "title": "Say",
+        "key": "G",
+        "pick_key": "Pop\u001fSay \u2014 John Mayer"
+      },
+      "observed_at": 1793819770.694697,
+      "custom_preview_key": null
+    },
+    "after": {
+      "studio_page": "custom",
+      "active_catalog_pick_key": "Pop\u001fSay \u2014 John Mayer",
+      "active_music_source": "catalog_song",
+      "instrument": "Guitar",
+      "display_key": "G",
+      "concert_key": "G",
+      "concert_practice_key": "G",
+      "_pending_display_key": "G",
+      "cpl_workspace_practice_key": null,
+      "_music_nav_cloud_read_timings": [
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.12,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.05,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.11,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.11,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.11,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.12,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.1,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.05,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.07,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        }
+      ],
+      "_script_run_seq": 12,
+      "song": {
+        "title": "Say",
+        "key": "G",
+        "pick_key": "Pop\u001fSay \u2014 John Mayer"
+      },
+      "observed_at": 1793819776.9710224,
+      "custom_preview_key": "C"
+    },
+    "changes": {},
+    "exceptions": 0
+  },
+  {
+    "action": "practice",
+    "home_card": false,
+    "seconds": 4.974,
+    "before": {
+      "studio_page": "custom",
+      "active_catalog_pick_key": "Pop\u001fSay \u2014 John Mayer",
+      "active_music_source": "catalog_song",
+      "instrument": "Guitar",
+      "display_key": "G",
+      "concert_key": "G",
+      "concert_practice_key": "G",
+      "_pending_display_key": "G",
+      "cpl_workspace_practice_key": null,
+      "_music_nav_cloud_read_timings": [
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.12,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.05,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.11,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.11,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.11,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.12,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.1,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.05,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.07,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        }
+      ],
+      "_script_run_seq": 12,
+      "song": {
+        "title": "Say",
+        "key": "G",
+        "pick_key": "Pop\u001fSay \u2014 John Mayer"
+      },
+      "observed_at": 1793819776.9710224,
+      "custom_preview_key": "C"
+    },
+    "after": {
+      "studio_page": "practice",
+      "active_catalog_pick_key": "Pop\u001fSay \u2014 John Mayer",
+      "active_music_source": "catalog_song",
+      "instrument": "Guitar",
+      "display_key": "G",
+      "concert_key": "G",
+      "concert_practice_key": "G",
+      "_pending_display_key": null,
+      "cpl_workspace_practice_key": null,
+      "_music_nav_cloud_read_timings": [
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.12,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.05,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.11,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.11,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.11,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.12,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.1,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.05,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.07,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.12,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.12,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        }
+      ],
+      "_script_run_seq": 14,
+      "song": {
+        "title": "Say",
+        "key": "G",
+        "pick_key": "Pop\u001fSay \u2014 John Mayer"
+      },
+      "observed_at": 1793819782.3075845,
+      "custom_preview_key": "C"
+    },
+    "changes": {},
+    "exceptions": 0
+  },
+  {
+    "action": "custom",
+    "home_card": false,
+    "seconds": 5.086,
+    "before": {
+      "studio_page": "practice",
+      "active_catalog_pick_key": "Pop\u001fSay \u2014 John Mayer",
+      "active_music_source": "catalog_song",
+      "instrument": "Guitar",
+      "display_key": "G",
+      "concert_key": "G",
+      "concert_practice_key": "G",
+      "_pending_display_key": null,
+      "cpl_workspace_practice_key": null,
+      "_music_nav_cloud_read_timings": [
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.12,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.05,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.11,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.11,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.11,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.12,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.1,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.05,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.07,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.12,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.12,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        }
+      ],
+      "_script_run_seq": 14,
+      "song": {
+        "title": "Say",
+        "key": "G",
+        "pick_key": "Pop\u001fSay \u2014 John Mayer"
+      },
+      "observed_at": 1793819782.3075845,
+      "custom_preview_key": "C"
+    },
+    "after": {
+      "studio_page": "custom",
+      "active_catalog_pick_key": "Pop\u001fSay \u2014 John Mayer",
+      "active_music_source": "catalog_song",
+      "instrument": "Guitar",
+      "display_key": "G",
+      "concert_key": "G",
+      "concert_practice_key": "G",
+      "_pending_display_key": "G",
+      "cpl_workspace_practice_key": null,
+      "_music_nav_cloud_read_timings": [
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.12,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.05,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.11,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.11,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.11,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.12,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.1,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.05,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.07,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.12,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.12,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.12,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.08,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        }
+      ],
+      "_script_run_seq": 16,
+      "song": {
+        "title": "Say",
+        "key": "G",
+        "pick_key": "Pop\u001fSay \u2014 John Mayer"
+      },
+      "observed_at": 1793819787.4177344,
+      "custom_preview_key": "C"
+    },
+    "changes": {},
+    "exceptions": 0
+  },
+  {
+    "action": "practice",
+    "home_card": false,
+    "seconds": 4.235,
+    "before": {
+      "studio_page": "custom",
+      "active_catalog_pick_key": "Pop\u001fSay \u2014 John Mayer",
+      "active_music_source": "catalog_song",
+      "instrument": "Guitar",
+      "display_key": "G",
+      "concert_key": "G",
+      "concert_practice_key": "G",
+      "_pending_display_key": "G",
+      "cpl_workspace_practice_key": null,
+      "_music_nav_cloud_read_timings": [
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.12,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.05,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.11,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.11,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.11,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.12,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.1,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.05,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.07,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.12,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.12,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.12,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.08,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        }
+      ],
+      "_script_run_seq": 16,
+      "song": {
+        "title": "Say",
+        "key": "G",
+        "pick_key": "Pop\u001fSay \u2014 John Mayer"
+      },
+      "observed_at": 1793819787.4177344,
+      "custom_preview_key": "C"
+    },
+    "after": {
+      "studio_page": "practice",
+      "active_catalog_pick_key": "Pop\u001fSay \u2014 John Mayer",
+      "active_music_source": "catalog_song",
+      "instrument": "Guitar",
+      "display_key": "G",
+      "concert_key": "G",
+      "concert_practice_key": "G",
+      "_pending_display_key": null,
+      "cpl_workspace_practice_key": null,
+      "_music_nav_cloud_read_timings": [
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.12,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.05,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.11,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.11,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.11,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.12,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.1,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.05,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.07,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.12,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.12,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.12,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.08,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.13,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.11,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        }
+      ],
+      "_script_run_seq": 18,
+      "song": {
+        "title": "Say",
+        "key": "G",
+        "pick_key": "Pop\u001fSay \u2014 John Mayer"
+      },
+      "observed_at": 1793819791.646305,
+      "custom_preview_key": "C"
+    },
+    "changes": {},
+    "exceptions": 0
+  },
+  {
+    "action": "custom",
+    "home_card": false,
+    "seconds": 4.82,
+    "before": {
+      "studio_page": "practice",
+      "active_catalog_pick_key": "Pop\u001fSay \u2014 John Mayer",
+      "active_music_source": "catalog_song",
+      "instrument": "Guitar",
+      "display_key": "G",
+      "concert_key": "G",
+      "concert_practice_key": "G",
+      "_pending_display_key": null,
+      "cpl_workspace_practice_key": null,
+      "_music_nav_cloud_read_timings": [
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.12,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.05,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.11,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.11,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.11,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.12,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.1,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.05,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.07,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.12,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.12,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.12,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.08,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.13,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.11,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        }
+      ],
+      "_script_run_seq": 18,
+      "song": {
+        "title": "Say",
+        "key": "G",
+        "pick_key": "Pop\u001fSay \u2014 John Mayer"
+      },
+      "observed_at": 1793819791.646305,
+      "custom_preview_key": "C"
+    },
+    "after": {
+      "studio_page": "custom",
+      "active_catalog_pick_key": "Pop\u001fSay \u2014 John Mayer",
+      "active_music_source": "catalog_song",
+      "instrument": "Guitar",
+      "display_key": "G",
+      "concert_key": "G",
+      "concert_practice_key": "G",
+      "_pending_display_key": "G",
+      "cpl_workspace_practice_key": null,
+      "_music_nav_cloud_read_timings": [
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.12,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.05,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.11,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.11,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.11,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.12,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.1,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.05,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.07,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.12,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.12,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.12,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.08,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.13,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.11,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.1,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.09,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        }
+      ],
+      "_script_run_seq": 20,
+      "song": {
+        "title": "Say",
+        "key": "G",
+        "pick_key": "Pop\u001fSay \u2014 John Mayer"
+      },
+      "observed_at": 1793819796.0401182,
+      "custom_preview_key": "C"
+    },
+    "changes": {},
+    "exceptions": 0
+  },
+  {
+    "action": "edit_custom_preview",
+    "before": {
+      "studio_page": "custom",
+      "active_catalog_pick_key": "Pop\u001fSay \u2014 John Mayer",
+      "active_music_source": "catalog_song",
+      "instrument": "Guitar",
+      "display_key": "G",
+      "concert_key": "G",
+      "concert_practice_key": "G",
+      "_pending_display_key": "G",
+      "cpl_workspace_practice_key": null,
+      "_music_nav_cloud_read_timings": [
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.12,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.05,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.11,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.11,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.11,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.12,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.1,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.05,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.07,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.12,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.12,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.12,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.08,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.13,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.11,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.1,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.09,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        }
+      ],
+      "_script_run_seq": 20,
+      "song": {
+        "title": "Say",
+        "key": "G",
+        "pick_key": "Pop\u001fSay \u2014 John Mayer"
+      },
+      "observed_at": 1793819796.0401182,
+      "custom_preview_key": "C"
+    },
+    "after": {
+      "studio_page": "custom",
+      "active_catalog_pick_key": "Pop\u001fSay \u2014 John Mayer",
+      "active_music_source": "catalog_song",
+      "instrument": "Guitar",
+      "display_key": "G",
+      "concert_key": "G",
+      "concert_practice_key": "G",
+      "_pending_display_key": "G",
+      "cpl_workspace_practice_key": null,
+      "_music_nav_cloud_read_timings": [
+        {
+          "skipped": false,
+          "elapsed_ms": 0.12,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.05,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.11,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.11,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.11,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.12,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.1,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.05,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.07,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.12,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.12,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.12,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.08,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.13,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.11,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.1,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.09,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.11,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        }
+      ],
+      "_script_run_seq": 21,
+      "song": {
+        "title": "Say",
+        "key": "G",
+        "pick_key": "Pop\u001fSay \u2014 John Mayer"
+      },
+      "observed_at": 1793819799.824938,
+      "custom_preview_key": "Eb"
+    },
+    "changes": {}
+  },
+  {
+    "action": "practice",
+    "home_card": false,
+    "seconds": 4.86,
+    "before": {
+      "studio_page": "custom",
+      "active_catalog_pick_key": "Pop\u001fSay \u2014 John Mayer",
+      "active_music_source": "catalog_song",
+      "instrument": "Guitar",
+      "display_key": "G",
+      "concert_key": "G",
+      "concert_practice_key": "G",
+      "_pending_display_key": "G",
+      "cpl_workspace_practice_key": null,
+      "_music_nav_cloud_read_timings": [
+        {
+          "skipped": false,
+          "elapsed_ms": 0.12,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.05,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.11,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.11,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.11,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.12,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.1,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.05,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.07,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.12,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.12,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.12,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.08,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.13,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.11,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.1,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.09,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.11,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        }
+      ],
+      "_script_run_seq": 21,
+      "song": {
+        "title": "Say",
+        "key": "G",
+        "pick_key": "Pop\u001fSay \u2014 John Mayer"
+      },
+      "observed_at": 1793819799.824938,
+      "custom_preview_key": "Eb"
+    },
+    "after": {
+      "studio_page": "practice",
+      "active_catalog_pick_key": "Pop\u001fSay \u2014 John Mayer",
+      "active_music_source": "catalog_song",
+      "instrument": "Guitar",
+      "display_key": "G",
+      "concert_key": "G",
+      "concert_practice_key": "G",
+      "_pending_display_key": null,
+      "cpl_workspace_practice_key": null,
+      "_music_nav_cloud_read_timings": [
+        {
+          "skipped": false,
+          "elapsed_ms": 0.11,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.11,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.11,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.12,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.1,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.05,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.07,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.12,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.12,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.12,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.08,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.13,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.11,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.1,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.09,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.11,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.12,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.11,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        }
+      ],
+      "_script_run_seq": 23,
+      "song": {
+        "title": "Say",
+        "key": "G",
+        "pick_key": "Pop\u001fSay \u2014 John Mayer"
+      },
+      "observed_at": 1793819804.8709204,
+      "custom_preview_key": "Eb"
+    },
+    "changes": {},
+    "exceptions": 0
+  },
+  {
+    "action": "backing",
+    "home_card": false,
+    "seconds": 7.442,
+    "before": {
+      "studio_page": "practice",
+      "active_catalog_pick_key": "Pop\u001fSay \u2014 John Mayer",
+      "active_music_source": "catalog_song",
+      "instrument": "Guitar",
+      "display_key": "G",
+      "concert_key": "G",
+      "concert_practice_key": "G",
+      "_pending_display_key": null,
+      "cpl_workspace_practice_key": null,
+      "_music_nav_cloud_read_timings": [
+        {
+          "skipped": false,
+          "elapsed_ms": 0.11,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.11,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.11,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.12,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.1,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.05,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.07,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.12,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.12,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.12,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.08,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.13,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.11,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.1,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.09,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.11,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.12,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.11,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        }
+      ],
+      "_script_run_seq": 23,
+      "song": {
+        "title": "Say",
+        "key": "G",
+        "pick_key": "Pop\u001fSay \u2014 John Mayer"
+      },
+      "observed_at": 1793819804.8709204,
+      "custom_preview_key": "Eb"
+    },
+    "after": {
+      "studio_page": "backing",
+      "active_catalog_pick_key": "Pop\u001fSay \u2014 John Mayer",
+      "active_music_source": "catalog_song",
+      "instrument": "Guitar",
+      "display_key": "G",
+      "concert_key": "G",
+      "concert_practice_key": "G",
+      "_pending_display_key": null,
+      "cpl_workspace_practice_key": null,
+      "_music_nav_cloud_read_timings": [
+        {
+          "skipped": false,
+          "elapsed_ms": 0.11,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.12,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.1,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.05,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.07,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.12,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.12,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.12,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.08,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.13,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.11,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.1,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.09,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.11,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.12,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.11,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.11,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.08,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        }
+      ],
+      "_script_run_seq": 25,
+      "song": {
+        "title": "Say",
+        "key": "G",
+        "pick_key": "Pop\u001fSay \u2014 John Mayer"
+      },
+      "observed_at": 1793819812.1476877,
+      "custom_preview_key": null
+    },
+    "changes": {},
+    "exceptions": 0
+  }
+]

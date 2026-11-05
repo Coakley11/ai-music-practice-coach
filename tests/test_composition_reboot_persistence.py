@@ -202,8 +202,13 @@ class TestCompositionActivePageRestore(unittest.TestCase):
         self.assertEqual(page, "practice")
 
     def test_missing_page_falls_back_safely(self) -> None:
+        # A restore that names no page lands on the app's landing page, with a
+        # reason recorded. Composition only requires that the fallback be safe
+        # and attributable, not that it be any particular page.
+        from studio_nav_state import DEFAULT_STUDIO_PAGE
+
         page, source = resolve_studio_page_for_restore({}, {}, pre_restore_page="")
-        self.assertEqual(page, "practice")
+        self.assertEqual(page, DEFAULT_STUDIO_PAGE)
         self.assertTrue(source)
 
 
