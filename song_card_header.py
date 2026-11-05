@@ -203,7 +203,7 @@ def song_card_header_html(
     fav_html = '<span class="ui-sch-fav" title="Favorite" aria-label="Favorite">★</span>' if favorite else ""
     grid_html = ""
     bar_list = [str(b) for b in (bars or []) if str(b or "").strip()][:4]
-    # The bar grid sits beside the title: only with a short title, so it never runs into it.
+    # The bar grid sits above a one-line title: only a short title is sure to stay on one line.
     if t["source"] == SOURCE_CUSTOM and bar_list and len(str(title or "")) <= 18:
         cells = "".join(f'<span class="ui-sch-bar">{esc(b)}</span>' for b in bar_list)
         grid_html = f'<div class="ui-sch-grid" aria-hidden="true">{cells}</div>'
@@ -236,7 +236,7 @@ SONG_CARD_HEADER_CSS = """
 .ui-sch-art{position:absolute;right:56px;bottom:-34px;width:270px;height:270px;opacity:0.24;pointer-events:none;}
 .ui-sch-art svg{width:100%;height:100%;display:block;}
 .ui-sch-staff{position:absolute;left:0;top:118px;width:100%;height:64px;opacity:0.2;pointer-events:none;}
-.ui-sch-grid{position:absolute;right:290px;top:104px;display:flex;gap:8px;opacity:0.45;pointer-events:none;}
+.ui-sch-grid{position:absolute;right:290px;top:68px;display:flex;gap:8px;opacity:0.45;pointer-events:none;}
 .ui-sch-bar{box-sizing:border-box;width:86px;height:56px;border:1.5px dashed #fde68a;border-radius:8px;color:#fde68a;
   font-weight:700;font-size:20px;display:flex;align-items:center;padding-left:14px;}
 .ui-sch-top{position:relative;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:nowrap;}
@@ -262,7 +262,7 @@ SONG_CARD_HEADER_CSS = """
 @container sch (max-width: 820px){
   .ui-sch{min-height:212px;padding:22px 26px 26px;}
   .ui-sch-art{right:14px;width:220px;height:220px;}
-  .ui-sch-grid{right:150px;top:96px;}
+  .ui-sch-grid{right:172px;top:62px;}
   .ui-sch-titlerow{max-width:74%;}
   .ui-sch-tile{width:58px;height:58px;flex-basis:58px;}
   .ui-sch .ui-sch-title{font-size:30px;}
