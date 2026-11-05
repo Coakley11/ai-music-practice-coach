@@ -88,11 +88,20 @@ def test_script_uses_the_rule_table_and_targets_only_the_key_dropdowns() -> None
     js = key_search_alias_html()
     assert "picker_active_song_practice_key_row input[role=\\\"combobox\\\"]" in js
     assert "backing_card_key_row input[role=\\\"combobox\\\"]" in js
-    assert "__keySearchAliasInstalled" in js
     for pattern, replacement in KEY_SEARCH_RULES:
         assert replacement in js
     # Only the typed search text changes: no value, option or callback is touched.
     assert "stopImmediatePropagation" in js and "setter.call(el, nv)" in js
+
+
+def test_each_new_frame_replaces_the_listener_so_search_survives_navigation() -> None:
+    # The script's frame is destroyed on a page change and its listener stops firing, so a
+    # once-only guard left "Eb" / "F#m" finding nothing after moving between Songs and Backing.
+    js = key_search_alias_html()
+    assert "__keySearchAliasInstalled" not in js
+    assert "removeEventListener('input', W.__keySearchAliasListener, true)" in js
+    assert "addEventListener('input', W.__keySearchAliasListener, true)" in js
+    assert js.index("removeEventListener") < js.index("addEventListener")
 
 
 def test_both_cards_use_prefix_filtering_and_install_the_script_every_run() -> None:

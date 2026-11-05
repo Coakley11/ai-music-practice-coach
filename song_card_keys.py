@@ -116,11 +116,12 @@ KEY_SEARCH_ALIAS_JS = """
   var W = window.parent, D;
   try { D = W.document; } catch (e) { return; }
   W.__keySearchRules = %s;
-  if (W.__keySearchAliasInstalled) return;
-  W.__keySearchAliasInstalled = true;
   var SEL = %s;
   var setter = Object.getOwnPropertyDescriptor(W.HTMLInputElement.prototype, 'value').set;
-  D.addEventListener('input', function (e) {
+  // This frame goes away on page changes and its listener with it, so each new frame
+  // replaces the previous listener: a once-only flag would leave search dead after navigating.
+  if (W.__keySearchAliasListener) D.removeEventListener('input', W.__keySearchAliasListener, true);
+  W.__keySearchAliasListener = function (e) {
     var el = e.target;
     if (!el || e.__keySearchAlias || !el.matches || !el.matches(SEL)) return;
     var v = String(el.value || ''), nv = v;
@@ -134,7 +135,8 @@ KEY_SEARCH_ALIAS_JS = """
     var ev = new W.Event('input', { bubbles: true });
     ev.__keySearchAlias = true;
     el.dispatchEvent(ev);
-  }, true);
+  };
+  D.addEventListener('input', W.__keySearchAliasListener, true);
 })();
 </script>
 """
@@ -150,7 +152,7 @@ def key_search_alias_html() -> str:
 
 
 def render_key_search_alias(st) -> None:
-    """Install the search-alias script (idempotent in the page). Call it on every run of
+    """Install the search-alias script (each new frame replaces the last). Call it on every run of
     a render path that draws a key dropdown, so its element slot is always present."""
     slot = st.container(key=KEY_SEARCH_ALIAS_SLOT_KEY)
     try:
