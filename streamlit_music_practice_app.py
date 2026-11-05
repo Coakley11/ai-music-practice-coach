@@ -14776,6 +14776,9 @@ try:
         song_picker_catalog=SONG_PICKER_CATALOG,
         song_library=SONG_LIBRARY,
     )
+    # Home requests commit at the same post-hydration, pre-widget owner boundary.
+    from home_practice_resume import finalize_recent_practice
+    _entry_finalized = finalize_recent_practice(st, SONG_PICKER_CATALOG, SONG_LIBRARY) or _entry_finalized
     _ctx_refresh = bool(_entry_finalized)
     if _entry_finalized:
         _studio_page = str(st.session_state.get("studio_page") or _studio_page)
@@ -18480,7 +18483,7 @@ elif _studio_page == "home":
                 st.rerun()
 
         with st.container(key="home_page"):
-            render_home_page(st, st.session_state, rerun_fn=_home_rerun)
+            render_home_page(st, st.session_state, rerun_fn=_home_rerun, song_picker_catalog=SONG_PICKER_CATALOG)
     except ImportError:
         st.markdown("### Home")
         st.info("The Home page could not be loaded. Use the navigation above to pick a workspace.")

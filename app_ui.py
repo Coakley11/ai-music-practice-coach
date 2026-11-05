@@ -172,7 +172,7 @@ def inject_app_theme() -> None:
 [data-testid="stVerticalBlock"] > div:empty { display: none; }
 header[data-testid="stHeader"] { background: rgba(255,255,255,0.92); backdrop-filter: blur(8px); }
 [data-testid="stSidebar"] {
-  background: linear-gradient(180deg, #0f172a 0%, #111827 42%, #1e293b 100%);
+  background: #312e81; /* Existing brand-header purple. */
 }
 [data-testid="stSidebar"] * { color: #e2e8f0 !important; }
 [data-testid="stSidebar"] .stCaption, [data-testid="stSidebar"] label {
@@ -3362,6 +3362,47 @@ div[class*="st-key-cpl_chord_pick_grid"] [data-testid="stColumn"] > div {
     _inject_mobile_m7_finish_density()
     _inject_genre_filter_pill_chrome()
     _inject_studio_history_nav_pin_script()
+    st.markdown("<style>" + _purple_sidebar_css() + "</style>", unsafe_allow_html=True)
+
+
+def _purple_sidebar_css() -> str:
+    """Visual-only sidebar treatment using the brand header's #312e81 stop."""
+    return """
+[data-testid="stSidebar"] { background: #312e81; }
+[data-testid="stSidebar"] [data-testid="stSidebarContent"],
+[data-testid="stSidebar"] [data-testid="stSidebarHeader"],
+[data-testid="stSidebar"] [data-testid="stSidebarUserContent"] { background: transparent; }
+[data-testid="stSidebar"] label,
+[data-testid="stSidebar"] [data-testid="stWidgetLabel"] p,
+[data-testid="stSidebar"] .stCaption,
+[data-testid="stSidebar"] p[data-testid="stCaptionContainer"] { color: #e0e7ff !important; }
+/* These existing light setup panels retain dark, readable copy. */
+[data-testid="stSidebar"] .ui-ctrl-section-body label,
+[data-testid="stSidebar"] .ui-ctrl-section-body [data-testid="stWidgetLabel"] p,
+[data-testid="stSidebar"] .ui-ctrl-section-body .stCaption { color: #1e293b !important; }
+[data-testid="stSidebar"] [data-testid="stExpander"] {
+  background: rgba(255,255,255,0.06); border-color: rgba(199,210,254,0.35);
+}
+[data-testid="stSidebar"] [data-testid="stSidebarUserContent"] button[data-testid="stBaseButton-secondary"] {
+  background: #454199 !important; border-color: #818cf8 !important;
+}
+[data-testid="stSidebar"] [data-testid="stSidebarUserContent"] button[data-testid="stBaseButton-secondary"],
+[data-testid="stSidebar"] [data-testid="stSidebarUserContent"] button[data-testid="stBaseButton-secondary"] * {
+  color: #eef2ff !important;
+}
+[data-testid="stSidebar"] [data-testid="stSidebarUserContent"] button:disabled {
+  background: #3b387f !important; border-color: #68639e !important; opacity: 1 !important;
+}
+[data-testid="stSidebar"] [data-testid="stSidebarUserContent"] button:disabled,
+[data-testid="stSidebar"] [data-testid="stSidebarUserContent"] button:disabled * { color: #c7c4e6 !important; }
+[data-testid="stSidebar"] button[aria-label^="Help for"] svg { color: #93c5fd !important; }
+[data-testid="stSidebar"] button:not(:disabled):hover { box-shadow: 0 0 0 2px #93c5fd; }
+[data-testid="stSidebar"] button:focus-visible,
+[data-testid="stSidebar"] [data-baseweb="select"]:focus-within,
+[data-testid="stSidebar"] [data-testid="stSelectbox"]:focus-within {
+  outline: 2px solid #facc15; outline-offset: 2px;
+}
+"""
 
 
 def _inject_genre_filter_pill_chrome() -> None:
@@ -7770,7 +7811,7 @@ div[data-testid="stTabs"] [data-baseweb="tab-highlight"] {
 
 /* ---- Sidebar — slightly cleaner gradient + spacing ---- */
 [data-testid="stSidebar"] {
-  background: linear-gradient(180deg, #0b1220 0%, #111827 50%, #1e293b 100%);
+  background: #312e81; /* Existing brand-header purple. */
   border-right: 1px solid rgba(255,255,255,0.04);
 }
 [data-testid="stSidebar"] > div:first-child { padding-top: 0.75rem; }

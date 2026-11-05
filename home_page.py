@@ -308,7 +308,7 @@ def _render_hero(st: Any, session_state: Any, rerun_fn: Any, *, owner: str) -> N
                 rerun_fn()
 
 
-def _render_continue(st: Any, session_state: Any, rerun_fn: Any) -> None:
+def _render_continue(st: Any, session_state: Any, rerun_fn: Any, catalog: dict | None = None) -> None:
     recent: VerifiedRecentSession | None = verified_recent_session(session_state)
     if recent is None:
         st.markdown(
@@ -344,8 +344,10 @@ def _render_continue(st: Any, session_state: Any, rerun_fn: Any) -> None:
 """,
         unsafe_allow_html=True,
     )
+    from home_practice_resume import prepare_restore, REQUEST, ERROR
+    plan, unavailable = prepare_restore(recent.restore_record, session_state, catalog or {})
     with st.container(key="home_resume"):
-        label = recent.action_label()
+        label = "Resume Practice" if plan else recent.action_label()
         dest = HomeDestination(
             key="resume",
             page=recent.page,
@@ -354,9 +356,20 @@ def _render_continue(st: Any, session_state: Any, rerun_fn: Any) -> None:
             creative_dest=recent.creative_dest,
         )
         if st.button(label, icon=destination_icon(dest), key="home_resume_btn", use_container_width=False):
-            apply_home_navigation(session_state, dest)
+            if plan:
+                from music_rerun_loop_guard import clear_rerun_loop_block
+                clear_rerun_loop_block(session_state)
+                session_state[REQUEST] = dict(recent.restore_record)
+                session_state.pop(ERROR, None)
+            else:
+                apply_home_navigation(session_state, dest)
             rerun_fn()
-    st.caption(ACTION_CAPTION.format(destination=recent.destination_label()))
+    if session_state.get(ERROR):
+        st.info(session_state[ERROR])
+    if plan:
+        st.caption("Restores this recorded song, source, instrument and concert Practice Key. Playback stays stopped.")
+    else:
+        st.caption(unavailable + " " + ACTION_CAPTION.format(destination=recent.destination_label()))
 
 
 def render_home_page(
@@ -365,13 +378,14 @@ def render_home_page(
     *,
     rerun_fn: Any,
     owner: str = "Daniel Cohen",
+    song_picker_catalog: dict | None = None,
 ) -> None:
     """Render Home. Reads state; writes nothing until a button is pressed."""
     st.markdown(f"<style data-home-page='1'>{home_page_css()}</style>", unsafe_allow_html=True)
     st.markdown('<div class="home-wrap">', unsafe_allow_html=True)
 
     _render_hero(st, session_state, rerun_fn, owner=owner)
-    _render_continue(st, session_state, rerun_fn)
+    _render_continue(st, session_state, rerun_fn, song_picker_catalog)
 
     st.markdown(
         '<p class="home-eyebrow">Find your flow</p>'
