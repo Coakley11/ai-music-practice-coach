@@ -1715,6 +1715,17 @@ body:has(.st-key-backing_card_controls) .ui-backing-active-song {
 .st-key-backing_card_key_row [data-testid="stSelectbox"] input[role="combobox"] {
   font-size: 1.3rem !important; font-weight: 800 !important; color: #0f172a !important; line-height: 1.2 !important;
 }
+/* Phone: two key columns leave too little room for "F♯ minor" at the full size. Not below 1rem: iOS zooms smaller inputs. */
+@container backing-main (max-width: 400px) {
+  .st-key-backing_card_key_row .ui-skp-value,
+  .st-key-backing_card_key_row .ui-skp-locked,
+  .st-key-backing_card_key_row [data-testid="stSelectbox"] input[role="combobox"] { font-size: 1.05rem !important; }
+}
+@container backing-main (max-width: 340px) {
+  .st-key-backing_card_key_row .ui-skp-value,
+  .st-key-backing_card_key_row .ui-skp-locked,
+  .st-key-backing_card_key_row [data-testid="stSelectbox"] input[role="combobox"] { font-size: 1rem !important; }
+}
 @container backing-main (max-width: 800px) {
   body:has(.st-key-backing_card_controls) .ui-backing-active-song {
     padding-bottom: calc(312px + 0.9rem + 0.65rem) !important;
@@ -2034,6 +2045,11 @@ body:has(.st-key-picker_active_song_favorite_row) .st-key-picker_active_song_car
   .st-key-picker_active_song_key_row .ui-skp-locked,
   .st-key-picker_active_song_practice_key_row [data-testid="stSelectbox"] .react-aria-ComboBox [role="group"] { height: 46px; min-height: 46px; }
   .st-key-picker_active_song_key_row .ui-song-library-genre-chips-label { min-height: 0; }
+}
+@media (max-width: 380px) {
+  .st-key-picker_active_song_key_row .ui-skp-value,
+  .st-key-picker_active_song_key_row .ui-skp-locked,
+  .st-key-picker_active_song_practice_key_row [data-testid="stSelectbox"] input[role="combobox"] { font-size: 1.1rem !important; }
 }
 /* v12 header: the Favorite sits in the header's top-right slot, level with the chips. */
 body:has(.ui-sch) .st-key-picker_active_song_card_shell .st-key-picker_active_song_favorite_row {
