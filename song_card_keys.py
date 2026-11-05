@@ -67,20 +67,55 @@ def key_token_from_name(name: str) -> str:
 
 # --- Search aliases for the Practice Key dropdowns ---------------------------------
 # Streamlit 1.61's selectbox filters only on the visible option text, so "Eb" never
-# matched "E♭ major". This script, installed once per page, rewrites what the user
-# types in the two key dropdowns: a b / # right after a note letter becomes ♭ / ♯
-# ("Eb" -> "E♭", "F#m" -> "F♯m"). Only the search text changes; the options, the
-# stored key values, saved keys and callbacks are untouched.
+# matched "E♭ major". A script, installed once per page, rewrites what the user types
+# in the two key dropdowns, and the dropdowns filter by prefix, so what the search says
+# is what it finds:
+#   "Eb" -> "E♭", "F#" -> "F♯"     the note
+#   "F#m" -> "F♯ mi"               minor: finds F♯ minor, and nothing in a major-only list
+#   "FM" -> "F ma"                 major: finds F major, and nothing in a minor-only list
+# A mode the user states is never swapped for another. Only the search text changes: the
+# options, stored key values, saved keys and callbacks are untouched.
 KEY_SEARCH_ALIAS_SLOT_KEY = "key_search_alias_slot"
+KEY_SEARCH_FILTER_MODE = "prefix"
 KEY_SEARCH_INPUT_SELECTOR = (
     '.st-key-picker_active_song_practice_key_row input[role="combobox"], '
     '.st-key-backing_card_key_row input[role="combobox"]'
 )
+_NOTE = "([A-Ga-g][♭♯]?)"
+# (pattern, replacement), applied in order to the whole search text; the one source for
+# both the browser script and the tests. Later rules keep typing natural after the first
+# rewrite: "F♯m" + "a" is "F♯ ma" ("F#maj"), "F♯m" + "i" stays "F♯ mi" ("F#min").
+KEY_SEARCH_RULES: tuple[tuple[str, str], ...] = (
+    (r"^\s*([A-Ga-g])b", "$1♭"),
+    (r"^\s*([A-Ga-g])#", "$1♯"),
+    (rf"^{_NOTE}(m[ai].*)$", "$1 $2"),
+    (rf"^{_NOTE}M$", "$1 ma"),
+    (rf"^{_NOTE}m$", "$1 mi"),
+    (rf"^{_NOTE} mi[aA](.*)$", "$1 ma$2"),
+    (rf"^{_NOTE} mi[iI](.*)$", "$1 mi$2"),
+    (rf"^{_NOTE} ma[aA](.*)$", "$1 ma$2"),
+)
+
+
+def key_search_text(typed: str) -> str:
+    """What the search box holds after ``typed`` (the browser script's rules, in Python)."""
+    text = str(typed or "")
+    for pattern, replacement in KEY_SEARCH_RULES:
+        # $1 / $2 as in the browser's String.replace.
+        text = re.sub(
+            pattern,
+            lambda m, r=replacement: re.sub(r"\$(\d)", lambda g: m.group(int(g.group(1))) or "", r),
+            text,
+        )
+    return text
+
+
 KEY_SEARCH_ALIAS_JS = """
 <script>
 (function () {
   var W = window.parent, D;
   try { D = W.document; } catch (e) { return; }
+  W.__keySearchRules = %s;
   if (W.__keySearchAliasInstalled) return;
   W.__keySearchAliasInstalled = true;
   var SEL = %s;
@@ -88,14 +123,14 @@ KEY_SEARCH_ALIAS_JS = """
   D.addEventListener('input', function (e) {
     var el = e.target;
     if (!el || e.__keySearchAlias || !el.matches || !el.matches(SEL)) return;
-    var v = String(el.value || '');
-    var nv = v.replace(/([A-Ga-g])b/g, '$1\u266d').replace(/([A-Ga-g])#/g, '$1\u266f');
+    var v = String(el.value || ''), nv = v;
+    (W.__keySearchRules || []).forEach(function (r) { nv = nv.replace(new RegExp(r[0]), r[1]); });
     if (nv === v) return;
     // Replace the typed text before the combo box sees it, then let it filter.
     e.stopImmediatePropagation();
-    var pos = el.selectionStart;
+    var pos = el.selectionStart, atEnd = pos === v.length;
     setter.call(el, nv);
-    try { el.setSelectionRange(pos, pos); } catch (e2) {}
+    try { el.setSelectionRange(atEnd ? nv.length : pos, atEnd ? nv.length : pos); } catch (e2) {}
     var ev = new W.Event('input', { bubbles: true });
     ev.__keySearchAlias = true;
     el.dispatchEvent(ev);
@@ -108,7 +143,10 @@ KEY_SEARCH_ALIAS_JS = """
 def key_search_alias_html() -> str:
     import json
 
-    return KEY_SEARCH_ALIAS_JS % json.dumps(KEY_SEARCH_INPUT_SELECTOR)
+    return KEY_SEARCH_ALIAS_JS % (
+        json.dumps([list(r) for r in KEY_SEARCH_RULES], ensure_ascii=False),
+        json.dumps(KEY_SEARCH_INPUT_SELECTOR),
+    )
 
 
 def render_key_search_alias(st) -> None:

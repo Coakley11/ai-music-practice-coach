@@ -10103,7 +10103,11 @@ def _render_backing_pk_owner_select(proxy: dict[str, Any], options: list[str], *
     """
     proxy["rendered"] = True
     # The card asks for readable names (D♭ major); the value stays the key token.
-    _fmt = {"format_func": proxy["format_func"]} if proxy.get("format_func") else {}
+    _fmt = (
+        {"format_func": proxy["format_func"], "filter_mode": proxy.get("filter_mode", "fuzzy")}
+        if proxy.get("format_func")
+        else {}
+    )
     st.selectbox(
         proxy["label"],
         options,
@@ -10133,7 +10137,12 @@ def _render_backing_card_practice_key(original_key: str, practice_key: str) -> N
     reruns and reverted the key. Without an owner widget this run, the row
     shows the keys as text, as before.
     """
-    from song_card_keys import key_relation_caption, pretty_key_name, render_key_search_alias
+    from song_card_keys import (
+        KEY_SEARCH_FILTER_MODE,
+        key_relation_caption,
+        pretty_key_name,
+        render_key_search_alias,
+    )
 
     # Every run of this card, both branches: "Eb" / "F#" find E♭ / F♯ in the dropdown.
     render_key_search_alias(st)
@@ -10163,6 +10172,7 @@ def _render_backing_card_practice_key(original_key: str, practice_key: str) -> N
     if current and current not in options:
         options = [current] + options
     proxy["format_func"] = lambda k: pretty_key_name(k) or str(k)
+    proxy["filter_mode"] = KEY_SEARCH_FILTER_MODE
     with st.container(key="backing_card_key_row"):
         c_orig, c_pk = st.columns(2, gap="small")
         with c_orig:
@@ -11293,7 +11303,12 @@ def _render_card_practice_key_selector(rec: dict, *, pick_key: str) -> None:
     original_key = str(rec.get("key") or "C").strip() or "C"
     from practice_key_mode import practice_key_edit_locked, resolve_practice_concert_key_for_song
 
-    from song_card_keys import key_relation_caption, pretty_key_name, render_key_search_alias
+    from song_card_keys import (
+        KEY_SEARCH_FILTER_MODE,
+        key_relation_caption,
+        pretty_key_name,
+        render_key_search_alias,
+    )
 
     # Every run of this card, both branches: "Eb" / "F#" find E♭ / F♯ in the dropdown.
     render_key_search_alias(st)
@@ -11349,6 +11364,7 @@ def _render_card_practice_key_selector(rec: dict, *, pick_key: str) -> None:
             options,
             key=widget_key,
             format_func=lambda k: pretty_key_name(k) or str(k),
+            filter_mode=KEY_SEARCH_FILTER_MODE,
             label_visibility="collapsed",
             on_change=_apply_card_practice_key_change,
             args=(widget_key,),
