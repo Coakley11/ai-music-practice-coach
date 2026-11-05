@@ -8857,7 +8857,7 @@ def _brand_emblem_data_uri() -> str:
     import base64
     from pathlib import Path
 
-    png_path = Path(__file__).resolve().parent / "static" / "branding" / "mpc_logo_emblem.png"
+    png_path = Path(__file__).resolve().parent / "static" / "branding" / "mpc_logo_emblem_256.png"
     try:
         encoded = base64.b64encode(png_path.read_bytes()).decode("ascii")
     except OSError:

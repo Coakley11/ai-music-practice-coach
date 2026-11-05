@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Any
+from suite_brand_assets import render_command_center_brand_link
 
 # Mirror app_urls.py when this module is copied into sibling repos.
 _HOMEPAGE_DEV_URL = "https://daniel-ai-command-center-ion4vh2cvo7bgdnkuktrb3.streamlit.app"
@@ -45,6 +46,7 @@ def render_command_center_sidebar_link(
     if not url:
         return
     target = st.sidebar if use_sidebar else st
-    target.link_button(label, url, use_container_width=True)
+    if not render_command_center_brand_link(target, label, url):
+        target.link_button(label, url, use_container_width=True)
     if show_divider and use_sidebar:
         st.sidebar.divider()

@@ -50,12 +50,12 @@ from typing import Any, Callable
 
 st.set_page_config(
     page_title="Daniel Cohen AI Music Practice Coach",
-    page_icon="🎵",
+    page_icon=str(Path(__file__).resolve().parent / "static/branding/mpc_logo_emblem_96.png"),
     layout="wide"
 )
 
 try:
-    st.logo("static/branding/mpc_logo.png", size="medium")
+    st.logo(str(Path(__file__).resolve().parent / "static/branding/mpc_logo_emblem_256.png"), size="medium")
 except Exception:
     pass
 
