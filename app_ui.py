@@ -2050,7 +2050,7 @@ body:has(.ui-sch) .st-key-picker_active_song_favorite_row button:not([kind="prim
 }
 @container sch (max-width: 820px) {
   body:has(.st-key-picker_active_song_favorite_row) .st-key-picker_active_song_card_shell .ui-sch-right {
-    margin-right: 8rem;
+    margin-right: 8.75rem;
   }
 }
 @media (max-width: 720px) {
