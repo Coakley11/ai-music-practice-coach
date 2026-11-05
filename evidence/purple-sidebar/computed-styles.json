@@ -1,0 +1,35 @@
+{
+  "background": "rgb(49, 46, 129)",
+  "buttons": [
+    {
+      "text": "\u2190",
+      "disabled": false,
+      "background": "rgb(69, 65, 153)",
+      "color": "rgb(203, 213, 225)",
+      "opacity": "1"
+    },
+    {
+      "text": "\u2192",
+      "disabled": true,
+      "background": "rgb(59, 56, 127)",
+      "color": "rgb(203, 213, 225)",
+      "opacity": "1"
+    },
+    {
+      "text": "View plans",
+      "disabled": false,
+      "background": "rgb(69, 65, 153)",
+      "color": "rgb(203, 213, 225)",
+      "opacity": "1"
+    },
+    {
+      "text": "\ud83c\udfbc Songs",
+      "disabled": false,
+      "background": "rgb(69, 65, 153)",
+      "color": "rgb(203, 213, 225)",
+      "opacity": "1"
+    }
+  ],
+  "main": "rgba(0, 0, 0, 0)",
+  "header": "linear-gradient(128deg, rgb(15, 23, 42) 0%, rgb(30, 58, 95) 42%, rgb(49, 46, 129) 88%)"
+}
