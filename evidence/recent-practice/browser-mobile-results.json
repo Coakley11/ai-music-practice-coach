@@ -1,0 +1,816 @@
+[
+  {
+    "action": "persisted-session-refresh",
+    "seconds": 8.571,
+    "before": {
+      "studio_page": "home",
+      "active_catalog_pick_key": "Jazz\u001fAll the Things You Are \u2014 Jazz Standard",
+      "active_music_source": "catalog_song",
+      "instrument": "Saxophone",
+      "display_key": "Eb",
+      "concert_key": "Eb",
+      "concert_practice_key": "Eb",
+      "_pending_display_key": null,
+      "cpl_workspace_practice_key": null,
+      "_music_nav_cloud_read_timings": [
+        {
+          "skipped": false,
+          "elapsed_ms": 0.08,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.05,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.11,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.11,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.09,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        }
+      ],
+      "_script_run_seq": 5,
+      "song": {
+        "title": "All the Things You Are",
+        "key": "Ab",
+        "pick_key": "Jazz\u001fAll the Things You Are \u2014 Jazz Standard"
+      },
+      "observed_at": 1793882188.8874269,
+      "focus": "Improvisation",
+      "transposing_type": "Tenor saxophone (Bb)",
+      "capo": null,
+      "keys": {
+        "concert_key": "Eb",
+        "written_key": "F",
+        "chart_key": "Eb",
+        "effective_practice_key": "Eb",
+        "global_display_key": "Eb",
+        "chart_key_mode": "concert",
+        "transposing_type": "Tenor saxophone (Bb)"
+      },
+      "custom_preview_key": null
+    },
+    "after": {
+      "studio_page": "home",
+      "active_catalog_pick_key": "Jazz\u001fAll the Things You Are \u2014 Jazz Standard",
+      "active_music_source": "catalog_song",
+      "instrument": "Saxophone",
+      "display_key": "Eb",
+      "concert_key": "Eb",
+      "concert_practice_key": "Eb",
+      "_pending_display_key": null,
+      "cpl_workspace_practice_key": null,
+      "_music_nav_cloud_read_timings": [
+        {
+          "skipped": false,
+          "elapsed_ms": 0.05,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        }
+      ],
+      "_script_run_seq": 1,
+      "song": {
+        "title": "All the Things You Are",
+        "key": "Ab",
+        "pick_key": "Jazz\u001fAll the Things You Are \u2014 Jazz Standard"
+      },
+      "observed_at": 1793882320.8385882,
+      "focus": "Improvisation",
+      "transposing_type": "Tenor saxophone (Bb)",
+      "capo": null,
+      "keys": {
+        "concert_key": "Eb",
+        "written_key": "F",
+        "chart_key": "Eb",
+        "effective_practice_key": "Eb",
+        "global_display_key": "Eb",
+        "chart_key_mode": "concert",
+        "transposing_type": "Tenor saxophone (Bb)"
+      },
+      "custom_preview_key": null
+    },
+    "exceptions": 0
+  },
+  {
+    "action": "picker",
+    "seconds": 5.34,
+    "before": {
+      "studio_page": "home",
+      "active_catalog_pick_key": "Jazz\u001fAll the Things You Are \u2014 Jazz Standard",
+      "active_music_source": "catalog_song",
+      "instrument": "Saxophone",
+      "display_key": "Eb",
+      "concert_key": "Eb",
+      "concert_practice_key": "Eb",
+      "_pending_display_key": null,
+      "cpl_workspace_practice_key": null,
+      "_music_nav_cloud_read_timings": [
+        {
+          "skipped": false,
+          "elapsed_ms": 0.05,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        }
+      ],
+      "_script_run_seq": 1,
+      "song": {
+        "title": "All the Things You Are",
+        "key": "Ab",
+        "pick_key": "Jazz\u001fAll the Things You Are \u2014 Jazz Standard"
+      },
+      "observed_at": 1793882320.8385882,
+      "focus": "Improvisation",
+      "transposing_type": "Tenor saxophone (Bb)",
+      "capo": null,
+      "keys": {
+        "concert_key": "Eb",
+        "written_key": "F",
+        "chart_key": "Eb",
+        "effective_practice_key": "Eb",
+        "global_display_key": "Eb",
+        "chart_key_mode": "concert",
+        "transposing_type": "Tenor saxophone (Bb)"
+      },
+      "custom_preview_key": null
+    },
+    "after": {
+      "studio_page": "picker",
+      "active_catalog_pick_key": "Jazz\u001fAll the Things You Are \u2014 Jazz Standard",
+      "active_music_source": "catalog_song",
+      "instrument": "Saxophone",
+      "display_key": "Eb",
+      "concert_key": "Eb",
+      "concert_practice_key": "Eb",
+      "_pending_display_key": null,
+      "cpl_workspace_practice_key": null,
+      "_music_nav_cloud_read_timings": [
+        {
+          "skipped": false,
+          "elapsed_ms": 0.05,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.16,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.1,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        }
+      ],
+      "_script_run_seq": 3,
+      "song": {
+        "title": "All the Things You Are",
+        "key": "Ab",
+        "pick_key": "Jazz\u001fAll the Things You Are \u2014 Jazz Standard"
+      },
+      "observed_at": 1793882329.8618317,
+      "focus": "Improvisation",
+      "transposing_type": "Tenor saxophone (Bb)",
+      "capo": null,
+      "keys": {
+        "concert_key": "Eb",
+        "written_key": "F",
+        "chart_key": "Eb",
+        "effective_practice_key": "Eb",
+        "global_display_key": "Eb",
+        "chart_key_mode": "concert",
+        "transposing_type": "Tenor saxophone (Bb)"
+      },
+      "custom_preview_key": null
+    },
+    "exceptions": 0
+  },
+  {
+    "action": "practice",
+    "seconds": 6.155,
+    "before": {
+      "studio_page": "picker",
+      "active_catalog_pick_key": "Jazz\u001fAll the Things You Are \u2014 Jazz Standard",
+      "active_music_source": "catalog_song",
+      "instrument": "Saxophone",
+      "display_key": "Eb",
+      "concert_key": "Eb",
+      "concert_practice_key": "Eb",
+      "_pending_display_key": null,
+      "cpl_workspace_practice_key": null,
+      "_music_nav_cloud_read_timings": [
+        {
+          "skipped": false,
+          "elapsed_ms": 0.05,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.16,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.1,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        }
+      ],
+      "_script_run_seq": 3,
+      "song": {
+        "title": "All the Things You Are",
+        "key": "Ab",
+        "pick_key": "Jazz\u001fAll the Things You Are \u2014 Jazz Standard"
+      },
+      "observed_at": 1793882329.8618317,
+      "focus": "Improvisation",
+      "transposing_type": "Tenor saxophone (Bb)",
+      "capo": null,
+      "keys": {
+        "concert_key": "Eb",
+        "written_key": "F",
+        "chart_key": "Eb",
+        "effective_practice_key": "Eb",
+        "global_display_key": "Eb",
+        "chart_key_mode": "concert",
+        "transposing_type": "Tenor saxophone (Bb)"
+      },
+      "custom_preview_key": null
+    },
+    "after": {
+      "studio_page": "practice",
+      "active_catalog_pick_key": "Jazz\u001fAll the Things You Are \u2014 Jazz Standard",
+      "active_music_source": "catalog_song",
+      "instrument": "Saxophone",
+      "display_key": "Eb",
+      "concert_key": "Eb",
+      "concert_practice_key": "Eb",
+      "_pending_display_key": null,
+      "cpl_workspace_practice_key": null,
+      "_music_nav_cloud_read_timings": [
+        {
+          "skipped": false,
+          "elapsed_ms": 0.05,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.16,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.1,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.19,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.07,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        }
+      ],
+      "_script_run_seq": 5,
+      "song": {
+        "title": "All the Things You Are",
+        "key": "Ab",
+        "pick_key": "Jazz\u001fAll the Things You Are \u2014 Jazz Standard"
+      },
+      "observed_at": 1793882336.9392087,
+      "focus": "Improvisation",
+      "transposing_type": "Tenor saxophone (Bb)",
+      "capo": null,
+      "keys": {
+        "concert_key": "Eb",
+        "written_key": "F",
+        "chart_key": "Eb",
+        "effective_practice_key": "Eb",
+        "global_display_key": "Eb",
+        "chart_key_mode": "concert",
+        "transposing_type": "Tenor saxophone (Bb)"
+      },
+      "custom_preview_key": null
+    },
+    "exceptions": 0
+  },
+  {
+    "action": "home",
+    "seconds": 5.1,
+    "before": {
+      "studio_page": "practice",
+      "active_catalog_pick_key": "Jazz\u001fAll the Things You Are \u2014 Jazz Standard",
+      "active_music_source": "catalog_song",
+      "instrument": "Saxophone",
+      "display_key": "Eb",
+      "concert_key": "Eb",
+      "concert_practice_key": "Eb",
+      "_pending_display_key": null,
+      "cpl_workspace_practice_key": null,
+      "_music_nav_cloud_read_timings": [
+        {
+          "skipped": false,
+          "elapsed_ms": 0.05,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.16,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.1,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.19,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.07,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        }
+      ],
+      "_script_run_seq": 5,
+      "song": {
+        "title": "All the Things You Are",
+        "key": "Ab",
+        "pick_key": "Jazz\u001fAll the Things You Are \u2014 Jazz Standard"
+      },
+      "observed_at": 1793882336.9392087,
+      "focus": "Improvisation",
+      "transposing_type": "Tenor saxophone (Bb)",
+      "capo": null,
+      "keys": {
+        "concert_key": "Eb",
+        "written_key": "F",
+        "chart_key": "Eb",
+        "effective_practice_key": "Eb",
+        "global_display_key": "Eb",
+        "chart_key_mode": "concert",
+        "transposing_type": "Tenor saxophone (Bb)"
+      },
+      "custom_preview_key": null
+    },
+    "after": {
+      "studio_page": "home",
+      "active_catalog_pick_key": "Jazz\u001fAll the Things You Are \u2014 Jazz Standard",
+      "active_music_source": "catalog_song",
+      "instrument": "Saxophone",
+      "display_key": "Eb",
+      "concert_key": "Eb",
+      "concert_practice_key": "Eb",
+      "_pending_display_key": null,
+      "cpl_workspace_practice_key": null,
+      "_music_nav_cloud_read_timings": [
+        {
+          "skipped": false,
+          "elapsed_ms": 0.05,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.16,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.1,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.19,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.07,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.08,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.18,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        }
+      ],
+      "_script_run_seq": 7,
+      "song": {
+        "title": "All the Things You Are",
+        "key": "Ab",
+        "pick_key": "Jazz\u001fAll the Things You Are \u2014 Jazz Standard"
+      },
+      "observed_at": 1793882341.739277,
+      "focus": "Improvisation",
+      "transposing_type": "Tenor saxophone (Bb)",
+      "capo": null,
+      "keys": {
+        "concert_key": "Eb",
+        "written_key": "F",
+        "chart_key": "Eb",
+        "effective_practice_key": "Eb",
+        "global_display_key": "Eb",
+        "chart_key_mode": "concert",
+        "transposing_type": "Tenor saxophone (Bb)"
+      },
+      "custom_preview_key": null
+    },
+    "exceptions": 0
+  },
+  {
+    "action": "computed-styles",
+    "styles": {
+      "background": "rgb(49, 46, 129)",
+      "buttons": [
+        {
+          "text": "\u2190",
+          "disabled": false,
+          "background": "rgb(69, 65, 153)",
+          "color": "rgb(203, 213, 225)",
+          "opacity": "1"
+        },
+        {
+          "text": "\u2192",
+          "disabled": true,
+          "background": "rgb(59, 56, 127)",
+          "color": "rgb(203, 213, 225)",
+          "opacity": "1"
+        },
+        {
+          "text": "View plans",
+          "disabled": false,
+          "background": "rgb(69, 65, 153)",
+          "color": "rgb(203, 213, 225)",
+          "opacity": "1"
+        },
+        {
+          "text": "\ud83c\udfbc Songs",
+          "disabled": false,
+          "background": "rgb(69, 65, 153)",
+          "color": "rgb(203, 213, 225)",
+          "opacity": "1"
+        }
+      ],
+      "main": "rgba(0, 0, 0, 0)",
+      "header": "linear-gradient(128deg, rgb(15, 23, 42) 0%, rgb(30, 58, 95) 42%, rgb(49, 46, 129) 88%)"
+    }
+  },
+  {
+    "action": "mobile-repeat-resume",
+    "seconds": 10.293,
+    "before": {
+      "studio_page": "home",
+      "active_catalog_pick_key": "Jazz\u001fAll the Things You Are \u2014 Jazz Standard",
+      "active_music_source": "catalog_song",
+      "instrument": "Saxophone",
+      "display_key": "Eb",
+      "concert_key": "Eb",
+      "concert_practice_key": "Eb",
+      "_pending_display_key": null,
+      "cpl_workspace_practice_key": null,
+      "_music_nav_cloud_read_timings": [
+        {
+          "skipped": false,
+          "elapsed_ms": 0.05,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.16,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.1,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.19,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.07,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.08,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.18,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        }
+      ],
+      "_script_run_seq": 7,
+      "song": {
+        "title": "All the Things You Are",
+        "key": "Ab",
+        "pick_key": "Jazz\u001fAll the Things You Are \u2014 Jazz Standard"
+      },
+      "observed_at": 1793882341.739277,
+      "focus": "Improvisation",
+      "transposing_type": "Tenor saxophone (Bb)",
+      "capo": null,
+      "keys": {
+        "concert_key": "Eb",
+        "written_key": "F",
+        "chart_key": "Eb",
+        "effective_practice_key": "Eb",
+        "global_display_key": "Eb",
+        "chart_key_mode": "concert",
+        "transposing_type": "Tenor saxophone (Bb)"
+      },
+      "custom_preview_key": null
+    },
+    "after": {
+      "studio_page": "practice",
+      "active_catalog_pick_key": "Jazz\u001fAll the Things You Are \u2014 Jazz Standard",
+      "active_music_source": "catalog_song",
+      "instrument": "Saxophone",
+      "display_key": "Eb",
+      "concert_key": "Eb",
+      "concert_practice_key": "Eb",
+      "_pending_display_key": null,
+      "cpl_workspace_practice_key": null,
+      "_music_nav_cloud_read_timings": [
+        {
+          "skipped": false,
+          "elapsed_ms": 0.05,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.16,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.1,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.19,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.07,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.08,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.18,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.1,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.23,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        }
+      ],
+      "_script_run_seq": 9,
+      "song": {
+        "title": "All the Things You Are",
+        "key": "Ab",
+        "pick_key": "Jazz\u001fAll the Things You Are \u2014 Jazz Standard"
+      },
+      "observed_at": 1793882352.3576486,
+      "focus": "Improvisation",
+      "transposing_type": "Tenor saxophone (Bb)",
+      "capo": 0,
+      "keys": {
+        "concert_key": "Eb",
+        "written_key": "F",
+        "chart_key": "Eb",
+        "effective_practice_key": "Eb",
+        "global_display_key": "Eb",
+        "chart_key_mode": "concert",
+        "transposing_type": "Tenor saxophone (Bb)"
+      },
+      "custom_preview_key": null
+    },
+    "exceptions": 0
+  },
+  {
+    "action": "final",
+    "state": {
+      "studio_page": "practice",
+      "active_catalog_pick_key": "Jazz\u001fAll the Things You Are \u2014 Jazz Standard",
+      "active_music_source": "catalog_song",
+      "instrument": "Saxophone",
+      "display_key": "Eb",
+      "concert_key": "Eb",
+      "concert_practice_key": "Eb",
+      "_pending_display_key": null,
+      "cpl_workspace_practice_key": null,
+      "_music_nav_cloud_read_timings": [
+        {
+          "skipped": false,
+          "elapsed_ms": 0.05,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.16,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.1,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.19,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.07,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.08,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.18,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.1,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.23,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        }
+      ],
+      "_script_run_seq": 9,
+      "song": {
+        "title": "All the Things You Are",
+        "key": "Ab",
+        "pick_key": "Jazz\u001fAll the Things You Are \u2014 Jazz Standard"
+      },
+      "observed_at": 1793882352.3576486,
+      "focus": "Improvisation",
+      "transposing_type": "Tenor saxophone (Bb)",
+      "capo": 0,
+      "keys": {
+        "concert_key": "Eb",
+        "written_key": "F",
+        "chart_key": "Eb",
+        "effective_practice_key": "Eb",
+        "global_display_key": "Eb",
+        "chart_key_mode": "concert",
+        "transposing_type": "Tenor saxophone (Bb)"
+      },
+      "custom_preview_key": null
+    }
+  }
+]

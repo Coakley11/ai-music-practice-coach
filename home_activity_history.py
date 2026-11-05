@@ -44,11 +44,17 @@ def practice_entry_from_event(event):
         'date': to_display_local(timestamp).date().isoformat(),
         'created_at': event['timestamp'],
         'active_song': m['song'], 'artist': m.get('artist', ''),
+        'song_id': m.get('pick_key') or m.get('source_id', ''),
+        'source_type': m.get('source_type', ''), 'workspace_id': m.get('workspace_id', ''),
+        'selected_transposing_instrument': m.get('selected_transposing_instrument', ''),
+        **({'capo_fret': m['capo_fret']} if 'capo_fret' in m else
+           {'capo_fret': m['guitar_capo_fret']} if 'guitar_capo_fret' in m else {}),
         'instrument': m.get('instrument', ''),
         'practice_concert_key': m.get('practice_key', ''),
         # These keys are shown only if actually captured by the record.
         'written_key': m.get('written_key', ''), 'original_key': m.get('original_key', ''),
-        'guitar_shape_key': m.get('guitar_shape_key', ''),
+        'guitar_shape_key': m.get('guitar_shape_key') or m.get('guitar_capo_shape_key', ''),
         'practice_type': 'backing track' if m.get('backing_active') else 'song practice',
-        'focus_area': m.get('practice_mode', ''),
+        'focus_area': m.get('focus') or m.get('practice_mode', ''),
+        'section_name': m.get('practice_focus_section', ''),
     }

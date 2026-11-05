@@ -10,12 +10,9 @@ loaded; it is not evidence that a previous session happened, and presenting it a
 "where you left off" would be a guess dressed as a fact. With no saved entry,
 :func:`verified_recent_session` returns ``None`` and Home shows its empty state.
 
-This card reports; it does not resume. It routes to the workspace that session
-was recorded in, and the song, instrument and keys stay exactly as the musician
-left them. The heading says "Recent practice" and the button names its
-destination for that reason: nothing here should read as a promise to put the
-workspace back the way it was. Genuine resume is a later slice, and it belongs
-on ``music_resume_payload.apply_music_resume_payload``.
+Complete records may offer an explicit historical Resume through
+``home_practice_resume``. Incomplete records keep navigation-only wording.
+The historical metadata itself is never inferred from current live state.
 """
 
 from __future__ import annotations
@@ -70,6 +67,7 @@ class VerifiedRecentSession:
     key_parts: tuple[tuple[str, str], ...] = field(default_factory=tuple)
     duration_minutes: int = 0
     section_label: str = ""
+    restore_record: dict[str, Any] = field(default_factory=dict, compare=False, repr=False)
 
     @property
     def verified(self) -> bool:
@@ -164,6 +162,7 @@ def session_from_entry(
         key_parts=_entry_key_parts(entry),
         duration_minutes=max(duration, 0),
         section_label=section,
+        restore_record=dict(entry),
     )
 
 

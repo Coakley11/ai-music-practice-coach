@@ -1,0 +1,9 @@
+﻿{
+    "timestamp":  "2026-11-05T07:41:30.0563969-05:00",
+    "free_ram_gb":  2.78,
+    "committed_bytes":  32398790656,
+    "commit_limit_bytes":  40512163840,
+    "cpu_percent":  32,
+    "disk_free_bytes":  201870704640,
+    "own_server_listener_count":  0
+}

@@ -496,6 +496,10 @@ def build_music_local_state(st: Any) -> dict[str, str]:
 
 def persist_music_local_state(st: Any, **extra: Any) -> None:
     """Write disk + cloud session snapshot (Streamlit Cloud survives reboot via cloud)."""
+    # Home historical Resume validates owner APIs in an isolated pre-widget stage.
+    # Its successful complete state is persisted once, after publication.
+    if st.session_state.get("_home_recent_resume_staging"):
+        return
     save_reason = str(
         extra.pop("save_reason", None)
         or extra.pop("_persist_reason", None)
@@ -1570,6 +1574,8 @@ def activate_active_song_by_pick_key(
         song_picker_catalog,
         song_library=song_library,
         origin=origin,
+        persist=not st.session_state.get("_home_recent_resume_staging"),
+        skip_activity_log=bool(st.session_state.get("_home_recent_resume_staging")),
     )
 
 
