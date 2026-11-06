@@ -308,7 +308,8 @@ def _render_nested_account_utilities(
                 from studio_nav_history import navigate_studio_page
                 def open_music_home():
                     navigate_studio_page(st.session_state, "home")
-                st.button("Home", icon=FEATURE_ICONS["home"], key="account_music_home",
+                st.button(FEATURE_ICONS["home"], key="account_music_home",
+                          help="Go to Music Practice Coach homepage",
                           use_container_width=True, on_click=open_music_home)
 
         except ImportError:

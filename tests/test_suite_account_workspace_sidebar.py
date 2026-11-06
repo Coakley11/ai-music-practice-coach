@@ -15,6 +15,35 @@ from suite_command_center_link import command_center_url, render_command_center_
 from suite_user_persistence import render_reset_controls
 
 
+def test_icon_only_music_home_keeps_command_center_and_workspace():
+    from copy import deepcopy
+    from music_feature_icons import FEATURE_ICONS
+    from suite_account_settings import _render_nested_account_utilities
+
+    st = _FakeSt()
+    saved = {
+        "instrument": "Tenor Saxophone", "display_key": "Ab",
+        "cpl_library": [{"name": "Trial Song", "chords": ["Abmaj7", "Db7"]}],
+        "composer_library": [{"name": "Composition project"}],
+        "multitrack_layers": [{"recording_id": "test-recording"}],
+    }
+    st.session_state.update(deepcopy(saved), studio_page="backing")
+    with patch("suite_command_center_link.render_command_center_sidebar_link") as cc:
+        _render_nested_account_utilities(
+            st, include_command_center=True, saved_session_on_reset=None,
+            saved_session_app_id="music", saved_session_label="Reset to default",
+            saved_session_help="Reset",
+        )
+    cc.assert_called_once()
+    home, = [b for b in st.buttons if b["kwargs"].get("key") == "account_music_home"]
+    assert home["label"] == FEATURE_ICONS["home"]
+    assert "Home" not in home["label"]
+    assert home["kwargs"]["help"] == "Go to Music Practice Coach homepage"
+    home["kwargs"]["on_click"]()
+    assert st.session_state["studio_page"] == "home"
+    assert {k: st.session_state[k] for k in saved} == saved
+
+
 class _Anchors(HTMLParser):
     """Capture actual branded HTML navigation as well as native link buttons."""
     def __init__(self, target, where):
