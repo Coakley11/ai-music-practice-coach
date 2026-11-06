@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextvars
 import io
 import wave
 from dataclasses import dataclass, field
@@ -25,6 +26,7 @@ from chord_subdivisions import (
 from music_theory import NOTE_TO_MIDI, is_no_chord_token, normalize_root, split_chord
 
 import backing_arrangement_profiles as _arr_profiles
+import backing_drum_kit as _drum_kit
 import backing_groove_profiles as _groove_profiles
 import backing_keys_voice as _kv
 import backing_section_arrangement as _sa
@@ -352,7 +354,14 @@ def _add_tone(audio, sr, start_sec, dur_sec, midi_num, volume, wave_type="sine")
     audio[start:end] += out * volume
 
 
+# The improved kit for the song being rendered; None keeps today's drum voices.
+_ACTIVE_DRUM_KIT: contextvars.ContextVar[Any] = contextvars.ContextVar("backing_drum_kit", default=None)
+
+
 def _add_noise_hit(audio, sr, start_sec, dur_sec, volume, seed=0, *, tone: float = 0.0):
+    kit = _ACTIVE_DRUM_KIT.get()
+    if kit is not None:
+        return kit.noise_hit(audio, start_sec, dur_sec, volume, seed, tone)
     start = int(start_sec * sr)
     if start >= len(audio):
         return
@@ -378,6 +387,9 @@ def _add_kick(audio, sr, start_sec, volume, *, punch: float = 1.0, seed: int = 0
     ``punch`` scales the click transient and pitch drop so rock/funk kicks
     read harder than a pop/ballad thump.
     """
+    kit = _ACTIVE_DRUM_KIT.get()
+    if kit is not None:
+        return kit.kick(audio, start_sec, volume, seed)
     start = int(start_sec * sr)
     if start >= len(audio) or volume <= 0:
         return
@@ -406,6 +418,9 @@ def _add_kick(audio, sr, start_sec, volume, *, punch: float = 1.0, seed: int = 0
 
 def _add_snare(audio, sr, start_sec, volume, *, crack: float = 1.0, seed: int = 0):
     """Style-aware snare: noise burst + tonal shell. ``crack`` = brightness."""
+    kit = _ACTIVE_DRUM_KIT.get()
+    if kit is not None:
+        return kit.snare(audio, start_sec, volume, seed)
     start = int(start_sec * sr)
     if start >= len(audio) or volume <= 0:
         return
@@ -425,6 +440,9 @@ def _add_snare(audio, sr, start_sec, volume, *, crack: float = 1.0, seed: int = 
 
 def _add_ride(audio, sr, start_sec, volume, seed=0):
     """Jazz ride cymbal: pitched shimmer with a long, sizzling tail."""
+    kit = _ACTIVE_DRUM_KIT.get()
+    if kit is not None:
+        return kit.ride(audio, start_sec, volume, seed)
     start = int(start_sec * sr)
     if start >= len(audio) or volume <= 0:
         return
@@ -1389,6 +1407,9 @@ def _add_cymbal_swell(
     for chorus drops (especially the final chorus) and for
     breakdown→band-back recoveries.
     """
+    kit = _ACTIVE_DRUM_KIT.get()
+    if kit is not None:
+        return kit.swell(audio, max(0.0, fill_start), max(0.4, float(duration_pulses)) * pulse_sec, intensity, seed_base)
     swell_start = max(0.0, fill_start)
     swell_dur = max(0.4, float(duration_pulses)) * pulse_sec
     n_hits = max(8, int(duration_pulses * 12))
@@ -1527,6 +1548,10 @@ def _add_groove_fill(
         toms = [(0.0, 50), (0.25, 47), (0.5, 43), (0.75, 40)] if not light else [(0.5, 45), (0.75, 40)]
         _add_snare(audio, sr, bar_start + last * pulse_sec, 0.030 * intensity, crack=1.2, seed=seed_base * 31)
         for i, (off, midi) in enumerate(toms):
+            _kit = _ACTIVE_DRUM_KIT.get()
+            if _kit is not None:
+                _kit.tom(audio, bar_start + (last + off) * pulse_sec, midi, 0.06 * intensity, seed_base + i)
+                continue
             _add_tone(audio, sr, bar_start + (last + off) * pulse_sec, pulse_sec * 0.3, midi, 0.06 * intensity, "sine")
             _add_noise_hit(audio, sr, bar_start + (last + off) * pulse_sec, 0.05, 0.012 * intensity, seed=seed_base * 37 + i, tone=0.35)
     elif fill_type == "swell" and not light:
@@ -1878,7 +1903,19 @@ def _style_patterns(style, profile: dict | None = None, *, time_signature: str =
     })
 
 
-def synthesize_chords_to_numpy(
+def synthesize_chords_to_numpy(*args, **kwargs):
+    """Render the backing. The improved drum kit applies only when it is switched on."""
+    if not _drum_kit.drum_kit_enabled():
+        return _synthesize_chords_to_numpy(*args, **kwargs)
+    sr = kwargs.get("sr", args[3] if len(args) > 3 else 44100)
+    token = _ACTIVE_DRUM_KIT.set(_drum_kit.DrumKit(int(sr), str(kwargs.get("style", "Pop groove"))))
+    try:
+        return _synthesize_chords_to_numpy(*args, **kwargs)
+    finally:
+        _ACTIVE_DRUM_KIT.reset(token)
+
+
+def _synthesize_chords_to_numpy(
     chords,
     bpm=100,
     loops=1,
@@ -1933,6 +1970,9 @@ def synthesize_chords_to_numpy(
         except ImportError:
             pass
     style = synth_style
+    _style_kit = _ACTIVE_DRUM_KIT.get()
+    if _style_kit is not None:
+        _style_kit.style = str(style)  # the kit tunes to the style actually played
     # The song's groove profile (drums / bass / comp rhythm per section role).
     # Song tweaks keep their values; the groove fills in what they left alone.
     groove = _groove_profiles.resolve_groove_profile(
@@ -2705,6 +2745,28 @@ def synthesize_chords_to_numpy(
             # break the synth. Silently skip and continue.
             pass
 
+        _kit = _ACTIVE_DRUM_KIT.get()
+        _kit_next_role = _section_role(next_event.get("section") or "") if next_event else ""
+        if _kit is not None and not bar_drums_silent and not bar_bridge_breakdown and not bar_is_no_chord:
+            _drum_kit.play_extras(
+                _kit,
+                audio,
+                _drum_kit.bar_extras(
+                    _drum_kit.BarContext(
+                        style=style,
+                        bar_in_section=int(event.get("bar_in_section", 0) or 0),
+                        role=role,
+                        next_role=_kit_next_role,
+                        ends_section=bool(section_edge),
+                        pulses_per_bar=float(pulses_per_bar),
+                        drums=str(section_tex.drums) if section_tex is not None else "",
+                    )
+                ),
+                lambda _b: _groove_time(bar_start, _b, pulse, style, swing=swing_amt, pocket=pocket_offset),
+                intensity,
+                idx * 89 + loop_seed,
+            )
+
         # Phrase-end fill inside a section (the groove's lighter version).
         if (
             groove is not None
@@ -2769,10 +2831,11 @@ def synthesize_chords_to_numpy(
                     is_into_final_chorus=into_final_chorus,
                 )
             elif not bar_drums_silent:
-                _add_groove_fill(
-                    audio, sr, bar_start, pulse, pulses_per_bar, groove.fill,
-                    intensity * max(0.7, min(1.3, next_intensity_estimate)), seed_base=idx,
-                )
+                if not (_kit is not None and _drum_kit.replaces_section_fill(style, next_role_for_fill)):
+                    _add_groove_fill(
+                        audio, sr, bar_start, pulse, pulses_per_bar, groove.fill,
+                        intensity * max(0.7, min(1.3, next_intensity_estimate)), seed_base=idx,
+                    )
                 if next_role_for_fill == "chorus" and groove.fill != "none":
                     _add_crash(audio, sr, bar_start + bar, intensity * (1.3 if into_final_chorus else 1.0), seed=idx)
             tail = max(0.0, pulses_per_bar - 0.45)
