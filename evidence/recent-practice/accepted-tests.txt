@@ -1,0 +1,20 @@
+........................................................................ [ 45%]
+........................................................................ [ 91%]
+.............                                                          [100%]
+============================== warnings summary ===============================
+tests/test_music_source_resume_lifecycle.py::test_entry_finalizes_after_bootstrap_restore_before_sidebar_widgets
+tests/test_music_practice_context.py::test_production_audio_mount_guards[_mounted and _page_autoplay-True]
+tests/test_music_practice_context.py::test_production_audio_mount_guards[_mounted and _page_autoplay-False]
+tests/test_music_practice_context.py::test_production_audio_mount_guards[_ls_autoplay and _ls_take-True]
+tests/test_music_practice_context.py::test_production_audio_mount_guards[_ls_autoplay and _ls_take-False]
+  <unknown>:5431: SyntaxWarning: invalid escape sequence '\s'
+
+tests/test_music_source_resume_lifecycle.py::test_entry_finalizes_after_bootstrap_restore_before_sidebar_widgets
+tests/test_music_practice_context.py::test_production_audio_mount_guards[_mounted and _page_autoplay-True]
+tests/test_music_practice_context.py::test_production_audio_mount_guards[_mounted and _page_autoplay-False]
+tests/test_music_practice_context.py::test_production_audio_mount_guards[_ls_autoplay and _ls_take-True]
+tests/test_music_practice_context.py::test_production_audio_mount_guards[_ls_autoplay and _ls_take-False]
+  <unknown>:5432: SyntaxWarning: invalid escape sequence '\.'
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+157 passed, 10 warnings, 74 subtests passed in 45.25s

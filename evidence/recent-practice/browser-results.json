@@ -1,0 +1,1270 @@
+[
+  {
+    "action": "initial",
+    "seconds": 15.7,
+    "before": {
+      "studio_page": "home",
+      "active_catalog_pick_key": "Pop\u001fSay \u2014 John Mayer",
+      "active_music_source": "catalog_song",
+      "instrument": "Piano",
+      "display_key": "G",
+      "concert_key": "G",
+      "concert_practice_key": "G",
+      "_pending_display_key": null,
+      "cpl_workspace_practice_key": null,
+      "_music_nav_cloud_read_timings": [
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        }
+      ],
+      "_script_run_seq": 1,
+      "song": {
+        "title": "Say",
+        "key": "G",
+        "pick_key": "Pop\u001fSay \u2014 John Mayer"
+      },
+      "observed_at": 1793880971.7915163,
+      "focus": "Voicings",
+      "transposing_type": null,
+      "capo": null,
+      "keys": {
+        "concert_key": "G",
+        "written_key": "G",
+        "chart_key": "G",
+        "effective_practice_key": "G",
+        "global_display_key": "G",
+        "chart_key_mode": "concert",
+        "transposing_type": ""
+      },
+      "custom_preview_key": null
+    },
+    "after": {
+      "studio_page": "home",
+      "active_catalog_pick_key": "Pop\u001fSay \u2014 John Mayer",
+      "active_music_source": "catalog_song",
+      "instrument": "Piano",
+      "display_key": "G",
+      "concert_key": "G",
+      "concert_practice_key": "G",
+      "_pending_display_key": null,
+      "cpl_workspace_practice_key": null,
+      "_music_nav_cloud_read_timings": [
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        }
+      ],
+      "_script_run_seq": 1,
+      "song": {
+        "title": "Say",
+        "key": "G",
+        "pick_key": "Pop\u001fSay \u2014 John Mayer"
+      },
+      "observed_at": 1793881061.4694843,
+      "focus": "Voicings",
+      "transposing_type": null,
+      "capo": null,
+      "keys": {
+        "concert_key": "G",
+        "written_key": "G",
+        "chart_key": "G",
+        "effective_practice_key": "G",
+        "global_display_key": "G",
+        "chart_key_mode": "concert",
+        "transposing_type": ""
+      },
+      "custom_preview_key": null
+    },
+    "exceptions": 0
+  },
+  {
+    "action": "resume-shallow",
+    "seconds": 9.103,
+    "before": {
+      "studio_page": "home",
+      "active_catalog_pick_key": "Pop\u001fSay \u2014 John Mayer",
+      "active_music_source": "catalog_song",
+      "instrument": "Piano",
+      "display_key": "G",
+      "concert_key": "G",
+      "concert_practice_key": "G",
+      "_pending_display_key": null,
+      "cpl_workspace_practice_key": null,
+      "_music_nav_cloud_read_timings": [
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        }
+      ],
+      "_script_run_seq": 1,
+      "song": {
+        "title": "Say",
+        "key": "G",
+        "pick_key": "Pop\u001fSay \u2014 John Mayer"
+      },
+      "observed_at": 1793881061.4694843,
+      "focus": "Voicings",
+      "transposing_type": null,
+      "capo": null,
+      "keys": {
+        "concert_key": "G",
+        "written_key": "G",
+        "chart_key": "G",
+        "effective_practice_key": "G",
+        "global_display_key": "G",
+        "chart_key_mode": "concert",
+        "transposing_type": ""
+      },
+      "custom_preview_key": null
+    },
+    "after": {
+      "studio_page": "practice",
+      "active_catalog_pick_key": "Pop\u001fShallow \u2014 Lady Gaga / Bradley Cooper",
+      "active_music_source": "catalog_song",
+      "instrument": "Saxophone",
+      "display_key": "F",
+      "concert_key": "F",
+      "concert_practice_key": "F",
+      "_pending_display_key": null,
+      "cpl_workspace_practice_key": null,
+      "_music_nav_cloud_read_timings": [
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.19,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        }
+      ],
+      "_script_run_seq": 3,
+      "song": {
+        "title": "Shallow",
+        "key": "G",
+        "pick_key": "Pop\u001fShallow \u2014 Lady Gaga / Bradley Cooper"
+      },
+      "observed_at": 1793881072.216017,
+      "focus": "Improvisation",
+      "transposing_type": "Alto saxophone (Eb)",
+      "capo": 0,
+      "keys": {
+        "concert_key": "F",
+        "written_key": "D",
+        "chart_key": "F",
+        "effective_practice_key": "F",
+        "global_display_key": "F",
+        "chart_key_mode": "concert",
+        "transposing_type": "Alto saxophone (Eb)"
+      },
+      "custom_preview_key": null
+    },
+    "exceptions": 0
+  },
+  {
+    "action": "picker",
+    "seconds": 7.649,
+    "before": {
+      "studio_page": "practice",
+      "active_catalog_pick_key": "Pop\u001fShallow \u2014 Lady Gaga / Bradley Cooper",
+      "active_music_source": "catalog_song",
+      "instrument": "Saxophone",
+      "display_key": "F",
+      "concert_key": "F",
+      "concert_practice_key": "F",
+      "_pending_display_key": null,
+      "cpl_workspace_practice_key": null,
+      "_music_nav_cloud_read_timings": [
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.19,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        }
+      ],
+      "_script_run_seq": 3,
+      "song": {
+        "title": "Shallow",
+        "key": "G",
+        "pick_key": "Pop\u001fShallow \u2014 Lady Gaga / Bradley Cooper"
+      },
+      "observed_at": 1793881072.216017,
+      "focus": "Improvisation",
+      "transposing_type": "Alto saxophone (Eb)",
+      "capo": 0,
+      "keys": {
+        "concert_key": "F",
+        "written_key": "D",
+        "chart_key": "F",
+        "effective_practice_key": "F",
+        "global_display_key": "F",
+        "chart_key_mode": "concert",
+        "transposing_type": "Alto saxophone (Eb)"
+      },
+      "custom_preview_key": null
+    },
+    "after": {
+      "studio_page": "picker",
+      "active_catalog_pick_key": "Pop\u001fShallow \u2014 Lady Gaga / Bradley Cooper",
+      "active_music_source": "catalog_song",
+      "instrument": "Saxophone",
+      "display_key": "F",
+      "concert_key": "F",
+      "concert_practice_key": "F",
+      "_pending_display_key": null,
+      "cpl_workspace_practice_key": null,
+      "_music_nav_cloud_read_timings": [
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.19,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        }
+      ],
+      "_script_run_seq": 5,
+      "song": {
+        "title": "Shallow",
+        "key": "G",
+        "pick_key": "Pop\u001fShallow \u2014 Lady Gaga / Bradley Cooper"
+      },
+      "observed_at": 1793881078.9853396,
+      "focus": "Improvisation",
+      "transposing_type": "Alto saxophone (Eb)",
+      "capo": 0,
+      "keys": {
+        "concert_key": "F",
+        "written_key": "D",
+        "chart_key": "F",
+        "effective_practice_key": "F",
+        "global_display_key": "F",
+        "chart_key_mode": "concert",
+        "transposing_type": "Alto saxophone (Eb)"
+      },
+      "custom_preview_key": null
+    },
+    "exceptions": 0
+  },
+  {
+    "action": "practice",
+    "seconds": 3.919,
+    "before": {
+      "studio_page": "picker",
+      "active_catalog_pick_key": "Pop\u001fShallow \u2014 Lady Gaga / Bradley Cooper",
+      "active_music_source": "catalog_song",
+      "instrument": "Saxophone",
+      "display_key": "F",
+      "concert_key": "F",
+      "concert_practice_key": "F",
+      "_pending_display_key": null,
+      "cpl_workspace_practice_key": null,
+      "_music_nav_cloud_read_timings": [
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.19,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        }
+      ],
+      "_script_run_seq": 5,
+      "song": {
+        "title": "Shallow",
+        "key": "G",
+        "pick_key": "Pop\u001fShallow \u2014 Lady Gaga / Bradley Cooper"
+      },
+      "observed_at": 1793881078.9853396,
+      "focus": "Improvisation",
+      "transposing_type": "Alto saxophone (Eb)",
+      "capo": 0,
+      "keys": {
+        "concert_key": "F",
+        "written_key": "D",
+        "chart_key": "F",
+        "effective_practice_key": "F",
+        "global_display_key": "F",
+        "chart_key_mode": "concert",
+        "transposing_type": "Alto saxophone (Eb)"
+      },
+      "custom_preview_key": null
+    },
+    "after": {
+      "studio_page": "practice",
+      "active_catalog_pick_key": "Pop\u001fShallow \u2014 Lady Gaga / Bradley Cooper",
+      "active_music_source": "catalog_song",
+      "instrument": "Saxophone",
+      "display_key": "F",
+      "concert_key": "F",
+      "concert_practice_key": "F",
+      "_pending_display_key": null,
+      "cpl_workspace_practice_key": null,
+      "_music_nav_cloud_read_timings": [
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.19,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        }
+      ],
+      "_script_run_seq": 7,
+      "song": {
+        "title": "Shallow",
+        "key": "G",
+        "pick_key": "Pop\u001fShallow \u2014 Lady Gaga / Bradley Cooper"
+      },
+      "observed_at": 1793881086.2296715,
+      "focus": "Improvisation",
+      "transposing_type": "Alto saxophone (Eb)",
+      "capo": 0,
+      "keys": {
+        "concert_key": "F",
+        "written_key": "D",
+        "chart_key": "F",
+        "effective_practice_key": "F",
+        "global_display_key": "F",
+        "chart_key_mode": "concert",
+        "transposing_type": "Alto saxophone (Eb)"
+      },
+      "custom_preview_key": null
+    },
+    "exceptions": 0
+  },
+  {
+    "action": "backing",
+    "seconds": 10.207,
+    "before": {
+      "studio_page": "practice",
+      "active_catalog_pick_key": "Pop\u001fShallow \u2014 Lady Gaga / Bradley Cooper",
+      "active_music_source": "catalog_song",
+      "instrument": "Saxophone",
+      "display_key": "F",
+      "concert_key": "F",
+      "concert_practice_key": "F",
+      "_pending_display_key": null,
+      "cpl_workspace_practice_key": null,
+      "_music_nav_cloud_read_timings": [
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.19,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        }
+      ],
+      "_script_run_seq": 7,
+      "song": {
+        "title": "Shallow",
+        "key": "G",
+        "pick_key": "Pop\u001fShallow \u2014 Lady Gaga / Bradley Cooper"
+      },
+      "observed_at": 1793881086.2296715,
+      "focus": "Improvisation",
+      "transposing_type": "Alto saxophone (Eb)",
+      "capo": 0,
+      "keys": {
+        "concert_key": "F",
+        "written_key": "D",
+        "chart_key": "F",
+        "effective_practice_key": "F",
+        "global_display_key": "F",
+        "chart_key_mode": "concert",
+        "transposing_type": "Alto saxophone (Eb)"
+      },
+      "custom_preview_key": null
+    },
+    "after": {
+      "studio_page": "backing",
+      "active_catalog_pick_key": "Pop\u001fShallow \u2014 Lady Gaga / Bradley Cooper",
+      "active_music_source": "catalog_song",
+      "instrument": "Saxophone",
+      "display_key": "F",
+      "concert_key": "F",
+      "concert_practice_key": "F",
+      "_pending_display_key": null,
+      "cpl_workspace_practice_key": null,
+      "_music_nav_cloud_read_timings": [
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.19,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.12,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.12,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        }
+      ],
+      "_script_run_seq": 9,
+      "song": {
+        "title": "Shallow",
+        "key": "G",
+        "pick_key": "Pop\u001fShallow \u2014 Lady Gaga / Bradley Cooper"
+      },
+      "observed_at": 1793881095.1304433,
+      "focus": "Improvisation",
+      "transposing_type": "Alto saxophone (Eb)",
+      "capo": 0,
+      "keys": {
+        "concert_key": "F",
+        "written_key": "D",
+        "chart_key": "F",
+        "effective_practice_key": "F",
+        "global_display_key": "F",
+        "chart_key_mode": "concert",
+        "transposing_type": "Alto saxophone (Eb)"
+      },
+      "custom_preview_key": null
+    },
+    "exceptions": 0
+  },
+  {
+    "action": "home",
+    "seconds": 5.922,
+    "before": {
+      "studio_page": "backing",
+      "active_catalog_pick_key": "Pop\u001fShallow \u2014 Lady Gaga / Bradley Cooper",
+      "active_music_source": "catalog_song",
+      "instrument": "Saxophone",
+      "display_key": "F",
+      "concert_key": "F",
+      "concert_practice_key": "F",
+      "_pending_display_key": null,
+      "cpl_workspace_practice_key": null,
+      "_music_nav_cloud_read_timings": [
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.19,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.12,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.12,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        }
+      ],
+      "_script_run_seq": 9,
+      "song": {
+        "title": "Shallow",
+        "key": "G",
+        "pick_key": "Pop\u001fShallow \u2014 Lady Gaga / Bradley Cooper"
+      },
+      "observed_at": 1793881095.1304433,
+      "focus": "Improvisation",
+      "transposing_type": "Alto saxophone (Eb)",
+      "capo": 0,
+      "keys": {
+        "concert_key": "F",
+        "written_key": "D",
+        "chart_key": "F",
+        "effective_practice_key": "F",
+        "global_display_key": "F",
+        "chart_key_mode": "concert",
+        "transposing_type": "Alto saxophone (Eb)"
+      },
+      "custom_preview_key": null
+    },
+    "after": {
+      "studio_page": "home",
+      "active_catalog_pick_key": "Pop\u001fShallow \u2014 Lady Gaga / Bradley Cooper",
+      "active_music_source": "catalog_song",
+      "instrument": "Saxophone",
+      "display_key": "F",
+      "concert_key": "F",
+      "concert_practice_key": "F",
+      "_pending_display_key": null,
+      "cpl_workspace_practice_key": null,
+      "_music_nav_cloud_read_timings": [
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.19,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.12,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.12,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.08,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.09,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        }
+      ],
+      "_script_run_seq": 11,
+      "song": {
+        "title": "Shallow",
+        "key": "G",
+        "pick_key": "Pop\u001fShallow \u2014 Lady Gaga / Bradley Cooper"
+      },
+      "observed_at": 1793881102.0239701,
+      "focus": "Improvisation",
+      "transposing_type": "Alto saxophone (Eb)",
+      "capo": 0,
+      "keys": {
+        "concert_key": "F",
+        "written_key": "D",
+        "chart_key": "F",
+        "effective_practice_key": "F",
+        "global_display_key": "F",
+        "chart_key_mode": "concert",
+        "transposing_type": "Alto saxophone (Eb)"
+      },
+      "custom_preview_key": null
+    },
+    "exceptions": 0
+  },
+  {
+    "action": "navigation-only fallback repeat before activity metadata correction",
+    "seconds": 5.885,
+    "before": {
+      "studio_page": "home",
+      "active_catalog_pick_key": "Pop\u001fShallow \u2014 Lady Gaga / Bradley Cooper",
+      "active_music_source": "catalog_song",
+      "instrument": "Saxophone",
+      "display_key": "F",
+      "concert_key": "F",
+      "concert_practice_key": "F",
+      "_pending_display_key": null,
+      "cpl_workspace_practice_key": null,
+      "_music_nav_cloud_read_timings": [
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.19,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.12,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.12,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.08,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.09,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        }
+      ],
+      "_script_run_seq": 11,
+      "song": {
+        "title": "Shallow",
+        "key": "G",
+        "pick_key": "Pop\u001fShallow \u2014 Lady Gaga / Bradley Cooper"
+      },
+      "observed_at": 1793881102.0239701,
+      "focus": "Improvisation",
+      "transposing_type": "Alto saxophone (Eb)",
+      "capo": 0,
+      "keys": {
+        "concert_key": "F",
+        "written_key": "D",
+        "chart_key": "F",
+        "effective_practice_key": "F",
+        "global_display_key": "F",
+        "chart_key_mode": "concert",
+        "transposing_type": "Alto saxophone (Eb)"
+      },
+      "custom_preview_key": null
+    },
+    "after": {
+      "studio_page": "practice",
+      "active_catalog_pick_key": "Pop\u001fShallow \u2014 Lady Gaga / Bradley Cooper",
+      "active_music_source": "catalog_song",
+      "instrument": "Saxophone",
+      "display_key": "F",
+      "concert_key": "F",
+      "concert_practice_key": "F",
+      "_pending_display_key": null,
+      "cpl_workspace_practice_key": null,
+      "_music_nav_cloud_read_timings": [
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.19,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.12,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.12,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.08,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.09,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.12,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.12,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        }
+      ],
+      "_script_run_seq": 13,
+      "song": {
+        "title": "Shallow",
+        "key": "G",
+        "pick_key": "Pop\u001fShallow \u2014 Lady Gaga / Bradley Cooper"
+      },
+      "observed_at": 1793881108.144274,
+      "focus": "Improvisation",
+      "transposing_type": "Alto saxophone (Eb)",
+      "capo": 0,
+      "keys": {
+        "concert_key": "F",
+        "written_key": "D",
+        "chart_key": "F",
+        "effective_practice_key": "F",
+        "global_display_key": "F",
+        "chart_key_mode": "concert",
+        "transposing_type": "Alto saxophone (Eb)"
+      },
+      "custom_preview_key": null
+    },
+    "exceptions": 0
+  },
+  {
+    "action": "refresh",
+    "seconds": 8.097,
+    "before": {
+      "studio_page": "practice",
+      "active_catalog_pick_key": "Pop\u001fShallow \u2014 Lady Gaga / Bradley Cooper",
+      "active_music_source": "catalog_song",
+      "instrument": "Saxophone",
+      "display_key": "F",
+      "concert_key": "F",
+      "concert_practice_key": "F",
+      "_pending_display_key": null,
+      "cpl_workspace_practice_key": null,
+      "_music_nav_cloud_read_timings": [
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.19,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.06,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.12,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.12,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.08,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.09,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.12,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        },
+        {
+          "skipped": false,
+          "elapsed_ms": 0.12,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        }
+      ],
+      "_script_run_seq": 13,
+      "song": {
+        "title": "Shallow",
+        "key": "G",
+        "pick_key": "Pop\u001fShallow \u2014 Lady Gaga / Bradley Cooper"
+      },
+      "observed_at": 1793881108.144274,
+      "focus": "Improvisation",
+      "transposing_type": "Alto saxophone (Eb)",
+      "capo": 0,
+      "keys": {
+        "concert_key": "F",
+        "written_key": "D",
+        "chart_key": "F",
+        "effective_practice_key": "F",
+        "global_display_key": "F",
+        "chart_key_mode": "concert",
+        "transposing_type": "Alto saxophone (Eb)"
+      },
+      "custom_preview_key": null
+    },
+    "after": {
+      "studio_page": "practice",
+      "active_catalog_pick_key": "Pop\u001fShallow \u2014 Lady Gaga / Bradley Cooper",
+      "active_music_source": "catalog_song",
+      "instrument": "Saxophone",
+      "display_key": "F",
+      "concert_key": "F",
+      "concert_practice_key": "F",
+      "_pending_display_key": null,
+      "cpl_workspace_practice_key": null,
+      "_music_nav_cloud_read_timings": [
+        {
+          "skipped": false,
+          "elapsed_ms": 0.19,
+          "reason": "cloud_full_session",
+          "cloud_calls": 1,
+          "simulated": false
+        }
+      ],
+      "_script_run_seq": 1,
+      "song": {
+        "title": "Shallow",
+        "key": "G",
+        "pick_key": "Pop\u001fShallow \u2014 Lady Gaga / Bradley Cooper"
+      },
+      "observed_at": 1793881113.0273538,
+      "focus": "Improvisation",
+      "transposing_type": "Alto saxophone (Eb)",
+      "capo": null,
+      "keys": {
+        "concert_key": "F",
+        "written_key": "D",
+        "chart_key": "F",
+        "effective_practice_key": "F",
+        "global_display_key": "F",
+        "chart_key_mode": "concert",
+        "transposing_type": "Alto saxophone (Eb)"
+      },
+      "custom_preview_key": null
+    },
+    "exceptions": 0
+  }
+]

@@ -585,12 +585,20 @@ def apply_music_resume_payload(
 
     kind = normalize_resume_kind(str(payload.get("resume_kind") or ""))
     pick = str(payload.get("pick_key") or "").strip()
-    if payload.get("progress_activity_id"):
-        destination = payload.get("activity_destination")
+    destination = payload.get("activity_destination")
+    if payload.get("progress_activity_id") or destination:
         if destination not in {"missions", "coaching"}:
             return False
+        if kind != "creative" or payload.get("studio_page") != "creative" or not pick:
+            session["_suite_resume_failure_reason_music"] = "invalid_workflow_identity"
+            return False
+        if destination == "missions":
+            from improvisation_intelligence import PRACTICE_MISSIONS
+            if payload.get("mission") not in PRACTICE_MISSIONS:
+                session["_suite_resume_failure_reason_music"] = "mission_unavailable"
+                return False
 
-    strict_source = bool(payload.get("practice_context_id") or payload.get("progress_activity_id")
+    strict_source = bool(payload.get("practice_context_id") or payload.get("progress_activity_id") or destination
                          or pick.startswith(("custom::", "composition::"))
                          or (pick and kind in {"practice", "backing"}))
     if strict_source:
@@ -625,6 +633,11 @@ def apply_music_resume_payload(
         try:
             from types import SimpleNamespace
             from songs.state import activate_active_song_by_pick_key
+            if str(payload.get("display_key") or "").strip():
+                # This explicit saved task owns its key. A newer global Fixed
+                # Key session must not override the historical resource's key.
+                from practice_key_mode import MODE_STANDARD, set_practice_key_mode
+                set_practice_key_mode(session, MODE_STANDARD)
             if not pick.startswith(("custom::", "composition::")):
                 # Resume is an explicit user selection, just like a Catalog pick.
                 # Stamp it before activation so a prior Custom owner yields.
@@ -718,8 +731,7 @@ def apply_music_resume_payload(
     elif kind in {"upload", "analysis"}:
         pass
 
-    if payload.get("progress_activity_id"):
-        destination = payload.get("activity_destination")
+    if destination:
         if destination in {"coaching", "missions"}:
             from studio_page_state import request_song_aware_coaching
             request_song_aware_coaching(session)

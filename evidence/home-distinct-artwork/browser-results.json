@@ -1,0 +1,14 @@
+[
+  {
+    "viewport_width": 1140,
+    "art_count": 13,
+    "touch_targets_at_least_44px": true,
+    "cards_inside_viewport": true
+  },
+  {
+    "viewport_width": 390,
+    "art_count": 13,
+    "touch_targets_at_least_44px": true,
+    "cards_inside_viewport": true
+  }
+]

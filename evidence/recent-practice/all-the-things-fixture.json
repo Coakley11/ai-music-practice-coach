@@ -1,0 +1,18 @@
+{
+  "session_id": "browser-acceptance-fixture-all-the-things",
+  "date": "2026-11-05",
+  "created_at": "2026-11-05T07:20:57.367033-05:00",
+  "active_song": "All the Things You Are",
+  "artist": "Jazz Standard",
+  "song_id": "Jazz\u001fAll the Things You Are \u2014 Jazz Standard",
+  "source_type": "catalog_song",
+  "workspace_id": "guest",
+  "instrument": "Tenor Saxophone",
+  "original_key": "Ab",
+  "practice_concert_key": "Eb",
+  "written_key": "F",
+  "focus_area": "Improvisation",
+  "practice_type": "song practice",
+  "duration_minutes": 12,
+  "capo_fret": 0
+}

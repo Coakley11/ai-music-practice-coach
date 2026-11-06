@@ -50,12 +50,12 @@ from typing import Any, Callable
 
 st.set_page_config(
     page_title="Daniel Cohen AI Music Practice Coach",
-    page_icon="🎵",
+    page_icon=str(Path(__file__).resolve().parent / "static/branding/mpc_logo_emblem_96.png"),
     layout="wide"
 )
 
 try:
-    st.logo("static/branding/mpc_logo.png", size="medium")
+    st.logo(str(Path(__file__).resolve().parent / "static/branding/mpc_logo_emblem_256.png"), size="medium")
 except Exception:
     pass
 
@@ -788,6 +788,7 @@ _APP_UI_LOADED = False
 _APP_UI_IMPORT_ERROR = None
 
 from music_feature_icons import (
+    action_label,
     FEATURE_ICONS,
     feature_label,
     page_feature_icon,
@@ -8766,7 +8767,14 @@ def mix_multitrack(backing_y, track_items, sr=44100):
 
         mix[: len(y)] += y.astype(np.float64)
 
-    peak = np.max(np.abs(mix)) + 1e-9
+    if mix.size == 0:
+        # Everything muted (or soloed away): a silent mix, not a crash on an empty array.
+        return np.zeros(0, dtype=np.float32)
+
+    peak = float(np.max(np.abs(mix)))
+
+    if peak <= 1e-9:
+        return mix.astype(np.float32)
 
     mix = (mix / peak * 0.95).astype(np.float32)
 
@@ -8983,7 +8991,7 @@ def _render_multitrack_session_setup_panel(
         )
     with _kbpm_c3:
         mt_groove = st.selectbox(
-            "Groove / feel",
+            action_label("feel", "Groove / feel"),
             [
                 "Auto",
                 "Pop groove",
@@ -9052,8 +9060,18 @@ def _render_multitrack_session_setup_panel(
     )
     if _prep_clicked:
         practice_level = str(st.session_state.get("level") or "Intermediate")
+        # Monitor backing is SOUNDING audio: render it from the concert progression, never from the
+        # written / capo-shape chart this page happens to be displaying.
+        try:
+            from multitrack_layer_chords import concert_sections_for_backing
+
+            _backing_sections = concert_sections_for_backing(
+                st.session_state, sections, chart_key=chart_key, concert_key=concert_key
+            ) or sections
+        except Exception:
+            _backing_sections = sections
         monitor_wav, _ = multitrack_monitor_backing_bytes(
-            sections,
+            _backing_sections,
             mt_selected_sections,
             bpm=mt_bpm,
             loops=mt_loops,
@@ -9118,6 +9136,9 @@ def multitrack_studio_html(
     backing_duration_sec=0,
 ):
     tracks_json = json.dumps(tracks)
+    from multitrack_layer_chords import transport_clock_script
+
+    clock_script = transport_clock_script()
     bar_duration = meter_timing(bpm, time_signature).bar_sec
     config = json.dumps({
         "bpm": bpm,
@@ -9194,6 +9215,7 @@ def multitrack_studio_html(
 
     let audioCtx = null;
     let startedAt = 0;
+    let countInStartedAt = 0;
     let rafId = null;
     let metroTimer = null;
     let trackNodes = [];
@@ -9201,6 +9223,7 @@ def multitrack_studio_html(
     let masterGain = null;
     let sessionDuration = 8;
 
+    {clock_script}
     function barDuration() {{ return cfg.barDuration; }}
     function beatDuration() {{ return 60 / cfg.bpm; }}
 
@@ -9285,10 +9308,15 @@ def multitrack_studio_html(
       cursorEl.style.width = "0%";
       timeEl.textContent = "0.0s";
       labelEl.textContent = "Stopped.";
+      // Layer chord strips follow this clock; a stopped transport must never advance them.
+      mtPublishClock(0, false);
     }}
 
     function updateTransport() {{
       if (!audioCtx) return;
+      // Seconds from the START OF THE COUNT-IN: the layer chord strips line their bars up against this,
+      // so count-in, loops and restarts all land where the musician hears them.
+      mtPublishClock(audioCtx.currentTime - countInStartedAt, true);
       const t = Math.max(0, audioCtx.currentTime - startedAt);
       const bd = barDuration();
       const barNum = Math.floor(t / bd) + 1;
@@ -9313,6 +9341,7 @@ def multitrack_studio_html(
       const countInStart = audioCtx.currentTime;
       const musicStart = scheduleCountIn(countInStart);
       startedAt = musicStart;
+      countInStartedAt = countInStart;
 
       let maxEnd = musicStart;
 
@@ -10058,7 +10087,8 @@ def _create_backing_card_slots() -> tuple[Any, tuple | None]:
     head = st.container()
     try:
         with st.container(key="backing_card_controls"):
-            cols = st.columns([1.3, 1.4, 1.2], vertical_alignment="center", gap="small")
+            # v12: the key strip gets the widest column; the transport keeps its fixed width (app_ui).
+            cols = st.columns([1.7, 1.0, 1.2], vertical_alignment="center", gap="small")
         return head, tuple(cols)
     except Exception:
         return head, None
@@ -10072,10 +10102,17 @@ def _render_backing_pk_owner_select(proxy: dict[str, Any], options: list[str], *
     same widget.
     """
     proxy["rendered"] = True
+    # The card asks for readable names (D♭ major); the value stays the key token.
+    _fmt = (
+        {"format_func": proxy["format_func"], "filter_mode": proxy.get("filter_mode", "fuzzy")}
+        if proxy.get("format_func")
+        else {}
+    )
     st.selectbox(
         proxy["label"],
         options,
         key=proxy["key"],
+        **_fmt,
         on_change=proxy["on_change"],
         label_visibility=label_visibility,
         help="Concert pitch for charts and backing audio.",
@@ -10100,9 +10137,27 @@ def _render_backing_card_practice_key(original_key: str, practice_key: str) -> N
     reruns and reverted the key. Without an owner widget this run, the row
     shows the keys as text, as before.
     """
+    from song_card_keys import (
+        KEY_SEARCH_FILTER_MODE,
+        key_relation_caption,
+        pretty_key_name,
+        render_key_search_alias,
+    )
+
+    # Every run of this card, both branches: "Eb" / "F#" find E♭ / F♯ in the dropdown.
+    render_key_search_alias(st)
+
+    orig_name = pretty_key_name(original_key) or str(original_key or "")
+    orig_cell = (
+        '<p class="ui-skp-label">Original key</p>'
+        f'<div class="ui-skp-value">{html.escape(orig_name)}</div>'
+        '<p class="ui-skp-cap">Concert pitch</p>'
+    )
+    pk_label = '<p class="ui-skp-label">Practice key</p>'
     proxy = globals().get("_sidebar_pk_proxy")
     if not proxy or proxy.get("rendered"):
-        st.markdown(active_song_key_row_html(original_key, practice_key), unsafe_allow_html=True)
+        # No owner widget this run (Fixed Key, or the sidebar drew it): the keys as text.
+        _backing_card_key_text_row(original_key, practice_key, orig_cell=orig_cell, pk_label=pk_label)
         return
     widget_key, sidebar_options = proxy["key"], proxy["options"]
     current = str(st.session_state.get(widget_key) or practice_key or original_key or "").strip()
@@ -10116,26 +10171,60 @@ def _render_backing_card_practice_key(original_key: str, practice_key: str) -> N
     options = [k for k in conventional if k in sidebar_options] or list(sidebar_options)
     if current and current not in options:
         options = [current] + options
-    orig = html.escape(str(original_key or current or "C"))
-    shifted = " is-shifted" if current and current != original_key else ""
+    proxy["format_func"] = lambda k: pretty_key_name(k) or str(k)
+    proxy["filter_mode"] = KEY_SEARCH_FILTER_MODE
     with st.container(key="backing_card_key_row"):
-        c_orig, c_pk = st.columns([0.8, 1.6], gap="small", vertical_alignment="bottom")
+        c_orig, c_pk = st.columns(2, gap="small")
         with c_orig:
-            st.markdown(
-                f'<div class="ui-backing-card-keys{shifted}">'
-                f'<span class="ui-active-song-key-chip original">'
-                f'<span class="ui-active-song-key-label">Original key</span>'
-                f'<span class="ui-active-song-key-value">{orig}</span></span>'
-                f'<span class="ui-active-song-key-arrow" aria-hidden="true">→</span>'
-                f"</div>",
-                unsafe_allow_html=True,
-            )
+            st.markdown(orig_cell, unsafe_allow_html=True)
         with c_pk:
+            st.markdown(pk_label, unsafe_allow_html=True)
+            _render_backing_pk_owner_select(proxy, options, label_visibility="collapsed")
+            _rel = key_relation_caption(original_key, str(st.session_state.get(widget_key) or current))
             st.markdown(
-                '<span class="ui-backing-inline-label" title="Practice / Concert Key">Practice Key</span>',
+                '<p class="ui-skp-cap">Concert pitch'
+                + (f' · {html.escape(_rel)}' if _rel else "")
+                + "</p>",
                 unsafe_allow_html=True,
             )
-            _render_backing_pk_owner_select(proxy, options, label_visibility="collapsed")
+
+
+def _backing_card_key_text_row(original_key: str, practice_key: str, *, orig_cell: str, pk_label: str) -> None:
+    """Original | Practice key as text (no owner widget this run); locked while Fixed Key decides it."""
+    from song_card_keys import key_relation_caption, pretty_key_name
+
+    practice = str(practice_key or original_key or "").strip()
+    rel = key_relation_caption(original_key, practice)
+    name = html.escape(pretty_key_name(practice) or practice)
+    try:
+        from practice_key_mode import fixed_key_family_label_for_session, practice_key_edit_locked
+
+        locked = practice_key_edit_locked(st.session_state)
+        family = fixed_key_family_label_for_session(st.session_state) if locked else ""
+    except Exception:
+        locked, family = False, ""
+    if locked:
+        value = (
+            f'<div class="ui-skp-locked ui-practice-key-locked" title="Set by Fixed Key'
+            f'{(" (" + html.escape(family) + ")") if family else ""}">'
+            '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#4338ca" stroke-width="2" '
+            'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" '
+            'height="10" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path></svg>'
+            f"<span>{name}</span></div>"
+            '<p class="ui-skp-cap">Concert pitch</p>'
+            f'<p class="ui-skp-cap ui-skp-cap-fixed">Fixed Key{(" · " + html.escape(rel)) if rel else ""}</p>'
+        )
+    else:
+        value = (
+            f'<div class="ui-skp-value">{name}</div>'
+            f'<p class="ui-skp-cap">Concert pitch{(" · " + html.escape(rel)) if rel else ""}</p>'
+        )
+    with st.container(key="backing_card_key_row"):
+        c_orig, c_pk = st.columns(2, gap="small")
+        with c_orig:
+            st.markdown(orig_cell, unsafe_allow_html=True)
+        with c_pk:
+            st.markdown(pk_label + value, unsafe_allow_html=True)
 
 
 def render_backing_card_transport_control(*, enabled: bool) -> None:
@@ -10883,6 +10972,7 @@ def _render_active_song_card(
     _source_label = "Catalog Song"
     _art_source_cls = ""
     _card_source_cls = ""
+    _custom_header_bars: list[str] = []
     try:
         from custom_progression_lab import format_key_label as _format_key_label
         from app_ui import studio_song_meta_badges_html as _studio_song_meta_badges_html
@@ -10910,11 +11000,24 @@ def _render_active_song_card(
             details["visual_gradient"] = "linear-gradient(145deg,#10b981,#059669)"
             _art_source_cls = " source-custom"
             _card_source_cls = " source-custom"
-            _cpl_style = ensure_original_structure(
-                st.session_state.get(CPL_ACTIVE_KEY) or {}
-            ).get("progression_style")
+            _cpl_struct = ensure_original_structure(st.session_state.get(CPL_ACTIVE_KEY) or {})
+            _cpl_style = _cpl_struct.get("progression_style")
             if _cpl_style:
                 _style_label = str(_cpl_style)
+            # Header bar grid: the opening bars as written. Shown only while the
+            # practice key is the original key, so it never contradicts the chart.
+            try:
+                from song_card_keys import same_key as _same_key
+
+                if _same_key(_original_key, _practice_concert_key):
+                    for _sec_cells in (_cpl_struct.get("original_sections") or {}).values():
+                        _cells = [str((c or {}).get("chord") or "") for c in (_sec_cells or []) if isinstance(c, dict)]
+                        _cells = [c for c in _cells if c.strip()]
+                        if _cells:
+                            _custom_header_bars = _cells[:4]
+                            break
+            except Exception:
+                _custom_header_bars = []
         else:
             details["visual_emoji"] = _FEATURE_ICONS.get("songs", "🎼")
         if _song_key_ctx.shape_key:
@@ -10966,26 +11069,25 @@ def _render_active_song_card(
         )
     else:
         _artist_display = ""
-    _artist_html = (
-        f'<p class="ui-active-song-artist">{html.escape(_artist_display)}</p>'
-        if _artist_display
-        else ""
-    )
     from songs.picker_session import is_catalog_favorite
+    from song_card_header import song_card_header_html
 
-    _title_star = "★ " if str(edit_mode).lower() == "catalog" and is_catalog_favorite(
+    _is_favorite = str(edit_mode).lower() == "catalog" and is_catalog_favorite(
         st.session_state, str(st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or "")
-    ) else ""
+    )
+    # v12 header: source identity (Catalog / Custom / Composition) + the song's style artwork.
+    _header_artist = _artist_display[3:] if _artist_display.lower().startswith("by ") else _artist_display
     card_html = (
-        f'<div class="ui-active-song-card{trusted_cls}{modifier_cls}{_card_source_cls}">'
-        f'<div class="ui-active-song-art{_art_source_cls}" '
-        f'style="background:{html.escape(details["visual_gradient"])};">'
-        f'{html.escape(details["visual_emoji"])}<small>{html.escape(details["visual_genre"])}</small></div>'
-        f'<div class="ui-active-song-body">'
-        f'<p class="ui-active-song-kicker">Now loaded for practice</p>'
-        f'<p class="ui-active-song-title">{_title_star}{html.escape(details["title"])}</p>'
-        f'{_artist_html}'
-        + "</div></div>"
+        f'<div class="ui-active-song-head{trusted_cls}{modifier_cls}{_card_source_cls}">'
+        + song_card_header_html(
+            source=_source_label,
+            style=_style_label,
+            title=str(details["title"]),
+            artist=_header_artist,
+            favorite=False,  # the card's Favorite button (top-right) shows the state
+            bars=_custom_header_bars,
+        )
+        + "</div>"
     )
     with st.container(key="picker_active_song_card_content"):
         st.markdown(card_html, unsafe_allow_html=True)
@@ -11002,9 +11104,12 @@ def _render_active_song_card(
             with st.container(key="picker_active_song_key_row"):
                 _original_col, _practice_col = st.columns(2)
                 with _original_col:
+                    from song_card_keys import pretty_key_name as _pretty_key_name
+
                     st.markdown(
-                        '<p class="ui-song-library-genre-chips-label" style="margin-bottom:0.15rem;">Original Key</p>'
-                        f'<div class="ui-active-song-original-value">{html.escape(_orig_label)}</div>',
+                        '<p class="ui-skp-label">Original key</p>'
+                        f'<div class="ui-skp-value">{html.escape(_pretty_key_name(_original_key) or _orig_label)}</div>'
+                        '<p class="ui-skp-cap">Concert pitch</p>',
                         unsafe_allow_html=True,
                     )
                 with _practice_col:
@@ -11052,13 +11157,17 @@ def _render_active_song_card(
         f'<p class="ui-chart-edit-cta-hint">{_edit_hint}</p></div>',
         unsafe_allow_html=True,
     )
-    if st.button(
-        _edit_label,
-        key="picker_card_edit_chart",
-        type="primary",
-        use_container_width=True,
-        help=_edit_hint,
-    ):
+    # Keyed by source so the CTA can carry its own page colour (Custom green, Composition black) -
+    # the button key itself has to stay stable for existing state/tests.
+    with st.container(key=f"picker_card_edit_chart_{_edit_mode}"):
+        _edit_clicked = st.button(
+            _edit_label,
+            key="picker_card_edit_chart",
+            type="primary",
+            use_container_width=True,
+            help=_edit_hint,
+        )
+    if _edit_clicked:
         _open_active_source_chart_editor(_edit_mode)
     if show_nav_actions:
         _render_songs_hub_nav_actions(
@@ -11194,18 +11303,42 @@ def _render_card_practice_key_selector(rec: dict, *, pick_key: str) -> None:
     original_key = str(rec.get("key") or "C").strip() or "C"
     from practice_key_mode import practice_key_edit_locked, resolve_practice_concert_key_for_song
 
+    from song_card_keys import (
+        KEY_SEARCH_FILTER_MODE,
+        key_relation_caption,
+        pretty_key_name,
+        render_key_search_alias,
+    )
+
+    # Every run of this card, both branches: "Eb" / "F#" find E♭ / F♯ in the dropdown.
+    render_key_search_alias(st)
+
+    _pk_label_html = (
+        '<p class="ui-skp-label"><span class="ui-skp-wide">Practice / Concert key</span>'
+        '<span class="ui-skp-narrow">Practice key</span></p>'
+    )
     if practice_key_edit_locked(st.session_state):
         # Fixed Key decides this key: show it, offer nothing to change.
+        from practice_key_mode import fixed_key_family_label_for_session
+
         locked = resolve_practice_concert_key_for_song(
             st.session_state, original_key, pick_key=pk, fallback=original_key
         )
+        _rel = key_relation_caption(original_key, locked)
+        _family = fixed_key_family_label_for_session(st.session_state)
+        _lock_svg = (
+            '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#4338ca" stroke-width="2" '
+            'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" '
+            'height="10" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path></svg>'
+        )
         with st.container(key="picker_active_song_practice_key_row"):
             st.markdown(
-                '<p class="ui-song-library-genre-chips-label" style="margin-bottom:0.15rem;">'
-                "Practice / Concert Key</p>"
-                f'<div class="ui-active-song-original-value ui-practice-key-locked" '
-                f'title="Set by Fixed Key">{html.escape(locked)} '
-                '<span class="ui-practice-key-lock-note">Fixed Key</span></div>',
+                _pk_label_html
+                + f'<div class="ui-skp-locked ui-practice-key-locked" '
+                f'title="Set by Fixed Key{(" (" + html.escape(_family) + ")") if _family else ""}">'
+                f"{_lock_svg}<span>{html.escape(pretty_key_name(locked) or locked)}</span></div>"
+                '<p class="ui-skp-cap">Concert pitch</p>'
+                f'<p class="ui-skp-cap ui-skp-cap-fixed">Fixed Key{(" · " + html.escape(_rel)) if _rel else ""}</p>',
                 unsafe_allow_html=True,
             )
         return
@@ -11225,19 +11358,23 @@ def _render_card_practice_key_selector(rec: dict, *, pick_key: str) -> None:
     if st.session_state.get(widget_key) != current:
         st.session_state[widget_key] = current
     with st.container(key="picker_active_song_practice_key_row"):
-        st.markdown(
-            '<p class="ui-song-library-genre-chips-label" style="margin-bottom:0.15rem;">'
-            "Practice / Concert Key</p>",
-            unsafe_allow_html=True,
-        )
+        st.markdown(_pk_label_html, unsafe_allow_html=True)
         st.selectbox(
             "Practice / Concert Key",
             options,
             key=widget_key,
+            format_func=lambda k: pretty_key_name(k) or str(k),
+            filter_mode=KEY_SEARCH_FILTER_MODE,
             label_visibility="collapsed",
             on_change=_apply_card_practice_key_change,
             args=(widget_key,),
             help="Change the Practice / Concert Key for this song — stays in sync with the sidebar control.",
+        )
+        _rel = key_relation_caption(original_key, str(st.session_state.get(widget_key) or current))
+        st.markdown(
+            '<p class="ui-skp-cap">Concert pitch</p>'
+            + (f'<p class="ui-skp-cap">{html.escape(_rel)}</p>' if _rel else ""),
+            unsafe_allow_html=True,
         )
 
 
@@ -11635,6 +11772,12 @@ def _apply_picker_catalog_filters(
 
     if not all_pick_options:
         return filtered, browse_pick_options, [], ""
+
+    if st.session_state.get("_home_catalog_browse"):
+        # Browsing cannot reconcile a stale dropdown into a new active song.
+        return filtered, browse_pick_options, all_pick_options, str(
+            st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or ""
+        )
 
     from songs.state import consume_uncommitted_catalog_dropdown
 
@@ -12598,6 +12741,8 @@ def _render_catalog_song_picker_block(
     # chart/level dropdowns must not remove songs before that union is resolved.
     visible_song_records = list(ALL_SONG_RECORDS) if show_song_cards else _picker_visible_records()
     available_genres = sorted({r.get("genre") for r in visible_song_records if r.get("genre")})
+    from songs.picker_session import apply_home_catalog_request
+    apply_home_catalog_request(st.session_state, available_genres)
     _migrate_workspace_genre_filters(set(available_genres))
     apply_picker_session_resets(st.session_state)
 
@@ -12704,9 +12849,9 @@ def _render_catalog_song_picker_block(
         ``filtered`` (closed over from ``_apply_picker_catalog_filters`` above)
         is the canonical-deduplicated union that narrows the Active Song
         dropdown's own options. Search, Genre, and Favorites contribute
-        independently. Only shown while a filter is actually active: with no
-        filter the dropdown already covers "browse everything" and a
-        119-row button list would just be noise. Each row commits through
+        independently. With no criterion active the list is empty (and says so):
+        opening Songs, or clearing the last filter, never dumps the whole
+        catalog here - the dropdown already covers "browse everything". Each row commits through
         ``_apply_catalog_pick`` — the identical canonical path the dropdown's
         own on_change uses — so this is a second entry point into the same
         active-song state, never a competing one.
@@ -12714,7 +12859,14 @@ def _render_catalog_song_picker_block(
         query = str(st.session_state.get("song_search_text") or "").strip()
         genres_active = bool(st.session_state.get(WORKSPACE_GENRE_FILTERS_KEY) or [])
         fav_active = bool(st.session_state.get(SONG_PICKER_FAVORITES_ONLY_KEY))
-        if not filtered and fav_active and not query:
+        if not filtered and not (query or genres_active or fav_active):
+            # Deliberate empty start: Browse lists what the musician asks for, nothing more.
+            st.caption(
+                "Search for a title or artist, tap a genre, or tap ★ Favorites to start building a list. "
+                "The **Active Song** dropdown always covers the whole catalog."
+            )
+            return
+        if not filtered and fav_active and not query and not genres_active:
             st.info("No favorite songs yet. Star a song with ☆ Favorite on its song card.")
             return
         if not filtered:
@@ -12792,7 +12944,7 @@ def _render_catalog_song_picker_block(
                 "refine your search to narrow further."
             )
 
-    if _library_polished and show_source_toggle:
+    if _library_polished and show_source_toggle and not st.session_state.get("_home_catalog_browse"):
         _src_hub = _render_picker_music_source_toggle(polished=True)
         # Composition before Custom — never let a stale Custom hub swallow a
         # live Composition radio / explicit stamp.
@@ -12830,7 +12982,7 @@ def _render_catalog_song_picker_block(
         else:
             active_pick_key = ""
 
-    if _library_polished:
+    if _library_polished and not st.session_state.get("_home_catalog_browse"):
         active_rec = (
             record_for_pick_key(visible_song_records, active_pick_key) if active_pick_key else None
         )
@@ -13011,8 +13163,11 @@ def _render_catalog_song_picker_block(
         )
 
     if not show_song_cards and not _developer_mode_enabled():
+        # Browse starts empty on purpose; the dropdown above is the full catalog either way.
         st.caption(
             f"**{len(filtered)}** songs in list · open **Practice** or **Backing Track** after you pick one."
+            if filtered
+            else "Search or filter to build a list · the dropdown above covers the whole catalog."
         )
 
     if _developer_mode_enabled():
@@ -14113,7 +14268,7 @@ def _render_backing_step2_playback_action(
         # Advanced expander: do not force expanded=False when cycling is off —
         # that drops in-expander widget events on the next rerun. Leave open/closed
         # to Streamlit's own expander state.
-        with st.expander("Advanced playback settings"):
+        with st.expander("Advanced playback settings", expanded=bool(st.session_state.pop("_home_open_key_cycle", False))):
             st.markdown('<div class="ui-backing-feel-inline">', unsafe_allow_html=True)
             st.markdown("<div>", unsafe_allow_html=True)
             _feel_ico = html.escape(semantic_field_icon("style") or semantic_field_icon("feel"))
@@ -14621,6 +14776,9 @@ try:
         song_picker_catalog=SONG_PICKER_CATALOG,
         song_library=SONG_LIBRARY,
     )
+    # Home requests commit at the same post-hydration, pre-widget owner boundary.
+    from home_practice_resume import finalize_recent_practice
+    _entry_finalized = finalize_recent_practice(st, SONG_PICKER_CATALOG, SONG_LIBRARY) or _entry_finalized
     _ctx_refresh = bool(_entry_finalized)
     if _entry_finalized:
         _studio_page = str(st.session_state.get("studio_page") or _studio_page)
@@ -15972,8 +16130,15 @@ try:
 except Exception:
     pass
 
+from custom_progression_lab import _custom_workspace_may_project_global_key
+
+_custom_preview_only = (
+    str(st.session_state.get("studio_page") or "").strip().lower() == "custom"
+    and not _custom_workspace_may_project_global_key(st.session_state)
+)
+_sidebar_original_key_label = "Custom Original Key" if _custom_preview_only else "Song Original Key"
 st.sidebar.markdown(
-    f'<p class="ui-sidebar-key-caption">{FEATURE_ICONS["original_key"]} Song Original Key: '
+    f'<p class="ui-sidebar-key-caption">{FEATURE_ICONS["original_key"]} {_sidebar_original_key_label}: '
     f"<strong>{original_key}</strong></p>",
     unsafe_allow_html=True,
 )
@@ -16183,10 +16348,11 @@ else:
             }
         else:
             st.sidebar.selectbox(
-                "Practice / Concert Key",
+                "Custom workspace Practice / Concert Key" if _custom_preview_only else "Practice / Concert Key",
                 _display_key_options,
                 key=CUSTOM_WORKSPACE_PRACTICE_KEY_WIDGET,
-                help="Concert pitch for charts and backing audio.",
+                help=("Custom preview only; Set Active Song to make this the active song."
+                      if _custom_preview_only else "Concert pitch for charts and backing audio."),
                 on_change=_on_custom_workspace_practice_key_change,
             )
     else:
@@ -18301,6 +18467,27 @@ except ImportError:
 if _monetization_surface_rendered:
     pass
 
+elif _studio_page == "home":
+
+    # Home is a signpost, not a workspace. It reads state and renders; it hydrates
+    # no song source, claims no backing ownership and commits no musical key.
+    try:
+        from home_page import render_home_page
+
+        def _home_rerun() -> None:
+            try:
+                from music_app_rerun import request_app_rerun
+
+                request_app_rerun(st, st.session_state, reason="home_nav", stage="page_dispatch")
+            except ImportError:
+                st.rerun()
+
+        with st.container(key="home_page"):
+            render_home_page(st, st.session_state, rerun_fn=_home_rerun, song_picker_catalog=SONG_PICKER_CATALOG)
+    except ImportError:
+        st.markdown("### Home")
+        st.info("The Home page could not be loaded. Use the navigation above to pick a workspace.")
+
 elif _studio_page == "practice":
 
     try:
@@ -19693,14 +19880,21 @@ elif _studio_page == "picker":
             render_source_context_debug,
         )
 
-        hydrate_picker_source_for_page(
-            st.session_state,
-            st_like=st,
-            song_picker_catalog=SONG_PICKER_CATALOG,
-        )
+        if not st.session_state.get("_home_catalog_browse"):
+            hydrate_picker_source_for_page(
+                st.session_state,
+                st_like=st,
+                song_picker_catalog=SONG_PICKER_CATALOG,
+            )
         render_source_context_debug(st, st.session_state)
     except ImportError:
         pass
+
+    if st.session_state.get("_home_catalog_browse"):
+        st.caption("Catalog browsing ? Your active song changes only when you select a result.")
+        if st.button("Return to active song view", key="home_catalog_exit"):
+            st.session_state.pop("_home_catalog_browse", None)
+            st.rerun()
 
     _render_catalog_song_picker_block(
         show_source_toggle=True,
@@ -27064,6 +27258,12 @@ elif _studio_page == "multitrack":
         st.session_state.mt_track_filenames = {
             slot: f"{slot.replace(' ', '_').lower()}.wav" for slot in MT_SLOTS
         }
+    try:
+        from multitrack_takes import adopt_restored_layers_as_saved
+
+        adopt_restored_layers_as_saved(st.session_state, MT_SLOTS)
+    except ImportError:
+        pass
 
     _default_mt_time_sig = default_time_signature(song, sections)
     _existing_mt_time_sig = str(st.session_state.get("mt_time_signature") or "").strip()
@@ -27170,6 +27370,35 @@ elif _studio_page == "multitrack":
                 "Loop section = repeat the selected section while recording"
             )
 
+            # --- Per-layer chord progression (concert audio, per-instrument reading) -------------
+            # The Practice chart this page holds is in the CHART key (written / capo shape), so the
+            # sounding progression is recovered once here and every layer projects from it.
+            try:
+                from multitrack_layer_chords import (
+                    LAYER_INSTRUMENT_KEY_PREFIX,
+                    concert_bar_chords,
+                    layer_chord_strip_html,
+                    layer_chord_timeline,
+                    layer_instrument,
+                    layer_instrument_options,
+                    layer_key_label,
+                    project_chords_for_layer,
+                )
+
+                _mt_concert_bars = concert_bar_chords(
+                    st.session_state,
+                    chart_sections=sections,
+                    selected_sections=mt_selected_sections,
+                    section_names=section_names_from_song(song_data),
+                    chart_key=chart_key,
+                    concert_key=concert_key,
+                )
+                _mt_bar_sec = meter_timing(mt_bpm, mt_time_sig).bar_sec
+                _mt_count_in_sec = float(mt_count_in_bars) * _mt_bar_sec
+                _mt_layer_chords_ok = bool(_mt_concert_bars)
+            except Exception:
+                _mt_layer_chords_ok = False
+
             for slot in MT_SLOTS:
                 _slot_ready = bool(st.session_state.mt_tracks.get(slot))
                 try:
@@ -27194,16 +27423,44 @@ elif _studio_page == "multitrack":
                             value=st.session_state.get(f"mt_name_{slot}", slot),
                             key=f"mt_name_{slot}",
                         )
+                        if _mt_layer_chords_ok:
+                            _layer_inst_options = layer_instrument_options()
+                            _layer_inst_default = layer_instrument(st.session_state, slot)
+                            st.selectbox(
+                                "Chart this layer for",
+                                _layer_inst_options,
+                                index=_layer_inst_options.index(_layer_inst_default)
+                                if _layer_inst_default in _layer_inst_options
+                                else 0,
+                                key=f"{LAYER_INSTRUMENT_KEY_PREFIX}{slot}",
+                                help=(
+                                    "Chord names this player reads. Transposing instruments read their "
+                                    "written chords; the backing keeps sounding in concert pitch."
+                                ),
+                            )
+
                         from upload_media import UPLOAD_AUDIO_FILE_TYPES, UPLOAD_MAX_SIZE_MB
 
+                        from multitrack_takes import (
+                            discard_button_label,
+                            discard_take,
+                            mark_take_saved,
+                            mark_take_unsaved,
+                            recorder_widget_key,
+                            take_status_line,
+                        )
+
                         uploaded = st.file_uploader(
-                            f"Upload — {slot}",
+                            action_label("upload", f"Upload — {slot}"),
                             type=UPLOAD_AUDIO_FILE_TYPES,
-                            key=f"mt_upload_{slot}",
+                            key=recorder_widget_key(st.session_state, slot, "upload"),
                             max_upload_size=UPLOAD_MAX_SIZE_MB,
                         )
                         try:
-                            recorded = st.audio_input(f"Record — {slot}", key=f"mt_record_{slot}")
+                            recorded = st.audio_input(
+                                f"Record — {slot}",
+                                key=recorder_widget_key(st.session_state, slot, "record"),
+                            )
                         except Exception:
                             recorded = None
                             st.caption("Recording unavailable in this build — upload still works.")
@@ -27218,6 +27475,7 @@ elif _studio_page == "multitrack":
                                 st.session_state.mt_track_filenames[slot] = getattr(
                                     _mt_audio_obj, "name", f"{slot}.wav"
                                 )
+                                mark_take_unsaved(st.session_state, slot)
                                 try:
                                     from music_persistent_state import force_save_music_state
                                     from studio_page_persistence import flush_current_page_snapshot
@@ -27227,13 +27485,49 @@ elif _studio_page == "multitrack":
                                 except Exception:
                                     pass
 
-                        if st.button(f"Save layer — {slot}", key=f"mt_save_{slot}"):
+                        _take_line = take_status_line(st.session_state, slot)
+                        if _take_line:
+                            st.caption(_take_line)
+                        _save_col, _discard_col = st.columns(2)
+                        if _discard_col.button(
+                            discard_button_label(st.session_state, slot),
+                            key=f"mt_discard_{slot}",
+                            use_container_width=True,
+                            disabled=not st.session_state.mt_tracks.get(slot),
+                            help=(
+                                "Throw this take away and record again. Only this layer is affected — "
+                                "other layers, the backing and saved projects are untouched."
+                            ),
+                        ):
+                            discard_take(st.session_state, slot)
+                            try:
+                                from music_persistent_state import force_save_music_state
+
+                                force_save_music_state(st, reason="multitrack_discard_take")
+                            except Exception:
+                                pass
+                            st.rerun()
+                        if _save_col.button(
+                            action_label("save", f"Save layer — {slot}"), key=f"mt_save_{slot}", use_container_width=True
+                        ):
                             audio_obj = recorded if recorded is not None else uploaded
+                            if audio_obj is None and st.session_state.mt_tracks.get(slot):
+                                # The take is already held for playback; saving keeps it for good.
+                                mark_take_saved(st.session_state, slot)
+                                st.success(f"{layer_name} saved.")
+                                try:
+                                    from music_persistent_state import force_save_music_state
+
+                                    force_save_music_state(st, reason="multitrack_layer_save")
+                                except Exception:
+                                    pass
+                                st.rerun()
                             if audio_obj is not None:
                                 st.session_state.mt_tracks[slot] = audio_obj.getvalue()
                                 st.session_state.mt_track_filenames[slot] = getattr(
                                     audio_obj, "name", f"{slot}.wav"
                                 )
+                                mark_take_saved(st.session_state, slot)
                                 st.success(f"{layer_name} saved.")
                                 try:
                                     from music_persistent_state import force_save_music_state
@@ -27293,6 +27587,31 @@ elif _studio_page == "multitrack":
                             ctrl["delay"] = float(st.session_state.get(f"mt_delay_{slot}", 0.0))
                             ctrl["mute"] = bool(st.session_state.get(f"mt_mute_{slot}", False))
                             ctrl["solo"] = bool(st.session_state.get(f"mt_solo_{slot}", False))
+
+                    if _mt_layer_chords_ok:
+                        # Chord progression for THIS player, highlighted from the real transport clock.
+                        _layer_inst = layer_instrument(st.session_state, slot)
+                        _layer_cells = layer_chord_timeline(
+                            project_chords_for_layer(
+                                _mt_concert_bars,
+                                concert_key=concert_key,
+                                instrument=_layer_inst,
+                                session_state=st.session_state,
+                            ),
+                            bar_duration=_mt_bar_sec,
+                            loops=mt_loops,
+                            count_in_sec=_mt_count_in_sec,
+                        )
+                        components.html(
+                            layer_chord_strip_html(
+                                _layer_cells,
+                                layer_id=slot,
+                                key_label=layer_key_label(concert_key, _layer_inst, st.session_state),
+                                instrument=_layer_inst,
+                            ),
+                            height=108,
+                            scrolling=False,
+                        )
 
                     saved_audio = st.session_state.mt_tracks.get(slot)
                     if saved_audio:
@@ -27471,23 +27790,60 @@ elif _studio_page == "multitrack":
             if not track_items_for_mix:
                 st.info("Save at least one layer above to export a mix.")
 
-            if st.button("Create mixed WAV", disabled=not track_items_for_mix, use_container_width=True):
+            from multitrack_audio_polish import (
+                REVERB_AMOUNT_KEY,
+                REVERB_ENABLED_KEY,
+                apply_reverb,
+                mix_reverb_amount,
+            )
+
+            _rv_a, _rv_b = st.columns([1, 2])
+            _rv_a.checkbox(
+                "Add reverb to the mix",
+                key=REVERB_ENABLED_KEY,
+                help=(
+                    "A finishing touch applied only when the mix is created — your recorded layers are "
+                    "never changed. It cannot bring back notes the recording did not capture."
+                ),
+            )
+            if st.session_state.get(REVERB_ENABLED_KEY):
+                _rv_b.slider("Reverb amount", 0.0, 1.0, 0.25, 0.05, key=REVERB_AMOUNT_KEY)
+
+            if st.button(action_label("create_mix", "Create mixed WAV"), disabled=not track_items_for_mix, use_container_width=True):
                 try:
                     backing_y = None
                     _include_backing_in_mix = bool(st.session_state.get("include_backing_mix", False))
                     _backing_volume = float(st.session_state.get("mt_backing_volume", 0.75))
                     if _include_backing_in_mix and mt_events:
+                        # The exported backing must sound the CONCERT chords (not the written/shape
+                        # chart this page displays) and must use the song's own meter - the default
+                        # 4/4 put the exported backing out of step with the recorded layers in 3/4.
+                        _export_events = mt_events
+                        try:
+                            from multitrack_layer_chords import concert_sections_for_backing
+
+                            _export_sections = concert_sections_for_backing(
+                                st.session_state, sections, chart_key=chart_key, concert_key=concert_key
+                            )
+                            if _export_sections:
+                                _export_events = chord_events_for_selected_sections(
+                                    _export_sections, mt_selected_sections, song_data=song_data
+                                ) or mt_events
+                        except Exception:
+                            _export_events = mt_events
                         backing_y = backing_bytes_to_float(
-                            mt_events,
+                            _export_events,
                             bpm=mt_bpm,
                             style=mt_resolved_groove,
                             level=level,
+                            time_signature=mt_time_sig,
                         )
                         if mt_loops > 1:
                             backing_y = np.tile(backing_y, int(mt_loops))
                         backing_y = backing_y * _backing_volume
 
                     mixed = mix_multitrack(backing_y, track_items_for_mix)
+                    mixed = apply_reverb(mixed, sr=44100, amount=mix_reverb_amount(st.session_state))
                     st.session_state.mixed_track_wav = wav_bytes_from_float(mixed)
                     from multitrack_activity import capture_mix
                     capture_mix(st.session_state, st.session_state.mixed_track_wav,
@@ -27506,7 +27862,7 @@ elif _studio_page == "multitrack":
             if mixed_export_wav:
                 st.audio(mixed_export_wav, format="audio/wav")
                 st.download_button(
-                    "Download mixed track WAV",
+                    action_label("download", "Download mixed track WAV"),
                     mixed_export_wav,
                     file_name=f"{song.replace(' ', '_')}_multitrack_mix.wav",
                     mime="audio/wav",
@@ -27527,7 +27883,7 @@ elif _studio_page == "multitrack":
 
             render_multitrack_export_library(st, st.session_state, song_title=str(song or ""))
 
-            if st.button("Clear all multitrack layers", use_container_width=True):
+            if st.button(action_label("delete", "Clear all multitrack layers"), use_container_width=True):
                 try:
                     from multitrack_session_persistence import clear_multitrack_persisted_state
                     from music_persistent_state import force_save_music_state

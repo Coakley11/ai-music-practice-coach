@@ -172,7 +172,7 @@ def inject_app_theme() -> None:
 [data-testid="stVerticalBlock"] > div:empty { display: none; }
 header[data-testid="stHeader"] { background: rgba(255,255,255,0.92); backdrop-filter: blur(8px); }
 [data-testid="stSidebar"] {
-  background: linear-gradient(180deg, #0f172a 0%, #111827 42%, #1e293b 100%);
+  background: #312e81; /* Existing brand-header purple. */
 }
 [data-testid="stSidebar"] * { color: #e2e8f0 !important; }
 [data-testid="stSidebar"] .stCaption, [data-testid="stSidebar"] label {
@@ -1402,6 +1402,26 @@ div[data-testid="stTabs"] [data-baseweb="tab-list"] { flex-wrap: wrap; gap: 0.25
 .st-key-backing_context_reset_custom_btn button * {
   color: #047857 !important;
 }
+/* Source CTAs wear their own page colour (SSOT: STUDIO_PAGE_ACCENTS in app_ui.py).
+   Custom = green #059669, Composition = black #0f172a. */
+.st-key-picker_card_edit_chart_custom button[kind="primary"],
+.st-key-backing_use_custom_btn button {
+  background: #059669 !important;
+  border-color: #047857 !important;
+  color: #ffffff !important;
+}
+.st-key-picker_card_edit_chart_custom button[kind="primary"] *,
+.st-key-backing_use_custom_btn button * {
+  color: #ffffff !important;
+}
+.st-key-picker_card_edit_chart_composition button[kind="primary"] {
+  background: #0f172a !important;
+  border-color: #0f172a !important;
+  color: #ffffff !important;
+}
+.st-key-picker_card_edit_chart_composition button[kind="primary"] * {
+  color: #ffffff !important;
+}
 .ui-custom-library-label {
   font-size: 0.68rem;
   font-weight: 800;
@@ -1546,15 +1566,15 @@ div[data-testid="stTabs"] [data-baseweb="tab-list"] { flex-wrap: wrap; gap: 0.25
   container: backing-main / inline-size;
 }
 body:has(.st-key-backing_card_controls) .ui-backing-active-song {
-  padding-bottom: calc(88px + 0.9rem + 0.65rem) !important;
+  padding-bottom: calc(170px + 0.9rem + 0.65rem) !important;
 }
 .st-key-backing_card_controls {
   box-sizing: border-box !important;
-  height: 88px !important;
-  min-height: 88px !important;
-  max-height: 88px !important;
+  height: 170px !important;
+  min-height: 170px !important;
+  max-height: 170px !important;
   overflow: hidden;
-  margin: calc(2px - (88px + 0.9rem + 1rem)) 1rem 1.75rem calc(1rem + 96px + 0.9rem);
+  margin: calc(2px - (170px + 0.9rem + 1rem)) 1rem 1.75rem calc(1rem + 96px + 0.9rem);
   width: auto !important;
   padding: 0.3rem 0.75rem;
   border-radius: 12px;
@@ -1585,6 +1605,16 @@ body:has(.st-key-backing_card_controls) .ui-backing-active-song {
    the script's timer and scroll keep working. */
 .st-key-studio_scroll_script_slot,
 [data-testid="stLayoutWrapper"]:has(> .st-key-studio_scroll_script_slot) {
+  position: absolute !important;
+  width: 0 !important;
+  height: 0 !important;
+  overflow: hidden !important;
+}
+/* Key search-alias script slot (song_card_keys): out of flow, so it costs the key
+   strips and the fixed-height Backing panel no space. */
+.st-key-key_search_alias_slot,
+[data-testid="stLayoutWrapper"]:has(> .st-key-key_search_alias_slot),
+[data-testid="stElementContainer"]:has(> .st-key-key_search_alias_slot) {
   position: absolute !important;
   width: 0 !important;
   height: 0 !important;
@@ -1642,15 +1672,74 @@ body:has(.st-key-backing_card_controls) .ui-backing-active-song {
 .st-key-backing_card_controls .ui-backing-quick-controls {
   margin: 0;
 }
+/* v12 Backing key strip: Original | Practice in one bordered strip, same as the Songs card. */
+.st-key-backing_card_controls {
+  background: #ffffff !important;
+  border-color: #e2e8f0 !important;
+  padding: 0.55rem 0.9rem !important;
+}
+.st-key-backing_card_controls .st-key-backing_card_key_row {
+  border: 1px solid #e2e8f0; border-radius: 12px; background: #f8fafc; overflow: hidden;
+}
+.st-key-backing_card_controls .st-key-backing_card_key_row [data-testid="stHorizontalBlock"] {
+  gap: 0 !important; align-items: stretch !important;
+  /* The panel's own rows fill its fixed height; the strip sizes to its content. */
+  height: auto !important; flex-direction: row !important; justify-content: flex-start !important;
+}
+.st-key-backing_card_controls .st-key-backing_card_key_row [data-testid="stHorizontalBlock"] > [data-testid="stColumn"],
+.st-key-backing_card_controls .st-key-backing_card_key_row [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:first-child {
+  flex: 1 1 0 !important; padding: 8px 12px calc(6px + 1rem); min-width: 0 !important;
+}
+.st-key-backing_card_key_row [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:first-child {
+  border-right: 1px solid #e2e8f0;
+}
+.st-key-backing_card_key_row [data-testid="stVerticalBlock"] { gap: 0.25rem !important; }
+.st-key-backing_card_key_row .ui-skp-label {
+  margin: 0 0 1rem 0 !important; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #475569;
+  white-space: nowrap;
+}
+.st-key-backing_card_key_row .ui-skp-label + .ui-skp-value,
+.st-key-backing_card_key_row .ui-skp-label + .ui-skp-locked { margin-top: -0.75rem; }
+.st-key-backing_card_key_row .ui-skp-value {
+  height: 40px; display: flex; align-items: center; font-size: 1.3rem; font-weight: 800; color: #0f172a; white-space: nowrap;
+}
+.st-key-backing_card_key_row .ui-skp-locked {
+  height: 40px; box-sizing: border-box; padding: 0 10px; display: flex; align-items: center; gap: 8px; border-radius: 10px;
+  border: 1px solid #c7d2fe; background: #eef2ff; font-size: 1.3rem; font-weight: 800; color: #1e1b4b; white-space: nowrap;
+}
+.st-key-backing_card_key_row .ui-skp-cap { margin: 0; font-size: 0.8rem; line-height: 1.3; color: #64748b; }
+.st-key-backing_card_key_row .ui-skp-cap-fixed { color: #4338ca; font-weight: 600; }
+.st-key-backing_card_controls .st-key-backing_card_key_row [data-testid="stSelectbox"] .react-aria-ComboBox [role="group"] {
+  min-height: 40px !important; border-radius: 10px; border: 1px solid #94a3b8 !important; background: #ffffff !important;
+}
+.st-key-backing_card_key_row [data-testid="stSelectbox"] input[role="combobox"] {
+  font-size: 1.3rem !important; font-weight: 800 !important; color: #0f172a !important; line-height: 1.2 !important;
+}
+/* Phone: two key columns leave too little room for "F♯ minor" at the full size. Not below 1rem: iOS zooms smaller inputs. */
+@container backing-main (max-width: 400px) {
+  .st-key-backing_card_key_row .ui-skp-value,
+  .st-key-backing_card_key_row .ui-skp-locked,
+  .st-key-backing_card_key_row [data-testid="stSelectbox"] input[role="combobox"] { font-size: 1.05rem !important; }
+}
+@container backing-main (max-width: 340px) {
+  .st-key-backing_card_key_row .ui-skp-value,
+  .st-key-backing_card_key_row .ui-skp-locked,
+  .st-key-backing_card_key_row [data-testid="stSelectbox"] input[role="combobox"] { font-size: 1rem !important; }
+  /* The font cannot shrink further, so the room comes from the columns' side padding. */
+  .st-key-backing_card_controls .st-key-backing_card_key_row [data-testid="stHorizontalBlock"] > [data-testid="stColumn"],
+  .st-key-backing_card_controls .st-key-backing_card_key_row [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:first-child {
+    padding-left: 8px; padding-right: 8px;
+  }
+}
 @container backing-main (max-width: 800px) {
   body:has(.st-key-backing_card_controls) .ui-backing-active-song {
-    padding-bottom: calc(224px + 0.9rem + 0.65rem) !important;
+    padding-bottom: calc(312px + 0.9rem + 0.65rem) !important;
   }
   .st-key-backing_card_controls {
-    height: 224px !important;
-    min-height: 224px !important;
-    max-height: 224px !important;
-    margin: calc(2px - (224px + 0.9rem + 1rem)) 0.9rem 1.75rem 0.9rem;
+    height: 312px !important;
+    min-height: 312px !important;
+    max-height: 312px !important;
+    margin: calc(2px - (312px + 0.9rem + 1rem)) 0.9rem 1.75rem 0.9rem;
     padding: 0.55rem 0.75rem;
   }
   .st-key-backing_card_controls [data-testid="stHorizontalBlock"] {
@@ -1892,6 +1981,109 @@ body:has(.st-key-picker_active_song_favorite_row) .st-key-picker_active_song_car
   background: linear-gradient(180deg, #fbbf24 0%, #f59e0b 100%) !important;
   border-color: #d97706 !important;
   color: #3b2300 !important;
+}
+/* v12 Songs card: one bordered white card; the header runs to its edges. */
+.st-key-picker_active_song_card_content:has(.ui-sch) {
+  background: #ffffff;
+  border: 1px solid #d5dbe5;
+  border-radius: 18px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05), 0 10px 28px rgba(15, 23, 42, 0.07);
+}
+.st-key-picker_active_song_card_content .ui-active-song-head {
+  margin: -0.95rem -1rem 0.35rem;
+}
+.st-key-picker_active_song_card_content .ui-sch { border-radius: 17px 17px 0 0; }
+/* Key panel: Original | Practice in one bordered strip. */
+.st-key-picker_active_song_card_content .st-key-picker_active_song_key_row {
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  background: #f8fafc;
+  padding: 0;
+  overflow: hidden;
+}
+.st-key-picker_active_song_key_row [data-testid="stHorizontalBlock"] { gap: 0 !important; }
+.st-key-picker_active_song_key_row [data-testid="stColumn"] { padding: 14px 18px calc(12px + 1rem); }
+.st-key-picker_active_song_key_row [data-testid="stColumn"]:first-child { border-right: 1px solid #e2e8f0; }
+.st-key-picker_active_song_key_row [data-testid="stVerticalBlock"] { gap: 0.4rem; }
+.st-key-picker_active_song_key_row .ui-skp-label {
+  margin: 0; font-size: 0.78rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #475569;
+}
+.st-key-picker_active_song_key_row .ui-skp-narrow { display: none; }
+.st-key-picker_active_song_key_row .ui-skp-value {
+  height: 52px; display: flex; align-items: center; font-size: 1.6rem; font-weight: 800; color: #0f172a;
+}
+.st-key-picker_active_song_key_row .ui-skp-cap { margin: 0; font-size: 0.875rem; line-height: 1.35; color: #64748b; }
+.st-key-picker_active_song_key_row .ui-skp-cap-fixed { color: #4338ca; font-weight: 600; }
+.st-key-picker_active_song_key_row .ui-skp-locked {
+  height: 52px; box-sizing: border-box; padding: 0 14px; display: flex; align-items: center; gap: 10px;
+  border-radius: 10px; border: 1px solid #c7d2fe; background: #eef2ff; font-size: 1.6rem; font-weight: 800; color: #1e1b4b;
+}
+/* Streamlit pulls the element after a markdown block up by 1rem; the label keeps its own line. */
+.st-key-picker_active_song_practice_key_row .ui-skp-label { margin-bottom: 1rem !important; }
+.st-key-picker_active_song_practice_key_row [data-testid="stSelectbox"] .react-aria-ComboBox [role="group"] {
+  min-height: 52px; border-radius: 10px; border: 1px solid #94a3b8 !important; background: #ffffff !important;
+}
+.st-key-picker_active_song_practice_key_row [data-testid="stSelectbox"] input[role="combobox"] {
+  font-size: 1.6rem !important; font-weight: 800 !important; color: #0f172a !important; line-height: 1.2 !important;
+}
+/* Meta badges inside the v12 card: quiet neutral pills (Tempo / Meter / Style / Source). */
+.st-key-picker_active_song_card_content:has(.ui-sch) .ui-studio-meta-badge {
+  background: #ffffff !important; border: 1px solid #e2e8f0 !important; box-shadow: none !important;
+  padding: 0.4rem 0.85rem !important; border-radius: 999px !important; font-size: 0.95rem !important; gap: 0.4rem !important;
+}
+.st-key-picker_active_song_card_content:has(.ui-sch) .ui-studio-meta-badge-ico { display: none !important; }
+.st-key-picker_active_song_card_content:has(.ui-sch) .ui-studio-meta-badge-label {
+  color: #64748b !important; font-weight: 600 !important; text-transform: none !important; letter-spacing: 0 !important;
+  font-size: 0.95rem !important;
+}
+.st-key-picker_active_song_card_content:has(.ui-sch) .ui-studio-meta-badge-value {
+  color: #0f172a !important; font-weight: 800 !important; font-size: 0.95rem !important;
+}
+@media (max-width: 720px) {
+  .st-key-picker_active_song_key_row [data-testid="stColumn"] { padding: 12px 12px calc(12px + 1rem); }
+  .st-key-picker_active_song_key_row .ui-skp-wide { display: none; }
+  .st-key-picker_active_song_key_row .ui-skp-narrow { display: inline; }
+  .st-key-picker_active_song_key_row .ui-skp-value,
+  .st-key-picker_active_song_key_row .ui-skp-locked,
+  .st-key-picker_active_song_practice_key_row [data-testid="stSelectbox"] input[role="combobox"] { font-size: 1.25rem !important; }
+  .st-key-picker_active_song_key_row .ui-skp-value,
+  .st-key-picker_active_song_key_row .ui-skp-locked,
+  .st-key-picker_active_song_practice_key_row [data-testid="stSelectbox"] .react-aria-ComboBox [role="group"] { height: 46px; min-height: 46px; }
+  .st-key-picker_active_song_key_row .ui-song-library-genre-chips-label { min-height: 0; }
+}
+@media (max-width: 380px) {
+  .st-key-picker_active_song_key_row .ui-skp-value,
+  .st-key-picker_active_song_key_row .ui-skp-locked,
+  .st-key-picker_active_song_practice_key_row [data-testid="stSelectbox"] input[role="combobox"] { font-size: 1.1rem !important; }
+}
+/* v12 header: the Favorite sits in the header's top-right slot, level with the chips. */
+body:has(.ui-sch) .st-key-picker_active_song_card_shell .st-key-picker_active_song_favorite_row {
+  top: 1.45rem;
+  right: 2.4rem;
+}
+body:has(.st-key-picker_active_song_favorite_row) .st-key-picker_active_song_card_shell .ui-sch-right {
+  margin-right: 8.4rem;
+}
+body:has(.ui-sch) .st-key-picker_active_song_favorite_row button:not([kind="primary"]) {
+  background: rgba(2, 6, 23, 0.3) !important;
+  border: 1px solid rgba(255, 255, 255, 0.4) !important;
+  color: #ffffff !important;
+}
+@container sch (max-width: 820px) {
+  body:has(.st-key-picker_active_song_favorite_row) .st-key-picker_active_song_card_shell .ui-sch-right {
+    margin-right: 8.75rem;
+  }
+}
+@media (max-width: 720px) {
+  body:has(.ui-sch) .st-key-picker_active_song_card_shell .st-key-picker_active_song_favorite_row {
+    top: 0.85rem;
+    right: 1.6rem;
+  }
+  /* Phone: the status pill has its own row; the Favorite sits at its right end. */
+  body:has(.st-key-picker_active_song_favorite_row) .st-key-picker_active_song_card_shell .ui-sch-right {
+    margin-right: 0;
+    padding-right: 7rem;
+  }
 }
 .st-key-picker_active_song_favorite_row button[kind="primary"] p {
   color: #3b2300 !important;
@@ -3191,6 +3383,47 @@ div[class*="st-key-cpl_chord_pick_grid"] [data-testid="stColumn"] > div {
     _inject_mobile_m7_finish_density()
     _inject_genre_filter_pill_chrome()
     _inject_studio_history_nav_pin_script()
+    st.markdown("<style>" + _purple_sidebar_css() + "</style>", unsafe_allow_html=True)
+
+
+def _purple_sidebar_css() -> str:
+    """Visual-only sidebar treatment using the brand header's #312e81 stop."""
+    return """
+[data-testid="stSidebar"] { background: #312e81; }
+[data-testid="stSidebar"] [data-testid="stSidebarContent"],
+[data-testid="stSidebar"] [data-testid="stSidebarHeader"],
+[data-testid="stSidebar"] [data-testid="stSidebarUserContent"] { background: transparent; }
+[data-testid="stSidebar"] label,
+[data-testid="stSidebar"] [data-testid="stWidgetLabel"] p,
+[data-testid="stSidebar"] .stCaption,
+[data-testid="stSidebar"] p[data-testid="stCaptionContainer"] { color: #e0e7ff !important; }
+/* These existing light setup panels retain dark, readable copy. */
+[data-testid="stSidebar"] .ui-ctrl-section-body label,
+[data-testid="stSidebar"] .ui-ctrl-section-body [data-testid="stWidgetLabel"] p,
+[data-testid="stSidebar"] .ui-ctrl-section-body .stCaption { color: #1e293b !important; }
+[data-testid="stSidebar"] [data-testid="stExpander"] {
+  background: rgba(255,255,255,0.06); border-color: rgba(199,210,254,0.35);
+}
+[data-testid="stSidebar"] [data-testid="stSidebarUserContent"] button[data-testid="stBaseButton-secondary"] {
+  background: #454199 !important; border-color: #818cf8 !important;
+}
+[data-testid="stSidebar"] [data-testid="stSidebarUserContent"] button[data-testid="stBaseButton-secondary"],
+[data-testid="stSidebar"] [data-testid="stSidebarUserContent"] button[data-testid="stBaseButton-secondary"] * {
+  color: #eef2ff !important;
+}
+[data-testid="stSidebar"] [data-testid="stSidebarUserContent"] button:disabled {
+  background: #3b387f !important; border-color: #68639e !important; opacity: 1 !important;
+}
+[data-testid="stSidebar"] [data-testid="stSidebarUserContent"] button:disabled,
+[data-testid="stSidebar"] [data-testid="stSidebarUserContent"] button:disabled * { color: #c7c4e6 !important; }
+[data-testid="stSidebar"] button[aria-label^="Help for"] svg { color: #93c5fd !important; }
+[data-testid="stSidebar"] button:not(:disabled):hover { box-shadow: 0 0 0 2px #93c5fd; }
+[data-testid="stSidebar"] button:focus-visible,
+[data-testid="stSidebar"] [data-baseweb="select"]:focus-within,
+[data-testid="stSidebar"] [data-testid="stSelectbox"]:focus-within {
+  outline: 2px solid #facc15; outline-offset: 2px;
+}
+"""
 
 
 def _inject_genre_filter_pill_chrome() -> None:
@@ -7599,7 +7832,7 @@ div[data-testid="stTabs"] [data-baseweb="tab-highlight"] {
 
 /* ---- Sidebar — slightly cleaner gradient + spacing ---- */
 [data-testid="stSidebar"] {
-  background: linear-gradient(180deg, #0b1220 0%, #111827 50%, #1e293b 100%);
+  background: #312e81; /* Existing brand-header purple. */
   border-right: 1px solid rgba(255,255,255,0.04);
 }
 [data-testid="stSidebar"] > div:first-child { padding-top: 0.75rem; }
@@ -8837,7 +9070,7 @@ def _brand_emblem_data_uri() -> str:
     import base64
     from pathlib import Path
 
-    png_path = Path(__file__).resolve().parent / "static" / "branding" / "mpc_logo_emblem.png"
+    png_path = Path(__file__).resolve().parent / "static" / "branding" / "mpc_logo_emblem_256.png"
     try:
         encoded = base64.b64encode(png_path.read_bytes()).decode("ascii")
     except OSError:
@@ -10270,6 +10503,7 @@ def sidebar_goto_song_selection(*, on_navigate: Any) -> None:
 
 
 STUDIO_PAGE_META: dict[str, dict[str, str]] = {
+    "home": {"label": "Home", "icon": page_feature_icon("home"), "nav_class": "home"},
     "practice": {"label": "Practice", "icon": page_feature_icon("practice"), "nav_class": "practice"},
     "picker": {"label": "Song Selection", "icon": page_feature_icon("picker"), "nav_class": "picker"},
     "backing": {"label": "Backing Track", "icon": page_feature_icon("backing"), "nav_class": "backing"},
@@ -10284,6 +10518,7 @@ STUDIO_PAGE_META: dict[str, dict[str, str]] = {
 
 # Canonical page accent colors (SSOT for headers + active nav treatment).
 STUDIO_PAGE_ACCENTS: dict[str, str] = {
+    "home": "#312e81",
     "practice": "#dc2626",
     "picker": "#4f46e5",
     "backing": "#2563eb",
@@ -10448,6 +10683,13 @@ def _studio_page_active_nav_css() -> str:
 
 OPENAI_PAGE_ID = "openai"
 
+# Where a launch lands when nothing else decides. Owned by studio_nav_state so the
+# landing page has one definition; the fallback keeps app_ui importable alone.
+try:
+    from studio_nav_state import DEFAULT_STUDIO_PAGE as _DEFAULT_STUDIO_PAGE
+except ImportError:  # pragma: no cover - studio_nav_state always ships with app_ui
+    _DEFAULT_STUDIO_PAGE = "home"
+
 STUDIO_PAGES: list[tuple[str, str]] = [
     (page_id, f"{meta['icon']} {meta['label']}")
     for page_id, meta in STUDIO_PAGE_META.items()
@@ -10471,6 +10713,7 @@ QUICK_NAV_DIAG_KEY = "_quick_nav_render_diag"
 _QUICK_NAV_RENDERED_THIS_EXEC = False
 _MUSIC_INSIGHT_RENDERED_THIS_EXEC = False
 SIMPLE_NAV_PAGE_IDS: list[str] = [
+    "home",
     "practice",
     "picker",
     "backing",
@@ -10482,7 +10725,7 @@ SIMPLE_NAV_PAGE_IDS: list[str] = [
     "log",
 ]
 
-QUICK_NAV_ROW_PRIMARY: list[str] = ["practice", "picker", "backing", "custom"]
+QUICK_NAV_ROW_PRIMARY: list[str] = ["home", "practice", "picker", "backing", "custom"]
 QUICK_NAV_ROW_SECONDARY: list[str] = ["composer", "creative", "analysis", "multitrack", "log"]
 
 
@@ -10593,6 +10836,7 @@ def navigate_studio_page(session_state: Any, page_id: str) -> bool:
 
 
 _NAV_COMPACT_TITLE: dict[str, str] = {
+    "home": "Home",
     "practice": "Practice",
     "picker": "Songs",
     "backing": "Backing",
@@ -11093,7 +11337,9 @@ def _resolve_nav_page_ids(
     return page_ids
 
 
-def ensure_studio_page(session_state: dict[str, Any], default: str = "practice") -> str:
+def ensure_studio_page(
+    session_state: dict[str, Any], default: str = _DEFAULT_STUDIO_PAGE
+) -> str:
     try:
         from studio_nav_state import bootstrap_studio_page_session, canonical_studio_page
 

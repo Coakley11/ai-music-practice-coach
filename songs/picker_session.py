@@ -110,6 +110,12 @@ def compose_browse_results(
 ) -> list[dict[str, Any]]:
     """Compose Search union Genres union Favorites with canonical pick-key deduplication.
 
+    Browse is a *discovery* list the musician builds up: every active criterion contributes its matches and
+    the union is de-duplicated, so a song that matches several criteria still appears once. With **no**
+    criterion active the list is empty - opening Songs, or clearing the last filter, never dumps the whole
+    catalog into the browse list. (The Active Song dropdown is a separate control and always covers the
+    full catalog.)
+
     ``excluded_pick_keys`` are the user's temporary per-result X removals: they only hide rows from this
     composed view, whichever source(s) contributed them.
     """
@@ -129,9 +135,7 @@ def compose_browse_results(
             )
 
     contributors: list[dict[str, Any]] = []
-    if not any_source:
-        contributors.extend(rows)
-    else:
+    if any_source:
         if search_active:
             contributors.extend(search_records(rows, str(query), limit=max(500, len(rows))))
         if selected_genres:
@@ -256,3 +260,17 @@ def genre_filter_widget_key(genre: str) -> str:
     import re
 
     return re.sub(r"[^a-zA-Z0-9_]", "_", str(genre or "genre"))[:48] or "genre"
+
+
+def apply_home_catalog_request(session_state, available_genres):
+    """Establish one intentional Home view before widgets; ordinary union is unchanged."""
+    requested = session_state.pop("_home_catalog_request", None)
+    if requested is None:
+        return False
+    request_clear_browse_filters(session_state)
+    apply_picker_session_resets(session_state)
+    session_state[WORKSPACE_GENRE_FILTERS_KEY] = (
+        list(available_genres) if requested == "all" else [requested]
+    )
+    _save_picker_page_snapshot(session_state)
+    return True

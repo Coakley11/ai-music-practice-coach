@@ -2706,6 +2706,37 @@ def queue_previous_catalog_restore(st: Any) -> None:
     st.session_state[PENDING_PREVIOUS_CATALOG_RESTORE_KEY] = True
 
 
+def _commit_explicit_catalog_restore(
+    session_state: dict[str, Any],
+    pick_key: str,
+    *,
+    writer: str,
+) -> None:
+    """Mark a restored catalog song as the explicitly committed pick (Load Last Song).
+
+    Mirrors what ``apply_explicit_catalog_dropdown_pick`` leaves behind for a normal click: the
+    committed pick, the restore pin, and the picker dropdown aliases. Runs before widgets, so writing
+    ``matching_song_dropdown`` here is safe.
+    """
+    from songs.state import EXPLICIT_CATALOG_PICK_COMMITTED_KEY, SELECTED_SONG_STATE_KEY
+
+    pick = str(pick_key or "").strip()
+    if not _pick_key_is_catalog(pick):
+        return
+    session_state[EXPLICIT_CATALOG_PICK_COMMITTED_KEY] = pick
+    try:
+        sel = session_state.get(SELECTED_SONG_STATE_KEY)
+        pin_catalog_restore_identity(
+            session_state,
+            pick,
+            sel if isinstance(sel, dict) else None,
+            writer=writer,
+        )
+    except Exception:
+        pass
+    pin_catalog_pick_aliases(session_state)
+
+
 def apply_pending_previous_catalog_restore_before_widgets(
     st: Any,
     *,
@@ -2723,10 +2754,17 @@ def apply_pending_previous_catalog_restore_before_widgets(
             return False
         # This is an explicit Now Editing choice, not a passive restore/reclaimer.
         begin_explicit_catalog_selection(st.session_state)
-        return activate_catalog_song_for_backing(
+        applied = activate_catalog_song_for_backing(
             st, pick, reason="last_catalog_restore", invalidate_backing=invalidate_backing,
             song_picker_catalog=song_picker_catalog,
         ) is not None
+        if applied:
+            # Record the same explicit-pick bookkeeping a dropdown / result click leaves behind.
+            # Without it the identity reconciler still sees the song we came FROM as the last
+            # explicitly committed pick and syncs the active song straight back to it
+            # (``reconcile_pin_blocked``), so Load Last Song appeared to do nothing at all.
+            _commit_explicit_catalog_restore(st.session_state, pick, writer="last_catalog_restore")
+        return applied
     return restore_previous_catalog_song(
         st,
         song_picker_catalog=song_picker_catalog,

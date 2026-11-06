@@ -333,6 +333,12 @@ def log_practice_session_started(
         "source_id": ctx.get("source_id", ""),
         "practice_key": ctx.get("practice_key", ""),
         "practice_mode": mode,
+        # Capture factual restoration fields now; Home must never infer these
+        # later from whichever instrument/song happens to be active.
+        "focus": str(st.session_state.get("focus") or ""),
+        "selected_transposing_instrument": str(st.session_state.get("selected_transposing_instrument") or ""),
+        "original_key": str((st.session_state.get("selected_song") or {}).get("key") or ""),
+        **{name: st.session_state[name] for name in ("guitar_capo_fret", "guitar_capo_shape_key") if name in st.session_state},
         "backing_active": bool(backing_active),
         **_key_cycling_context(st),
     }
@@ -340,7 +346,8 @@ def log_practice_session_started(
     signature = tuple(ctx.get(k, "") for k in (
         "source_type", "source_id", "song", "instrument", "practice_key"
     ))
-    signature += (str(st.session_state.get("_suite_active_workspace_id") or ""),)
+    signature += (str(st.session_state.get("_suite_active_workspace_id") or ""),
+                  metrics["selected_transposing_instrument"], metrics["focus"])
     flag = "_activity_practice_context"
     prior = st.session_state.get(flag)
     prior = prior if isinstance(prior, dict) and prior.get("signature") == signature else {}

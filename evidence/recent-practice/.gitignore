@@ -1,0 +1,17 @@
+*
+!.gitignore
+!REPORT.md
+!accepted-tests.txt
+!browser-results.json
+!browser-mobile-results.json
+!browser-fixture.json
+!all-the-things-fixture.json
+!before-shallow.png
+!before-all-the-things.png
+!after-songs-synchronized.png
+!after-recent-practice.png
+!mobile-resume.png
+!browser_mobile.py
+!browser_final.py
+!observe_app.py
+!resources-final.json

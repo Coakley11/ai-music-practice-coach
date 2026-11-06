@@ -25,7 +25,7 @@ from music_coach_ami import scale_pattern_harmony as sph
 
 LEVELS = ("Beginner", "Intermediate", "Advanced")
 FAMILIES = ("long_tones", "scale", "intervals", "articulation")
-FAMILY_LABEL = {"long_tones": "Long tones", "scale": "Scale", "intervals": "Intervals", "articulation": "Articulation"}
+FAMILY_LABEL = {"long_tones": "Long tones", "scale": "Scale", "intervals": "Intervals", "articulation": "Articulation", "guide_tones": "Guide tones"}
 INTERVALS = {"seconds": 1, "thirds": 2, "fourths": 3, "fifths": 4, "sixths": 5, "sevenths": 6, "octaves": 7}   # scale steps
 INTERVAL_SINGULAR = {"seconds": "second", "thirds": "third", "fourths": "fourth", "fifths": "fifth", "sixths": "sixth", "sevenths": "seventh",
                      "octaves": "octave"}
@@ -211,6 +211,7 @@ class Note:
     dur: str                # whole | half | quarter | eighth | sixteenth
     art: str = ""           # '', 'staccato', 'accent', 'tenuto' (a slur is carried by ``slur``)
     slur: int = 0
+    chord: str = ""         # the chord symbol printed above this note (song-aware exercises); '' for none
 
     @property
     def rest(self) -> bool:
@@ -518,7 +519,7 @@ def to_events(notes: list[Note]) -> tuple[Any, int]:
         events.append(MusicalEvent(
             spelled=n.spelled, octave=n.octave, duration=f"rest_{n.dur}" if n.rest else n.dur, bar_index=bar, beat=float(pos) + 1.0,
             articulation="" if n.rest else art, domain="written", slur_group=0 if n.rest else n.slur,
-            pitch_class=None if n.rest else sph.pc_of(n.spelled)))
+            pitch_class=None if n.rest else sph.pc_of(n.spelled), chord=n.chord))
         pos += n.beats
         if pos == BEATS_PER_BAR:
             bar, pos = bar + 1, Fraction(0)

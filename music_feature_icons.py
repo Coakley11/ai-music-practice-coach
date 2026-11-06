@@ -19,6 +19,7 @@ CLARINET_ICON_SVG = """<svg class="ui-instrument-icon-clarinet" xmlns="http://ww
 
 # Major product concepts — keep values unique across this map.
 FEATURE_ICONS: dict[str, str] = {
+    "home": "🏠",
     "practice": "🎯",
     "practice_setup": "🎸",
     "practice_focus": "🔍",
@@ -148,6 +149,40 @@ SEMANTIC_FIELD_ICONS: dict[str, str] = {
 SEMANTIC_FIELD_ICONS["source"] = SEMANTIC_FIELD_ICONS["source_other"]
 
 
+# One icon per *action*, so the same verb looks the same everywhere (Multitrack export, the
+# Composition melody editor, and anywhere else that needs a save / delete / add button).
+ACTION_ICONS: dict[str, str] = {
+    "save": "💾",        # floppy disk
+    "download": "⬇️",
+    "upload": "⬆️",
+    "create_mix": "🎛️",   # mixer slider
+    "new": "➕",             # plus
+    "add": "➕",
+    "delete": "🗑️",       # wastebasket
+    "edit": "✏️",             # pencil
+    "apply_text": "📝",  # memo
+    "preview": "▶️",          # play
+    # Accept and Continue already had a settled look in Composition Studio before this map existed
+    # ("✔️ Accept changes", "Continue →"); the map follows that rather than introducing a
+    # second check mark or a second arrow.
+    "accept": "✔️",           # heavy check mark
+    "reset": "↩️",            # undo arrow
+    "continue": "→",        # trailing arrow, as the Continue buttons already use
+    "feel": "✨",            # same glyph as the style / groove field badge
+}
+
+
+def semantic_action_icon(action: str) -> str:
+    """Icon for a button verb (``save``, ``delete``, ``preview`` ...). Empty for an unknown verb."""
+    return ACTION_ICONS.get(str(action or "").strip().lower(), "")
+
+
+def action_label(action: str, text: str) -> str:
+    """``"<icon> <text>"`` when the verb has an icon, otherwise the text unchanged."""
+    icon = semantic_action_icon(action)
+    return f"{icon} {text}" if icon else str(text)
+
+
 def _normalize_instrument_family(instrument: str) -> str:
     name = str(instrument or "").strip()
     if not name:
@@ -210,6 +245,7 @@ def semantic_field_icon(field: str, *, instrument: str = "") -> str:
 
 # Studio page id → concept key (nav, headers, compact buttons).
 PAGE_FEATURE_KEYS: dict[str, str] = {
+    "home": "home",
     "practice": "practice",
     "picker": "songs",
     "backing": "backing",

@@ -112,9 +112,9 @@ def test_card_renders_the_owner_widget_no_mirror() -> None:
     assert 'globals().get("_sidebar_pk_proxy")' in fn
     assert '_render_backing_pk_owner_select(proxy, options, label_visibility="collapsed")' in fn
     assert "conventional_key_options(" in fn
-    # Without an owner widget this run, the keys show as text, as before.
+    # Without an owner widget this run (e.g. Fixed Key), the keys show as text.
     assert "if not proxy or proxy.get(\"rendered\"):" in fn
-    assert "active_song_key_row_html(original_key, practice_key)" in fn
+    assert "_backing_card_key_text_row(original_key, practice_key" in fn
     # No second widget, no hide rule: nothing to mirror.
     assert "backing_card_practice_key::" not in APP
     assert "_backing_card_practice_key_changed" not in APP

@@ -85,7 +85,10 @@ def test_composition_row_and_source_return(app):
     at=app
     r=at.radio(key='song_picker_active_source');r.set_value(next(o for o in r.options if 'Composition' in o)).run()
     original=at.session_state['composer_active_document']['key'] if 'key' in at.session_state['composer_active_document'] else None
-    control=card(at);new=next(x for x in control.options if x!=control.value)
+    control=card(at)
+    # The card shows readable names (D♭ major); AppTest options are those labels, values are key tokens.
+    from song_card_keys import key_token_from_name
+    new=key_token_from_name(next(x for x in control.options if x!=control.format_func(control.value)))
     change(at,new,'paused')
     if original is not None:assert at.session_state['composer_active_document']['key']==original
     r=at.radio(key='song_picker_active_source');r.set_value(next(o for o in r.options if 'catalog' in o.lower())).run()
