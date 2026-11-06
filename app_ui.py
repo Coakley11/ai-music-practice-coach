@@ -1725,6 +1725,11 @@ body:has(.st-key-backing_card_controls) .ui-backing-active-song {
   .st-key-backing_card_key_row .ui-skp-value,
   .st-key-backing_card_key_row .ui-skp-locked,
   .st-key-backing_card_key_row [data-testid="stSelectbox"] input[role="combobox"] { font-size: 1rem !important; }
+  /* The font cannot shrink further, so the room comes from the columns' side padding. */
+  .st-key-backing_card_controls .st-key-backing_card_key_row [data-testid="stHorizontalBlock"] > [data-testid="stColumn"],
+  .st-key-backing_card_controls .st-key-backing_card_key_row [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:first-child {
+    padding-left: 8px; padding-right: 8px;
+  }
 }
 @container backing-main (max-width: 800px) {
   body:has(.st-key-backing_card_controls) .ui-backing-active-song {
