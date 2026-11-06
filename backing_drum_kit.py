@@ -38,7 +38,7 @@ _METAL = (205.3, 304.4, 369.6, 522.7, 540.0, 800.0)  # six square waves, the cla
 
 _TUNING: dict[str, dict[str, float]] = {
     "default": {"kick_hz": 48.0, "kick_sweep": 72.0, "kick_decay": 9.0, "snare_hz": 185.0, "snare_decay": 24.0, "wires": 0.75, "hat_lo": 6500.0},
-    "Rock groove": {"kick_hz": 50.0, "kick_sweep": 88.0, "kick_decay": 8.0, "snare_hz": 175.0, "snare_decay": 18.0, "wires": 0.9, "hat_lo": 6000.0},
+    "Rock groove": {"beater": 1.8, "kick_hz": 50.0, "kick_sweep": 88.0, "kick_decay": 8.0, "snare_hz": 175.0, "snare_decay": 18.0, "wires": 0.9, "hat_lo": 6000.0},
     "Funk groove": {"kick_hz": 50.0, "kick_sweep": 80.0, "kick_decay": 12.0, "snare_hz": 215.0, "snare_decay": 30.0, "wires": 0.8, "hat_lo": 7000.0},
     "Jazz swing": {"kick_hz": 58.0, "kick_sweep": 40.0, "kick_decay": 10.0, "snare_hz": 240.0, "snare_decay": 26.0, "wires": 0.45, "hat_lo": 6000.0},
     "Bossa nova": {"kick_hz": 56.0, "kick_sweep": 36.0, "kick_decay": 11.0, "snare_hz": 240.0, "snare_decay": 30.0, "wires": 0.35, "hat_lo": 7000.0},
@@ -76,13 +76,13 @@ def _synth(voice: str, vel: float, rr: int, sr: int, tune: dict[str, float], ext
         body = np.sin(2 * np.pi * np.cumsum(f) / sr) * np.exp(-t * tune["kick_decay"])
         sub = 0.35 * np.sin(2 * np.pi * tune["kick_hz"] * t) * np.exp(-t * 6)
         beater = _bp(rng.normal(0, 1, n), 1500, 5000, sr) * np.exp(-t * 300)
-        return _unit(body + sub + (0.25 + 0.3 * vel) * beater, sr)
+        return _unit(body + sub + tune.get("beater", 1.0) * (0.25 + 0.3 * vel) * beater, sr)
     if voice == "snare":
         n = int(0.30 * sr)
         t = np.arange(n) / sr
         hz = tune["snare_hz"] * detune
         body = np.sin(2 * np.pi * hz * t) * np.exp(-t * 28) + 0.6 * np.sin(2 * np.pi * hz * 1.78 * t) * np.exp(-t * 40)
-        wires = _bp(rng.normal(0, 1, n), 1800 + 1500 * vel, 9500, sr) * np.exp(-t * tune["snare_decay"])
+        wires = _bp(rng.normal(0, 1, n), 1800 + 1500 * vel, 12500, sr) * np.exp(-t * tune["snare_decay"])
         # Wires keep rattling after the head stops: a quiet, slower layer behind the attack.
         rattle = _bp(rng.normal(0, 1, n), 2500, 7000, sr) * np.exp(-t * 11) * 0.16
         click = _bp(rng.normal(0, 1, n), 3000, 12000, sr) * np.exp(-t * 400)
@@ -109,12 +109,14 @@ def _synth(voice: str, vel: float, rr: int, sr: int, tune: dict[str, float], ext
         ping = sum(a * np.sin(2 * np.pi * f * detune * t) for f, a in ((2380, 1.0), (3710, 0.6), (5230, 0.35), (7120, 0.2)))
         wash = _bp(rng.normal(0, 1, n), 4500, 13000, sr)
         tick = _bp(rng.normal(0, 1, n), 2500, 9000, sr) * np.exp(-t * 350)
-        return _unit(ping * np.exp(-t * 13) * (0.5 + 0.5 * vel) + wash * np.exp(-t * 5) * 0.55 + (0.5 + 0.5 * vel) * tick, sr)
+        return _unit(ping * np.exp(-t * 13) * (0.5 + 0.5 * vel) + wash * np.exp(-t * 5) * 0.28 + (0.5 + 0.5 * vel) * tick, sr)
     if voice == "rim":
         n = int(0.05 * sr)
         t = np.arange(n) / sr
-        wood = np.sin(2 * np.pi * 480 * detune * t) * np.exp(-t * 130) + 0.8 * np.sin(2 * np.pi * 1250 * detune * t) * np.exp(-t * 190)
-        return _unit(wood + _bp(rng.normal(0, 1, n), 2000, 6500, sr) * np.exp(-t * 320) * 0.55, sr)
+        # Stick on the rim: mostly the bright crack, with a little of the drum's wood beneath it.
+        wood = 0.35 * np.sin(2 * np.pi * 480 * detune * t) * np.exp(-t * 130) + 0.5 * np.sin(2 * np.pi * 1250 * detune * t) * np.exp(-t * 190)
+        crack = _bp(rng.normal(0, 1, n), 1800, 11000, sr) * np.exp(-t * 170)
+        return _unit(wood + 1.2 * crack, sr)
     if voice == "tom":
         n = int(0.45 * sr)
         t = np.arange(n) / sr
