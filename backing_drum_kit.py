@@ -24,6 +24,8 @@ from typing import Any
 import numpy as np
 from scipy import signal
 
+import backing_drum_samples as _samples
+
 # Energy of each current voice at volume 1 (sum of squares / sample rate). tests/test_drum_kit.py checks these.
 _E_KICK = 0.0078
 _E_SNARE = 0.0165
@@ -34,6 +36,11 @@ _NOISE_ENERGY_PER_SEC = 0.335  # a noise hit with a linear fade, per second of i
 _CRASH_TRIM = 0.8
 # The volumes the engine uses for a full-strength hit, which set how bright a hit sounds.
 _FULL = {"kick": 0.095, "snare": 0.040, "hat": 0.012, "crash": 0.034, "ride": 0.185, "rim": 0.028, "tom": 0.060}
+# Recorded hits against today's balance in the full band: real hats carry less top end per unit of energy
+# than white noise.
+_RECORDED_TRIM = {"closed": 2.0, "half": 2.0, "three": 1.8, "open": 1.6, "pedal": 1.0, "ride": 0.75, "bell": 0.75, "crash": 1.1, "sizzle": 1.1, "rim": 1.5}
+_HAT_VOICES = frozenset({"closed", "half", "three", "open", "pedal"})
+_RINGING_HATS = frozenset({"half", "three", "open"})
 _METAL = (205.3, 304.4, 369.6, 522.7, 540.0, 800.0)  # six square waves, the classic cymbal cluster
 
 _TUNING: dict[str, dict[str, float]] = {
@@ -139,9 +146,12 @@ def _bucket(vel: float) -> int:
 class DrumKit:
     """One song's kit. Plays the same hit the same way on every render."""
 
-    def __init__(self, sr: int, style: str) -> None:
+    def __init__(self, sr: int, style: str, *, pack: _samples.SamplePack | None = None, defer_hats: bool = False) -> None:
         self.sr = int(sr)
         self.style = str(style)
+        self.pack = pack
+        self.defer_hats = bool(defer_hats)  # hold hi-hat hits so a closing hat can choke an open one
+        self._hats: list[tuple[np.ndarray, float, np.ndarray, float, bool]] = []
 
     def _place(self, audio: np.ndarray, start_sec: float, sample: np.ndarray, gain: float) -> None:
         start = int(start_sec * self.sr)
@@ -153,7 +163,40 @@ class DrumKit:
     def _hit(self, audio: np.ndarray, start: float, voice: str, volume: float, energy: float, seed: int, full: str, extra: float = 0.0) -> None:
         vel = min(1.0, float(volume) / _FULL[full])
         rr = abs(int(seed)) % 4
-        self._place(audio, start, _sample(voice, _bucket(vel), rr, self.sr, self.style, extra), float(volume) * float(np.sqrt(energy)))
+        recorded = self._recorded(voice, vel, seed, extra)
+        sample = recorded if recorded is not None else _sample(voice, _bucket(vel), rr, self.sr, self.style, extra)
+        gain = float(volume) * float(np.sqrt(energy))
+        if recorded is not None:
+            gain *= _RECORDED_TRIM.get(voice, 1.0)
+        if self.defer_hats and voice in _HAT_VOICES:
+            self._hats.append((audio, float(start), sample, gain, voice in _RINGING_HATS))
+        else:
+            self._place(audio, start, sample, gain)
+
+    def _recorded(self, voice: str, vel: float, seed: int, extra: float) -> np.ndarray | None:
+        if self.pack is None:
+            return None
+        name = voice
+        if voice == "tom":
+            name = "tom_high" if extra >= 200.0 else "tom_low"
+        elif voice == "snare" and self.style == "Rock groove" and vel >= 0.95:
+            name = "rimshot"  # a hard backbeat catches the rim
+        if not self.pack.has(name):
+            return None
+        return self.pack.hit(name, vel, abs(int(seed)), self.sr)
+
+    def flush(self) -> None:
+        """Play the held hi-hat hits. A ringing hat stops, with a short choke, when the next hat hit closes it."""
+        hats = sorted(self._hats, key=lambda h: h[1])
+        self._hats = []
+        fade = max(1, int(0.012 * self.sr))
+        for i, (audio, start, sample, gain, rings) in enumerate(hats):
+            if rings and i + 1 < len(hats):
+                keep = int((hats[i + 1][1] - start) * self.sr) + fade
+                if 0 < keep < len(sample):
+                    sample = sample[:keep].copy()
+                    sample[-fade:] *= np.linspace(1.0, 0.0, min(fade, len(sample)), dtype=np.float32)
+            self._place(audio, start, sample, gain)
 
     def kick(self, audio: np.ndarray, start: float, volume: float, seed: int = 0) -> None:
         self._hit(audio, start, "kick", volume, _E_KICK, seed, "kick")
@@ -172,6 +215,9 @@ class DrumKit:
     def pedal(self, audio: np.ndarray, start: float, volume: float, seed: int = 0) -> None:
         self._hit(audio, start, "pedal", volume, 0.028 * _NOISE_ENERGY_PER_SEC, seed, "hat")
 
+    def open_hat(self, audio: np.ndarray, start: float, volume: float, seed: int = 0) -> None:
+        self._hit(audio, start, "open" if self.pack is not None else "half", volume, 0.09 * _NOISE_ENERGY_PER_SEC, seed, "hat")
+
     def noise_hit(self, audio: np.ndarray, start: float, dur: float, volume: float, seed: int = 0, tone: float = 0.0) -> None:
         """The engine's general noise hit, played by the voice it stands for."""
         energy = float(dur) * _NOISE_ENERGY_PER_SEC
@@ -180,7 +226,7 @@ class DrumKit:
         elif tone >= 0.4 and dur <= 0.1:
             self._hit(audio, start, "rim", volume, _E_RIM, seed, "rim")
         elif dur >= 0.08:
-            self._hit(audio, start, "half", volume, energy, seed, "hat")
+            self._hit(audio, start, "three" if self.pack is not None else "half", volume, energy, seed, "hat")
         elif tone < 0.4 and volume >= 0.03:
             self._hit(audio, start, "snare", volume, _E_SNARE, seed, "snare")  # the stop-time crack
         else:
@@ -265,7 +311,7 @@ def play_extras(kit: DrumKit, audio: np.ndarray, hits: list[Hit], place_beat: An
         elif h.voice == "ghost":
             kit.snare(audio, t, _FULL["snare"] * h.velocity * intensity, s)
         elif h.voice == "open":
-            kit.noise_hit(audio, t, 0.09, _FULL["hat"] * h.velocity * intensity * 1.35, s)
+            kit.open_hat(audio, t, _FULL["hat"] * h.velocity * intensity * 1.35, s)
         elif h.voice == "pedal":
             kit.pedal(audio, t, _FULL["hat"] * h.velocity * intensity, s)
         elif h.voice == "tom":

@@ -1908,7 +1908,9 @@ def synthesize_chords_to_numpy(*args, **kwargs):
     if not _drum_kit.drum_kit_enabled():
         return _synthesize_chords_to_numpy(*args, **kwargs)
     sr = kwargs.get("sr", args[3] if len(args) > 3 else 44100)
-    token = _ACTIVE_DRUM_KIT.set(_drum_kit.DrumKit(int(sr), str(kwargs.get("style", "Pop groove"))))
+    folder, mode = _drum_kit._samples.pack_settings()
+    pack = _drum_kit._samples.SamplePack(folder, mode) if folder else None
+    token = _ACTIVE_DRUM_KIT.set(_drum_kit.DrumKit(int(sr), str(kwargs.get("style", "Pop groove")), pack=pack, defer_hats=True))
     try:
         return _synthesize_chords_to_numpy(*args, **kwargs)
     finally:
@@ -2907,6 +2909,10 @@ def _synthesize_chords_to_numpy(
                             beat=push_b, seed=idx * 59 + loop_seed, pulses_per_bar=pulses_per_bar,
                         )
                     beat_cursor += float(sub.weight)
+
+    _finish_kit = _ACTIVE_DRUM_KIT.get()
+    if _finish_kit is not None:
+        _finish_kit.flush()  # the held hi-hat hits, with chokes, join the drums before the mix is levelled
 
     # Keys bus level per style, relative to the rhythm section (bass + drums):
     # the old per-style comp multipliers were tuned for a sustained organ and

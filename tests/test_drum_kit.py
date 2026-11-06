@@ -173,3 +173,75 @@ def test_quiet_sections_stay_quiet(drums: str) -> None:
 
 def test_other_meters_get_no_added_notes() -> None:
     assert K.bar_extras(K.BarContext("Funk groove", 1, "verse", "", False, 3.0)) == []
+
+
+# ----- Hi-hat choke and recorded hits ---------------------------------------
+
+
+def test_a_closing_hat_chokes_an_open_one() -> None:
+    kit = K.DrumKit(SR, "Funk groove", defer_hats=True)
+    audio = np.zeros(SR * 2)
+    kit.open_hat(audio, 0.0, 0.012)
+    kit.noise_hit(audio, 0.1, 0.028, 0.001)
+    assert not np.any(audio), "hats wait so the next one can close them"
+    kit.flush()
+    just_after_choke = audio[int(0.125 * SR) : int(0.18 * SR)]
+    ringing = K.DrumKit(SR, "Funk groove")
+    free = np.zeros(SR * 2)
+    ringing.open_hat(free, 0.0, 0.012)
+    assert np.sum(just_after_choke**2) < 0.05 * np.sum(free[int(0.125 * SR) : int(0.18 * SR)] ** 2)
+
+
+def test_held_hats_all_play_after_flush() -> None:
+    kit = K.DrumKit(SR, "Pop groove", defer_hats=True)
+    audio = np.zeros(SR)
+    for i in range(4):
+        kit.noise_hit(audio, i * 0.2, 0.028, 0.012, seed=i)
+    kit.flush()
+    assert all(np.any(audio[int(i * 0.2 * SR) : int((i * 0.2 + 0.05) * SR)]) for i in range(4))
+    assert kit._hats == []
+
+
+@pytest.fixture()
+def tiny_pack(tmp_path):
+    import json
+
+    import soundfile as sf
+
+    rng = np.random.default_rng(1)
+    manifest = {}
+    for voice in ("closed", "open", "ride", "crash", "kick", "snare"):
+        names = []
+        for layer in range(2):
+            name = f"{voice}_v{layer}.flac"
+            sf.write(str(tmp_path / name), rng.normal(0, 0.1 + 0.2 * layer, SR // 2) * np.linspace(1, 0, SR // 2), SR, subtype="PCM_16", format="FLAC")
+            names.append([name])
+        manifest[voice] = names
+    (tmp_path / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    return tmp_path
+
+
+def test_cymbal_mode_records_only_the_cymbals(tiny_pack) -> None:
+    pack = K._samples.SamplePack(str(tiny_pack), "cymbals")
+    assert pack.has("closed") and pack.has("ride")
+    assert not pack.has("kick") and not pack.has("snare")
+    assert K._samples.SamplePack(str(tiny_pack), "full").has("kick")
+
+
+def test_velocity_chooses_the_recorded_layer(tiny_pack) -> None:
+    pack = K._samples.SamplePack(str(tiny_pack), "full")
+    assert not np.array_equal(pack.hit("snare", 0.1, 0, SR), pack.hit("snare", 1.0, 0, SR))
+
+
+def test_missing_voice_falls_back_to_the_synthesized_one(tiny_pack) -> None:
+    kit = K.DrumKit(SR, "Pop groove", pack=K._samples.SamplePack(str(tiny_pack), "full"))
+    audio = np.zeros(SR)
+    kit.tom(audio, 0.0, 45, 0.06)
+    assert np.any(audio)
+
+
+def test_a_pack_does_nothing_unless_the_kit_is_on(tiny_pack, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("MUSIC_DRUM_PACK_DIR", str(tiny_pack))
+    off = _render("Pop groove", monkeypatch, on=False)
+    monkeypatch.delenv("MUSIC_DRUM_PACK_DIR")
+    assert np.array_equal(off, _render("Pop groove", monkeypatch, on=False))
