@@ -1,22 +1,26 @@
-"""The improved drum kit and the style-aware drummer built on it.
+"""The recorded drum kit and the style-aware drummer built on it.
 
 Off by default: today's drum sound stays until ``MUSIC_DRUM_KIT_V2=1``. Nothing here runs otherwise.
 
-The kit replaces the sound of each hit and keeps its level: every voice is scaled to the energy the
-current voice has at the same volume, so the drums sit where they sit today. The drummer adds a few
-notes per bar, and each style has its own vocabulary:
+Each hit is a recording from the pack in ``assets/drum_kit``, shaped for the style, at the level today's
+voice has at the same volume. A voice the pack lacks falls back to the synthesized one.
 
-* Funk: ghost notes that move, kick anticipations, an open hat, a tom fill into the chorus.
-* Pop: stays simple. One tom pickup into a chorus, a rare open hat, no ghost notes.
-* Rock: toms come from its own fill; an open hat and an extra kick lift the chorus. No ghost notes.
-* Jazz: no backbeat, toms or crashes. Hi-hat foot on 2 and 4, quiet snare comping at phrase ends.
-* Bossa: the clave pattern stays exactly as written. Only the sound of the kit changes.
-* Other styles: the new sound, with no added notes.
+The drummer varies through the whole song: most bars stay plain, small moves appear more often at phrase
+ends, and a larger fill closes a section, sized by what comes next. Choices repeat for a given song and
+never follow a fixed interval. Each style has its own vocabulary:
+
+* Rock: kick pushes, snare pickups and tom fills, on a hard close-miked kick and snare.
+* Funk: moving ghost notes, open hats, short snare runs, on a tight close-miked kit.
+* Pop: stays simple, with few moves and a modest pickup into a chorus. No moving ghost notes.
+* Jazz: no backbeat. Ride, hi-hat foot on 2 and 4, quiet swung snare and kick answers, a rare bell.
+* Blues: triplet pickups at phrase ends.
+* Bossa and the styles not named: the pattern stays as written. Only the sound of the kit changes.
 """
 
 from __future__ import annotations
 
 import os
+import zlib
 from dataclasses import dataclass
 from functools import lru_cache
 from typing import Any
@@ -39,6 +43,16 @@ _FULL = {"kick": 0.095, "snare": 0.040, "hat": 0.012, "crash": 0.034, "ride": 0.
 # Recorded hits against today's balance in the full band: real hats carry less top end per unit of energy
 # than white noise.
 _RECORDED_TRIM = {"closed": 2.0, "half": 2.0, "three": 1.8, "open": 1.6, "pedal": 1.0, "ride": 0.75, "bell": 0.75, "crash": 1.1, "sizzle": 1.1, "rim": 1.5}
+# Rock and Funk use the close microphones for a harder, more direct kick and snare.
+_CLOSE_MIKED = frozenset({"Rock groove", "Funk groove"})
+# Each style's balance of the recorded kit: Rock hits harder, Jazz stays light behind the ride.
+_STYLE_TRIM: dict[str, dict[str, float]] = {
+    "Rock groove": {"kick": 1.25, "snare": 1.25, "tom": 1.15, "crash": 1.1},
+    "Funk groove": {"kick": 1.1, "snare": 1.05},
+    "Jazz swing": {"kick": 0.75, "snare": 0.8, "tom": 0.7, "pedal": 0.85},
+    "Bossa nova": {"kick": 0.85},
+    "Ballad": {"kick": 0.85, "snare": 0.85, "crash": 0.8},
+}
 _HAT_VOICES = frozenset({"closed", "half", "three", "open", "pedal"})
 _RINGING_HATS = frozenset({"half", "three", "open"})
 _METAL = (205.3, 304.4, 369.6, 522.7, 540.0, 800.0)  # six square waves, the classic cymbal cluster
@@ -151,6 +165,7 @@ class DrumKit:
         self.style = str(style)
         self.pack = pack
         self.defer_hats = bool(defer_hats)  # hold hi-hat hits so a closing hat can choke an open one
+        self._hat_rests: list[tuple[float, float]] = []
         self._hats: list[tuple[np.ndarray, float, np.ndarray, float, bool]] = []
 
     def _place(self, audio: np.ndarray, start_sec: float, sample: np.ndarray, gain: float) -> None:
@@ -167,7 +182,7 @@ class DrumKit:
         sample = recorded if recorded is not None else _sample(voice, _bucket(vel), rr, self.sr, self.style, extra)
         gain = float(volume) * float(np.sqrt(energy))
         if recorded is not None:
-            gain *= _RECORDED_TRIM.get(voice, 1.0)
+            gain *= _RECORDED_TRIM.get(voice, 1.0) * _STYLE_TRIM.get(self.style, {}).get(voice, 1.0)
         if self.defer_hats and voice in _HAT_VOICES:
             self._hats.append((audio, float(start), sample, gain, voice in _RINGING_HATS))
         else:
@@ -179,15 +194,27 @@ class DrumKit:
         name = voice
         if voice == "tom":
             name = "tom_high" if extra >= 200.0 else "tom_low"
-        elif voice == "snare" and self.style == "Rock groove" and vel >= 0.95:
-            name = "rimshot"  # a hard backbeat catches the rim
+        elif voice == "snare":
+            hard = self.style in _CLOSE_MIKED
+            if vel >= 0.95 and self.style == "Rock groove":
+                name = "rimshot_close"  # a hard backbeat catches the rim
+            elif hard and vel >= 0.5:
+                name = "snare_close"
+        elif voice == "kick" and self.style in _CLOSE_MIKED:
+            name = "kick_close"
         if not self.pack.has(name):
             return None
-        return self.pack.hit(name, vel, abs(int(seed)), self.sr)
+        return self.pack.hit(name, vel, abs(int(seed)), self.sr, self.style)
+
+    def rest_hats(self, start: float, end: float) -> None:
+        """The hands leave the hi-hat for a fill: hats held for this stretch don't play."""
+        if self.defer_hats:
+            self._hat_rests.append((float(start), float(end)))
 
     def flush(self) -> None:
         """Play the held hi-hat hits. A ringing hat stops, with a short choke, when the next hat hit closes it."""
-        hats = sorted(self._hats, key=lambda h: h[1])
+        rests, self._hat_rests = self._hat_rests, []
+        hats = sorted((h for h in self._hats if not any(a <= h[1] < b for a, b in rests)), key=lambda h: h[1])
         self._hats = []
         fade = max(1, int(0.012 * self.sr))
         for i, (audio, start, sample, gain, rings) in enumerate(hats):
@@ -214,6 +241,9 @@ class DrumKit:
 
     def pedal(self, audio: np.ndarray, start: float, volume: float, seed: int = 0) -> None:
         self._hit(audio, start, "pedal", volume, 0.028 * _NOISE_ENERGY_PER_SEC, seed, "hat")
+
+    def bell(self, audio: np.ndarray, start: float, volume: float, seed: int = 0) -> None:
+        self._hit(audio, start, "bell" if self.pack is not None else "ride", volume, _E_RIDE, seed, "ride")
 
     def open_hat(self, audio: np.ndarray, start: float, volume: float, seed: int = 0) -> None:
         self._hit(audio, start, "open" if self.pack is not None else "half", volume, 0.09 * _NOISE_ENERGY_PER_SEC, seed, "hat")
@@ -252,57 +282,145 @@ class BarContext:
     ends_section: bool
     pulses_per_bar: float
     drums: str = ""  # the section's drum texture, such as "hats" or "minimal"
+    song_seed: int = 0  # the same song plays the same drumming on every render
+    bar_index: int = 0  # the bar's place in the whole render, repeats included
 
 
 @dataclass(frozen=True)
 class Hit:
     beat: float
-    voice: str  # kick / snare / open / pedal / tom
+    voice: str  # kick / snare / ghost / open / pedal / tom / crash / bell
     velocity: float  # 0-1 of a full hit
     midi: float = 0.0
 
 
 _QUIET_TEXTURES = {"hats", "minimal", "ending"}
-_TOM_FILL = {"Funk groove": ((3.0, 50), (3.25, 47), (3.5, 43), (3.75, 40)), "Pop groove": ((3.5, 45), (3.75, 40))}
+_TOM_HIGH, _TOM_MID, _TOM_LOW = 50, 45, 40
 
 
-def replaces_section_fill(style: str, next_role: str) -> bool:
-    """True when the drummer plays its own fill, so the engine's fill for this bar stays out."""
-    return style in _TOM_FILL and next_role == "chorus"
+def _roll(ctx: BarContext, salt: int) -> float:
+    """A repeatable number in 0-1 for this bar: varied through the song, identical on every render."""
+    return (zlib.crc32(f"{ctx.song_seed}:{ctx.bar_index}:{salt}".encode()) & 0xFFFF) / 0xFFFF
+
+
+def _pick(ctx: BarContext, salt: int, options: list) -> Any:
+    return options[int(_roll(ctx, salt) * len(options)) % len(options)]
+
+
+def _snare_run(beats: list[float], top: float = 0.62) -> list[Hit]:
+    n = max(1, len(beats))
+    return [Hit(b, "ghost", 0.3 + (top - 0.3) * (i + 1) / n) for i, b in enumerate(beats)]
+
+
+def _tom_run(beats: list[float], top: float = 0.8) -> list[Hit]:
+    n = max(1, len(beats))
+    pitches = [_TOM_HIGH, _TOM_MID, _TOM_LOW]
+    return [Hit(b, "tom", 0.55 + (top - 0.55) * (i + 1) / n, float(pitches[min(len(pitches) - 1, i * len(pitches) // n)])) for i, b in enumerate(beats)]
+
+
+def _section_fill(ctx: BarContext) -> list[Hit]:
+    """The larger move that closes a section, sized by what comes next and never the same one every time."""
+    style, into_chorus = ctx.style, ctx.next_role == "chorus"
+    if style == "Pop groove":
+        return _pick(ctx, 11, [_tom_run([3.5, 3.75], 0.7), _snare_run([3.5, 3.75], 0.6) + [Hit(3.75, "kick", 0.5)]]) if into_chorus else _snare_run([3.75], 0.45)
+    if style == "Rock groove":
+        if into_chorus:
+            return _pick(ctx, 12, [_tom_run([2.0, 2.5, 3.0, 3.25, 3.5, 3.75], 0.95), _snare_run([3.0, 3.25], 0.8) + _tom_run([3.5, 3.75], 0.95), _tom_run([3.0, 3.25, 3.5, 3.75], 0.9)])
+        return _pick(ctx, 13, [_snare_run([3.0, 3.5, 3.75], 0.75), _tom_run([3.5, 3.75], 0.75)])
+    if style == "Funk groove":
+        if into_chorus:
+            return _pick(ctx, 14, [_tom_run([3.0, 3.25, 3.5, 3.75], 0.85), _snare_run([2.75, 3.0, 3.25, 3.5], 0.7) + _tom_run([3.75], 0.8)])
+        return _pick(ctx, 15, [_snare_run([3.25, 3.5, 3.75], 0.6), [Hit(3.75, "kick", 0.6)] + _snare_run([3.5], 0.5)])
+    if style == "Jazz swing":
+        # A quiet swung setup: snare and a low kick answer, never a rock fill.
+        return _pick(ctx, 16, [_snare_run([2.5, 3.5], 0.42) + [Hit(3.5, "kick", 0.3)], _snare_run([3.0, 3.5], 0.46)])
+    if style == "Blues groove":
+        return _pick(ctx, 17, [_snare_run([3.0, 3.33, 3.67], 0.6), _tom_run([3.33, 3.67], 0.65)])
+    return []
+
+
+def _phrase_move(ctx: BarContext) -> list[Hit]:
+    """A small change inside a section. Most bars stay plain, so the groove stays easy to play over."""
+    style, bar = ctx.style, int(ctx.bar_in_section)
+    phrase_end = bar % 4 == 3
+    chorus = ctx.role == "chorus"
+    # Chance of a move: higher where a real drummer would play one, and low straight after a bar with one.
+    chance = {"Pop groove": 0.16, "Rock groove": 0.24, "Funk groove": 0.34, "Jazz swing": 0.3, "Blues groove": 0.22}.get(style, 0.0)
+    if phrase_end:
+        chance *= 2.4
+    if chorus:
+        chance *= 1.25
+    if bar == 0:
+        return []
+    if _roll(ctx, 1) >= chance:
+        return []
+    if style == "Pop groove":
+        return _pick(ctx, 2, [[Hit(3.5, "kick", 0.6)], _snare_run([3.75], 0.45), [Hit(3.5, "open", 0.5)], [Hit(1.5, "kick", 0.55)]])
+    if style == "Rock groove":
+        options = [[Hit(2.5, "kick", 0.7)], [Hit(3.5, "open", 0.65)], _snare_run([3.5, 3.75], 0.65), [Hit(1.5, "kick", 0.65), Hit(3.5, "kick", 0.6)]]
+        if phrase_end:
+            options += [_tom_run([3.5, 3.75], 0.75), _snare_run([3.0, 3.25, 3.5, 3.75], 0.7)]
+        return _pick(ctx, 3, options)
+    if style == "Funk groove":
+        options = [_snare_run([2.75], 0.3), [Hit(3.75, "kick", 0.7)], [Hit(1.5, "open", 0.5)], _snare_run([1.75, 2.25], 0.3), [Hit(3.5, "open", 0.55)]]
+        if phrase_end:
+            options += [_snare_run([3.25, 3.5, 3.75], 0.55), _tom_run([3.5, 3.75], 0.7)]
+        return _pick(ctx, 4, options)
+    if style == "Jazz swing":
+        options = [_snare_run([2.5], 0.3), _snare_run([1.5, 3.5], 0.34), [Hit(2.5, "kick", 0.28)], [Hit(0.0, "bell", 0.35)]]
+        if phrase_end:
+            options += [_snare_run([2.5, 3.5], 0.4), _snare_run([3.5], 0.38) + [Hit(3.5, "kick", 0.3)]]
+        return _pick(ctx, 5, options)
+    if style == "Blues groove":
+        return _pick(ctx, 6, [[Hit(3.67, "kick", 0.55)], _snare_run([3.67], 0.4), _snare_run([3.33, 3.67], 0.5)])
+    return []
+
+
+def _style_bed(ctx: BarContext) -> list[Hit]:
+    """What this style always adds under the moves."""
+    style, bar = ctx.style, int(ctx.bar_in_section)
+    if style == "Jazz swing":
+        return [Hit(1.0, "pedal", 0.5), Hit(3.0, "pedal", 0.5)]
+    if style == "Funk groove":
+        return [Hit(2.75, "ghost", 0.26)] if bar % 2 == 1 and _roll(ctx, 7) < 0.7 else []
+    if style == "Rock groove" and ctx.role == "chorus" and bar % 2 == 1 and not ctx.ends_section:
+        return [Hit(3.5, "open", 0.6)]
+    return []
+
+
+def replaces_section_fill(style: str, next_role: str = "") -> bool:
+    """True where the drummer plays its own fills, so the engine's fixed fill for the bar stays out."""
+    return style in {"Pop groove", "Rock groove", "Funk groove", "Jazz swing", "Blues groove"}
 
 
 def bar_extras(ctx: BarContext) -> list[Hit]:
-    """The notes this style's drummer adds to the bar. Same song, same notes, every render."""
+    """The notes this style's drummer adds to the bar. Same song, same notes, every render.
+
+    Bossa and the styles not named here stay as written: they get the kit's sound and no added notes.
+    """
     if float(ctx.pulses_per_bar) != 4.0 or ctx.drums in _QUIET_TEXTURES:
         return []
-    bar, style = int(ctx.bar_in_section), ctx.style
-    out: list[Hit] = []
-    if style == "Funk groove":
-        if bar % 2 == 1:
-            out += [Hit(2.75, "ghost", 0.28), Hit(3.5, "open", 0.55)]
-        if bar % 4 == 1:
-            out.append(Hit(3.75, "kick", 0.7))
-    elif style == "Pop groove":
-        if ctx.role == "chorus" and bar % 4 == 3 and not ctx.ends_section:
-            out.append(Hit(3.5, "open", 0.5))
-        if ctx.role != "chorus" and bar % 8 == 3 and not ctx.ends_section:
-            out.append(Hit(3.5, "kick", 0.6))
-    elif style == "Rock groove":
-        if ctx.role == "chorus" and bar % 2 == 1 and not ctx.ends_section:
-            out += [Hit(3.5, "open", 0.65), Hit(2.5, "kick", 0.7)]
-    elif style == "Jazz swing":
-        out += [Hit(1.0, "pedal", 0.5), Hit(3.0, "pedal", 0.5)]
-        if bar % 4 == 3:
-            out += [Hit(2.5, "ghost", 0.3), Hit(3.5, "ghost", 0.38)]
-        elif bar % 8 == 5:
-            out.append(Hit(1.5, "ghost", 0.26))
-    if ctx.ends_section and replaces_section_fill(style, ctx.next_role):
-        out += [Hit(b, "tom", 0.7 + 0.08 * i, float(m)) for i, (b, m) in enumerate(_TOM_FILL[style])]
+    out = _style_bed(ctx)
+    if ctx.ends_section:
+        out += _section_fill(ctx)
+    else:
+        out += _phrase_move(ctx)
     return out
+
+
+def fill_window(hits: list[Hit]) -> tuple[float, float] | None:
+    """The beats a fill occupies, where the hands are off the hi-hat. A lone pickup keeps the hat going."""
+    beats = [h.beat for h in hits if h.voice == "tom" or (h.voice == "ghost" and h.velocity >= 0.38)]
+    if len(beats) < 2:
+        return None
+    return (min(beats) - 0.01, max(beats) + 0.24)
 
 
 def play_extras(kit: DrumKit, audio: np.ndarray, hits: list[Hit], place_beat: Any, intensity: float, seed: int) -> None:
     """Play the drummer's notes. ``place_beat`` turns a beat into seconds with the groove's swing and pocket."""
+    window = fill_window(hits)
+    if window is not None:
+        kit.rest_hats(place_beat(window[0]), place_beat(window[1]))
     for i, h in enumerate(hits):
         t = place_beat(h.beat)
         s = seed + i
@@ -316,3 +434,5 @@ def play_extras(kit: DrumKit, audio: np.ndarray, hits: list[Hit], place_beat: An
             kit.pedal(audio, t, _FULL["hat"] * h.velocity * intensity, s)
         elif h.voice == "tom":
             kit.tom(audio, t, h.midi, _FULL["tom"] * h.velocity * intensity, s)
+        elif h.voice == "bell":
+            kit.bell(audio, t, _FULL["ride"] * h.velocity * intensity, s)

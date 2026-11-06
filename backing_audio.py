@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextvars
 import io
 import wave
+import zlib
 from dataclasses import dataclass, field
 from functools import lru_cache
 from typing import Any
@@ -1903,6 +1904,13 @@ def _style_patterns(style, profile: dict | None = None, *, time_signature: str =
     })
 
 
+def drum_renderer_tag() -> str:
+    """Part of a saved backing's identity, so audio from another drum sound is never replayed as this one."""
+    if not _drum_kit.drum_kit_enabled():
+        return ""
+    return "+drums2-" + _drum_kit._samples.pack_token()
+
+
 def synthesize_chords_to_numpy(*args, **kwargs):
     """Render the backing. The improved drum kit applies only when it is switched on."""
     if not _drum_kit.drum_kit_enabled():
@@ -1973,8 +1981,10 @@ def _synthesize_chords_to_numpy(
             pass
     style = synth_style
     _style_kit = _ACTIVE_DRUM_KIT.get()
+    _kit_song_seed = 0
     if _style_kit is not None:
         _style_kit.style = str(style)  # the kit tunes to the style actually played
+        _kit_song_seed = zlib.crc32(repr((song_title, song_artist, style, [c.get("chord") if isinstance(c, dict) else c for c in (chords or [])])).encode("utf-8", "replace"))
     # The song's groove profile (drums / bass / comp rhythm per section role).
     # Song tweaks keep their values; the groove fills in what they left alone.
     groove = _groove_profiles.resolve_groove_profile(
@@ -2762,6 +2772,8 @@ def _synthesize_chords_to_numpy(
                         ends_section=bool(section_edge),
                         pulses_per_bar=float(pulses_per_bar),
                         drums=str(section_tex.drums) if section_tex is not None else "",
+                        song_seed=_kit_song_seed,
+                        bar_index=idx,
                     )
                 ),
                 lambda _b: _groove_time(bar_start, _b, pulse, style, swing=swing_amt, pocket=pocket_offset),
@@ -2772,6 +2784,7 @@ def _synthesize_chords_to_numpy(
         # Phrase-end fill inside a section (the groove's lighter version).
         if (
             groove is not None
+            and _kit is None  # the kit's drummer plays its own moves, at no fixed interval
             and groove.phrase_fill_bars
             and not (section_tex is not None and section_tex.drums in ("hats", "minimal", "ending"))
             and not section_edge
@@ -2838,7 +2851,7 @@ def _synthesize_chords_to_numpy(
                         audio, sr, bar_start, pulse, pulses_per_bar, groove.fill,
                         intensity * max(0.7, min(1.3, next_intensity_estimate)), seed_base=idx,
                     )
-                if next_role_for_fill == "chorus" and groove.fill != "none":
+                if next_role_for_fill == "chorus" and groove.fill != "none" and (_kit is None or style != "Jazz swing"):
                     _add_crash(audio, sr, bar_start + bar, intensity * (1.3 if into_final_chorus else 1.0), seed=idx)
             tail = max(0.0, pulses_per_bar - 0.45)
             tail_chord = _pulse_chord(tail)

@@ -124,55 +124,206 @@ def test_repeated_hits_differ() -> None:
 # ----- Each style keeps its own character -----------------------------------
 
 
-def test_pop_fills_stay_restrained() -> None:
-    verse = _song_hits("Pop groove", "verse", next_role="verse")
-    assert not [h for h in verse if h.voice in {"tom", "ghost"}]
-    assert len(verse) <= 1
-    into_chorus = _song_hits("Pop groove", "verse", next_role="chorus")
-    assert len([h for h in into_chorus if h.voice == "tom"]) == 2
-    assert not [h for h in _song_hits("Pop groove", "chorus") if h.voice == "ghost"]
+def _ctx_song(style: str, seed: int, idx: int, bars: int = 16, role: str = "verse") -> K.BarContext:
+    bar = idx % bars
+    return K.BarContext(style, bar, role, "chorus" if bar == bars - 1 else "", bar == bars - 1, 4.0, "", seed, idx)
 
 
-def test_funk_has_moving_ghosts_and_a_fuller_fill() -> None:
-    hits = _song_hits("Funk groove", "verse")
-    bars_with_ghost = {b for b in range(8) if any(h.voice == "ghost" for h in K.bar_extras(_ctx("Funk groove", b)))}
-    assert bars_with_ghost and len(bars_with_ghost) < 8
-    assert len([h for h in hits if h.voice == "tom"]) == 4
-    assert [h for h in hits if h.voice == "kick"]
+def _moves(style: str, seed: int, role: str = "verse", bars: int = 32) -> dict[int, list[K.Hit]]:
+    """Bars with a move, leaving out what the style always plays underneath."""
+    out = {}
+    for i in range(bars):
+        ctx = _ctx_song(style, seed, i, role=role)
+        bed = K._style_bed(ctx)
+        extra = [h for h in K.bar_extras(ctx) if h not in bed]
+        if extra:
+            out[i] = extra
+    return out
 
 
-def test_rock_lifts_the_chorus_without_ghost_notes() -> None:
-    assert not [h for h in _song_hits("Rock groove", "verse", next_role="verse")]
-    chorus = _song_hits("Rock groove", "chorus", next_role="verse")
-    assert chorus and not [h for h in chorus if h.voice == "ghost"]
+MOVING = ["Pop groove", "Rock groove", "Funk groove", "Jazz swing", "Blues groove"]
+
+
+@pytest.mark.parametrize("style", MOVING)
+def test_the_same_song_drums_the_same_way(style: str) -> None:
+    assert _moves(style, 7) == _moves(style, 7)
+
+
+@pytest.mark.parametrize("style", MOVING)
+def test_different_songs_get_different_drumming(style: str) -> None:
+    assert _moves(style, 7) != _moves(style, 8)
+
+
+@pytest.mark.parametrize("style", MOVING)
+def test_moves_happen_inside_sections_not_only_at_the_end(style: str) -> None:
+    for seed in range(5):
+        assert [b for b in _moves(style, seed) if b % 16 != 15], (style, seed)
+
+
+@pytest.mark.parametrize("style", MOVING)
+def test_moves_do_not_follow_a_fixed_interval(style: str) -> None:
+    gaps = set()
+    for seed in range(6):
+        bars = [b for b in _moves(style, seed) if b % 16 != 15]
+        gaps |= {b - a for a, b in zip(bars, bars[1:])}
+    assert len(gaps) >= 3, (style, gaps)
+
+
+@pytest.mark.parametrize("style", MOVING)
+def test_the_same_fill_does_not_repeat_every_time(style: str) -> None:
+    shapes = {tuple((h.beat, h.voice) for h in hits) for seed in range(12) for hits in _moves(style, seed).values()}
+    assert len(shapes) >= 3, style
+
+
+@pytest.mark.parametrize("style, limit", [("Pop groove", 0.35), ("Blues groove", 0.45), ("Rock groove", 0.5), ("Jazz swing", 0.55), ("Funk groove", 0.65)])
+def test_most_bars_stay_plain_enough_to_practice_over(style: str, limit: float) -> None:
+    moved = sum(len(_moves(style, seed)) for seed in range(12))
+    assert moved / (12 * 32) <= limit, (style, moved / (12 * 32))
+
+
+def test_pop_stays_the_simplest() -> None:
+    def rate(style: str) -> float:
+        return sum(len(_moves(style, s)) for s in range(12))
+
+    assert rate("Pop groove") < rate("Rock groove") < rate("Funk groove")
+    for seed in range(12):
+        for bar, hits in _moves("Pop groove", seed).items():
+            if bar % 16 != 15:
+                assert len(hits) <= 1 and not [h for h in hits if h.voice == "tom"], hits
+
+
+def test_a_mid_section_move_stays_short() -> None:
+    for style in MOVING:
+        for seed in range(12):
+            for bar, hits in _moves(style, seed).items():
+                if bar % 16 != 15 and len(hits) > 1:
+                    assert min(h.beat for h in hits) >= 1.5, (style, hits)
 
 
 def test_jazz_keeps_its_own_time_feel() -> None:
-    hits = _song_hits("Jazz swing", "verse")
-    assert not [h for h in hits if h.voice in {"tom", "kick", "open"}]
-    assert not K.replaces_section_fill("Jazz swing", "chorus")
-    pedals = [h.beat for h in K.bar_extras(_ctx("Jazz swing", 0)) if h.voice == "pedal"]
-    assert pedals == [1.0, 3.0]
-    assert max(h.velocity for h in hits if h.voice == "ghost") < 0.5  # comping, never a backbeat
+    for seed in range(12):
+        hits = [h for bar in _moves("Jazz swing", seed).values() for h in bar]
+        assert not [h for h in hits if h.voice in {"tom", "open", "crash"}]
+        assert max((h.velocity for h in hits if h.voice == "ghost"), default=0) < 0.5  # comping, never a backbeat
+        assert max((h.velocity for h in hits if h.voice == "kick"), default=0) < 0.4
+    assert [h.beat for h in K.bar_extras(_ctx("Jazz swing", 0)) if h.voice == "pedal"] == [1.0, 3.0]
 
 
-def test_bossa_pattern_is_untouched() -> None:
-    assert _song_hits("Bossa nova", "verse") == []
-    assert not K.replaces_section_fill("Bossa nova", "chorus")
+def test_rock_uses_toms_and_kick_pushes() -> None:
+    hits = [h for seed in range(12) for bar in _moves("Rock groove", seed).values() for h in bar]
+    assert {"tom", "kick"} <= {h.voice for h in hits}
+
+
+def test_funk_has_moving_ghost_notes() -> None:
+    bars = {b for seed in range(6) for b in range(8) if any(h.voice == "ghost" for h in K.bar_extras(_ctx_song("Funk groove", seed, b)))}
+    assert len(bars) >= 4
+
+
+def test_section_ends_are_sized_by_what_comes_next() -> None:
+    small = K.bar_extras(K.BarContext("Rock groove", 7, "verse", "verse", True, 4.0, "", 3, 7))
+    big = K.bar_extras(K.BarContext("Rock groove", 7, "verse", "chorus", True, 4.0, "", 3, 7))
+    assert len(big) > len(small)
+
+
+@pytest.mark.parametrize("style", ["Bossa nova", "Ballad", "Jewish groove", "Klezmer groove"])
+def test_other_styles_stay_as_written(style: str) -> None:
+    assert all(K.bar_extras(_ctx_song(style, s, i)) == [] for s in range(3) for i in range(32))
 
 
 def test_styles_do_not_share_a_part() -> None:
-    parts = {s: tuple(_song_hits(s, "chorus", next_role="chorus")) for s in ("Pop groove", "Rock groove", "Funk groove", "Jazz swing", "Bossa nova")}
+    parts = {s: repr(_moves(s, 5)) for s in MOVING + ["Bossa nova"]}
     assert len(set(parts.values())) == len(parts)
 
 
 @pytest.mark.parametrize("drums", ["hats", "minimal", "ending"])
 def test_quiet_sections_stay_quiet(drums: str) -> None:
-    assert K.bar_extras(_ctx("Funk groove", 1, drums=drums)) == []
+    assert K.bar_extras(K.BarContext("Funk groove", 3, "verse", "", False, 4.0, drums, 1, 3)) == []
 
 
 def test_other_meters_get_no_added_notes() -> None:
     assert K.bar_extras(K.BarContext("Funk groove", 1, "verse", "", False, 3.0)) == []
+
+
+def test_a_fill_takes_the_hands_off_the_hi_hat() -> None:
+    assert K.fill_window([K.Hit(3.5, "kick", 0.6)]) is None
+    assert K.fill_window(K._tom_run([3.0, 3.5, 3.75])) == pytest.approx((2.99, 3.99))
+    kit = K.DrumKit(SR, "Rock groove", defer_hats=True)
+    audio = np.zeros(SR * 2)
+    kit.noise_hit(audio, 0.1, 0.028, 0.012)
+    kit.rest_hats(0.05, 0.2)
+    kit.flush()
+    assert not np.any(audio)
+
+
+# ----- Memory and saved audio ------------------------------------------------
+
+
+def test_the_kit_in_the_repo_is_complete_and_licensed() -> None:
+    import json
+
+    folder = K._samples.DEFAULT_PACK
+    manifest = json.loads((folder / "manifest.json").read_text(encoding="utf-8"))
+    for voice in ("closed", "half", "three", "open", "pedal", "ride", "bell", "crash", "kick", "kick_close", "snare", "snare_close", "rimshot_close", "rim", "tom_low", "tom_high"):
+        assert manifest.get(voice), voice
+        for layer in manifest[voice]:
+            assert all((folder / name).is_file() for name in layer)
+    assert "CC0 1.0 Universal" in (folder / "LICENSE").read_text(encoding="utf-8")
+    assert sum(p.stat().st_size for p in folder.iterdir()) < 15 * 1024 * 1024
+
+
+def test_the_sample_cache_holds_to_its_memory_limit(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("MUSIC_SAMPLE_CACHE_MB", "8")
+    cache = K._samples._HitCache()
+    for i in range(30):
+        cache.put(("hit", i), np.zeros(1024 * 1024 // 4, dtype=np.float32))  # 1 MB each
+    assert cache.bytes <= 8 * 1024 * 1024
+    assert cache.get(("hit", 29)) is not None and cache.get(("hit", 0)) is None
+
+
+def test_the_cache_keeps_recently_played_hits(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("MUSIC_SAMPLE_CACHE_MB", "8")
+    cache = K._samples._HitCache()
+    for i in range(8):
+        cache.put(("hit", i), np.zeros(1024 * 1024 // 4, dtype=np.float32))
+    assert cache.get(("hit", 0)) is not None
+    cache.put(("hit", 99), np.zeros(1024 * 1024 // 4, dtype=np.float32))
+    assert cache.get(("hit", 0)) is not None and cache.get(("hit", 1)) is None
+
+
+def test_a_song_uses_only_a_fraction_of_the_library(monkeypatch: pytest.MonkeyPatch) -> None:
+    K._samples.HITS.clear()
+    _render("Pop groove", monkeypatch, on=True)
+    used = K._samples.HITS.bytes
+    assert 0 < used < 40 * 1024 * 1024
+
+
+def test_saved_audio_is_named_for_the_drum_sound(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("MUSIC_DRUM_KIT_V2", raising=False)
+    assert ba.drum_renderer_tag() == ""
+    monkeypatch.setenv("MUSIC_DRUM_KIT_V2", "1")
+    recorded = ba.drum_renderer_tag()
+    assert recorded.startswith("+drums2-full-")
+    monkeypatch.setenv("MUSIC_DRUM_PACK_DIR", "none")
+    assert ba.drum_renderer_tag() == "+drums2-synth" != recorded
+
+
+def test_rock_hits_harder_than_jazz_with_the_recorded_kit() -> None:
+    def level(style: str, play) -> float:
+        kit = K.DrumKit(SR, style, pack=K._samples.SamplePack(str(K._samples.DEFAULT_PACK), "full"))
+        b = np.zeros(SR * 2)
+        play(kit, b)
+        return float(np.sum(b**2))
+
+    assert level("Rock groove", lambda k, b: k.snare(b, 0, 0.04)) > 1.5 * level("Jazz swing", lambda k, b: k.snare(b, 0, 0.04))
+    assert level("Rock groove", lambda k, b: k.kick(b, 0, 0.09)) > 1.5 * level("Jazz swing", lambda k, b: k.kick(b, 0, 0.09))
+
+
+def test_rock_and_funk_use_the_close_microphones() -> None:
+    pack = K._samples.SamplePack(str(K._samples.DEFAULT_PACK), "full")
+    assert K.DrumKit(SR, "Rock groove", pack=pack)._recorded("kick", 0.9, 1, 0) is not None
+    a = K.DrumKit(SR, "Rock groove", pack=pack)._recorded("snare", 0.8, 1, 0)
+    b = K.DrumKit(SR, "Jazz swing", pack=pack)._recorded("snare", 0.8, 1, 0)
+    assert len(a) != len(b) or not np.array_equal(a, b)
 
 
 # ----- Hi-hat choke and recorded hits ---------------------------------------
