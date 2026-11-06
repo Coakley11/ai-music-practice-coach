@@ -5,6 +5,8 @@ from __future__ import annotations
 import html
 from typing import Any
 
+from practice_ui_labels import level_label
+
 from backing_context import (
     BackingContext,
     format_backing_context_banner,
@@ -736,7 +738,7 @@ def render_backing_creative_context_card(
     if groove_display and groove_display.lower() not in {style_label.lower(), mood.lower()}:
         badges.append(_semantic_themed_badge("groove", "Groove", groove_display, groove_class))
     badges.extend([
-        _semantic_themed_badge("level", "Jam level", difficulty, "badge-groove"),
+        _semantic_themed_badge("level", "Jam level", level_label(difficulty), "badge-groove"),
         _semantic_themed_badge("concert_key", "Concert key", concert, "badge-key"),
         _semantic_themed_badge("bpm", "BPM", str(bpm), "badge-key"),
         _semantic_themed_badge("meter", "Meter", meter, "badge-key"),

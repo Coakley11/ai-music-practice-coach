@@ -72,6 +72,34 @@ FOCUS_ICONS: dict[str, str] = {
     "Jazz Phrasing": "🎷",
 }
 
+_LEVEL_WORD = re.compile(
+    r"(?<![\w-])(?<!🌱 )(?<!🚀 )(?<!🧠 )(Beginner|Intermediate|Advanced)\b"
+)
+
+
+def level_icon(level: object) -> str:
+    """Icon for a proficiency level, or ``""`` for anything else."""
+    return LEVEL_ICONS.get(str(level or "").strip(), "")
+
+
+def level_label(level: object) -> str:
+    """``"🧠 Advanced"`` for display. Unknown values, such as ``"Any level"``, pass through unchanged.
+
+    Presentation only: use as ``format_func`` so the widget and session state keep the plain value.
+    """
+    text = str(level if level is not None else "")
+    icon = level_icon(text)
+    return f"{icon} {text.strip()}" if icon else text
+
+
+def decorate_levels(text: object) -> str:
+    """Add the icons to level names inside a short display string, such as ``"Beginner / Advanced"``.
+
+    Only for strings that name levels. Running twice gives the same result, so it never doubles an icon.
+    """
+    return _LEVEL_WORD.sub(lambda m: f"{LEVEL_ICONS[m.group(1)]} {m.group(1)}", str(text if text is not None else ""))
+
+
 _EMOJI_TAIL = re.compile(
     r"\s+[\U0001F300-\U0001FAFF\U00002600-\U000027BF\U0001F900-\U0001F9FF]+\s*$"
 )
