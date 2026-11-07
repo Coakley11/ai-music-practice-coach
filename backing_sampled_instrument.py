@@ -32,6 +32,7 @@ class SampledInstrument:
         manifest = json.loads((self.folder / "manifest.json").read_text(encoding="utf-8"))
         self.sr = int(manifest["sr"])
         self.zones = sorted(manifest["zones"], key=lambda z: z["key"])
+        self.dead = list(manifest.get("dead", []))  # unpitched strokes, for instruments that have them
         self._keys = np.array([z["key"] for z in self.zones])
 
     def _zone(self, midi: int) -> dict:
