@@ -10644,6 +10644,46 @@ def curated_song_records() -> list[dict[str, Any]]:
             "A Section": ["Dbmaj7", "Ebm7", "E7", "Amaj7", "Abm7", "Db7", "Gbmaj7", "Gbmaj7"],
             "B Section": ["Fm7", "Bb7", "Ebmaj7", "Gm7b5", "C7", "Fm7", "Bb7", "Eb7"],
         }, composer="Johnny Green"),
+        _s("I'll Remember April", "Gene de Paul", "Jazz", "G", {
+            # ABA, 48 bars (three 16-bar sections), G major.  Each A: Gmaj7 x4, Gm7 x4 (major to parallel minor), then
+            # Am7 D7 Bm7b5 E7b9 Am7 D7 Gmaj7 Gmaj7.  The bridge starts a false key change to Bb major (Cm7 F7 Bbmaj7 x2, twice),
+            # returns to G (Am7 D7 Gmaj7 x2) and touches E major (F#m7 B7 Emaj7) before Am7|D7 leads back to the last A.
+            "A": ["Gmaj7", "Gmaj7", "Gmaj7", "Gmaj7", "Gm7", "Gm7", "Gm7", "Gm7", "Am7", "D7", "Bm7b5", "E7b9", "Am7", "D7", "Gmaj7", "Gmaj7"],
+            "Bridge": ["Cm7", "F7", "Bbmaj7", "Bbmaj7", "Cm7", "F7", "Bbmaj7", "Bbmaj7", "Am7", "D7", "Gmaj7", "Gmaj7", "F#m7", "B7", "Emaj7", "Am7|D7"],
+            "A2": ["Gmaj7", "Gmaj7", "Gmaj7", "Gmaj7", "Gm7", "Gm7", "Gm7", "Gm7", "Am7", "D7", "Bm7b5", "E7b9", "Am7", "D7", "Gmaj7", "Gmaj7"],
+        }, composer="Gene de Paul · Patricia Johnston · Don Raye",
+          section_order=["A", "Bridge", "A2"],
+          chart_versions={
+              # Beginner: ONE complete 48-bar chorus (all three sections) with triads and dominant sevenths.
+              "Beginner": {"A": ["G", "G", "G", "G", "Gm", "Gm", "Gm", "Gm", "Am", "D7", "Bm", "E7", "Am", "D7", "G", "G"], "Bridge": ["Cm", "F7", "Bb", "Bb", "Cm", "F7", "Bb", "Bb", "Am", "D7", "G", "G", "F#m", "B7", "E", "Am|D7"], "A2": ["G", "G", "G", "G", "Gm", "Gm", "Gm", "Gm", "Am", "D7", "Bm", "E7", "Am", "D7", "G", "G"]},
+              # Intermediate: full structure, E7b9 reduced to E7.
+              "Intermediate": {"A": ["Gmaj7", "Gmaj7", "Gmaj7", "Gmaj7", "Gm7", "Gm7", "Gm7", "Gm7", "Am7", "D7", "Bm7b5", "E7", "Am7", "D7", "Gmaj7", "Gmaj7"], "Bridge": ["Cm7", "F7", "Bbmaj7", "Bbmaj7", "Cm7", "F7", "Bbmaj7", "Bbmaj7", "Am7", "D7", "Gmaj7", "Gmaj7", "F#m7", "B7", "Emaj7", "Am7|D7"], "A2": ["Gmaj7", "Gmaj7", "Gmaj7", "Gmaj7", "Gm7", "Gm7", "Gm7", "Gm7", "Am7", "D7", "Bm7b5", "E7", "Am7", "D7", "Gmaj7", "Gmaj7"]},
+              "Advanced": {"A": ["Gmaj7", "Gmaj7", "Gmaj7", "Gmaj7", "Gm7", "Gm7", "Gm7", "Gm7", "Am7", "D7", "Bm7b5", "E7b9", "Am7", "D7", "Gmaj7", "Gmaj7"], "Bridge": ["Cm7", "F7", "Bbmaj7", "Bbmaj7", "Cm7", "F7", "Bbmaj7", "Bbmaj7", "Am7", "D7", "Gmaj7", "Gmaj7", "F#m7", "B7", "Emaj7", "Am7|D7"], "A2": ["Gmaj7", "Gmaj7", "Gmaj7", "Gmaj7", "Gm7", "Gm7", "Gm7", "Gm7", "Am7", "D7", "Bm7b5", "E7b9", "Am7", "D7", "Gmaj7", "Gmaj7"]},
+          },
+          extensions=_ext(
+              arrangement_notes=(
+                  "**ABA**, **48 bars** (16 + 16 + 16), **4/4**, **G major**. Some online charts show only 32 bars; this chart "
+                  "is the complete form. A: **Gmaj7** x4, **Gm7** x4, **Am7 - D7 - Bm7b5 - E7b9 - Am7 - D7 - Gmaj7 - Gmaj7**. "
+                  "Bridge: **Cm7 - F7 - Bbmaj7** x2 (false key change to Bb), **Am7 - D7 - Gmaj7**, **F#m7 - B7 - Emaj7** "
+                  "(a visit to E major), then **Am7|D7**. Variants not used: G6 in place of some Gmaj7 bars, Gm6 in the "
+                  "Gm7 bars, Am7b5 at bar 9. Modern performances often play a Latin-feel vamp as an introduction and ending and "
+                  "for the first eight bars of each A, then swing; that feel change is arrangement-dependent and is NOT "
+                  "charted or switched here (the backing is straight swing; no intro or ending is invented)."
+              ),
+              default_bpm=160,
+              default_groove="Jazz swing",
+              time_signature="4/4",
+              form="ABA (48 bars)",
+              full_form_levels=["Beginner"],
+              jazz_standard_flagship=True,
+              repertoire_tags=["Jazz Standard", "Swing", "Great American Songbook", "ii-V-I Progressions", "Essential Repertoire", "Improvisation"],
+              chart_confidence={"chords": "medium-high", "timing": "medium", "form": "high", "groove": "low"},
+              chart_sources=(
+                  "Jazzomat Weimar transcriptions of Clifford Brown's and Sonny Rollins's solos (chord changes per bar, 48-bar "
+                  "A-B-A); jazzstandards.com harmonic analysis (false key change to Bb, apparent E major, return via Am7-D7); "
+                  "Jazzadvice (ABA, 48 bars, four bars of Gmaj7 opening). No score was used or copied; not checked by ear."
+              ),
+          )),
         _s("Misty", "Erroll Garner", "Jazz", "Eb", {
             # AABA, 32 bars. The A section has the signature Abmaj7 and the
             # Abm7|Db7 backdoor ii-V; first ending (Gm7|C7, Fm7|Bb7) leads back
