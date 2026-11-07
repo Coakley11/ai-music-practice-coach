@@ -32,7 +32,9 @@ class SampledInstrument:
         manifest = json.loads((self.folder / "manifest.json").read_text(encoding="utf-8"))
         self.sr = int(manifest["sr"])
         self.zones = sorted(manifest["zones"], key=lambda z: z["key"])
+        self.manifest = manifest
         self.dead = list(manifest.get("dead", []))  # unpitched strokes, for instruments that have them
+        self.variants: dict = {}  # articulations made from a recording, e.g. a palm mute: name -> fn(int16 audio, sr)
         self._keys = np.array([z["key"] for z in self.zones])
 
     def _zone(self, midi: int) -> dict:
@@ -52,13 +54,16 @@ class SampledInstrument:
             avoid[slot] = i
         return takes[i]
 
-    def _audio(self, name: str) -> np.ndarray:
-        key = (str(self.folder), name)
+    def _audio(self, name: str, variant: str | None = None) -> np.ndarray:
+        key = (str(self.folder), name, variant)
         x = _cache.SHARED.get(key)
         if x is None:
-            import soundfile as sf
+            if variant is not None:
+                x = self.variants[variant](self._audio(name), self.sr)
+            else:
+                import soundfile as sf
 
-            x, _sr = sf.read(str(self.folder / name), dtype="int16", always_2d=False)
+                x, _sr = sf.read(str(self.folder / name), dtype="int16", always_2d=False)
             _cache.SHARED.put(key, x)
         return x
 
@@ -74,6 +79,10 @@ class SampledInstrument:
         seed: str,
         avoid: dict | None = None,
         release_sec: float = 0.055,
+        *,
+        variant: str | None = None,
+        offset_sec: float = 0.0,
+        detune_cents: float = 0.0,
     ) -> None:
         """Mix one note into ``bus``, stopped ``held_sec`` in. Only the audio it uses is resampled."""
         start = int(max(0.0, start_sec) * sr)
@@ -81,14 +90,15 @@ class SampledInstrument:
             return
         zone = self._zone(int(midi))
         take = self._take(zone, velocity, seed, avoid)
-        x = self._audio(take["file"])
-        ratio = 2.0 ** ((int(midi) - zone["key"] - float(take.get("cents", 0.0)) / 100.0) / 12.0) * self.sr / sr
+        x = self._audio(take["file"], variant)
+        ratio = 2.0 ** ((int(midi) - zone["key"] + (detune_cents - float(take.get("cents", 0.0))) / 100.0) / 12.0) * self.sr / sr
+        first = int(offset_sec * self.sr)
         held_n = max(1, int(max(0.02, held_sec) * sr))
         release_n = int(release_sec * sr)
-        n = min(held_n + release_n, int((len(x) - 1) / ratio), len(bus) - start)
+        n = min(held_n + release_n, int((len(x) - 1 - first) / ratio), len(bus) - start)
         if n <= 0:
             return
-        pos = np.arange(n, dtype=np.float64) * ratio
+        pos = first + np.arange(n, dtype=np.float64) * ratio
         i0 = pos.astype(np.int64)
         frac = (pos - i0).astype(np.float32)
         a = x[i0].astype(np.float32)
