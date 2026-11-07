@@ -10127,14 +10127,18 @@ def _backing_art_wanted(kind: str) -> bool:
 def _render_backing_art_head_for_card(kind: str, *, record: Any, ctx: Any, source_label: str) -> None:
     """Artwork, title and artist for a Catalog, Custom or Composition card."""
     global _backing_art_identity
-    from backing_art_card import catalog_card_facts, identity_for, render_backing_art_head
+    from backing_art_card import catalog_card_facts, identity_for, render_backing_art_head, song_style_for_card
 
     if kind in {"custom", "composition"} and ctx is not None and str(getattr(ctx, "source", "") or "") != "":
         title = str(getattr(ctx, "song_title", "") or ("My Composition" if kind == "composition" else "Custom progression"))
         artist = ""
-        style = str(getattr(ctx, "style", "") or "")
-        if kind == "custom" and style in {"", "Auto"}:
-            style = str(st.session_state.get("progression_style") or "")
+        # The song's own saved style decides the artwork, read now from its Custom / Composition record.
+        # ctx.style is a Backing play-session snapshot: it goes stale when the song is re-saved with a new
+        # style, and playback overrides live beside it. The groove never decides what the song looks like.
+        _pick = str(getattr(ctx, "active_song_id", "") or "").strip()
+        if not _pick.startswith(("custom::", "composition::")):
+            _pick = str((record or {}).get("pick_key") or "").strip()
+        style = song_style_for_card(kind, session=st.session_state, pick_key=_pick, record=record)
     else:
         facts = catalog_card_facts(record or {}, source_label=source_label, session=st.session_state)
         title, artist, style = facts["title"], facts["artist"], facts["style"]
@@ -14367,11 +14371,13 @@ def _render_backing_step2_playback_action(
         with st.expander("Advanced playback settings", expanded=bool(st.session_state.pop("_home_open_key_cycle", False))):
             st.markdown('<div class="ui-backing-feel-inline">', unsafe_allow_html=True)
             st.markdown("<div>", unsafe_allow_html=True)
-            _feel_ico = html.escape(semantic_field_icon("style") or semantic_field_icon("feel"))
+            # The groove is a playback choice (how it sounds); it is not the song's style (what kind of song
+            # it is, saved on its source page), so it carries the groove's icon and name, not the style's.
+            _feel_ico = html.escape(FEATURE_ICONS.get("backing") or semantic_field_icon("groove"))
             st.markdown(
                 f'<span class="ui-backing-inline-label">'
                 f'<span class="ui-backing-inline-ico" aria-hidden="true">{_feel_ico}</span>'
-                f'Feel</span>',
+                f'Backing groove</span>',
                 unsafe_allow_html=True,
             )
             if lock_style_meter:
@@ -14384,12 +14390,13 @@ def _render_backing_step2_playback_action(
                 )
             else:
                 st.selectbox(
-                    "Groove style",
+                    "Backing groove",
                     list(GROOVE_STYLE_CHOICES),
                     key="backing_groove_style",
                     label_visibility="collapsed",
                     on_change=_on_backing_filter_change,
                 )
+                st.caption("How the backing sounds. The song keeps its own style.")
             st.markdown("</div>", unsafe_allow_html=True)
             st.markdown("<div>", unsafe_allow_html=True)
             _meter_ico = html.escape(semantic_field_icon("meter"))

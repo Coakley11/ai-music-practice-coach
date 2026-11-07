@@ -602,3 +602,28 @@
   .st-key-backing_art_card .st-key-backing_art_play_row [data-testid="stHorizontalBlock"]>[data-testid="stColumn"]:first-child{flex:1 1 auto!important;width:auto!important;min-width:0!important}
   .st-key-backing_art_card .st-key-backing_art_play_row [data-testid="stHorizontalBlock"]>[data-testid="stColumn"]:last-child{flex:0 0 260px!important;width:260px!important}
 }
+
+/* ---------------------------------------------------------------------------------------------------------
+   Source branding on a genre world. A Custom or Composition song wears its saved style's whole world (artwork,
+   palette, type, accents: g-<genre>) and keeps its own source marks on top (src-custom / src-composition):
+   the source crest and ribbon, the source pill, and its tool - tape for Custom, a gold staff for Composition.
+   A song saved without a style keeps the source's own world (g-custom / g-composition) and has no src- class. */
+.sc-frag.src-custom .sc-logo{background:linear-gradient(145deg,#10b981,#059669);border-color:#fde047;border-style:solid;border-radius:18px;transform:rotate(-3deg);clip-path:none;outline:0;box-shadow:0 6px 16px rgba(0,0,0,.38)}
+.sc-frag.src-custom .sc-logo small{--ribbon:#047857;--ribbon-ink:#fef9c3}
+.sc-frag.src-custom .sc-logo::before{content:"";position:absolute;left:50%;top:-11px;width:66px;height:20px;margin-left:-33px;background:rgba(253,224,71,.78);transform:rotate(-4deg);box-shadow:0 1px 3px rgba(0,0,0,.3);z-index:2}
+.sc-frag.src-custom .sc-src{background:#064e3b;border-color:#fde047;color:#fef9c3}
+.sc-frag.src-composition .sc-logo{background:linear-gradient(145deg,#1e293b,#0f172a);border-color:#e9c46a;border-style:solid;border-radius:50%;transform:none;clip-path:none;outline:0;box-shadow:0 0 0 3px #020617,0 0 0 5px #e9c46a,0 6px 18px rgba(0,0,0,.42)}
+.sc-frag.src-composition .sc-logo small{--ribbon:#e9c46a;--ribbon-ink:#020617;font-size:10px;padding:3px 11px;letter-spacing:.05em}
+.sc-frag.src-composition .sc-src{background:#020617;border-color:#e9c46a;color:#fde68a}
+.sc-frag.src-composition .sc-hero::after{content:"";position:absolute;left:0;right:0;bottom:12px;height:25px;pointer-events:none;z-index:1;
+  background:repeating-linear-gradient(180deg,rgba(233,196,106,.62) 0 1.5px,transparent 1.5px 6px);-webkit-mask:linear-gradient(90deg,transparent,#000 12%,#000 88%,transparent);mask:linear-gradient(90deg,transparent,#000 12%,#000 88%,transparent)}
+.sc-frag.src-custom .sc-stylelogo,.sc-frag.src-composition .sc-stylelogo{background:var(--logo-bg);border-color:var(--accent2,#fff)}
+.sc-frag.src-custom .sc-stylelogo small,.sc-frag.src-composition .sc-stylelogo small{background:var(--accent);color:var(--accent-ink)}
+/* The same tools on the key panels: tape across a Custom song's panels, a gold rule inside a Composition's. */
+.st-key-backing_art_card:has(.src-custom) .st-key-backing_card_key_row [data-testid="stHorizontalBlock"]>[data-testid="stColumn"],
+.st-key-picker_active_song_card_content:has(.src-custom) .st-key-picker_active_song_key_row [data-testid="stHorizontalBlock"]>[data-testid="stColumn"]{position:relative;overflow:visible!important}
+.st-key-backing_art_card:has(.src-custom) .st-key-backing_card_key_row [data-testid="stHorizontalBlock"]>[data-testid="stColumn"]::before,
+.st-key-picker_active_song_card_content:has(.src-custom) .st-key-picker_active_song_key_row [data-testid="stHorizontalBlock"]>[data-testid="stColumn"]::before{
+  content:"";position:absolute;left:50%;top:-10px;width:84px;height:20px;margin-left:-42px;background:rgba(253,224,71,.62);transform:rotate(-2deg);box-shadow:0 1px 3px rgba(0,0,0,.25);pointer-events:none;z-index:3}
+.st-key-backing_art_card:has(.src-composition) .st-key-backing_card_key_row [data-testid="stHorizontalBlock"]>[data-testid="stColumn"],
+.st-key-picker_active_song_card_content:has(.src-composition) .st-key-picker_active_song_key_row [data-testid="stHorizontalBlock"]>[data-testid="stColumn"]{outline:1.5px solid rgba(233,196,106,.8);outline-offset:-7px}

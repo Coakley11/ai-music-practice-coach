@@ -27,7 +27,11 @@ CHALLENGE_ICON = "\U0001F525"  # the session plan's challenge icon
 CATALOG, CUSTOM, COMPOSITION = "catalog", "custom", "composition"
 GENRES = ("pop", "rock", "jazz", "blues", "country", "soul", "funk", "jewish", "classical")
 _SOURCE_NAME = {CATALOG: "Catalog", CUSTOM: "Custom", COMPOSITION: "Composition"}
-_STYLE_ART = {CUSTOM: ("blues", "pop"), COMPOSITION: ("blues", "classical")}
+# Styles the source pages offer that have no artwork world of their own: the nearest world, real name kept.
+_WORLD_FOR_STYLE = {"bossa": "jazz", "bossa nova": "jazz", "folk": "country", "hip-hop": "funk", "hip hop": "funk",
+                    "electronic": "pop", "soul/r&b": "soul", "r&b": "soul"}
+# The generic note the app falls back to for a style with no logo; it is the Catalog source logo, so never a style's.
+_GENERIC_STYLE_LOGO = "🎵"
 
 # The part of each artwork a narrow card shows, so the instrument stays in view.
 _PHONE_VIEW = {
@@ -88,7 +92,8 @@ class CardIdentity:
 
     @property
     def classes(self) -> str:
-        return f"g-{self.family} st-{self.style_id}"
+        branding = f" src-{self.source}" if self.source != CATALOG and self.family != self.source else ""
+        return f"g-{self.family} st-{self.style_id}{branding}"
 
 
 def _source_id(source: str) -> str:
@@ -100,22 +105,35 @@ def _source_id(source: str) -> str:
     return CATALOG
 
 
+def style_world(style: str) -> tuple[str, str, str]:
+    """(world, name, logo) for a song's saved style: the genre artwork world it wears, its own name and logo."""
+    raw = str(style or "").strip()
+    if not raw:
+        return "", "", ""
+    visual = genre_visual_style(raw)
+    name = str(visual.get("label") or raw)
+    logo = str(visual.get("emoji") or "")
+    if logo == _GENERIC_STYLE_LOGO:
+        logo = ""
+    low = name.lower()
+    world = low if low in GENRES else _WORLD_FOR_STYLE.get(raw.lower()) or _WORLD_FOR_STYLE.get(low, "")
+    return world, name, logo
+
+
 def card_identity(source: str, style: str) -> CardIdentity:
-    """The artistic identity: source says where the song came from, style says its artistic world."""
+    """The artistic identity. The song's saved style picks the whole artwork world (art, palette, type,
+    accents); the source keeps its own branding on top (crest, ribbon, Source badge, tape / quill)."""
     src = _source_id(source)
     if src != CATALOG and not str(style or "").strip():
         # A Custom progression or Composition saved without a style: no style is invented for it.
         return CardIdentity(src, src, "", "", "", src)
-    visual = genre_visual_style(str(style or "Pop"))
-    name = str(visual.get("label") or style or "Pop")
-    style_id = name.lower() if name.lower() in GENRES else ""
-    logo = str(visual.get("emoji") or "")
+    world, name, logo = style_world(str(style or "Pop"))
     if src == CATALOG:
-        family = art = style_id or "pop"
+        family = art = world or "pop"
     else:
-        family = src
-        art = f"{src}_{style_id}" if style_id in _STYLE_ART[src] else src
-    return CardIdentity(src, family, style_id, name, logo, art)
+        # A style with no artwork world (e.g. "Other") keeps the source's own world, under its real name.
+        family = art = world or src
+    return CardIdentity(src, family, world, name, logo, art)
 
 
 def _instrument_glyph(name: str) -> str:
@@ -159,7 +177,7 @@ def hero_html(identity: CardIdentity, *, title: str, artist: str = "", page: str
         label = _E(f"{bars_note}: {', '.join(bar_list)}")
         prog = f'<div class="sc-prog" role="img" aria-label="{label}"><span class="sc-prog-note">{_E(bars_note)}</span><div class="sc-prog-bars">{cells}</div></div>'
     style_logo = ""
-    if identity.source != CATALOG and identity.style_id:
+    if identity.source != CATALOG and identity.style_id and identity.style_logo:
         style_logo = f'<div class="sc-stylelogo"><b>{identity.style_logo}</b><small>{_E(identity.style_name)}</small></div>'
     status_html = f'<div class="sc-act"><span class="sc-pill">● {_E(status)}</span></div>' if status else ""
     return (
@@ -278,7 +296,7 @@ def backing_chips_html(identity: CardIdentity, *, groove: str, meter: str, writt
     groove_name = str(groove or "Auto").strip() or "Auto"
     chips = [
         _stat(SEMANTIC_FIELD_ICONS["style"], "Style", identity.style_name, identity.style_logo) if identity.style_name else "",
-        _stat(SEMANTIC_FIELD_ICONS["groove"], "Backing groove", groove_name, GROOVE_ICONS.get(groove_name, "")),
+        _stat(FEATURE_ICONS["backing"], "Backing groove", groove_name, GROOVE_ICONS.get(groove_name, "")),
         _stat(SEMANTIC_FIELD_ICONS["meter"], "Meter", str(meter or "4/4")),
         _stat(SEMANTIC_FIELD_ICONS["source"], "Source", identity.source_name, identity.source_logo),
     ]
