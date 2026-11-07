@@ -68,7 +68,6 @@ CHAMPIONS_SECTIONS: dict[str, list[str]] = {
     "Verse 2": list(CHAMPIONS_VERSE),
     "Chorus 2": list(CHAMPIONS_CHORUS_MAIN),
     "Final Chorus": list(CHAMPIONS_CHORUS_MAIN),
-    "Outro": list(CHAMPIONS_CHORUS_MAIN),
 }
 
 CHAMPIONS_BEGINNER: dict[str, list[str]] = {
@@ -150,7 +149,6 @@ CHAMPIONS_LYRIC_CHART: list[dict[str, Any]] = [
     {"section": "Verse 2", "lines": list(_CHAMPIONS_VERSE_ROWS)},
     {"section": "Chorus 2", "lines": list(_CHAMPIONS_CHORUS_ROWS)},
     {"section": "Final Chorus", "lines": list(_CHAMPIONS_CHORUS_ROWS)},
-    {"section": "Outro", "lines": list(_CHAMPIONS_CHORUS_ROWS)},
 ]
 
 CHAMPIONS_ARRANGEMENT_NOTES = (
@@ -161,6 +159,7 @@ CHAMPIONS_ARRANGEMENT_NOTES = (
     "**Fm–Gm7–Gm7/F–Gm7/C** after the first chorus lift. Backing: "
     "grand piano, bass, stadium drums, layered vocals, orchestral support — "
     "arena anthem dynamics, not acoustic or jazz trio. **Final Chorus** "
-    "same harmony with biggest arrangement; **Outro** repeats the "
-    "full chorus progression for singalong close."
+    "same harmony with the biggest arrangement and is the close (the 1977 "
+    "single, 2:59, has three choruses, not four; the song ends on the word "
+    "'Champions')."
 )

@@ -17,7 +17,7 @@ from chart_level_arrangement import resolve_level_chart
 from song_catalog.catalog import curated_song_records
 from songs.meter import meter_timing
 
-BARS = {"Beginner": 99, "Intermediate": 118, "Advanced": 124}
+BARS = {"Beginner": 105, "Intermediate": 99, "Advanced": 105}
 
 
 class ChampionsMeterTests(unittest.TestCase):
@@ -36,7 +36,8 @@ class ChampionsMeterTests(unittest.TestCase):
     def test_bar_math(self) -> None:
         t = meter_timing(65, "6/8")
         self.assertAlmostEqual(t.bar_sec, 2 * 60 / 65, places=6)
-        self.assertAlmostEqual(124 * t.bar_sec, 124 * 120 / 65, places=6)  # 228.9 s
+        self.assertAlmostEqual(124 * t.bar_sec, 124 * 120 / 65, places=6)  # 228.9 s (old Advanced)
+        self.assertAlmostEqual(105 * t.bar_sec, 193.85, places=2)
 
     def test_cells_unchanged(self) -> None:
         for level, n in BARS.items():
@@ -45,6 +46,28 @@ class ChampionsMeterTests(unittest.TestCase):
         _v, adv = resolve_level_chart(self.rec, "Advanced")
         self.assertEqual(adv["Chorus 1"][3], "Bb|C7")
         self.assertEqual(len(adv["Verse 1"]), 21)
+
+    def test_outro_duplicate_chorus_removed_three_choruses(self) -> None:
+        """Wave 3: the 1977 single (2:59) has three choruses; the 4th (Outro) was a duplicate.
+
+        Basis: Wikipedia infobox 2:59 (Raw Sessions has two MORE choruses than the single),
+        Tony Conniff (chorus ~9 12/8 bars = 33.8 s vs chart 19 x 1.846 = 35.1 s). V1+C1+V2+C2+C3
+        = 99 bars x 1.846 s = 182.8 s vs 179 s (ratio 1.02); a 4th chorus gave 218 s (1.22).
+        MED-HIGH (no timestamped score). Ending Tag (6 bars Fm/Gm7) kept, unverified.
+        """
+        for level, (n, hi) in {
+            "Beginner": (105, 1.2), "Intermediate": (99, 1.2), "Advanced": (105, 1.2),
+        }.items():
+            _v, secs = resolve_level_chart(self.rec, level)
+            self.assertNotIn("Outro", secs, level)
+            self.assertEqual(list(secs)[-1], "Final Chorus", level)
+            sec = sum(len(v) for v in secs.values()) * meter_timing(65, "6/8").bar_sec
+            self.assertTrue(0.85 <= sec / 179 <= hi, (level, sec))
+        _v, inter = resolve_level_chart(self.rec, "Intermediate")
+        self.assertEqual(
+            [k for k in inter if k.startswith(("Chorus", "Final"))],
+            ["Chorus 1", "Chorus 2", "Final Chorus"],
+        )
 
     def test_notes_say_6_8(self) -> None:
         notes = self.rec["extensions"]["arrangement_notes"]

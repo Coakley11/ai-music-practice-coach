@@ -56,8 +56,14 @@ PRIOR_REVISIONS: dict[str, tuple[tuple[str, str], ...]] = {
     'pop|careless whisper|george michael': (
         ('19e28f19b8f77472', 'cfd933bc173f3d7b'),
     ),
+    'pop|dance monkey|tones and i': (
+        ('b7d73776f086c2a6', '3cee3b47ea4667a8'),
+    ),
     'pop|heal the world|michael jackson': (
         ('8b4bb3abe38e14d9', 'db686f12d5b10066'),
+    ),
+    "pop|i'm yours|jason mraz": (
+        ('fbf88d46397bf058', 'c8a99bcee48f4821'),
     ),
     'pop|just the way you are|billy joel': (
         ('6a74c7baa018cc61', 'e9f9bb46a5b8386e'),
@@ -77,6 +83,9 @@ PRIOR_REVISIONS: dict[str, tuple[tuple[str, str], ...]] = {
     'pop|vienna|billy joel': (
         ('6d039a0d4089d973', '65e20ddc34872dcd'),
     ),
+    'pop|you belong with me|taylor swift': (
+        ('47ad993c1e040fbb', '0a1e5cf18eff60c1'),
+    ),
     'rock|californication|red hot chili peppers': (
         ('a79c309c671d2fce', '87113096ddf657ec'),
     ),
@@ -89,10 +98,22 @@ PRIOR_REVISIONS: dict[str, tuple[tuple[str, str], ...]] = {
     "rock|don't stop believin'|journey": (
         ('ee5292b0908f5b10', 'e3e79a723fc824e8'),
     ),
+    'rock|hey jude|the beatles': (
+        ('fc93bf5d1d044bf6', 'c4bd23855b113364'),
+    ),
     'rock|imagine|john lennon': (
         ('c1cb8ceb30390ca3', '4257fed65a3180ab'),
     ),
+    'rock|in my life|the beatles': (
+        ('b4a797e7e8da2f74', '08fd72868abc8625'),
+    ),
     'rock|we are the champions|queen': (
         ('bc5fedc94b5b40ad', '29e30cc7b9afa68e'),
+    ),
+    'rock|while my guitar gently weeps|the beatles': (
+        ('0ae5c50ae7efe427', ''),
+    ),
+    'rock|yesterday|the beatles': (
+        ('c16e5e4cbfbf6a0b', 'd643a7520ab58e69'),
     ),
 }
