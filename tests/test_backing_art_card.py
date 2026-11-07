@@ -95,3 +95,14 @@ def test_a_source_name_in_the_artist_place_is_replaced_by_the_real_artist():
 def test_keys_and_play_are_drawn_for_both_card_layouts():
     i = APP.index("# Keys and Play in their row: today's card and the album-cover card alike.")
     assert "if _backing_card_slot is not None and _backing_card_cols is not None:" in APP[i:i + 200]
+
+
+def test_a_karaoke_entry_names_its_own_source_on_the_card():
+    # A Custom setlist entry once showed as a Catalog card: the Karaoke branch named every entry "Catalog song".
+    i = APP.index("A Karaoke entry may be a Custom progression or a Composition")
+    body = APP[i:i + 900]
+    assert "_TRANSITION_SOURCE_LABELS.get(" in body and "km.current_session_entry(st.session_state)" in body
+    from karaoke_ui import _TRANSITION_SOURCE_LABELS
+
+    assert B.identity_for("song", source_label=_TRANSITION_SOURCE_LABELS["custom_progression"]).source == "custom"
+    assert B.identity_for("song", source_label=_TRANSITION_SOURCE_LABELS["composition_song"]).source == "composition"
