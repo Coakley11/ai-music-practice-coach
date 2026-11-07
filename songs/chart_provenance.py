@@ -268,6 +268,12 @@ def reconcile_snapshot(
             out[field] = copy.deepcopy(canonical[field])
         elif field != "sections":
             out.pop(field, None)
+    # A correction that changes the song's ORIGINAL key (Say G -> B-flat) must carry the key with the
+    # chords: a proven prior-revision copy holds the old original key, and leaving it would label the
+    # new chords with the old key. This is the song's own key, never the user's Practice Key.
+    canon_key = str(canonical.get("key") or "").strip()
+    if canon_key and "key" in snapshot and str(snapshot.get("key") or "").strip() != canon_key:
+        out["key"] = canon_key
     if canonical.get("user_override"):
         out.pop(CHART_ORIGIN_KEY, None)
         out.pop(CATALOG_REVISION_KEY, None)

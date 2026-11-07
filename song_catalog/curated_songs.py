@@ -3165,11 +3165,17 @@ def _dance_monkey_chart_pack() -> dict[str, Any]:
 
 
 def _im_yours_chart_pack() -> dict[str, Any]:
-    """I'm Yours — Jason Mraz (G shapes / capo 4, concert B major, reggae-pop, 4/4).
+    """I'm Yours — Jason Mraz (stored in the recording's concert key, B major; guitarists play it as G shapes with a capo on fret 4; reggae-pop, 4/4).
 
-    Chart in **G–D–Em–C** with **Dsus4**, **D/F#**, **A7**, half-bar splits, and
-    **N.C.** outro pickup. Acoustic island groove — not rock or piano ballad.
+    The loop is written in concert **B–F#–G#m–E** with **F#sus4**, **F#/A#**, **C#7**,
+    half-bar splits, and **N.C.** outro pickup (the same progression as the G–D–Em–C capo-4
+    shapes, up four semitones). Acoustic island groove — not rock or piano ballad.
     """
+    from music_theory import transpose_sections_dict
+
+    def concert(levels: dict[str, list[str]]) -> dict[str, list[str]]:
+        return transpose_sections_dict(levels, "G", "B")
+
     loop = ["G", "D", "Em", "C"]
     verse = list(loop) * 2
 
@@ -3230,16 +3236,17 @@ def _im_yours_chart_pack() -> dict[str, Any]:
         for name, chords in intermediate.items()
     }
 
+    intermediate, beginner, advanced = concert(intermediate), concert(beginner), concert(advanced)
     section_order = list(intermediate.keys())
     scale_hints = {
-        "G": ["G major", "G major pentatonic"],
-        "D": ["D major"],
-        "Em": ["E natural minor / relative minor"],
-        "C": ["C major"],
-        "A7": ["A mixolydian / blues pentatonic over V"],
+        "B": ["B major", "B major pentatonic"],
+        "F#": ["F# major"],
+        "G#m": ["G# natural minor / relative minor"],
+        "E": ["E major"],
+        "C#7": ["C# mixolydian / blues pentatonic over V"],
     }
     return {
-        "key": "G",
+        "key": "B",
         "sections": intermediate,
         "chart_versions": _levels(
             beginner=beginner,
@@ -3249,32 +3256,32 @@ def _im_yours_chart_pack() -> dict[str, Any]:
         "chart_status": "practice_level_verified",
         "section_order": section_order,
         "composer": "Jason Mraz",
+        # Concert-key (sounding) barre/open voicings; the G-shape / capo-4 view comes from the capo mode.
         "guitar_tabs": {
-            "G": "320003",
-            "D": "xx0232",
-            "Dsus4": "xx0233",
-            "D/F#": "2x0232",
-            "Em": "022000",
-            "C": "x32010",
-            "A7": "x02020",
+            "B": "x24442",
+            "F#": "244322",
+            "G#m": "466444",
+            "E": "022100",
+            "C#7": "x46464",
         },
         "lyric_cues": {
-            "Intro": ["Acoustic island vamp — G · D · Em · C"],
+            "Intro": ["Acoustic island vamp — B · F# · G#m · E"],
             "Verse 1": ["Well you done done me and you bet I felt it…"],
             "Chorus 1": ["But I won't hesitate no more, no more…"],
-            "Verse 2": ["Come on and open up your plans…", "A7 lift into chorus 2"],
-            "Chorus 2": ["Open up your plans and damn you're free…", "D|Dsus4 color"],
-            "Bridge": ["And it's our God-forsaken right to be loved…", "G|D/F# walkdown"],
+            "Verse 2": ["Come on and open up your plans…", "C#7 lift into chorus 2"],
+            "Chorus 2": ["Open up your plans and damn you're free…", "F#|F#sus4 color"],
+            "Bridge": ["And it's our God-forsaken right to be loved…", "B|F#/A# walkdown"],
             "Verse 3": ["Third verse — same relaxed groove"],
-            "Final Chorus / Outro Build": ["I've been spendin' way too long…", "A7 turn"],
-            "Outro": ["N.C. pickup — fade on G · D · Em · C"],
+            "Final Chorus / Outro Build": ["I've been spendin' way too long…", "C#7 turn"],
+            "Outro": ["N.C. pickup — fade on B · F# · G#m · E"],
         },
         "extensions": _ext(
             arrangement_notes=(
-                "**B major** concert; chart in **G shapes** (capo **4**). **4/4**, ~75 BPM. "
+                "**B major** concert (the recording's key); guitarists play **G shapes** with a "
+                "capo on fret **4**. **4/4**, ~75 BPM. "
                 "Reggae-pop / island groove — acoustic guitar, light hand percussion, soft "
-                "bass, relaxed drums. **Not** rock kit or piano ballad. Preserve **Dsus4**, "
-                "**D/F#**, **A7**, half-bar splits (**D|Dsus4**, **G|D/F#**, **Em|D**), "
+                "bass, relaxed drums. **Not** rock kit or piano ballad. Preserve **F#sus4**, "
+                "**F#/A#**, **C#7**, half-bar splits (**F#|F#sus4**, **B|F#/A#**, **G#m|F#**), "
                 "and **N.C.** outro pickup."
             ),
             default_bpm=75,
@@ -3283,7 +3290,7 @@ def _im_yours_chart_pack() -> dict[str, Any]:
             full_form_levels=["Beginner"],
             default_groove="Pop groove",
             time_signature="4/4",
-            capo_note="Capo 4 (G-shape chart) · concert key B major",
+            capo_note="Capo 4 (G shapes) · concert key B major",
             repertoire_tags=[
                 "Reggae Pop",
                 "Acoustic Pop",
@@ -3293,7 +3300,7 @@ def _im_yours_chart_pack() -> dict[str, Any]:
                 "Jason Mraz",
             ],
             harmonic_analysis={
-                "progression_summary": "G–D–Em–C (I–V–vi–IV); A7 dominant color; bridge walkdown",
+                "progression_summary": "B–F#–G#m–E (I–V–vi–IV; G–D–Em–C shapes with capo 4); C#7 dominant color; bridge walkdown",
                 "scale_suggestions": scale_hints,
             },
             acoustic_unplugged=True,
@@ -7969,18 +7976,18 @@ def _requested_verified_song_records() -> list[dict[str, Any]]:
             "I'm Yours",
             "Jason Mraz",
             "Pop",
-            "G",
+            "B",
             {
-                "Intro": ["G", "D", "Em", "C"],
-                "Verse 1": ["G", "D", "Em", "C"],
+                "Intro": ["B", "F#", "G#m", "E"],
+                "Verse 1": ["B", "F#", "G#m", "E"],
             },
             {
-                "Intro": ["G", "D", "Em", "C"],
-                "Verse 1": ["G", "D", "Em", "C"],
+                "Intro": ["B", "F#", "G#m", "E"],
+                "Verse 1": ["B", "F#", "G#m", "E"],
             },
             composer="Jason Mraz",
-            lyric_cues={"Intro": ["G · D · Em · C island groove"]},
-            notes="G-shape chart (capo 4 = B concert); full form in chart override.",
+            lyric_cues={"Intro": ["B · F# · G#m · E island groove"]},
+            notes="B concert (G shapes with capo 4); full form in chart override.",
             default_bpm=75,
             default_groove="Pop groove",
         ),

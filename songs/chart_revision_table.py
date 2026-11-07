@@ -64,6 +64,7 @@ PRIOR_REVISIONS: dict[str, tuple[tuple[str, str], ...]] = {
     ),
     "pop|i'm yours|jason mraz": (
         ('fbf88d46397bf058', 'c8a99bcee48f4821'),
+        ('fbf88d46397bf058', '5b2c107794694ba9'),
     ),
     'pop|just the way you are|billy joel': (
         ('6a74c7baa018cc61', 'e9f9bb46a5b8386e'),

@@ -19,7 +19,8 @@ from chart_level_arrangement import resolve_level_chart
 from chord_events import sections_dict_to_events, validate_chord_events
 from song_catalog.catalog import curated_song_records
 
-ADV_BRIDGE = ["Gmaj7", "D", "Em7", "D", "Cadd9", "A7sus4", "Gmaj7|D/F#", "Em7|D", "Cadd9", "A7sus4"]
+# concert key B (the former G-shape names moved up four semitones: G->B, D->F#, Em->G#m, C->E, A7->C#7)
+ADV_BRIDGE = ["Bmaj7", "F#", "G#m7", "F#", "Eadd9", "C#7sus4", "Bmaj7|F#/A#", "G#m7|F#", "Eadd9", "C#7sus4"]
 
 
 class ImYoursChordNameTests(unittest.TestCase):
@@ -33,9 +34,9 @@ class ImYoursChordNameTests(unittest.TestCase):
 
     def test_other_levels_unchanged(self) -> None:
         _v, inter = resolve_level_chart(self.rec, "Intermediate")
-        self.assertEqual(inter["Bridge"][6:8], ["G|D/F#", "Em|D"])
+        self.assertEqual(inter["Bridge"][6:8], ["B|F#/A#", "G#m|F#"])
         beg = self.rec["chart_versions"]["Beginner"]["Bridge"]
-        self.assertEqual(beg[5:7], ["G|D/F#", "Em|D"])
+        self.assertEqual(beg[5:7], ["B|F#/A#", "G#m|F#"])
 
     def test_no_doubled_extensions_anywhere(self) -> None:
         bad = re.compile(r"maj7maj7|m77|77|add9add9|sus4sus|7sus4sus")
