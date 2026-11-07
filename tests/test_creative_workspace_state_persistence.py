@@ -24,7 +24,11 @@ class _FakeSt:
 class TestCreativeWorkspaceStatePersistence(unittest.TestCase):
     def test_creative_tab_round_trip(self) -> None:
         ss: dict = {"studio_page": "creative", "improv_intelligence_tab": "Missions"}
-        sync_creative_workspace_state_before_persist(ss)
+        from creative_tab_tool_persistence import handle_user_creative_selector_change
+        from unittest.mock import patch
+
+        with patch("creative_tab_tool_persistence.request_creative_selector_cloud_save", return_value=True):
+            handle_user_creative_selector_change(ss, "improv_intelligence_tab")
         st = _FakeSt(ss)
         blob = build_music_disk_state(st)
         self.assertIn("creative_workspace_state", blob)
@@ -42,6 +46,17 @@ class TestCreativeWorkspaceStatePersistence(unittest.TestCase):
         prepare_creative_workspace_for_render(fresh.session_state)
         self.assertEqual(fresh.session_state.get("improv_intelligence_tab"), "Missions")
         self.assertTrue(fresh.session_state.get("_creative_workspace_restored_applied"))
+
+    def test_uncommitted_widget_default_cannot_replace_saved_tab(self) -> None:
+        ss = {
+            "studio_page": "creative",
+            "improv_intelligence_tab": "Entry & Jam",
+            CREATIVE_WORKSPACE_STATE_KEY: {
+                **default_creative_workspace_state(), "improv_intelligence_tab": "Missions",
+            },
+        }
+        blob = build_music_disk_state(_FakeSt(ss))
+        self.assertEqual(blob[CREATIVE_WORKSPACE_STATE_KEY]["improv_intelligence_tab"], "Missions")
 
     def test_legacy_session_keys_migrate_to_canonical(self) -> None:
         payload = {

@@ -222,3 +222,32 @@ def test_catalog_resume_preserves_saved_projects_and_inactive_source_selections(
         ok,why=restore_recent_practice(ss,saved(),catalog)
     assert ok,why
     assert {key:ss.get(key) for key in protected}==protected
+
+
+def test_continue_switches_catalog_custom_without_sharing_saved_keys(catalog):
+    from custom_progression_lab import default_active_progression
+    from songs.practice_key_state import get_practice_concert_key
+    trial=default_active_progression()
+    trial.update(id='trial-continue',name='Trial Song',original_key_center='C',user_locked_home_key=True)
+    trial['original_sections']['Verse']=[{'chord':'Cmaj7','bars':2}]
+    trial['lyrics_by_section']={'Verse':'Disposable fixture lyrics'}
+    custom_pick='custom::trial-continue';catalog_pick=saved()['song_id']
+    protected={'cpl_saved_progressions':{'Trial Song':trial},
+               'composer_saved_compositions':{'piece':{'id':'piece','title':'Saved composition'}},
+               'mt_tracks':{'A':b'disposable-recording'},'mixed_track_wav':b'disposable-mix'}
+    ss=current();ss.update(deepcopy(protected))
+    ss['practice_key_by_source']={catalog_pick:'F',custom_pick:'Eb'}
+    ss['practice_key_user_override_picks']=[catalog_pick,custom_pick]
+    with patch('songs.state.persist_music_local_state'),patch('suite_activity_client.record_activity'), \
+         patch('music_persistent_state.flush_active_song_edits_and_save'):
+        for pick,source,key,title in [(catalog_pick,'catalog_song','F','Shallow'),
+                                     (custom_pick,'custom_progression','Eb','Trial Song'),
+                                     (catalog_pick,'catalog_song','F','Shallow')]:
+            entry=saved(pick);entry.update(instrument='Piano',practice_concert_key=key)
+            ok,why=restore_recent_practice(ss,entry,catalog)
+            assert ok,why
+            assert ss['active_catalog_pick_key']==pick and ss['active_music_source']==source
+            assert ss['selected_song']['title']==title and ss['display_key']==key
+            assert {k:ss[k] for k in protected}==protected
+            assert get_practice_concert_key(ss,pick_key=catalog_pick)=='F'
+            assert get_practice_concert_key(ss,pick_key=custom_pick)=='Eb'
