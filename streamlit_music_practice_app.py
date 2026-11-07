@@ -21402,6 +21402,18 @@ elif _studio_page == "backing":
             _backing_orig_key = _home_key or str(_backing_card_record.get("key") or "")
             _backing_practice_key = _prac_now
             _backing_source_label = "Catalog song"
+            # A Karaoke entry may be a Custom progression or a Composition: the card names the entry's own source
+            # (the same labels as Karaoke's Skip marker), so its artwork and Source logo follow the song.
+            try:
+                if km.is_voice_mode(st.session_state) and km.is_karaoke_session_active(st.session_state):
+                    from karaoke_ui import _TRANSITION_SOURCE_LABELS
+
+                    _kr_entry = km.current_session_entry(st.session_state) or {}
+                    _backing_source_label = _TRANSITION_SOURCE_LABELS.get(
+                        str(_kr_entry.get("source") or ""), "Catalog song"
+                    )
+            except Exception:
+                _backing_source_label = "Catalog song"
             # Keep sealed ctx Practice fields aligned with live sticky.
             try:
                 if _prac_now and (
