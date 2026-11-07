@@ -10849,6 +10849,17 @@ def _composition_saved_style_label(rec: dict) -> str:
     return "Pop"
 
 
+# The approved artwork of this run's Songs card (None: today's card).
+_songs_art_identity: Any = None
+
+
+def _songs_art_levels(levels_display: Any) -> list[str]:
+    import re as _re
+
+    found = _re.findall(r"Beginner|Intermediate|Advanced", str(levels_display or ""))
+    return list(dict.fromkeys(found)) or ["Beginner", "Intermediate", "Advanced"]
+
+
 def _render_active_song_card(
     rec: dict,
     *,
@@ -11172,6 +11183,15 @@ def _render_active_song_card(
     )
     # v12 header: source identity (Catalog / Custom / Composition) + the song's style artwork.
     _header_artist = _artist_display[3:] if _artist_display.lower().startswith("by ") else _artist_display
+    global _songs_art_identity
+    _songs_art_identity = None
+    try:
+        from song_card_art import card_identity as _card_identity, song_art_cards_enabled as _art_on
+
+        if _art_on():
+            _songs_art_identity = _card_identity(_source_label, _style_label)
+    except Exception:
+        _songs_art_identity = None
     card_html = (
         f'<div class="ui-active-song-head{trusted_cls}{modifier_cls}{_card_source_cls}">'
         + song_card_header_html(
@@ -11184,6 +11204,17 @@ def _render_active_song_card(
         )
         + "</div>"
     )
+    if _songs_art_identity is not None:
+        from song_card_art import card_style_tag as _card_style_tag, hero_html as _hero_html
+
+        card_html = _card_style_tag(_songs_art_identity) + _hero_html(
+            _songs_art_identity,
+            title=str(details["title"]),
+            artist=_header_artist,
+            page="songs",
+            bars=_custom_header_bars,
+            bars_note="Your progression" if _custom_header_bars else "",
+        )
     with st.container(key="picker_active_song_card_content"):
         st.markdown(card_html, unsafe_allow_html=True)
         if show_key_row:
@@ -11201,19 +11232,49 @@ def _render_active_song_card(
                 with _original_col:
                     from song_card_keys import pretty_key_name as _pretty_key_name
 
-                    st.markdown(
-                        '<p class="ui-skp-label">Original key</p>'
-                        f'<div class="ui-skp-value">{html.escape(_pretty_key_name(_original_key) or _orig_label)}</div>'
-                        '<p class="ui-skp-cap">Concert pitch</p>',
-                        unsafe_allow_html=True,
-                    )
+                    if _songs_art_identity is not None:
+                        from song_card_art import backing_key_label as _key_label
+
+                        st.markdown(
+                            _key_label("original")
+                            + f'<div class="ui-skp-value">{html.escape(_pretty_key_name(_original_key) or _orig_label)}</div>',
+                            unsafe_allow_html=True,
+                        )
+                    else:
+                        st.markdown(
+                            '<p class="ui-skp-label">Original key</p>'
+                            f'<div class="ui-skp-value">{html.escape(_pretty_key_name(_original_key) or _orig_label)}</div>'
+                            '<p class="ui-skp-cap">Concert pitch</p>',
+                            unsafe_allow_html=True,
+                        )
                 with _practice_col:
                     _render_card_practice_key_selector(rec, pick_key=_card_pk)
-        st.markdown(
-            _badge_html + _meta_row
-            + _song_card_guidance_html(details, challenge_hint=challenge_hint, harmony_hint=harmony_hint, goals_html=goals_html),
-            unsafe_allow_html=True,
-        )
+        if _songs_art_identity is not None:
+            from song_card_art import songs_body_html as _songs_body_html
+
+            st.markdown(
+                _songs_body_html(
+                    _songs_art_identity,
+                    title=str(details["title"]),
+                    bpm=int(details.get("bpm") or 100),
+                    meter=str(details.get("time_signature") or "4/4"),
+                    level=str(level or ""),
+                    instrument=active_instrument,
+                    focus=str(_active_focus or ""),
+                    levels=_songs_art_levels(details.get("levels_display")),
+                    instruments_general=str(details.get("instruments") or ""),
+                    guide=details.get("card_guidance") or {},
+                    written=(_written_label if show_key_row else "") or _charts_badge,
+                    written_label=_written_badge_label if (_written_label and show_key_row) else "Charts in",
+                ),
+                unsafe_allow_html=True,
+            )
+        else:
+            st.markdown(
+                _badge_html + _meta_row
+                + _song_card_guidance_html(details, challenge_hint=challenge_hint, harmony_hint=harmony_hint, goals_html=goals_html),
+                unsafe_allow_html=True,
+            )
     if _details_error is not None and _developer_mode_enabled():
         st.warning(
             "Developer Mode · active-song card fell back to defaults "
@@ -11412,6 +11473,11 @@ def _render_card_practice_key_selector(rec: dict, *, pick_key: str) -> None:
         '<p class="ui-skp-label"><span class="ui-skp-wide">Practice / Concert key</span>'
         '<span class="ui-skp-narrow">Practice key</span></p>'
     )
+    _art = _songs_art_identity is not None
+    if _art:
+        from song_card_art import backing_key_label as _key_label
+
+        _pk_label_html = _key_label("practice")
     if practice_key_edit_locked(st.session_state):
         # Fixed Key decides this key: show it, offer nothing to change.
         from practice_key_mode import fixed_key_family_label_for_session
@@ -11432,8 +11498,8 @@ def _render_card_practice_key_selector(rec: dict, *, pick_key: str) -> None:
                 + f'<div class="ui-skp-locked ui-practice-key-locked" '
                 f'title="Set by Fixed Key{(" (" + html.escape(_family) + ")") if _family else ""}">'
                 f"{_lock_svg}<span>{html.escape(pretty_key_name(locked) or locked)}</span></div>"
-                '<p class="ui-skp-cap">Concert pitch</p>'
-                f'<p class="ui-skp-cap ui-skp-cap-fixed">Fixed Key{(" · " + html.escape(_rel)) if _rel else ""}</p>',
+                + ("" if _art else '<p class="ui-skp-cap">Concert pitch</p>')
+                + f'<p class="ui-skp-cap ui-skp-cap-fixed">Fixed Key{(" · " + html.escape(_rel)) if _rel else ""}</p>',
                 unsafe_allow_html=True,
             )
         return
@@ -11466,11 +11532,14 @@ def _render_card_practice_key_selector(rec: dict, *, pick_key: str) -> None:
             help="Change the Practice / Concert Key for this song — stays in sync with the sidebar control.",
         )
         _rel = key_relation_caption(original_key, str(st.session_state.get(widget_key) or current))
-        st.markdown(
-            '<p class="ui-skp-cap">Concert pitch</p>'
-            + (f'<p class="ui-skp-cap">{html.escape(_rel)}</p>' if _rel else ""),
-            unsafe_allow_html=True,
-        )
+        if _art:
+            st.markdown(f'<p class="ui-skp-cap">{html.escape(_rel) if _rel else "Tap to change"}</p>', unsafe_allow_html=True)
+        else:
+            st.markdown(
+                '<p class="ui-skp-cap">Concert pitch</p>'
+                + (f'<p class="ui-skp-cap">{html.escape(_rel)}</p>' if _rel else ""),
+                unsafe_allow_html=True,
+            )
 
 
 def _picker_song_dropdown_label(pick_key: str, *, favorites: set[str] | None = None) -> str:

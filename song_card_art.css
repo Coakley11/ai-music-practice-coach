@@ -586,3 +586,56 @@
   .st-key-backing_art_card .bk-stats .stat b{font-size:17px}
   .st-key-backing_art_card .bk-stats .stat .vg{width:21px;height:21px;font-size:12px}
 }
+
+/* ---------------------------------------------------------------------------------------------------------
+   Songs: the same album cover around the real Practice Key widget (st.container "picker_active_song_card_content").
+   Scoped with :has(.sc-frag), so today's card is untouched when the artistic cards are switched off. */
+.st-key-picker_active_song_card_content:has(.sc-frag){--ink:#fff;--muted:rgba(255,255,255,.82);--panel:rgba(10,10,30,.62);--panel-line:rgba(255,255,255,.28);--accent:#fff;--accent-ink:#111;--accent2:#fff;
+  --title:'Source Sans 3',sans-serif;--title-size:58px;--title-tr:0;--label:'Source Sans 3',sans-serif;--key:'Source Sans 3',sans-serif;--key-weight:800;
+  --chip-bg:rgba(255,255,255,.14);--chip-line:rgba(255,255,255,.4);--chip-ink:#fff;--radius:26px;
+  container-type:inline-size;container-name:card;box-sizing:border-box;padding:0!important;box-shadow:0 18px 44px rgba(10,10,30,.34);font-family:'Source Sans 3',system-ui,sans-serif}
+.st-key-picker_active_song_card_content:has(.sc-frag) *{box-sizing:border-box}
+.st-key-picker_active_song_card_content [data-testid="stElementContainer"]:has(.sc-frag){margin:0!important}
+.st-key-picker_active_song_card_content h3.sc-title{font-family:var(--title);font-size:var(--title-size);letter-spacing:var(--title-tr);line-height:1.02;color:var(--title-ink,#fff);
+  font-weight:var(--title-weight,800);font-style:var(--title-style,normal);margin:0;padding:0;text-wrap:balance}
+.st-key-picker_active_song_card_content p.sc-artist{margin:6px 0 0;padding:0;font-size:20px;font-weight:600;color:#fff;line-height:1.3}
+.st-key-picker_active_song_card_content p.sc-flourish{margin:2px 0 0;padding:0}
+.st-key-picker_active_song_card_content .sc-body h4{margin:0 0 7px;padding:0}
+.st-key-picker_active_song_card_content .sc-body p{margin:0}
+.st-key-picker_active_song_card_content img.sc-heroart{object-fit:cover;object-position:right top}
+@container card (max-width:760px){.st-key-picker_active_song_card_content h3.sc-title{font-size:calc(var(--title-size)*.82)}}
+@container card (max-width:560px){.st-key-picker_active_song_card_content h3.sc-title{font-size:calc(var(--title-size)*.62)}.st-key-picker_active_song_card_content p.sc-artist{font-size:17px}}
+/* Key panels: original -> the key I play in. */
+.st-key-picker_active_song_card_content:has(.sc-frag) .st-key-picker_active_song_key_row{padding:18px 22px 0;background:transparent!important;border:0!important}
+.st-key-picker_active_song_card_content:has(.sc-frag) .st-key-picker_active_song_key_row [data-testid="stHorizontalBlock"]{gap:16px!important;align-items:stretch!important}
+.st-key-picker_active_song_card_content:has(.sc-frag) .st-key-picker_active_song_key_row [data-testid="stHorizontalBlock"]>[data-testid="stColumn"]{
+  flex:1 1 0!important;min-width:0!important;padding:14px 18px 20px!important;border-right:0!important;
+  background:var(--k-bg,var(--panel));border:var(--k-border,2px solid var(--panel-line));border-radius:var(--k-radius,20px);color:var(--k-ink,var(--ink));box-shadow:var(--k-shadow,none)}
+.st-key-picker_active_song_card_content:has(.sc-frag) .st-key-picker_active_song_key_row [data-testid="stHorizontalBlock"]>[data-testid="stColumn"]:last-child{
+  flex:1.25 1 0!important;background:var(--kp-bg,var(--k-bg,var(--panel)));border:var(--kp-border,var(--k-border,3px solid var(--accent)));color:var(--kp-ink,var(--k-ink,var(--ink)));box-shadow:var(--kp-shadow,var(--k-shadow,none))}
+.st-key-picker_active_song_card_content:has(.sc-frag) .ui-skp-label{display:flex;align-items:center;gap:8px;margin:0 0 6px!important;color:inherit!important;
+  font:var(--label-weight,700) var(--label-size,15px) var(--label);letter-spacing:.08em;text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.st-key-picker_active_song_card_content:has(.sc-frag) .bk-label i{flex:none;display:inline-flex;align-items:center;justify-content:center;width:38px;height:38px;border-radius:50%;font-style:normal;font-size:20px;
+  background:var(--ico-bg,rgba(255,255,255,.92));border:2px solid var(--accent);box-shadow:0 2px 6px rgba(0,0,0,.3)}
+.st-key-picker_active_song_card_content:has(.sc-frag) .ui-skp-label+.ui-skp-value,
+.st-key-picker_active_song_card_content:has(.sc-frag) .ui-skp-label+.ui-skp-locked{margin-top:0}
+.st-key-picker_active_song_card_content:has(.sc-frag) .ui-skp-value,
+.st-key-picker_active_song_card_content:has(.sc-frag) .ui-skp-locked span{font-family:var(--key);font-weight:var(--key-weight);font-style:var(--key-style,normal);
+  font-size:var(--key-size,38px)!important;line-height:1.1;color:inherit;letter-spacing:var(--key-tr,0);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.st-key-picker_active_song_card_content:has(.sc-frag) .ui-skp-locked{display:flex;align-items:center;gap:8px;background:transparent;border:0;padding:0}
+.st-key-picker_active_song_card_content:has(.sc-frag) .ui-skp-cap{margin:8px 0 0!important;color:inherit!important;opacity:.92;font-size:14px!important;font-weight:600}
+.st-key-picker_active_song_card_content:has(.sc-frag) .ui-skp-cap-fixed{font-weight:800}
+.st-key-picker_active_song_card_content:has(.sc-frag) .st-key-picker_active_song_practice_key_row [data-testid="stSelectbox"] .react-aria-ComboBox [role="group"],
+.st-key-picker_active_song_card_content:has(.sc-frag) .st-key-picker_active_song_practice_key_row [data-testid="stSelectbox"] [data-baseweb="select"]>div{
+  min-height:58px!important;background:var(--dd-bg,rgba(0,0,0,.42))!important;border:var(--dd-border,2px solid var(--accent))!important;border-radius:var(--dd-radius,12px)!important;color:var(--dd-ink,inherit)!important}
+.st-key-picker_active_song_card_content:has(.sc-frag) .st-key-picker_active_song_practice_key_row [data-testid="stSelectbox"] input[role="combobox"]{
+  font-family:var(--key)!important;font-weight:var(--key-weight)!important;font-style:var(--key-style,normal);font-size:30px!important;color:var(--dd-ink,inherit)!important;-webkit-text-fill-color:currentColor}
+.st-key-picker_active_song_card_content:has(.sc-frag) .st-key-picker_active_song_practice_key_row [data-testid="stSelectbox"] svg{color:var(--accent);width:26px;height:26px}
+@container card (max-width:640px){
+  .st-key-picker_active_song_card_content:has(.sc-frag) .st-key-picker_active_song_key_row{padding:14px 14px 0}
+  .st-key-picker_active_song_card_content:has(.sc-frag) .st-key-picker_active_song_key_row [data-testid="stHorizontalBlock"]{flex-direction:column!important;gap:12px!important}
+  .st-key-picker_active_song_card_content:has(.sc-frag) .st-key-picker_active_song_key_row [data-testid="stHorizontalBlock"]>[data-testid="stColumn"]{width:100%!important;flex:1 1 auto!important}
+  .st-key-picker_active_song_card_content:has(.sc-frag) .ui-skp-value,
+  .st-key-picker_active_song_card_content:has(.sc-frag) .ui-skp-locked span{font-size:32px!important}
+  .st-key-picker_active_song_card_content:has(.sc-frag) .st-key-picker_active_song_practice_key_row [data-testid="stSelectbox"] input[role="combobox"]{font-size:26px!important}
+}
