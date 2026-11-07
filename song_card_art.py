@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from functools import lru_cache
 from typing import Any, Iterable
 
-from music_feature_icons import FEATURE_ICONS, SEMANTIC_FIELD_ICONS, instrument_icon
+from music_feature_icons import FEATURE_ICONS, SEMANTIC_FIELD_ICONS, SONG_SOURCE_ICONS, instrument_icon
 from practice_studio import genre_visual_style
 from practice_ui_labels import FOCUS_ICONS, LEVEL_ICONS, icon_for_focus
 
@@ -27,7 +27,6 @@ CHALLENGE_ICON = "\U0001F525"  # the session plan's challenge icon
 CATALOG, CUSTOM, COMPOSITION = "catalog", "custom", "composition"
 GENRES = ("pop", "rock", "jazz", "blues", "country", "soul", "funk", "jewish", "classical")
 _SOURCE_NAME = {CATALOG: "Catalog", CUSTOM: "Custom", COMPOSITION: "Composition"}
-_SOURCE_ICON = {CATALOG: "songs", CUSTOM: "custom", COMPOSITION: "composition"}
 _STYLE_ART = {CUSTOM: ("blues", "pop"), COMPOSITION: ("blues", "classical")}
 
 # The part of each artwork a narrow card shows, so the instrument stays in view.
@@ -75,7 +74,8 @@ class CardIdentity:
 
     @property
     def source_logo(self) -> str:
-        return FEATURE_ICONS[_SOURCE_ICON[self.source]]
+        """The app's song-source logo (music_feature_icons.SONG_SOURCE_ICONS), never a genre's or a page's."""
+        return SONG_SOURCE_ICONS[self.source]
 
     @property
     def crest(self) -> str:

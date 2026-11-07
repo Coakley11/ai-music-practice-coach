@@ -8,7 +8,7 @@ import pytest
 
 import backing_art_card as B
 import song_card_art as A
-from music_feature_icons import FEATURE_ICONS, SEMANTIC_FIELD_ICONS
+from music_feature_icons import FEATURE_ICONS, SEMANTIC_FIELD_ICONS, SONG_SOURCE_ICONS
 from practice_ui_labels import GROOVE_ICONS
 
 ROOT = pathlib.Path(A.__file__).resolve().parent
@@ -40,7 +40,7 @@ def test_custom_and_composition_keep_their_own_world(kind, source):
 def test_the_facts_use_the_apps_own_icons():
     identity = A.card_identity("Catalog song", "Rock")
     html = A.backing_chips_html(identity, groove="Ballad", meter="4/4")
-    for icon in (SEMANTIC_FIELD_ICONS["style"], SEMANTIC_FIELD_ICONS["groove"], SEMANTIC_FIELD_ICONS["meter"], SEMANTIC_FIELD_ICONS["source"], GROOVE_ICONS["Ballad"], FEATURE_ICONS["songs"]):
+    for icon in (SEMANTIC_FIELD_ICONS["style"], SEMANTIC_FIELD_ICONS["groove"], SEMANTIC_FIELD_ICONS["meter"], SEMANTIC_FIELD_ICONS["source"], GROOVE_ICONS["Ballad"], SONG_SOURCE_ICONS["catalog"]):
         assert icon in html
     for words in ("Style", "Backing groove", "Ballad", "Meter", "4/4", "Source", "Catalog"):
         assert words in html

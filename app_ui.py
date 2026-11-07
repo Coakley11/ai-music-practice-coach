@@ -9782,12 +9782,14 @@ def song_source_icon_parts(source_type: str) -> tuple[str, str, str]:
     writing pen, Catalog -> the purple music note. It is keyed on the resolved source identity,
     never on a song title or a stale widget.
     """
+    from music_feature_icons import SONG_SOURCE_ICONS
+
     low = str(source_type or "").strip().lower()
     if "compos" in low:
-        return format_icon_html(FEATURE_ICONS["composition"]), "source-composition", "Composition song"
+        return format_icon_html(SONG_SOURCE_ICONS["composition"]), "source-composition", "Composition song"
     if "custom" in low:
-        return format_icon_html(FEATURE_ICONS["custom"]), "source-custom", "Custom Progression song"
-    return "🎵", "source-catalog", "Catalog song"
+        return format_icon_html(SONG_SOURCE_ICONS["custom"]), "source-custom", "Custom Progression song"
+    return SONG_SOURCE_ICONS["catalog"], "source-catalog", "Catalog song"
 
 
 def _multitrack_active_source_badge_parts(session_state: Any | None = None) -> tuple[str, str, str]:
