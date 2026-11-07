@@ -594,3 +594,11 @@
 .st-key-backing_art_card .ui-skp-locked svg,
 .st-key-picker_active_song_card_content:has(.sc-frag) .ui-skp-locked svg{stroke:currentColor;flex:none;width:26px;height:26px}
 .st-key-backing_art_card .ui-skp-locked,.st-key-picker_active_song_card_content:has(.sc-frag) .ui-skp-locked{height:auto!important;min-height:0}
+/* Tablets and laptops with the sidebar open: today's narrow-column rule (app_ui, backing-main <= 800 px) stacks
+   every controls row and stretches its columns; on an album-cover card wider than 640 px, BPM and Play stay
+   side by side. Narrower cards keep the compact stacked layout above. */
+@container card (min-width:641px){
+  .st-key-backing_art_card .st-key-backing_art_play_row [data-testid="stHorizontalBlock"]{flex-direction:row!important;justify-content:flex-start!important;align-items:center!important}
+  .st-key-backing_art_card .st-key-backing_art_play_row [data-testid="stHorizontalBlock"]>[data-testid="stColumn"]:first-child{flex:1 1 auto!important;width:auto!important;min-width:0!important}
+  .st-key-backing_art_card .st-key-backing_art_play_row [data-testid="stHorizontalBlock"]>[data-testid="stColumn"]:last-child{flex:0 0 260px!important;width:260px!important}
+}
