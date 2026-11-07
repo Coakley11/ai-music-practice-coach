@@ -178,3 +178,59 @@ class TestSavedChartRefresh(unittest.TestCase):
         edited = dict(snap, sections={**old_sections, "Intro": ["Bm"] * 3})
         self.assertEqual(cp.classify_snapshot(edited, new, pick_key=pick)[0], cp.KEEP)
         self.assertEqual(cp.classify_snapshot(dict(snap, chart_origin="user"), new, pick_key=pick)[0], cp.KEEP)
+
+
+class TestOldResumePositions(unittest.TestCase):
+    """A session saved against the 480-bar chart restores safely on the 120-bar chart."""
+
+    def _smap(self, level: str):
+        from chart_level_arrangement import resolve_level_chart
+
+        view, secs = resolve_level_chart(_record(), level)
+        order = list(view.get("section_order") or secs)
+        return [(name, list(secs[name])) for name in order]
+
+    def test_global_index_beyond_the_chart_clamps_to_a_real_chord(self) -> None:
+        from improvisation_motif import flatten_section_map, section_and_chord_at_global_index
+
+        for level in LEVELS:
+            smap = self._smap(level)
+            flat = [str(c) for c in flatten_section_map(smap)]
+            for idx in (len(flat), 250, 400, 479, -5):
+                label, chord = section_and_chord_at_global_index(smap, idx)
+                self.assertIn(label, [n for n, _ in smap])
+                self.assertIn(chord, flat)
+
+    def test_saved_creative_chord_index_is_translated_by_chord_or_reset_to_start(self) -> None:
+        from improvisation_motif import flatten_section_map
+        import creative_mission_config_persistence as cm
+
+        for level in LEVELS:
+            smap = self._smap(level)
+            flat = [str(c) for c in flatten_section_map(smap)]
+            for chord, section, idx in (("Bm", "Verse 1A", 250), ("F#7b9", "Outro Solo", 400), ("C#", "Intro", 479)):
+                out = cm._retarget_identity_to_chord_symbol(
+                    chord=chord, section=section, label=chord, chord_options=flat, section_map=smap, index=idx
+                )
+                self.assertIsNotNone(out)
+                i = out["ii_selected_chord_index"]
+                self.assertTrue(0 <= i < len(flat), (level, chord, idx, i))
+                self.assertEqual(out["ii_selected_chord"], chord)  # the saved chord identity is never rewritten
+                if chord in flat:
+                    self.assertEqual(flat[i], chord)  # translated by chord identity, not by number
+                else:
+                    self.assertEqual(i, 0)  # no musical correspondence: documented restart at the first chord
+
+    def test_refresh_never_mutates_the_saved_snapshot_and_edits_survive(self) -> None:
+        from songs import chart_provenance as cp
+
+        new = _record()
+        pick = "Hotel California\x1fEagles"
+        old = {n: [c for c in cells for _ in range(4)] for n, cells in new["sections"].items()}
+        snap = {"title": "Hotel California", "artist": "Eagles", "pick_key": pick, "sections": old}
+        frozen = copy.deepcopy(snap)
+        out = cp.reconcile_snapshot(snap, new, pick_key=pick)
+        self.assertEqual(snap, frozen)  # the stored copy is not modified in place
+        self.assertEqual(sum(len(v) for v in out["sections"].values()), 120)
+        edited = dict(snap, sections={**old, "Verse 1A": ["Bm"] * 32})
+        self.assertEqual(cp.reconcile_snapshot(edited, new, pick_key=pick)["sections"]["Verse 1A"], ["Bm"] * 32)
