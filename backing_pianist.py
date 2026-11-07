@@ -34,6 +34,7 @@ REGISTERS = {
     "Rock groove": (52, 77, 84),
     "Funk groove": (55, 77, 82),
     "Soul": (52, 76, 81),
+    "Soul groove": (52, 76, 81),
     "Ballad": (48, 77, 84),  # a wide, open instrument
     "Jewish ballad": (48, 77, 84),
     "Bossa nova": (52, 72, 76),  # close and understated
@@ -264,14 +265,16 @@ _LIFE = {
     "Rock groove": (0.20, 0.26, 0.18),
     "Funk groove": (0.20, 0.30, 0.16),
     "Soul": (0.22, 0.34, 0.24),
+    "Soul groove": (0.22, 0.34, 0.24),
     "Ballad": (0.24, 0.10, 0.20),
     "Jewish ballad": (0.24, 0.10, 0.20),
     "Bossa nova": (0.14, 0.18, 0.10),
 }
+_SPARSE_STYLES = frozenset({"Jazz swing", "Funk groove", "Soul", "Soul groove", "Bossa nova"})
 # Broken-chord contours: rising, rocking, falling, wide.
 _CONTOURS = ((0, 1, 2, 3), (0, 2, 1, 3), (0, 3, 2, 1), (0, 2, 3, 1))
 HANDS["Pop"] = HANDS["Pop groove"]
-HANDS["Soul"] = StyleHands(_SOUL, "rootless", 62, True, (2, 3, 4), 0.12, 0.04, 0.2, 0.15, 0.60, (0, 1, 2))
+HANDS["Soul groove"] = HANDS["Soul"] = StyleHands(_SOUL, "rootless", 62, True, (2, 3, 4), 0.12, 0.04, 0.2, 0.15, 0.60, (0, 1, 2))
 HANDS["Jewish ballad"] = HANDS["Ballad"]
 _FALLBACK = HANDS["Pop groove"]
 
@@ -403,7 +406,7 @@ class Pianist:
             notes = list(min(ranked, key=lambda r: (muddy(r[1]), r[0]))[1])
         floor = self.floor
         r = _roll(self.seed, "shape", tag)
-        if voice in {"C", "R"} and h.extensions and hands.colour and r < 0.30 and kind != "rootless":
+        if voice in {"C", "R"} and h.extensions and hands.colour and r < 0.30 and kind != "rootless" and h.third in {n % 12 for n in notes}:
             # A colour on top, when the chord welcomes one.
             extra = stack([notes[-1] % 12, h.extensions[0]], notes[-1])[-1]
             if extra <= self.ceiling:
@@ -522,7 +525,9 @@ class Pianist:
             if figure_at is not None and beat >= figure_at:
                 continue
             # A hit left out for air, never the first of a bar that opens the phrase.
-            if (k > 0 or self.phrase_left > 0) and voice not in {"L", "R"} and not voice.startswith("A"):
+            # Styles that flow keep their downbeat; only the sparse ones may leave it out.
+            keeps_downbeat = beat == 0.0 and self.style not in _SPARSE_STYLES
+            if (k > 0 or self.phrase_left > 0) and not keeps_downbeat and voice not in {"L", "R"} and not voice.startswith("A"):
                 keep = 1.0 - hands.space * (0.6 if full else 1.0)
                 if _roll(self.seed, "space", tag0, k) > keep:
                     continue
@@ -573,7 +578,36 @@ class Pianist:
             if seg is not None and seg[2] is not None:
                 hits += self._figure(self._h(seg[2]), self._h(next_chord), figure_at, 4.0, tag0)
         hits.sort(key=lambda x: x.beat)
-        return hits
+        return self._state_quality(hits, segments)
+
+    def _state_quality(self, hits: list[Hit], segments) -> list[Hit]:
+        """Variety must never blur the harmony: wherever a chord plays, its third is heard, so major stays major."""
+        out = list(hits)
+        for start, end, chord in segments:
+            if chord is None:
+                continue
+            h = self._h(chord)
+            if h.third is None:
+                continue
+            inside = [i for i, x in enumerate(out) if start <= x.beat < end and x.kind != "figure"]
+            # The third has to arrive early, not only in a quiet pickup on the way out.
+            early = [i for i in inside if out[i].beat < start + 0.75 * (end - start)] or inside
+            if not inside or any(h.third in {n % 12 for n in out[i].notes} for i in early):
+                continue
+            inside = early
+            i = next((i for i in inside if out[i].kind == "chord"), inside[0])
+            x = out[i]
+            if x.kind == "bass":
+                near = max(self.floor, x.notes[-1] + 3)
+                third = near + ((h.third - near) % 12)
+                out.insert(i + 1, Hit(x.beat + min(0.5, x.beats * 0.5), max(0.25, x.beats * 0.5), (third,), x.velocity * 0.72, "broken"))
+                continue
+            # The top note of the hit gives way to the third, as near to it as the hand allows.
+            top = x.notes[-1]
+            third = max((top - d for d in range(0, 12) if (top - d) % 12 == h.third), default=top)
+            notes = tuple(sorted({*x.notes[:-1], third})) if len(x.notes) > 1 else (third,)
+            out[i] = Hit(x.beat, x.beats, notes, x.velocity, x.kind, x.roll, x.passing)
+        return out
 
     def _other_meter(self, segments, full: bool, bar_index: int) -> list[Hit]:
         """Other meters: a chord on each change, an answer later in the longer ones."""
@@ -589,7 +623,7 @@ class Pianist:
             if first < span and span - first >= 0.5:
                 notes = self._chord_voicing(h, "T", (bar_index, i, "b"))
                 hits.append(Hit(start + first, span - first, tuple(notes), 0.68, "chord"))
-        return hits
+        return self._state_quality(hits, segments)
 
     def perform(self, bus: np.ndarray, sr: int, hits: list[Hit], time_of, pulse: float, *, gain: float) -> None:
         """Play the hits. Each note is placed by a hand, so chords are never struck by a machine."""

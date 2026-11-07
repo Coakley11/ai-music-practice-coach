@@ -168,6 +168,18 @@ def test_jazz_voicings_leave_the_root_to_the_bass():
     assert total and rooted < 0.2 * total
 
 
+@pytest.mark.parametrize("style", STYLES)
+@pytest.mark.parametrize("role", ["verse", "chorus"])
+def test_every_playing_bar_states_its_chords_quality(style, role):
+    chart = ["C", "Am", "Dm7", "G7", "Cmaj7", "F", "Em", "Bb"] * 5
+    for seed in ("a", "b", "c"):
+        for chord, hits in zip(chart, play(style, chart, role=role, seed=seed)):
+            third = pn.harmony_of(chord, ba.chord_notes, ba.bass_note).third
+            played = [h for h in hits if h.kind != "figure"]
+            if played:
+                assert third in {n % 12 for h in played for n in h.notes}, (style, role, chord, hits)
+
+
 # --- Variety. ---------------------------------------------------------------------------------------------
 
 
