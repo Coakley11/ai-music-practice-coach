@@ -10,6 +10,7 @@ from typing import Any, Callable, Sequence
 
 from app_ui import nav_icon_button_label
 from music_feature_icons import feature_label
+from practice_ui_labels import level_label
 
 II_SELECTED_CHORD = "ii_selected_chord"
 II_SELECTED_SECTION = "ii_selected_section"
@@ -2048,6 +2049,7 @@ def _tab_entry_modes(
                     "Difficulty",
                     list(DIFFICULTY_LEVELS),
                     key="improv_difficulty",
+                    format_func=level_label,
                     on_change=on_improv_style_jam_setting_change,
                 )
                 st.selectbox(
@@ -2341,7 +2343,7 @@ def _tab_live_coach(st: Any, *, session_state: dict, improv_ctx: ImprovSessionCo
     )
     summary = level_coaching_summary(live_level)
     st.caption(
-        f"**{live_level}** · focus **{live_focus}** — {summary['focus']} · {summary['harmony']}"
+        f"**{level_label(live_level)}** · focus **{live_focus}** — {summary['focus']} · {summary['harmony']}"
     )
     _render_creative_practice_focus_caption(st, session_state)
     try:
@@ -2973,9 +2975,9 @@ def _tab_motif(
             st.code(session_state["improv_motif_tab"], language=None)
 
     if level == "Beginner":
-        st.caption("Beginner: play the motif 4×, then try Build Motif Pattern for a longer exercise.")
+        st.caption("🌱 Beginner: play the motif 4×, then try Build Motif Pattern for a longer exercise.")
     elif level == "Advanced":
-        st.caption("Advanced: Build Motif Pattern → change type/direction/rhythm → regenerate sheet music.")
+        st.caption("🧠 Advanced: Build Motif Pattern → change type/direction/rhythm → regenerate sheet music.")
 
 
 def _render_motif_target_scope(st: Any, session_state: dict) -> str:
@@ -4369,7 +4371,7 @@ def render_mission_practice_lick_on_backing(
         f"<strong>Section</strong> {html.escape(section)} · "
         f"<strong>Chord</strong> {html.escape(chord)} · "
         f"<strong>Instrument</strong> {html.escape(inst)} · "
-        f"<strong>Difficulty</strong> {html.escape(level)} · "
+        f"<strong>Difficulty</strong> {html.escape(level_label(level))} · "
         f"<strong>Example</strong> {html.escape(example_type)} · "
         f"Groove {html.escape(str(payload.get('groove') or 'Auto'))} · "
         f"Meter {html.escape(str(payload.get('meter') or '4/4'))}"
@@ -6540,7 +6542,7 @@ def _tab_harmony_map(
         f"Chord: {html.escape(guide.chord)}</p>"
         f'<p style="margin:0;color:#64748b;font-size:0.88rem;">'
         f"Section: {html.escape(guide.section)} · {html.escape(live_inst)} · "
-        f"{html.escape(live_level)} · {html.escape(live_focus)}</p></div>",
+        f"{html.escape(level_label(live_level))} · {html.escape(live_focus)}</p></div>",
         unsafe_allow_html=True,
     )
 
@@ -6638,7 +6640,7 @@ def _tab_metrics_ai(
         st.caption(
             f"Scores will judge your take against **{html.escape(improv_ctx.song_title)}** "
             f"in **{html.escape(improv_ctx.display_key)}** · "
-            f"{html.escape(improv_ctx.instrument)} · {html.escape(improv_ctx.level)} · "
+            f"{html.escape(improv_ctx.instrument)} · {html.escape(level_label(improv_ctx.level))} · "
             f"{html.escape(improv_ctx.focus)}"
         )
 

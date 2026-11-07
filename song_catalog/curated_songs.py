@@ -69,6 +69,34 @@ def _levels(
     }
 
 
+_WMGGW_VERSE = [
+    "Am", "Am/G", "D/F#", "F", "Am", "G", "D", "E",
+    "Am", "Am/G", "D/F#", "F", "Am", "G", "C", "E",
+]
+_WMGGW_BRIDGE = ["A", "C#m", "F#m", "C#m", "Bm", "E", "A", "E"] * 2
+
+
+def _wmggw_sections() -> dict[str, list[str]]:
+    """Fresh 136-bar form (W3-16): one list per section, no shared lists."""
+    return {
+        "Intro": list(_WMGGW_VERSE[:8]),
+        "Verse 1": list(_WMGGW_VERSE),
+        "Bridge 1": list(_WMGGW_BRIDGE),
+        "Verse 2": list(_WMGGW_VERSE),
+        "Guitar Solo (Verse Form)": list(_WMGGW_VERSE),
+        "Bridge 2": list(_WMGGW_BRIDGE),
+        "Verse 3": list(_WMGGW_VERSE),
+        "Outro (Fade)": list(_WMGGW_VERSE) * 2,
+    }
+
+
+def _wmggw_beginner() -> dict[str, list[str]]:
+    return {
+        name: [c.split("/")[0] for c in bars] for name, bars in _wmggw_sections().items()
+    }
+
+
+
 def _perfect_chart_pack() -> dict[str, Any]:
     """Perfect — Ed Sheeran (G major, acoustic pop ballad)."""
     walk = ["G", "D/F#", "Em7", "D", "Cadd9", "D", "G"]
@@ -187,12 +215,12 @@ def _champions_chart_pack() -> dict[str, Any]:
             "Ending Tag": ["Fm · Gm7 tag before verse 2"],
             "Verse 2": ["Second verse — same Cm harmony"],
             "Chorus 2": ["Chorus return — layered vocals"],
-            "Final Chorus": ["Biggest stadium singalong chorus"],
-            "Outro": ["Sustained anthem outro — full chorus harmony"],
+            "Final Chorus": ["Biggest stadium singalong chorus - closes the song (ends on 'Champions')"],
         },
         "extensions": _ext(
             arrangement_notes=CHAMPIONS_ARRANGEMENT_NOTES,
             default_bpm=65,
+            full_form_levels=["Beginner"],
             default_groove="Rock groove",
             time_signature="6/8",
             vocal_showcase=True,
@@ -755,8 +783,8 @@ def _shape_of_you_timing(row: dict[str, Any]) -> dict[str, Any]:
         level: _halved(sections) if isinstance(sections, dict) else sections
         for level, sections in versions.items()
     }
-    # Intermediate plays the whole form: Pre-Chorus 2 is not trimmed as a repeat.
-    row["extensions"] = {**(row.get("extensions") or {}), "full_form_levels": ["Intermediate"]}
+    # Beginner and Intermediate play the whole form (Pre-Chorus 2, Bridge and Final Chorus are not trimmed).
+    row["extensions"] = {**(row.get("extensions") or {}), "full_form_levels": ["Beginner", "Intermediate"]}
     return row
 
 
@@ -948,51 +976,47 @@ def _hotel_california_chart_pack() -> dict[str, Any]:
         F  -> G       C  -> D
         Dm -> Em
 
-    Harmonic rhythm is **slow and spacious**: every chord is held for
-    **four full bars**. One list item = one bar, so a 4-bar chord appears
-    as four consecutive identical cells; the chord-follow highlighter and
-    backing track honor the long sustain honestly.
+    Harmonic rhythm is **one chord per bar** (about 3.2 s at 75 BPM). One
+    list item = one bar, so the 8-chord cycle is eight cells and the whole
+    chart is 120 bars, which is the recording's ~6:30 in a single pass. An
+    earlier version of this pack held every chord for four bars (480 bars,
+    25:36 per pass); the published form (15 eight-chord cycles) and the
+    recording length do not support that.
     """
 
-    def _hold(chord: str, bars: int) -> list[str]:
-        return [chord] * bars
+    # Cells per cycle: the 8-chord cycle, one bar per chord.
+    CYCLE_BARS = 8
 
-    # The iconic 8-chord descending Hotel California cycle (one chord = 4 bars).
-    VERSE_CYCLE = (
-        _hold("Bm", 4) + _hold("F#7", 4) + _hold("A", 4) + _hold("E", 4)
-        + _hold("G", 4) + _hold("D", 4) + _hold("Em", 4) + _hold("F#7", 4)
-    )  # 32 bars
+    # The iconic 8-chord descending Hotel California cycle (one chord = 1 bar).
+    VERSE_CYCLE = ["Bm", "F#7", "A", "E", "G", "D", "Em", "F#7"]  # 8 bars
 
     # Chorus has the same harmonic palette but its own 8-bar voice-leading
     # phrase: G -> D -> F#7 -> Bm, then G -> D -> Em -> F#7 to set up the next
     # verse.
-    CHORUS_CYCLE = (
-        _hold("G", 4) + _hold("D", 4) + _hold("F#7", 4) + _hold("Bm", 4)
-        + _hold("G", 4) + _hold("D", 4) + _hold("Em", 4) + _hold("F#7", 4)
-    )  # 32 bars
+    CHORUS_CYCLE = ["G", "D", "F#7", "Bm", "G", "D", "Em", "F#7"]  # 8 bars
 
     # Outro Solo = the iconic Hotel California guitar-solo jam over the same
     # descending 8-chord cycle as the Intro / Verses, repeated FIVE TIMES
-    # TOTAL (5 x 32 bars = 160 bars). This is the long extended outro.
+    # TOTAL (5 x 8 bars = 40 bars). This is the long extended outro.
     OUTRO_SOLO = (
         list(VERSE_CYCLE)  # cycle 1
         + list(VERSE_CYCLE)  # cycle 2
         + list(VERSE_CYCLE)  # cycle 3
         + list(VERSE_CYCLE)  # cycle 4
         + list(VERSE_CYCLE)  # cycle 5
-    )  # 160 bars
+    )  # 40 bars
 
     base_sections: dict[str, list[str]] = {
-        "Intro": list(VERSE_CYCLE) + list(VERSE_CYCLE),  # 64 bars - two cycles
-        "Verse 1A": list(VERSE_CYCLE),                   # 32 bars
-        "Verse 1B": list(VERSE_CYCLE),                   # 32 bars
-        "Chorus 1": list(CHORUS_CYCLE),                  # 32 bars
-        "Verse 2A": list(VERSE_CYCLE),                   # 32 bars
-        "Verse 2B": list(VERSE_CYCLE),                   # 32 bars
-        "Chorus 2": list(CHORUS_CYCLE),                  # 32 bars
-        "Verse 3A": list(VERSE_CYCLE),                   # 32 bars
-        "Verse 3B": list(VERSE_CYCLE),                   # 32 bars
-        "Outro Solo": list(OUTRO_SOLO),                  # 160 bars - 5 cycles
+        "Intro": list(VERSE_CYCLE) + list(VERSE_CYCLE),  # 16 bars - two cycles
+        "Verse 1A": list(VERSE_CYCLE),                   # 8 bars
+        "Verse 1B": list(VERSE_CYCLE),                   # 8 bars
+        "Chorus 1": list(CHORUS_CYCLE),                  # 8 bars
+        "Verse 2A": list(VERSE_CYCLE),                   # 8 bars
+        "Verse 2B": list(VERSE_CYCLE),                   # 8 bars
+        "Chorus 2": list(CHORUS_CYCLE),                  # 8 bars
+        "Verse 3A": list(VERSE_CYCLE),                   # 8 bars
+        "Verse 3B": list(VERSE_CYCLE),                   # 8 bars
+        "Outro Solo": list(OUTRO_SOLO),                  # 40 bars - 5 cycles
     }
 
     section_order: list[str] = [
@@ -1030,16 +1054,13 @@ def _hotel_california_chart_pack() -> dict[str, Any]:
     # punch is audible. Only the descending walk F#7 cells inside the cycle
     # use the F#7/A# inversion.
     for sec_name, chords in intermediate.items():
-        # Last 4-bar chord of each 32-bar cycle is the cadential F#7 -
+        # Last chord of each 8-bar cycle is the cadential F#7 -
         # restore it to plain F#7 (the inversion is only useful when
         # descending from Bm into A, not when resolving back to Bm/G).
-        for cycle_start in range(0, len(chords), 32):
-            tail_start = cycle_start + 28
-            if tail_start + 4 <= len(chords):
-                tail = chords[tail_start:tail_start + 4]
-                if all(c == "F#7/A#" for c in tail):
-                    for i in range(4):
-                        chords[tail_start + i] = "F#7"
+        for cycle_start in range(0, len(chords), CYCLE_BARS):
+            tail_index = cycle_start + CYCLE_BARS - 1
+            if tail_index < len(chords) and chords[tail_index] == "F#7/A#":
+                chords[tail_index] = "F#7"
 
     # Advanced: maj9 / m9 / 7b9 colors on top of the same Eagles inversions.
     adv_map = {
@@ -1055,24 +1076,21 @@ def _hotel_california_chart_pack() -> dict[str, Any]:
     # Same cadential treatment - the resolving F#7 at the end of each cycle
     # gets the b9 tension (the iconic Hotel California "altered V" sound).
     for sec_name, chords in advanced.items():
-        for cycle_start in range(0, len(chords), 32):
-            tail_start = cycle_start + 28
-            if tail_start + 4 <= len(chords):
-                tail = chords[tail_start:tail_start + 4]
-                if all(c == "F#7/A#" for c in tail):
-                    for i in range(4):
-                        chords[tail_start + i] = "F#7b9"
+        for cycle_start in range(0, len(chords), CYCLE_BARS):
+            tail_index = cycle_start + CYCLE_BARS - 1
+            if tail_index < len(chords) and chords[tail_index] == "F#7/A#":
+                chords[tail_index] = "F#7b9"
 
     lyric_cues: dict[str, list[str]] = {
         "Intro": [
             "Solo nylon-string guitar arpeggio over the full 8-chord cycle",
-            "Twice through the cycle - long, spacious harmonic rhythm",
+            "Twice through the cycle - unhurried, one chord per bar",
             "Bass walks Bm -> F#/A# -> A -> E/G# -> G -> D/F# -> Em -> F#",
         ],
         "Verse 1A": [
             "'On a dark desert highway...' - narrative entry",
             "Voice rides the same descending 8-chord arc",
-            "Each chord rings for 4 full bars - keep the storytelling spacious",
+            "One chord per bar - keep the storytelling spacious",
         ],
         "Verse 1B": [
             "'There she stood in the doorway...' - second half of verse 1",
@@ -1107,7 +1125,7 @@ def _hotel_california_chart_pack() -> dict[str, Any]:
         "Outro Solo": [
             "The iconic dual-guitar solo - twin harmonized leads",
             "Cycles the descending Bm -> F#7 -> A -> E -> G -> D -> Em -> F#7 progression FIVE times",
-            "Long-form solo territory: tension/release over sustained harmony",
+            "Long-form solo territory: tension/release over the repeating cycle",
             "Improvise with B natural minor / B harmonic minor (F# major over the F#7 cadences)",
             "Melodic-minor color on the F#7b9 cadential bars (Advanced tier)",
         ],
@@ -1116,15 +1134,16 @@ def _hotel_california_chart_pack() -> dict[str, Any]:
     arrangement_notes = (
         "**B minor, 4/4 laid-back rock (~75 BPM).** Transposed from the "
         "A-minor reference: **Am->Bm, E7->F#7, G->A, D->E, F->G, C->D, Dm->Em**. "
-        "The iconic descending 8-chord verse cycle holds **each chord for 4 "
-        "full bars**: Bm -> F#7 -> A -> E -> G -> D -> Em -> F#7 (32 bars). "
+        "The iconic descending 8-chord verse cycle gives **each chord one "
+        "bar**: Bm -> F#7 -> A -> E -> G -> D -> Em -> F#7 (8 bars). "
         "The chorus uses the same palette in a new voice-leading shape: "
-        "G -> D -> F#7 -> Bm -> G -> D -> Em -> F#7 (also 32 bars / 4 bars per "
-        "chord). Full form (10 sections): Intro -> Verse 1A -> Verse 1B -> "
-        "Chorus 1 -> Verse 2A -> Verse 2B -> Chorus 2 -> Verse 3A -> Verse 3B "
-        "-> Outro Solo. The Intro plays the verse cycle **twice** (64 bars of "
+        "G -> D -> F#7 -> Bm -> G -> D -> Em -> F#7 (also 8 bars / one bar per "
+        "chord). Full form (10 sections, 120 bars, about 6:24 in one pass at "
+        "75 BPM against the recording's ~6:30): Intro -> Verse 1A -> Verse 1B "
+        "-> Chorus 1 -> Verse 2A -> Verse 2B -> Chorus 2 -> Verse 3A -> Verse 3B "
+        "-> Outro Solo. The Intro plays the verse cycle **twice** (16 bars of "
         "nylon-guitar arpeggios) before the vocal enters. The **Outro Solo** "
-        "repeats the same descending 8-chord cycle **five times total** (160 "
+        "repeats the same descending 8-chord cycle **five times total** (40 "
         "bars) - the famous dual-guitar harmonized lead section. Beginner "
         "uses pure triads / dominant sevenths (Bm / F#7 / A / E / G / D / "
         "Em). Intermediate adds the Eagles bass-inversion voice leading - "
@@ -1134,9 +1153,8 @@ def _hotel_california_chart_pack() -> dict[str, Any]:
         "modal-minor sound. Solo territory: B natural minor + B harmonic "
         "minor (F# major over the F#7 cadences); the Advanced F#7b9 bars "
         "invite F# Phrygian-dominant / melodic-minor lines for the long "
-        "outro jam. **One chart bar = one playback bar** so the long "
-        "sustained pacing is honest; chord-follow holds each cell for the "
-        "full 4-bar window before advancing."
+        "outro jam. **One chart bar = one playback bar**; chord-follow "
+        "advances one chord per bar."
     )
 
     return {
@@ -2666,6 +2684,12 @@ def _come_together_chart_pack() -> dict[str, Any]:
             "Chorus 1": ["Come together, right now, over me"],
             "Verse 2": ["He wear no shoeshine…"],
             "Instrumental 1": ["Intro riff ×4 (tag)"],
+            "Instrumental 2": ["Intro riff ×4 (tag) after the first chorus"],
+            "Verse 3": ["Third verse — same 8-bar Dm · A · G · N.C. form"],
+            "Chorus 2": ["Come together, right now, over me"],
+            "Instrumental 3": ["Intro riff ×2 (tag) after the second chorus"],
+            "Instrumental 4": ["Intro riff ×2 (tag) after the solo"],
+            "Verse 4": ["Fourth verse — same form; leads into the final chorus"],
             "Instrumental 5": ["Intro riff ×4 (tag) before the coda"],
             "Solo": ["Keyboard + lead-guitar solo — Dm then A vamp"],
             "Final Chorus": ["Final chorus lift"],
@@ -2682,6 +2706,9 @@ def _come_together_chart_pack() -> dict[str, Any]:
                 "drums, prominent bass, chorus slightly fuller than verses."
             ),
             default_bpm=82,
+            # Beginner/Intermediate play all 15 sections (Beginner = simplified chords); the
+            # global trim dropped the tags, Solo and Final Chorus (Beginner) / tags and Solo (Intermediate).
+            full_form_levels=["Beginner", "Intermediate"],
             default_groove="Rock groove",
             time_signature="4/4",
             riff_driven=True,
@@ -2798,6 +2825,9 @@ def _day_tripper_chart_pack() -> dict[str, Any]:
                 "isolated riff looping, and guitar/bass/full-band backing."
             ),
             default_bpm=138,
+            # Beginner plays the whole 94-bar form (guitar break, riff returns, coda):
+            # its chart is authored per section; the global trim dropped them.
+            full_form_levels=["Beginner"],
             default_groove="Rock groove",
             time_signature="4/4",
             riff_driven=True,
@@ -3063,7 +3093,6 @@ def _dance_monkey_chart_pack() -> dict[str, Any]:
             c.replace("F#m", "F#m7")
             .replace("C#m", "C#m7")
             .replace("D", "Dmaj7")
-            .replace("E.hit", "Emaj7.hit")
             .replace("E", "Emaj7")
             for c in chords
         ]
@@ -3111,6 +3140,9 @@ def _dance_monkey_chart_pack() -> dict[str, Any]:
                 "chorus: full pulse. **E.hit** = hold/single strum on E in Verse 1."
             ),
             default_bpm=98,
+            # Every level plays all 12 sections (Beginner: one loop pass per repeat);
+            # the global trim dropped Pre-Chorus 2, Chorus 3, the Bridge and both final choruses.
+            full_form_levels=["Beginner", "Intermediate"],
             default_groove="Pop groove",
             time_signature="4/4",
             repertoire_tags=[
@@ -3188,9 +3220,7 @@ def _im_yours_chart_pack() -> dict[str, Any]:
 
     advanced = {
         name: [
-            c.replace("G|", "Gmaj7|")
-            .replace("|Dsus4", "|Dsus2")
-            .replace("Em|D", "Em7|D")
+            c.replace("|Dsus4", "|Dsus2")
             .replace("G", "Gmaj7")
             .replace("Em", "Em7")
             .replace("C", "Cadd9")
@@ -3248,6 +3278,9 @@ def _im_yours_chart_pack() -> dict[str, Any]:
                 "and **N.C.** outro pickup."
             ),
             default_bpm=75,
+            # Beginner plays all 9 sections (one loop pass per repeat); the global trim
+            # dropped the Bridge, Verse 3 and the Final Chorus / Outro Build.
+            full_form_levels=["Beginner"],
             default_groove="Pop groove",
             time_signature="4/4",
             capo_note="Capo 4 (G-shape chart) · concert key B major",
@@ -4075,14 +4108,12 @@ def _how_far_ill_go_chart_pack() -> dict[str, Any]:
     def _beg(ch: str) -> str:
         if ch == "N.C.":
             return "N.C."
+        # Drop the slash bass and simplify the half-diminished chord; every other
+        # minor chord KEEPS its minor quality.  (This used to strip every "m",
+        # turning Dm -> D, Fm -> F, F#m -> F# and Dm7b5 -> "Ddi" - wrong chords that
+        # only stayed hidden while Beginner dropped the Final Chorus / Ending Descent.)
         head = ch.split("/")[0].strip()
-        return (
-            head.replace("F#m", "F#")
-            .replace("C#m", "C#")
-            .replace("Dm7b5", "Ddim")
-            .replace("m7b5", "dim")
-            .replace("m", "")
-        )
+        return head.replace("m7b5", "dim")
 
     beginner = {
         name: [_beg(c) for c in chords]
@@ -5114,7 +5145,6 @@ def _iris_chart_pack() -> dict[str, Any]:
         return (
             head.replace("Bsus2", "Bm")
             .replace("Gmaj7", "G")
-            .replace("F#m", "F#")
             .replace("m7", "m")
             .replace("sus2", "")
             .replace("maj7", "")
@@ -5167,6 +5197,10 @@ def _iris_chart_pack() -> dict[str, Any]:
                 "swell; final chorus: peak. Karaoke-friendly vocal showcase."
             ),
             default_bpm=154,
+            # Beginner/Intermediate play all 13 sections (Beginner = triad-simplified chords);
+            # the global trim dropped the Interlude, Instrumental, Ending Build, Final Chorus,
+            # Outro and Coda.
+            full_form_levels=["Beginner", "Intermediate"],
             default_groove="Rock groove",
             time_signature="4/4",
             repertoire_tags=[
@@ -5313,6 +5347,9 @@ def _shalom_aleichem_chart_pack() -> dict[str, Any]:
                 "melodic interlude; Verse 4: slightly fuller; outro: gentle Dm cadence."
             ),
             default_bpm=72,
+            # Beginner/Intermediate play all 6 sections; the global trim dropped Verse 3,
+            # the Instrumental and the Outro.
+            full_form_levels=["Beginner", "Intermediate"],
             default_groove="Jewish ballad",
             time_signature="4/4",
             repertoire_tags=[
@@ -7078,6 +7115,147 @@ def _say_waiting_lyric_pack(title: str) -> dict[str, Any]:
     }
 
 
+def _hey_jude_pack(pack):
+    """Hey Jude, full one-pass form at 74 BPM (~7:11 recording).
+
+    Form (Alan W. Pollack, "Notes on Hey Jude"; Wikipedia agrees: four verses,
+    two bridges, then a ~4 minute coda of nineteen rounds): Verse 1 (8 bars),
+    Verse 2 (9), Bridge (11.5), Verse 3 (9), Bridge (11.5), Verse 4 (8), Coda
+    (19 x 4 bars F | Eb | Bb | F).  Round count and cycle length come from
+    the analyses, not from the recording length: Pollack's form line "19X",
+    "no less than nineteen repetitions" of "a four measure phrase" (his
+    walkthrough also says "eighteen and a half"), and Everett via Wikipedia
+    "nineteen rounds of the double plagal cadence".  Pollack: the fade starts
+    as early as the 10th repetition.  The song has NO intro (the
+    old "Intro" bars were the first half of the verse).  Verses that lead into
+    a bridge carry one extra bar of F7 (V of IV).  The bridge is Bb Gm C F F7
+    (5 bars) + Bb Gm C F (4) + a half bar of F7 + a 2-bar C7 "na-na" tag; the
+    half bar cannot be a bar in this grid, so it is the split bar
+    ``F7:2|C7:2`` followed by two C7 bars (12 bars, 0.5 bar over).
+    """
+    f_verse_b = ["F", "C", "C", "F", "Bb", "F", "C", "F"]
+    f_verse_i = ["F", "C/E", "C7", "F", "Bb", "F/A", "C7", "F"]
+    bridge_b = ["Bb", "Gm", "C", "F", "F", "Bb", "Gm", "C", "F", "F:2|C:2", "C", "C"]
+    bridge_i = ["Bb", "Gm", "C", "F", "F7", "Bb", "Gm", "C", "F", "F7:2|C7:2", "C7", "C7"]
+    coda_cell = ["F", "Eb", "Bb", "F"]
+
+    def levels(verse, bridge, extra):
+        sec = {
+            "Verse 1": list(verse),
+            "Verse 2": list(verse) + [extra],
+            "Bridge 1": list(bridge),
+            "Verse 3": list(verse) + [extra],
+            "Bridge 2": list(bridge),
+            "Verse 4": list(verse),
+        }
+        for n, reps in (("Coda 1", 5), ("Coda 2", 5), ("Coda 3", 5), ("Coda 4", 4)):
+            sec[n] = coda_cell * reps
+        return sec
+
+    order = ["Verse 1", "Verse 2", "Bridge 1", "Verse 3", "Bridge 2", "Verse 4",
+             "Coda 1", "Coda 2", "Coda 3", "Coda 4"]
+    return pack(
+        "F",
+        levels(f_verse_b, bridge_b, "F"),
+        levels(f_verse_i, bridge_i, "F7"),
+        levels(f_verse_i, bridge_i, "F7"),
+        lyric_cues={
+            "Verse 1": ["Hey Jude, don't make it bad - no intro, the voice and piano start the song"],
+            "Verse 2": ["Hey Jude, don't be afraid - 9 bars, the extra F7 bar leads into the bridge"],
+            "Bridge 1": ["And anytime you feel the pain - Bb Gm C F, 12 bars with the na-na tag"],
+            "Verse 3": ["Hey Jude, don't let me down - 9 bars again"],
+            "Bridge 2": ["So let it out and let it in - same bridge, drums and bass in"],
+            "Verse 4": ["Hey Jude, you'll do - 8 bars, closes on F"],
+            "Coda 1": ["Na na na na-na-na-na - F Eb Bb F, 5 rounds, then keep looping"],
+            "Coda 2": ["Hey Jude ad-libs over the loop - 5 rounds"],
+            "Coda 3": ["Keep the F-Eb-Bb-F cycle steady - 5 rounds"],
+            "Coda 4": ["Final 4 rounds: the recording fades out from about the 10th round"],
+        },
+        extensions=_ext(
+            default_bpm=74,
+            default_groove="Ballad",
+            time_signature="4/4",
+            full_form_levels=["Beginner", "Intermediate"],
+            arrangement_notes=(
+                "Hey Jude at 74 BPM (Hooktheory 74/75, Love-version listings 74; "
+                "2009/2015 remaster analyzers report ~147 = double time). Full form: "
+                "Verse 1 (8) - Verse 2 (9) - Bridge 1 (12) - Verse 3 (9) - Bridge 2 (12) - "
+                "Verse 4 (8) - Coda (19 rounds x 4 bars of F | Eb | Bb | F = 76 bars): "
+                "134 bars = 434 s at 74 BPM against the 7:11 (431 s) recording. "
+                "No intro. The bridge is 11.5 bars in the recording (Pollack); here it "
+                "is 12 bars with F7:2|C7:2 for the shortened F7 bar. Coda: the "
+                "recording fades from about the 10th round (Pollack), so the last rounds are "
+                "barely audible; 19 rounds x 4 bars are the documented count "
+                "(Pollack '19X', Everett), 18.5 in Pollack's walkthrough. Stop earlier if you prefer."
+            ),
+        ),
+        section_order=order,
+    )
+
+
+def _yesterday_pack(pack):
+    """Yesterday, full one-pass form at 97 BPM (~2:05 recording).
+
+    Alan W. Pollack, "Notes on Yesterday": Intro (2 bars guitar open-fifth F
+    drone), Verse (7 bars: F | Em7b5 A7 | Dm | Bb C7 | F | Dm G | Bb F) x2,
+    Bridge (8 bars = |Em7b5 A7|Dm Bb|Gm C|F| played twice), Verse, Bridge,
+    Verse, Outro (a single reprise of the last phrase, 2 bars).
+    """
+    verse_b = ["F", "Em|A", "Dm", "Bb|C", "F", "Dm|G", "Bb|F"]
+    verse_i = ["F", "Em7b5|A7", "Dm", "Bb|C7", "F", "Dm|G7", "Bb|F"]
+    verse_a = ["Fmaj7", "Em7b5|A7b9", "Dm9", "Bbmaj7|C7", "Fmaj7", "Dm9|G7", "Bbmaj7|F6"]
+    bridge_b = ["Em|A", "Dm|Bb", "Gm|C", "F"]
+    bridge_i = ["Em7b5|A7", "Dm|Bb", "Gm|C7", "F"]
+    bridge_a = ["Em7b5|A7b9", "Dm9|Bbmaj7", "Gm7|C7", "Fmaj7"]
+    outro_b = ["Dm|G", "Bb|F"]
+    outro_i = ["Dm|G7", "Bb|F"]
+    outro_a = ["Dm9|G7", "Bbmaj7|F6"]
+
+    def levels(intro, verse, bridge, outro):
+        return {
+            "Intro": list(intro),
+            "Verse 1": list(verse),
+            "Verse 2": list(verse),
+            "Bridge 1": list(bridge) * 2,
+            "Verse 3": list(verse),
+            "Bridge 2": list(bridge) * 2,
+            "Verse 4": list(verse),
+            "Outro": list(outro),
+        }
+
+    return pack(
+        "F",
+        levels(["F", "F"], verse_b, bridge_b, outro_b),
+        levels(["F", "F"], verse_i, bridge_i, outro_i),
+        levels(["F", "F"], verse_a, bridge_a, outro_a),
+        lyric_cues={
+            "Intro": ["two bars of guitar on an open F - no third yet"],
+            "Verse 1": ["Yesterday, all my troubles seemed so far away - 7 bars (3+2+2)"],
+            "Verse 2": ["Suddenly, I'm not half the man I used to be - 7 bars"],
+            "Bridge 1": ["Why she had to go - 8 bars, each phrase starts on bar 2"],
+            "Verse 3": ["Yesterday, love was such an easy game to play - 7 bars"],
+            "Bridge 2": ["Why she had to go - same 8 bars, melody varied at the end"],
+            "Verse 4": ["Yesterday, love was such an easy game - 7 bars"],
+            "Outro": ["hummed last phrase, 2 bars (Dm G | Bb F)"],
+        },
+        extensions=_ext(
+            default_bpm=97,
+            default_groove="Ballad",
+            time_signature="4/4",
+            full_form_levels=["Beginner", "Intermediate"],
+            arrangement_notes=(
+                "Yesterday at 97 BPM (Hooktheory 97/98, Tunebat 97, SongBPM 97). "
+                "Form: Intro 2 - Verse 7 - Verse 7 - Bridge 8 - Verse 7 - Bridge 8 - "
+                "Verse 7 - Outro 2 = 48 bars = 119 s vs the 2:03-2:06 recording. "
+                "The verse is a 7-bar form (3+2+2) in Pollack's notes, not 8 bars. "
+                "Beat placement of the two-chord bars is an even 2+2 split "
+                "(UNVERIFIED against a score)."
+            ),
+        ),
+        section_order=["Intro", "Verse 1", "Verse 2", "Bridge 1", "Verse 3", "Bridge 2", "Verse 4", "Outro"],
+    )
+
+
 def _core_chart_overrides() -> dict[tuple[str, str], dict[str, Any]]:
     """Explicit musician-practice charts for the trusted core library.
 
@@ -7180,6 +7358,18 @@ def _core_chart_overrides() -> dict[tuple[str, str], dict[str, Any]]:
                 "Solo": ["G13", "C13", "G13", "G13", "C13", "C13", "G13", "D13"],
                 "Outro": ["G6", "Cmaj9/G", "G6", "Cmaj9/G"],
             },
+            extensions=_ext(
+                default_bpm=42,
+                time_signature="6/8",
+                arrangement_notes=(
+                    "Gravity: written in 6/8, slowly 'in 2' (two dotted-quarter beats per bar), "
+                    "dotted-quarter = ~42 BPM (Musicnotes Piano/Vocal/Chords MN0109828 marks 6/8 "
+                    "dotted-quarter = 40, Musicnotes Easy Guitar TAB MN0100066 marks 6/8 = 42, "
+                    "Hooktheory 6/8 at 125 eighth-note pulses = 41.7 dotted-quarters). "
+                    "Chart is a rehearsal skeleton (16/16/32 bars, one chord per 6/8 bar); the 4:05 "
+                    "album form is longer and its bar counts are not verified, so the form is unchanged."
+                ),
+            ),
         ),
         # ``Shape of You`` — Ed Sheeran. Form as written (one chord = one bar in 4/4;
         # ``_shape_of_you_timing`` halves every chord and pushes Em and A):
@@ -7342,46 +7532,8 @@ def _core_chart_overrides() -> dict[tuple[str, str], dict[str, Any]]:
                 "Outro": ["Cadd9", "G13sus", "Fmaj9", "Cadd9", "Fmaj9", "C/E", "G13sus", "Cadd9"],
             },
         ),
-        ("Hey Jude", "The Beatles"): pack("F",
-            {
-                "Intro": ["F", "C", "C7", "F"],
-                "Verse": ["F", "C", "C7", "F", "Bb", "F", "C", "F"],
-                "Bridge / Build": ["F7", "Bb", "Bb/A", "Bb/G", "Bb/F", "C7", "F", "F"],
-                "Outro Vamp": ["F", "F7", "Eb", "Bb", "F", "F7", "Eb", "Bb"],
-            },
-            {
-                "Intro": ["F", "C/E", "C7", "F"],
-                "Verse": ["F", "C/E", "C7", "F", "Bb", "F/A", "C7", "F"],
-                "Bridge / Build": ["F7", "Bb", "Bb/A", "Bb/G", "Bb/F", "C7", "F", "F"],
-                "Outro Vamp": ["F6", "F7", "Eb", "Bb", "F6", "F7", "Eb", "Bb"],
-            },
-            {
-                "Intro": ["F", "C/E", "C7", "F"],
-                "Verse": ["F", "C/E", "C7", "F", "Bb", "F/A", "C7", "F"],
-                "Bridge / Build": ["F7", "Bb", "Bb/A", "Bb/G", "Bb/F", "C7", "F", "F"],
-                "Outro Vamp": ["F6", "F7", "Eb", "Bb", "F6", "F7", "Eb", "Bb"],
-            },
-        ),
-        ("Yesterday", "The Beatles"): pack("F",
-            {
-                "Intro": ["F", "F"],
-                "Verse": ["F", "Em", "A7", "Dm", "Dm", "Bb", "C7", "F"],
-                "Middle Eight": ["Bb", "C7", "F", "Dm", "Gm", "C7", "F", "F"],
-                "Return / Tag": ["F", "Em", "A7", "Dm", "Gm", "C7", "F", "F"],
-            },
-            {
-                "Intro": ["Fmaj7", "F6"],
-                "Verse": ["F", "Em7", "A7", "Dm", "Dm/C", "Bbmaj7", "C7", "F"],
-                "Middle Eight": ["Bbmaj7", "C7", "F/A", "Dm7", "Gm7", "C7", "Fmaj7", "F6"],
-                "Return / Tag": ["F", "Em7", "A7", "Dm", "Gm7", "C7", "Fmaj7", "F6"],
-            },
-            {
-                "Intro": ["Fmaj9", "F6add9"],
-                "Verse": ["Fmaj9", "Em7b5", "A7b9", "Dm9", "Dm9/C", "Bbmaj9", "C13", "Fmaj9"],
-                "Middle Eight": ["Bbmaj9", "C13", "F/A", "Dm9", "Gm9", "C13", "Fmaj9", "F6add9"],
-                "Return / Tag": ["Fmaj9", "Em7b5", "A7b9", "Dm9", "Gm9", "C13", "Fmaj9", "F6add9"],
-            },
-        ),
+        ("Hey Jude", "The Beatles"): _hey_jude_pack(pack),
+        ("Yesterday", "The Beatles"): _yesterday_pack(pack),
         ("Here Comes the Sun", "The Beatles"): pack("A",
             {
                 "Intro": ["A", "D", "E7", "A"],
@@ -7404,6 +7556,17 @@ def _core_chart_overrides() -> dict[tuple[str, str], dict[str, Any]]:
                 "Bridge": ["Cadd9", "G/B", "Dadd9", "Aadd9", "Cadd9", "G/B", "Dadd9", "E13"],
                 "Outro": ["Aadd9", "Dmaj9/F#", "E13", "Aadd9"],
             },
+            extensions=_ext(
+                default_bpm=129,
+                time_signature="4/4",
+                arrangement_notes=(
+                    "A major, ~129 BPM (quarter-note pulse). Form HELD (W3-13): the original "
+                    "bridge alternates 11/8, 4/4 and 7/8 bars (three-bar phrase, five times, "
+                    "then a 4/4 V ending) and the last refrain bar before it is 7/8, which the "
+                    "fixed 4/4 bar grid cannot represent; the chart below is the verse/refrain "
+                    "skeleton with the bridge approximated in 4/4."
+                ),
+            ),
         ),
         ("Don't Stop Believin'", "Journey"): _journey_believin_chart_pack(),
         ("Hotel California", "Eagles"): _hotel_california_chart_pack(),
@@ -7630,12 +7793,16 @@ def _requested_verified_song_records() -> list[dict[str, Any]]:
         chart_status: str | None = None,
         default_bpm: int | None = None,
         default_groove: str | None = None,
+        section_order: list[str] | None = None,
+        full_form_levels: list[str] | None = None,
     ) -> dict[str, Any]:
         ext = note(notes or "Practice-level verified form; one chord cell equals one bar.")
         if default_bpm:
             ext["default_bpm"] = int(default_bpm)
         if default_groove:
             ext["default_groove"] = default_groove
+        if full_form_levels:
+            ext["full_form_levels"] = list(full_form_levels)
         return _s(
             title,
             artist,
@@ -7652,6 +7819,7 @@ def _requested_verified_song_records() -> list[dict[str, Any]]:
                 advanced=advanced or intermediate,
             ),
             extensions=ext,
+            section_order=section_order,
         )
 
     def core_ref(
@@ -8133,21 +8301,54 @@ def _requested_verified_song_records() -> list[dict[str, Any]]:
             "A",
             {
                 "Intro": ["A", "E", "A", "E"],
-                "Verse": ["A", "E", "F#m", "A7", "D", "Dm", "A", "A"],
-                "Chorus": ["F#m", "D", "G", "A", "F#m", "B7", "E", "E"],
+                "Verse 1": ["A", "E", "F#m", "A7", "D", "Dm", "A", "A"],
+                "Bridge 1": ["F#m", "D", "G", "A", "F#m", "B7", "Dm", "A"],
+                "Transition 1": ["A", "E"],
+                "Verse 2": ["A", "E", "F#m", "A7", "D", "Dm", "A", "A"],
+                "Bridge 2": ["F#m", "D", "G", "A", "F#m", "B7", "Dm", "A"],
                 "Piano Solo": ["A", "E", "F#m", "A7", "D", "Dm", "A", "A"],
-                "Outro": ["A", "E", "A", "A"],
+                "Bridge 3": ["F#m", "D", "G", "A", "F#m", "B7", "Dm", "A"],
+                "Transition 2": ["A", "E"],
+                "Coda": ["F#m", "B7", "Dm", "A", "A", "A"],
             },
             {
                 "Intro": ["A", "E/G#", "A", "E/G#"],
-                "Verse": ["A", "E/G#", "F#m7", "A7", "D", "Dm6", "A/E", "A"],
-                "Chorus": ["F#m7", "D", "G", "A", "F#m7", "B7", "E", "E7"],
+                "Verse 1": ["A", "E/G#", "F#m7", "A7", "D", "Dm6", "A/E", "A"],
+                "Bridge 1": ["F#m7", "D", "G", "A", "F#m7", "B7", "Dm", "A"],
+                "Transition 1": ["A", "E/G#"],
+                "Verse 2": ["A", "E/G#", "F#m7", "A7", "D", "Dm6", "A/E", "A"],
+                "Bridge 2": ["F#m7", "D", "G", "A", "F#m7", "B7", "Dm", "A"],
                 "Piano Solo": ["A", "E/G#", "F#m7", "A7", "D", "Dm6", "A/E", "A"],
-                "Outro": ["A", "E/G#", "A", "A"],
+                "Bridge 3": ["F#m7", "D", "G", "A", "F#m7", "B7", "Dm", "A"],
+                "Transition 2": ["A", "E/G#"],
+                "Coda": ["F#m7", "B7", "Dm", "A", "A", "A"],
             },
             composer="Lennon-McCartney",
-            lyric_cues={"Intro": ["guitar arpeggio setup"], "Verse": ["memory list phrase"], "Chorus": ["affection reflection"], "Piano Solo": ["baroque keyboard break"], "Outro": ["gentle final cadence"]},
-            notes="Beatles practice chart in A; verse keeps the A7-to-D and Dm6 modal-mixture color before resolving.",
+            lyric_cues={
+                "Intro": ["guitar arpeggio setup"],
+                "Verse 1": ["memory list phrase"],
+                "Bridge 1": ["affection reflection"],
+                "Transition 1": ["intro motif, halved"],
+                "Verse 2": ["memory list phrase"],
+                "Bridge 2": ["affection reflection"],
+                "Piano Solo": ["baroque keyboard break (verse harmony)"],
+                "Bridge 3": ["affection reflection, final pass"],
+                "Transition 2": ["intro motif, halved"],
+                "Coda": ["last four bridge bars, then the closing A"],
+            },
+            notes=(
+                "Beatles practice chart in A, ~102 BPM, 4/4; 62 bars in one pass "
+                "(~2:26): Intro 4, Verse 8, Bridge 8, Transition 2, Verse 8, Bridge 8, "
+                "Piano Solo 8 (verse harmony), Bridge 8, Transition 2, Coda 6. "
+                "The bridge is F#m-D-G-A | F#m-B7-Dm-A (Dm, not E, in bar 7); "
+                "verse keeps the A7-to-D and Dm6 modal-mixture color."
+            ),
+            default_bpm=102,
+            section_order=[
+                "Intro", "Verse 1", "Bridge 1", "Transition 1", "Verse 2", "Bridge 2",
+                "Piano Solo", "Bridge 3", "Transition 2", "Coda",
+            ],
+            full_form_levels=["Beginner", "Intermediate"],
         ),
         core_ref(
             "Across the Universe",
@@ -8627,8 +8828,8 @@ def _requested_verified_song_records() -> list[dict[str, Any]]:
             "Taylor Swift",
             "Pop",
             "F#",
-            {"Verse 1": ["F#", "C#", "D#m", "B"]},
-            {"Verse 1": ["F#", "C#", "D#m", "B"]},
+            {"Verse 1": ["F#", "C#", "G#m", "B"]},
+            {"Verse 1": ["F#", "C#", "G#m", "B"]},
             composer="Taylor Swift",
             notes="Country-pop in F# — 130 BPM; full form in chart override.",
             chart_status=status,
@@ -8954,6 +9155,7 @@ def _jewish_catalog_songs() -> list[dict[str, Any]]:
         advanced: dict[str, list[str]] | None = None,
         composer: str | None = None,
         artist: str = "Traditional",
+        full_form_levels: list[str] | None = None,
     ) -> dict[str, Any]:
         inter = sections
         beg = beginner or sections
@@ -8965,6 +9167,7 @@ def _jewish_catalog_songs() -> list[dict[str, Any]]:
             arrangement_notes=(
                 f"{title}: practice-level Jewish folk chart; one chord cell = one bar."
             ),
+            full_form_levels=full_form_levels,
         )
         row = _s(
             title,
@@ -9116,6 +9319,8 @@ def _jewish_catalog_songs() -> list[dict[str, Any]]:
                 "Verse 2": ["Am", "Am", "Am", "Em", "F", "C", "G", "Am"],
                 "Bridge": ["F", "C", "G", "Am", "F", "C", "G", "Am"],
             },
+            # Beginner plays all three sections; the global trim dropped the Bridge.
+            full_form_levels=["Beginner"],
         ),
         _j(
             "Hinei Ma Tov",
@@ -9338,18 +9543,36 @@ def curated_song_records() -> list[dict[str, Any]]:
             "Pre-Chorus": ["Bm", "G", "D", "A"],
             "Chorus": ["Bm", "G", "D", "A"],
             "Bridge": ["G", "A", "Bm", "D"],
-        }),
+        }, extensions=_ext(
+            default_bpm=126,
+            time_signature="4/4",
+            arrangement_notes=(
+                'Bad Habits: ~126 BPM, 4/4 (Hooktheory 126, Wikipedia citing the published sheet music 126). Chart is a rehearsal skeleton (Advanced 16 bars); the 3:51 single form is longer and its bar counts are not verified, so the form is unchanged.'
+            ),
+        )),
         _s("Castle on the Hill", "Ed Sheeran", "Pop", "D", {
             "Verse": ["D", "G", "Bm", "A"],
             "Pre-Chorus": ["G", "A", "Bm", "D"],
             "Chorus": ["D", "G", "Bm", "A"],
             "Bridge": ["G", "D", "A", "Bm"],
-        }),
+        }, extensions=_ext(
+            default_bpm=135,
+            time_signature="4/4",
+            arrangement_notes=(
+                'Castle on the Hill: ~135 BPM, 4/4 (Hooktheory 135, Karaoke-Version 135, Musicnotes TutorialsByHugo 135, piano-lesson site 135, klang.io 136). Chart is a rehearsal skeleton (Advanced 16 bars); the 4:21 album form is longer and its bar counts are not verified, so the form is unchanged.'
+            ),
+        )),
         _s("Shivers", "Ed Sheeran", "Pop", "Bm", {
             "Verse": ["Bm", "G", "D", "A"],
             "Pre-Chorus": ["Bm", "G", "D", "A"],
             "Chorus": ["Bm", "G", "D", "A"],
-        }),
+        }, extensions=_ext(
+            default_bpm=141,
+            time_signature="4/4",
+            arrangement_notes=(
+                "Shivers: ~141 BPM, 4/4 (Hooktheory 141, Musicnotes official Ed Sheeran edition MN0241810 'fast driving beat' 141, several other Musicnotes arrangements 141). Chart is a rehearsal skeleton (Advanced 12 bars); the 3:27 single form is longer and its bar counts are not verified, so the form is unchanged."
+            ),
+        )),
         _s("The A Team", "Ed Sheeran", "Pop", "A", {
             "Verse": ["A", "E", "F#m", "D"],
             "Chorus": ["A", "E", "F#m", "D"],
@@ -9367,7 +9590,13 @@ def curated_song_records() -> list[dict[str, Any]]:
             "Chorus": ["E", "B", "F#sus4", "F#", "E", "B", "F#", "E"],
             "Bridge": ["G#m7", "F#/A#", "E", "B"],
             "Outro": ["E", "B", "F#sus4", "B"],
-        }),
+        }, extensions=_ext(
+            default_bpm=87,
+            time_signature="4/4",
+            arrangement_notes=(
+                'Yellow: ~87 BPM, 4/4 (Hooktheory 87, Wikipedia 88, tab sites 86). Chart is a rehearsal skeleton (24/28/28 bars); the 4:29 album form is longer and its bar counts are not verified, so the form is unchanged.'
+            ),
+        )),
         _s("Fix You", "Coldplay", "Pop", "Eb", {
             "Intro (Organ)": ["Eb", "Gm", "Cm", "Bb"],
             "Verse": ["Eb", "Gm", "Cm", "Bb"],
@@ -9375,7 +9604,17 @@ def curated_song_records() -> list[dict[str, Any]]:
             "Chorus": ["Ab", "Eb", "Bb", "Cm"],
             "Bridge (Build)": ["Ab", "Eb", "Bb", "Cm"],
             "Outro / Resolution": ["Ab", "Eb", "Bb", "Eb"],
-        }, extensions=_ext(default_groove="Ballad")),
+        }, extensions=_ext(
+            default_groove="Ballad",
+            default_bpm=69,
+            time_signature="4/4",
+            arrangement_notes=(
+                "Fix You: ~69 BPM, 4/4 (quarter-note pulse; the 138 some analyzers print is the "
+                "double-time count of the same slow ballad). Chart is a rehearsal skeleton "
+                "(24 bars); the 4:54 album form is longer and its bar counts are not yet "
+                "verified, so the form is intentionally unchanged."
+            ),
+        )),
         _s(
             "The Scientist",
             "Coldplay",
@@ -9458,7 +9697,13 @@ def curated_song_records() -> list[dict[str, Any]]:
             "Chorus": ["Ab", "Eb", "Bbm", "Fm"],
             "Bridge": ["Db", "Ab", "Eb", "Bbm"],
             "Solo / Outro Riff": ["Eb", "Bbm", "Fm", "Fm"],
-        }),
+        }, extensions=_ext(
+            default_bpm=131,
+            time_signature="4/4",
+            arrangement_notes=(
+                'Clocks: ~131 BPM, 4/4 (Hooktheory 131, songbpm 131, Waterloo audio-feature DB 131.0). Chart is a rehearsal skeleton (12/16/20 bars); the 5:07 album form is longer and its bar counts are not verified, so the form is unchanged.'
+            ),
+        )),
         _s("A Sky Full of Stars", "Coldplay", "Pop", "F", {
             "Intro": ["F", "Am", "Dm", "Bb"],
             "Verse": ["F", "Am", "Dm", "Bb"],
@@ -9474,7 +9719,13 @@ def curated_song_records() -> list[dict[str, Any]]:
             "Chorus": ["Bb", "F", "C", "Dm"],
             "Bridge": ["Gm", "Bb", "F", "C"],
             "Outro": ["Bb", "F", "C", "Dm"],
-        }),
+        }, extensions=_ext(
+            default_bpm=140,
+            time_signature="4/4",
+            arrangement_notes=(
+                'Paradise: ~140 BPM, 4/4 (Hooktheory 140, UBC audio-feature DB 139.7). Chart is a rehearsal skeleton (20/24/24 bars); the 4:37 album form is longer and its bar counts are not verified, so the form is unchanged.'
+            ),
+        )),
 
         # --- Billy Joel (composer = self where applicable) ---
         _s(
@@ -9757,11 +10008,6 @@ def curated_song_records() -> list[dict[str, Any]]:
                     "Gm7", "C7/G", "Bbm6", "Bbm6/Db", "Edim7", "Gdim7",
                     "F", "Ebadd9/G", "Ab6", "Bb", "Cm7add4",
                 ],
-                "Outro": [
-                    "F", "Am", "Dm", "Bb|C7", "F", "Am", "Bb", "F#dim7",
-                    "Gm7", "C7/G", "Bbm6", "Bbm6/Db", "Edim7", "Gdim7",
-                    "F", "Ebadd9/G", "Ab6", "Bb", "Cm7add4",
-                ],
             },
             composer="Freddie Mercury",
             chart_status="practice_level_verified",
@@ -9772,7 +10018,6 @@ def curated_song_records() -> list[dict[str, Any]]:
                 "Verse 2",
                 "Chorus 2",
                 "Final Chorus",
-                "Outro",
             ],
             extensions=_ext(
                 default_bpm=65,
@@ -9848,11 +10093,34 @@ def curated_song_records() -> list[dict[str, Any]]:
                 riff_driven=True,
             ),
         ),
-        _s("While My Guitar Gently Weeps", "The Beatles", "Rock", "Am", {
-            "Verse": ["Am", "Am/G", "D/F#", "F", "Am", "G", "D", "E"],
-            "Chorus": ["A", "C#m", "F#m", "C#m", "Bm", "E", "A", "E"],
-            "Bridge": ["Am", "G", "D", "E"],
-        }, composer="George Harrison"),
+        _s("While My Guitar Gently Weeps", "The Beatles", "Rock", "Am", _wmggw_sections(), composer="George Harrison",
+            chart_status="practice_level_verified",
+            chart_versions=_levels(
+                beginner=_wmggw_beginner(),
+                intermediate=_wmggw_sections(),
+                advanced=_wmggw_sections(),
+            ),
+            lyric_cues={
+                "Intro": ["eight-bar guitar and piano intro, ends on E"],
+                "Verse 1": ["I look at you all..."],
+                "Bridge 1": ["A major lift (16 bars)"],
+                "Guitar Solo (Verse Form)": ["lead guitar plays the verse (16 bars)"],
+                "Outro (Fade)": ["two verse cycles, fade"],
+            },
+            section_order=list(_wmggw_sections()),
+            extensions=_ext(
+                default_bpm=114,
+                time_signature="4/4",
+                full_form_levels=["Beginner", "Intermediate"],
+                arrangement_notes=(
+                    "A minor, ~114 BPM, 4/4, 136 bars in one pass (~4:46): Intro 8, "
+                    "Verse 16, Bridge 16 (A major, 8-bar phrase twice), Verse 16, "
+                    "Guitar Solo 16 (verse form), Bridge 16, Verse 16, Outro ~32 fade "
+                    "(two verse cycles). Verse = Am Am/G D/F# F | Am G D E | "
+                    "Am Am/G D/F# F | Am G C E."
+                ),
+            ),
+        ),
         _s("Eleanor Rigby", "The Beatles", "Rock", "Em", {
             "Verse": ["Em", "Em", "C", "Em"],
             "Chorus": ["Em", "C", "Em", "C"],
@@ -9867,7 +10135,7 @@ def curated_song_records() -> list[dict[str, Any]]:
             "Verse": ["G", "Bm", "Em", "Em7"],
             "Orchestral Bridge": ["E", "E", "E", "E"],
             "Final": ["G", "Bm", "Em", "C"],
-        }, composer="Lennon–McCartney"),
+        }, composer="Lennon–McCartney", extensions=_ext(full_form_levels=["Beginner"])),
         _s("Help!", "The Beatles", "Rock", "A", {
             "Verse": ["A", "C#m", "F#m", "D"],
             "Chorus": ["E", "A", "D", "D"],
@@ -10450,7 +10718,7 @@ def curated_song_records() -> list[dict[str, Any]]:
             "Main Groove": ["Ebm7", "Ebm7", "Ebm7", "Ebm7"],
             "Chorus": ["Ab7", "Gb7", "Ebm7", "Ebm7"],
             "Final Groove": ["Ebm7", "Ebm7", "Ebm7", "Ebm7"],
-        }),
+        }, extensions=_ext(full_form_levels=["Beginner"])),
         _s("Cissy Strut", "The Meters", "Funk", "C", {
             "Main Funk Vamp": ["C7", "C7", "C7", "C7"],
             "Turnaround": ["F7", "Eb7", "C7", "C7"],
@@ -10459,7 +10727,7 @@ def curated_song_records() -> list[dict[str, Any]]:
             "Bars 1-4": ["F7", "Bb7", "F7", "F7"],
             "Bars 5-8": ["Bb7", "Bb7", "F7", "F7"],
             "Bars 9-12": ["C7", "Bb7", "F7", "C7"],
-        }),
+        }, extensions=_ext(full_form_levels=["Beginner", "Intermediate"])),
         *_jewish_catalog_songs(),
         *_jewish_traditional_catalog_songs(),
         _s("Ode to Joy", "Beethoven", "Classical", "D", {

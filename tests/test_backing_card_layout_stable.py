@@ -96,9 +96,10 @@ def test_card_and_banner_slots_keep_the_last_render_during_a_run() -> None:
     # st.empty() blanked the card (and the "Backing source" banner) until the
     # run reached them -- seconds while Play synthesized -- so the page jumped
     # 300-500 px and back. A container keeps the previous children until replaced.
-    i = APP.index("def _create_backing_card_slots()")
-    body = APP[i:i + 1200]
-    assert "head = st.container()" in body and "head = st.empty()" not in body
+    i = APP.index("def _create_backing_card_slots(")
+    body = APP[i:i + 2400]
+    # Both layouts (today's card and the album-cover card) keep a container head.
+    assert body.count("head = st.container()") == 2 and "head = st.empty()" not in body
     assert "_backing_banner_slot = st.container()" in APP
     assert "_backing_banner_slot = st.empty()" not in APP
 

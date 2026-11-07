@@ -222,6 +222,30 @@ def icon_is_markup(icon: str) -> bool:
     return str(icon or "").lstrip().startswith("<")
 
 
+# Song sources (where a song came from), one mapping for every surface: Catalog -> the purple pair of beamed
+# eighth notes (U+1F3B5, not the Melody notes or the Songs page score), Custom -> the hand writing with a
+# pencil, Composition -> the quill. Sources are not genres: a genre's logo never stands in for one.
+SONG_SOURCE_ICONS: dict[str, str] = {
+    "catalog": "🎵",
+    "custom": FEATURE_ICONS["custom"],
+    "composition": FEATURE_ICONS["composition"],
+}
+
+
+def song_source_key(source_type: str) -> str:
+    """"catalog", "custom" or "composition" for any source label (unknown -> catalog)."""
+    low = str(source_type or "").strip().lower()
+    if "compos" in low:
+        return "composition"
+    if "custom" in low or "progression" in low:
+        return "custom"
+    return "catalog"
+
+
+def song_source_icon(source_type: str) -> str:
+    return SONG_SOURCE_ICONS[song_source_key(source_type)]
+
+
 def format_icon_html(icon: str) -> str:
     """Render an icon for HTML badges: trusted SVG passes through; text is escaped."""
     raw = str(icon or "")
@@ -291,6 +315,7 @@ __all__ = (
     "FEATURE_ICONS",
     "INSTRUMENT_ICONS",
     "SEMANTIC_FIELD_ICONS",
+    "SONG_SOURCE_ICONS",
     "PAGE_FEATURE_KEYS",
     "feature_icon",
     "feature_label",
@@ -298,6 +323,8 @@ __all__ = (
     "icon_is_markup",
     "instrument_icon",
     "semantic_field_icon",
+    "song_source_icon",
+    "song_source_key",
     "page_feature_icon",
     "page_feature_label",
 )

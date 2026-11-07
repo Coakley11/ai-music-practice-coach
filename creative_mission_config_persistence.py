@@ -350,6 +350,19 @@ def _retarget_identity_to_chord_symbol(
             keep_idx = int(index)
         except (TypeError, ValueError):
             keep_idx = 0
+        # A saved index from a longer (corrected) chart can point past the end and its chord is
+        # not in the current chart, so there is no musical correspondence to translate: restart
+        # at the first chord instead of keeping an index that does not exist.
+        _limit = len(tokens)
+        if section_map:
+            try:
+                from improvisation_motif import flatten_section_map
+
+                _limit = len(flatten_section_map(section_map)) or _limit
+            except ImportError:
+                pass
+        if keep_idx < 0 or (_limit and keep_idx >= _limit):
+            keep_idx = 0
         return {
             "ii_selected_chord_index": keep_idx,
             "ii_selected_chord": ch,
