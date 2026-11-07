@@ -18,7 +18,7 @@ from songs import chart_provenance as cp
 
 TITLE, ARTIST = "All of Me", "John Legend"
 PICK = f"{TITLE}\x1f{ARTIST}"
-OLD_KEY, NEW_KEY, OLD_REF, NEW_REF = "Em", "Fm", "Em", "Fm"
+OLD_KEY, NEW_KEY, OLD_REF, NEW_REF = "Em", "Ab", "G", "Ab"
 OLD = json.loads(r'''{
  "key": "Em",
  "bpm": 126,

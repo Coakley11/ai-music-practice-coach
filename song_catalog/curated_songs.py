@@ -5376,7 +5376,7 @@ def _shalom_aleichem_chart_pack() -> dict[str, Any]:
 
 
 def _all_of_me_chart_pack() -> dict[str, Any]:
-    """All of Me — John Legend (stored in the recording's key, A-flat major, labelled by its vi-start loop key Fm like the former Em capo chart; piano ballad, 4/4).
+    """All of Me — John Legend (stored in the recording's key, A-flat major; the verse loop starts on vi, Fm, but the chorus, cadences and published key are Ab; piano ballad, 4/4).
 
     Contemporary wedding/love ballad. The chart is the common Em-C-G-D capo shapes
     moved up one semitone to the recording's key (Fm-Db-Ab-Eb; capo 1 gives the shapes).
@@ -5457,7 +5457,7 @@ def _all_of_me_chart_pack() -> dict[str, Any]:
     }
 
     return {
-        "key": "Fm",
+        "key": "Ab",
         "sections": intermediate,
         "chart_versions": _levels(
             beginner=beginner,
@@ -7910,9 +7910,9 @@ def _requested_verified_song_records() -> list[dict[str, Any]]:
             "All of Me",
             "John Legend",
             "Pop",
-            "Fm",
+            "Ab",
             {
-                "Intro": ["Fm", "Db", "Fm", "Eb"] * 2,
+                "Intro": ["Fm", "Db", "Ab", "Eb"] * 2,
                 "Verse": ["Fm", "Db", "Ab", "Eb"] * 4,
                 "Chorus": ["Ab", "Fm", "Bbm", "Db/Eb", "Eb", "Fm", "Db", "Ab", "Eb"],
             },
