@@ -1,6 +1,10 @@
 """Upright bass voice for the generated Backing track (numpy only).
 
-A plucked-string model rather than an oscillator: the pluck point decides which
+Off by default: today's Jazz bass plays unless ``MUSIC_UPRIGHT_BASS`` is set, to ``recorded``
+for the 1958 Rubner double bass in ``assets/instruments/double_bass`` or to ``model`` for the
+fallback below.
+
+The fallback is a plucked-string model rather than an oscillator: the pluck point decides which
 partials speak, the instrument's body colours them, the upper partials die first,
 the string starts slightly sharp and settles, and each note opens with a soft
 finger noise and a low knock from the body.
@@ -13,15 +17,44 @@ copy-and-add. ``backing_audio`` decides *when* notes play; this module decides
 
 from __future__ import annotations
 
+import os
+import pathlib
 from functools import lru_cache
 
 import numpy as np
+
+from backing_sampled_instrument import SampledInstrument
+
+DOUBLE_BASS_PACK = pathlib.Path(__file__).resolve().parent / "assets" / "instruments" / "double_bass"
+# Brings the recordings to the level the Jazz balance was set with.
+RECORDED_TRIM = 1.25
 
 _VEL_BUCKETS = 3
 _FREE_SEC = 2.6
 _ENV_STEP = 32
 _REF_STEP = 3
 _RELEASE_SEC = 0.055
+
+
+def upright_mode() -> str:
+    """"" (today's bass), "recorded" or "model". A missing pack falls back to the model."""
+    raw = str(os.environ.get("MUSIC_UPRIGHT_BASS") or "").strip().lower()
+    if raw in {"", "0", "off", "false", "no"}:
+        return ""
+    if raw == "model" or not (DOUBLE_BASS_PACK / "manifest.json").is_file():
+        return "model"
+    return "recorded"
+
+
+def bass_renderer_tag() -> str:
+    """Part of saved audio's signature, so takes from another bass are never replayed as this one."""
+    mode = upright_mode()
+    return f"+upright-{mode}" if mode else ""
+
+
+@lru_cache(maxsize=1)
+def _double_bass() -> SampledInstrument:
+    return SampledInstrument(DOUBLE_BASS_PACK)
 
 
 def _freq(midi: float) -> float:
@@ -127,9 +160,18 @@ def add_upright_note(
     midi: int,
     gain: float,
     velocity: float,
+    *,
+    seed: str = "",
+    avoid: dict | None = None,
 ) -> None:
-    """Mix one note into ``bus``: the cached pluck, stopped by the finger at ``held_sec``."""
+    """Mix one note into ``bus``, stopped by the finger at ``held_sec``."""
     if gain <= 0.0:
+        return
+    if upright_mode() == "recorded":
+        _double_bass().add_note(
+            bus, sr, start_sec, held_sec, midi, gain * RECORDED_TRIM, velocity,
+            seed or f"{midi}:{start_sec:.3f}", avoid,
+        )
         return
     start = int(max(0.0, start_sec) * sr)
     if start >= len(bus):

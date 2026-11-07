@@ -15,6 +15,11 @@ SHARP_KEYS = ["F#m7", "B7", "Emaj7", "C#7", "F#m7", "B7", "Emaj7", "G#7"]
 ALL_CHARTS = [TWO_FIVE_ONE, RHYTHM_CHANGES, FLAT_KEYS, SHARP_KEYS]
 
 
+@pytest.fixture(autouse=True)
+def _upright_on(monkeypatch):
+    monkeypatch.setenv("MUSIC_UPRIGHT_BASS", "model")
+
+
 def walk(chart, passes=4, ppb=4, seed=5):
     """The chart's lines as a list of (chord, next chord, notes), bar by bar."""
     state = {"prev": None, "planned": None, "head": None}

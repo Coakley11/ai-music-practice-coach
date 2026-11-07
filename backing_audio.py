@@ -2087,7 +2087,8 @@ def synthesize_chords_to_numpy(
     bass_density = float(song_profile.get("bass_density", 1.0)) * float(song_profile.get("density_mul", 1.0))
     bossa_bass_state: dict[str, Any] = {"prev": None, "planned": None}
     jazz_bass_state: dict[str, Any] = {"prev": None, "planned": None, "head": None}
-    upright = style == "Jazz swing"
+    upright = style == "Jazz swing" and bool(_bv.upright_mode())
+    upright_takes: dict = {}
 
     # Pre-compute arrangement memory (chorus passes, phrase positions,
     # bridge-recovery bars) so per-bar decisions know "where am I in
@@ -2281,7 +2282,10 @@ def synthesize_chords_to_numpy(
             )
             _stab_vol = _humanize_volume(0.16 * intensity, idx * 41 + loop_seed)
             if upright:
-                _bv.add_upright_note(audio, sr, t_stab, pulse * 0.40, stab_pitch, _stab_vol * UPRIGHT_GAIN, 0.8)
+                _bv.add_upright_note(
+                    audio, sr, t_stab, pulse * 0.40, stab_pitch, _stab_vol * UPRIGHT_GAIN, 0.8,
+                    seed=f"{groove_seed}:{idx}:stab", avoid=upright_takes,
+                )
             else:
                 _add_tone(audio, sr, t_stab, pulse * 0.40, stab_pitch, _stab_vol, "bass")
         elif tex_bass in ("roots", "half") and not bar_is_no_chord:
@@ -2303,6 +2307,7 @@ def synthesize_chords_to_numpy(
                     # A decaying pluck carries less than a held tone at the same level.
                     _bv.add_upright_note(
                         audio, sr, t_hit, max(0.05, beats * pulse), bass_pitch, _held_vol * UPRIGHT_GAIN * 1.5, 0.5,
+                        seed=f"{groove_seed}:{idx}:{n}", avoid=upright_takes,
                     )
                 else:
                     _add_tone(audio, sr, t_hit, max(0.05, beats * pulse), bass_pitch, _held_vol, "bass")
@@ -2320,6 +2325,7 @@ def synthesize_chords_to_numpy(
                     audio, sr, t_hit, max(0.05, beats * pulse - min(0.02, 0.05 * pulse)), bass_pitch,
                     _humanize_volume(bass_vol * accent, idx * 41 + n + loop_seed),
                     0.25 + 0.5 * accent,
+                    seed=f"{groove_seed}:{idx}:{n}", avoid=upright_takes,
                 )
         elif funk_notes is not None:
             bass_vol = (0.15 if song_profile.get("groove_based") else 0.11) * intensity * arr_char["bass_vol_mul"]

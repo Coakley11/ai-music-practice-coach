@@ -1,0 +1,521 @@
+{
+ "sr": 44100,
+ "source": "1958 Otto Rubner double bass, D. Smolken, CC0",
+ "zones": [
+  {
+   "key": 27,
+   "layers": [
+    {
+     "velocity": 0.35,
+     "takes": [
+      {
+       "file": "eb1_p_a.flac",
+       "cents": -20.8,
+       "gain": 0.3102
+      },
+      {
+       "file": "eb1_p_b.flac",
+       "cents": -21.3,
+       "gain": 0.3044
+      },
+      {
+       "file": "eb1_p_c.flac",
+       "cents": -23.5,
+       "gain": 0.3114
+      }
+     ]
+    },
+    {
+     "velocity": 0.6,
+     "takes": [
+      {
+       "file": "eb1_m_a.flac",
+       "cents": -15.9,
+       "gain": 0.5112
+      },
+      {
+       "file": "eb1_m_b.flac",
+       "cents": -17.7,
+       "gain": 0.4871
+      },
+      {
+       "file": "eb1_m_c.flac",
+       "cents": -21.6,
+       "gain": 0.5246
+      }
+     ]
+    },
+    {
+     "velocity": 0.85,
+     "takes": [
+      {
+       "file": "eb1_f_a.flac",
+       "cents": -19.1,
+       "gain": 0.7197
+      },
+      {
+       "file": "eb1_f_b.flac",
+       "cents": -17.8,
+       "gain": 0.7368
+      },
+      {
+       "file": "eb1_f_c.flac",
+       "cents": -18.2,
+       "gain": 0.7039
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "key": 31,
+   "layers": [
+    {
+     "velocity": 0.35,
+     "takes": [
+      {
+       "file": "g1_p_a.flac",
+       "cents": -5.4,
+       "gain": 0.3207
+      },
+      {
+       "file": "g1_p_b.flac",
+       "cents": -7.0,
+       "gain": 0.3176
+      },
+      {
+       "file": "g1_p_c.flac",
+       "cents": -3.5,
+       "gain": 0.2956
+      }
+     ]
+    },
+    {
+     "velocity": 0.6,
+     "takes": [
+      {
+       "file": "g1_m_a.flac",
+       "cents": -3.9,
+       "gain": 0.4689
+      },
+      {
+       "file": "g1_m_b.flac",
+       "cents": 0.7,
+       "gain": 0.4492
+      },
+      {
+       "file": "g1_m_c.flac",
+       "cents": -2.1,
+       "gain": 0.4584
+      }
+     ]
+    },
+    {
+     "velocity": 0.85,
+     "takes": [
+      {
+       "file": "g1_f_a.flac",
+       "cents": 3.2,
+       "gain": 0.7062
+      },
+      {
+       "file": "g1_f_b.flac",
+       "cents": 3.0,
+       "gain": 0.6857
+      },
+      {
+       "file": "g1_f_c.flac",
+       "cents": 3.0,
+       "gain": 0.6968
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "key": 34,
+   "layers": [
+    {
+     "velocity": 0.35,
+     "takes": [
+      {
+       "file": "bb1_p_a.flac",
+       "cents": -15.4,
+       "gain": 0.3033
+      },
+      {
+       "file": "bb1_p_b.flac",
+       "cents": -16.2,
+       "gain": 0.3341
+      },
+      {
+       "file": "bb1_p_c.flac",
+       "cents": -15.3,
+       "gain": 0.323
+      }
+     ]
+    },
+    {
+     "velocity": 0.6,
+     "takes": [
+      {
+       "file": "bb1_m_a.flac",
+       "cents": -19.2,
+       "gain": 0.4716
+      },
+      {
+       "file": "bb1_m_b.flac",
+       "cents": -21.1,
+       "gain": 0.4566
+      }
+     ]
+    },
+    {
+     "velocity": 0.85,
+     "takes": [
+      {
+       "file": "bb1_f_a.flac",
+       "cents": -8.7,
+       "gain": 0.6801
+      },
+      {
+       "file": "bb1_f_b.flac",
+       "cents": -9.5,
+       "gain": 0.688
+      },
+      {
+       "file": "bb1_f_c.flac",
+       "cents": -9.3,
+       "gain": 0.6979
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "key": 38,
+   "layers": [
+    {
+     "velocity": 0.35,
+     "takes": [
+      {
+       "file": "d2_p_a.flac",
+       "cents": -4.9,
+       "gain": 0.2566
+      },
+      {
+       "file": "d2_p_b.flac",
+       "cents": -5.2,
+       "gain": 0.2571
+      },
+      {
+       "file": "d2_p_c.flac",
+       "cents": -6.0,
+       "gain": 0.2705
+      }
+     ]
+    },
+    {
+     "velocity": 0.6,
+     "takes": [
+      {
+       "file": "d2_m_a.flac",
+       "cents": -1.2,
+       "gain": 0.3365
+      },
+      {
+       "file": "d2_m_b.flac",
+       "cents": 0.7,
+       "gain": 0.3599
+      },
+      {
+       "file": "d2_m_c.flac",
+       "cents": 0.3,
+       "gain": 0.3455
+      }
+     ]
+    },
+    {
+     "velocity": 0.85,
+     "takes": [
+      {
+       "file": "d2_f_a.flac",
+       "cents": 1.8,
+       "gain": 0.4873
+      },
+      {
+       "file": "d2_f_b.flac",
+       "cents": 0.9,
+       "gain": 0.5149
+      },
+      {
+       "file": "d2_f_c.flac",
+       "cents": 1.1,
+       "gain": 0.5019
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "key": 41,
+   "layers": [
+    {
+     "velocity": 0.35,
+     "takes": [
+      {
+       "file": "f2_p_a.flac",
+       "cents": -1.9,
+       "gain": 0.3322
+      },
+      {
+       "file": "f2_p_b.flac",
+       "cents": -2.6,
+       "gain": 0.3429
+      },
+      {
+       "file": "f2_p_c.flac",
+       "cents": -0.8,
+       "gain": 0.3466
+      }
+     ]
+    },
+    {
+     "velocity": 0.6,
+     "takes": [
+      {
+       "file": "f2_m_a.flac",
+       "cents": 3.9,
+       "gain": 0.5567
+      },
+      {
+       "file": "f2_m_b.flac",
+       "cents": 3.0,
+       "gain": 0.5603
+      },
+      {
+       "file": "f2_m_c.flac",
+       "cents": 3.6,
+       "gain": 0.5576
+      }
+     ]
+    },
+    {
+     "velocity": 0.85,
+     "takes": [
+      {
+       "file": "f2_f_a.flac",
+       "cents": 2.9,
+       "gain": 0.7977
+      },
+      {
+       "file": "f2_f_b.flac",
+       "cents": 0.9,
+       "gain": 0.7799
+      },
+      {
+       "file": "f2_f_c.flac",
+       "cents": 2.3,
+       "gain": 0.7825
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "key": 45,
+   "layers": [
+    {
+     "velocity": 0.35,
+     "takes": [
+      {
+       "file": "a2_p_a.flac",
+       "cents": -7.8,
+       "gain": 0.2853
+      },
+      {
+       "file": "a2_p_b.flac",
+       "cents": -7.1,
+       "gain": 0.2843
+      },
+      {
+       "file": "a2_p_c.flac",
+       "cents": -7.7,
+       "gain": 0.2896
+      }
+     ]
+    },
+    {
+     "velocity": 0.6,
+     "takes": [
+      {
+       "file": "a2_m_a.flac",
+       "cents": -0.9,
+       "gain": 0.3826
+      },
+      {
+       "file": "a2_m_b.flac",
+       "cents": -1.7,
+       "gain": 0.4182
+      },
+      {
+       "file": "a2_m_c.flac",
+       "cents": -1.8,
+       "gain": 0.4164
+      }
+     ]
+    },
+    {
+     "velocity": 0.85,
+     "takes": [
+      {
+       "file": "a2_f_a.flac",
+       "cents": -1.5,
+       "gain": 0.5796
+      },
+      {
+       "file": "a2_f_b.flac",
+       "cents": -1.9,
+       "gain": 0.5506
+      },
+      {
+       "file": "a2_f_c.flac",
+       "cents": -1.9,
+       "gain": 0.5542
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "key": 48,
+   "layers": [
+    {
+     "velocity": 0.35,
+     "takes": [
+      {
+       "file": "c3_p_a.flac",
+       "cents": -0.6,
+       "gain": 0.2957
+      },
+      {
+       "file": "c3_p_b.flac",
+       "cents": -1.6,
+       "gain": 0.3235
+      },
+      {
+       "file": "c3_p_c.flac",
+       "cents": -0.0,
+       "gain": 0.3029
+      }
+     ]
+    },
+    {
+     "velocity": 0.6,
+     "takes": [
+      {
+       "file": "c3_m_a.flac",
+       "cents": 1.4,
+       "gain": 0.457
+      },
+      {
+       "file": "c3_m_b.flac",
+       "cents": 1.4,
+       "gain": 0.4594
+      },
+      {
+       "file": "c3_m_c.flac",
+       "cents": 0.9,
+       "gain": 0.4588
+      }
+     ]
+    },
+    {
+     "velocity": 0.85,
+     "takes": [
+      {
+       "file": "c3_f_a.flac",
+       "cents": 1.9,
+       "gain": 0.7296
+      },
+      {
+       "file": "c3_f_b.flac",
+       "cents": 0.5,
+       "gain": 0.7197
+      },
+      {
+       "file": "c3_f_c.flac",
+       "cents": -0.9,
+       "gain": 0.7294
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "key": 52,
+   "layers": [
+    {
+     "velocity": 0.35,
+     "takes": [
+      {
+       "file": "e3_p_a.flac",
+       "cents": -5.0,
+       "gain": 0.3137
+      },
+      {
+       "file": "e3_p_b.flac",
+       "cents": -4.2,
+       "gain": 0.2947
+      },
+      {
+       "file": "e3_p_c.flac",
+       "cents": -2.8,
+       "gain": 0.2964
+      }
+     ]
+    },
+    {
+     "velocity": 0.6,
+     "takes": [
+      {
+       "file": "e3_m_a.flac",
+       "cents": -2.6,
+       "gain": 0.4278
+      },
+      {
+       "file": "e3_m_b.flac",
+       "cents": -3.0,
+       "gain": 0.4413
+      },
+      {
+       "file": "e3_m_c.flac",
+       "cents": -3.2,
+       "gain": 0.4248
+      }
+     ]
+    },
+    {
+     "velocity": 0.85,
+     "takes": [
+      {
+       "file": "e3_f_a.flac",
+       "cents": -3.3,
+       "gain": 0.6599
+      },
+      {
+       "file": "e3_f_b.flac",
+       "cents": -2.3,
+       "gain": 0.6292
+      },
+      {
+       "file": "e3_f_c.flac",
+       "cents": -1.9,
+       "gain": 0.6359
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}
