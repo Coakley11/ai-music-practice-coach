@@ -47,9 +47,9 @@ _RECORDED_TRIM = {"closed": 2.0, "half": 2.0, "three": 1.8, "open": 1.6, "pedal"
 _CLOSE_MIKED = frozenset({"Rock groove", "Funk groove"})
 # Each style's balance of the recorded kit: Rock hits harder, Jazz stays light behind the ride.
 _STYLE_TRIM: dict[str, dict[str, float]] = {
-    "Rock groove": {"kick": 1.25, "snare": 1.25, "tom": 1.15, "crash": 1.1},
-    "Funk groove": {"kick": 1.1, "snare": 1.05},
-    "Jazz swing": {"kick": 0.75, "snare": 0.8, "tom": 0.7, "pedal": 0.85},
+    "Rock groove": {"kick": 1.15, "snare": 1.15, "tom": 1.15, "crash": 1.6, "closed": 2.1, "half": 2.1, "three": 2.0, "open": 2.0, "ride": 1.5},
+    "Funk groove": {"kick": 1.55, "snare": 1.4},
+    "Jazz swing": {"kick": 0.55, "snare": 0.8, "tom": 0.7, "pedal": 0.85, "ride": 0.62, "bell": 0.62},
     "Bossa nova": {"kick": 0.85},
     "Ballad": {"kick": 0.85, "snare": 0.85, "crash": 0.8},
 }

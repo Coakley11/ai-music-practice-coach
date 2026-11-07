@@ -21,9 +21,9 @@ CYMBAL_VOICES = frozenset({"closed", "half", "three", "open", "pedal", "ride", "
 # How much of each hit is level-matched to today's voice. A real cymbal keeps ringing after this.
 _MATCH_SECONDS = {"closed": 0.04, "half": 0.09, "three": 0.09, "open": 0.09, "pedal": 0.14, "ride": 0.32, "bell": 0.32, "crash": 0.45, "sizzle": 0.45}
 # Harder styles push the drum recordings into gentle saturation, as a hard-hitting mix does.
-_DRIVE = {"Rock groove": {"kick_close": 1.9, "snare_close": 1.7, "rimshot_close": 1.5, "tom_low": 1.3, "tom_high": 1.3}, "Funk groove": {"kick_close": 1.3, "snare_close": 1.25}}
+_DRIVE = {"Rock groove": {"kick_close": 1.9, "snare_close": 1.7, "rimshot_close": 1.5, "tom_low": 1.3, "tom_high": 1.3}, "Funk groove": {"kick_close": 1.05, "snare_close": 1.05}}
 # Funk's snare and kick stop sooner, so the syncopation stays clear.
-_TIGHTEN = {"Funk groove": {"kick_close": 16.0, "snare_close": 9.0, "snare": 9.0}}
+_TIGHTEN = {"Funk groove": {"kick_close": 26.0, "snare_close": 16.0, "snare": 16.0}}
 
 
 def cache_limit_bytes() -> int:
@@ -105,7 +105,7 @@ def _shape(x: np.ndarray, voice: str, style: str, sr: int) -> np.ndarray:
         x = (np.tanh(x / peak * float(drive)) * peak).astype(np.float32)
     if voice in {"ride", "bell"}:
         # A close stick transient would set the track's peak and pull the whole mix down: ease only the very top.
-        ceiling = 5.0 * float(np.sqrt(np.mean(x[: int(0.3 * sr)].astype(np.float64) ** 2)))
+        ceiling = 2.6 * float(np.sqrt(np.mean(x[: int(0.3 * sr)].astype(np.float64) ** 2)))
         if ceiling > 0:
             x = (np.tanh(x / ceiling) * ceiling).astype(np.float32)
     return x

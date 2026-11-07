@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextvars
+import functools
 import io
 import wave
 import zlib
@@ -1911,21 +1912,27 @@ def drum_renderer_tag() -> str:
     return "+drums2-" + _drum_kit._samples.pack_token()
 
 
-def synthesize_chords_to_numpy(*args, **kwargs):
-    """Render the backing. The improved drum kit applies only when it is switched on."""
-    if not _drum_kit.drum_kit_enabled():
-        return _synthesize_chords_to_numpy(*args, **kwargs)
-    sr = kwargs.get("sr", args[3] if len(args) > 3 else 44100)
-    folder, mode = _drum_kit._samples.pack_settings()
-    pack = _drum_kit._samples.SamplePack(folder, mode) if folder else None
-    token = _ACTIVE_DRUM_KIT.set(_drum_kit.DrumKit(int(sr), str(kwargs.get("style", "Pop groove")), pack=pack, defer_hats=True))
-    try:
-        return _synthesize_chords_to_numpy(*args, **kwargs)
-    finally:
-        _ACTIVE_DRUM_KIT.reset(token)
+def _with_drum_kit(render):
+    """Render with the improved drum kit when it is switched on, and exactly as before when it is not."""
+
+    @functools.wraps(render)
+    def synthesize(*args, **kwargs):
+        if not _drum_kit.drum_kit_enabled():
+            return render(*args, **kwargs)
+        sr = kwargs.get("sr", args[3] if len(args) > 3 else 44100)
+        folder, mode = _drum_kit._samples.pack_settings()
+        pack = _drum_kit._samples.SamplePack(folder, mode) if folder else None
+        token = _ACTIVE_DRUM_KIT.set(_drum_kit.DrumKit(int(sr), str(kwargs.get("style", "Pop groove")), pack=pack, defer_hats=True))
+        try:
+            return render(*args, **kwargs)
+        finally:
+            _ACTIVE_DRUM_KIT.reset(token)
+
+    return synthesize
 
 
-def _synthesize_chords_to_numpy(
+@_with_drum_kit
+def synthesize_chords_to_numpy(
     chords,
     bpm=100,
     loops=1,
