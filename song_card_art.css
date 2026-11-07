@@ -639,3 +639,11 @@
   .st-key-picker_active_song_card_content:has(.sc-frag) .ui-skp-locked span{font-size:32px!important}
   .st-key-picker_active_song_card_content:has(.sc-frag) .st-key-picker_active_song_practice_key_row [data-testid="stSelectbox"] input[role="combobox"]{font-size:26px!important}
 }
+/* Fixed Key's read-only key and its lock in the card's own ink (today's indigo was unreadable on dark panels). */
+.st-key-backing_art_card .ui-skp-locked,
+.st-key-backing_art_card .ui-skp-locked span,
+.st-key-picker_active_song_card_content:has(.sc-frag) .ui-skp-locked,
+.st-key-picker_active_song_card_content:has(.sc-frag) .ui-skp-locked span{color:inherit!important;-webkit-text-fill-color:currentColor}
+.st-key-backing_art_card .ui-skp-locked svg,
+.st-key-picker_active_song_card_content:has(.sc-frag) .ui-skp-locked svg{stroke:currentColor;flex:none;width:26px;height:26px}
+.st-key-backing_art_card .ui-skp-locked,.st-key-picker_active_song_card_content:has(.sc-frag) .ui-skp-locked{height:auto!important;min-height:0}
