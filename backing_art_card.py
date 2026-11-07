@@ -2,7 +2,7 @@
 
 Presentation only. The Practice Key selector, BPM slider and Play / Stop control stay the same Streamlit
 widgets with the same keys and callbacks; this module draws the artwork above them and the facts between
-them. Off unless ``MUSIC_SONG_ART_CARDS`` is set (``song_card_art.song_art_cards_enabled``).
+them. On by default; ``MUSIC_SONG_ART_CARDS=0`` brings back today's card (``song_card_art.song_art_cards_enabled``).
 """
 
 from __future__ import annotations

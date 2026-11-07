@@ -3,7 +3,7 @@
 Presentation only. Every icon comes from the app's own definitions. Widgets such as the Practice Key
 selector stay real Streamlit widgets and sit between the fragments this module returns.
 
-Off by default until reviewed: set ``MUSIC_SONG_ART_CARDS=1`` to use it.
+On by default. ``MUSIC_SONG_ART_CARDS=0`` (or off / false / no) brings back today's cards, for rollback.
 """
 
 from __future__ import annotations
@@ -56,7 +56,8 @@ _STYLE_INSTRUMENTS = {"Classical": ("Piano", "Violin", "Flute")}
 
 
 def song_art_cards_enabled() -> bool:
-    return str(os.environ.get("MUSIC_SONG_ART_CARDS") or "").strip().lower() in {"1", "true", "yes", "on"}
+    """On unless switched off: the rollback for the artistic cards."""
+    return str(os.environ.get("MUSIC_SONG_ART_CARDS") or "").strip().lower() not in {"0", "false", "no", "off"}
 
 
 @dataclass(frozen=True)

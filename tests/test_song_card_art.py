@@ -93,8 +93,10 @@ def test_hero_shows_the_style_logo_beside_the_source_crest() -> None:
     assert 'class="sc-stylelogo"' not in A.hero_html(A.card_identity("Catalog", "Blues"), title="X")
 
 
-def test_switch_is_off_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_switch_is_on_by_default_and_rolls_back_with_0(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("MUSIC_SONG_ART_CARDS", raising=False)
+    assert A.song_art_cards_enabled() is True
+    monkeypatch.setenv("MUSIC_SONG_ART_CARDS", "0")
     assert A.song_art_cards_enabled() is False
     monkeypatch.setenv("MUSIC_SONG_ART_CARDS", "1")
     assert A.song_art_cards_enabled() is True

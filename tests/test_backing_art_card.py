@@ -15,9 +15,12 @@ ROOT = pathlib.Path(A.__file__).resolve().parent
 APP = (ROOT / "streamlit_music_practice_app.py").read_text(encoding="utf-8")
 
 
-def test_off_by_default(monkeypatch):
+def test_on_by_default_with_a_switch_to_roll_back(monkeypatch):
     monkeypatch.delenv("MUSIC_SONG_ART_CARDS", raising=False)
-    assert not B.backing_art_enabled("song")
+    assert B.backing_art_enabled("song")
+    for off in ("0", "off", "false", "no"):
+        monkeypatch.setenv("MUSIC_SONG_ART_CARDS", off)
+        assert not B.backing_art_enabled("song")
 
 
 @pytest.mark.parametrize("kind,on", [("song", True), ("custom", True), ("composition", True), ("creative", False)])
