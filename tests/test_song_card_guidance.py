@@ -211,12 +211,12 @@ class TestHarmonyMatchesTheChart(unittest.TestCase):
     def test_all_of_me_is_a_minor_loop_not_a_jazz_standard(self) -> None:
         f = analyze_song_harmony(song("All of Me"))
         self.assertEqual(f.character, "loop")
-        self.assertEqual(f.loop, ("Em", "C", "G", "D"))
+        self.assertEqual(f.loop, ("Fm", "Db", "Ab", "Eb"))  # concert Ab major (was the Em capo shapes)
         self.assertEqual(f.loop_numerals, ("i", "VI", "III", "VII"))
         for level in LEVELS:
             c = card("All of Me", level, "Piano", "Pentatonics")
             low = c["harmony"].lower()
-            self.assertIn("e minor", low) if level != "Beginner" else self.assertIn("em", low)
+            self.assertIn("f minor", low) if level != "Beginner" else self.assertIn("fm", low)
             self.assertNotRegex(text_of(c).lower(), r"ii–v|turnaround|swing|bridge modulation")
 
     def test_all_of_me_jazz_standard_is_a_secondary_dominant_chain(self) -> None:
