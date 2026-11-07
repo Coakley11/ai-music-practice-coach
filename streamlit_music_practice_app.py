@@ -10857,6 +10857,36 @@ def _composition_saved_style_label(rec: dict) -> str:
 _songs_art_identity: Any = None
 
 
+def _songs_art_style(rec: Any, source_label: str, catalog_style: str) -> str:
+    """The style that decides the Songs card's artwork: the song's own saved style, read now from its source
+    record (the same rule as the Backing card), never the Backing groove and never an invented default."""
+    try:
+        from backing_art_card import song_style_for_card
+
+        pick = str((rec or {}).get("pick_key") or "").strip()
+        low = str(source_label or "").lower()
+        if "compos" in low:
+            if not pick.startswith("composition::"):
+                from composition_session_state import get_active_document
+                from composition_songs_bridge import composition_pick_key_for
+
+                doc = get_active_document(st.session_state)
+                pick = composition_pick_key_for(doc) if isinstance(doc, dict) else ""
+            return song_style_for_card("composition", session=st.session_state, pick_key=pick)
+        if "custom" in low or "progression" in low:
+            if not pick.startswith("custom::"):
+                from songs.music_source import custom_pick_key_for
+
+                active = st.session_state.get(CPL_ACTIVE_KEY)
+                pick = custom_pick_key_for(active) if isinstance(active, dict) else ""
+            return song_style_for_card("custom", session=st.session_state, pick_key=pick)
+        if not pick:
+            pick = str(st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or "")
+        return song_style_for_card("song", session=st.session_state, pick_key=pick, record=rec) or str(catalog_style or "")
+    except Exception:
+        return str(catalog_style or "")
+
+
 def _songs_art_levels(levels_display: Any) -> list[str]:
     import re as _re
 
@@ -11193,7 +11223,7 @@ def _render_active_song_card(
         from song_card_art import card_identity as _card_identity, song_art_cards_enabled as _art_on
 
         if _art_on():
-            _songs_art_identity = _card_identity(_source_label, _style_label)
+            _songs_art_identity = _card_identity(_source_label, _songs_art_style(rec, _source_label, _style_label))
     except Exception:
         _songs_art_identity = None
     card_html = (

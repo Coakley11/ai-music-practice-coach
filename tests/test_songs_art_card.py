@@ -15,7 +15,7 @@ CSS = (ROOT / "song_card_art.css").read_text(encoding="utf-8")
 def test_the_songs_card_uses_the_artwork_when_the_switch_is_on():
     i = APP.index("def _render_active_song_card(")
     body = APP[i:i + 30000]
-    assert "_songs_art_identity = _card_identity(_source_label, _style_label)" in body
+    assert "_songs_art_identity = _card_identity(_source_label, _songs_art_style(rec, _source_label, _style_label))" in body
     assert "_card_style_tag(_songs_art_identity) + _hero_html(" in body
     assert "_songs_body_html(" in body
     # Today's card stays for the rollback switch.
@@ -42,3 +42,15 @@ def test_the_songs_styles_leave_todays_card_alone():
     rules = [r.strip() for r in block.split("}") if "{" in r and not r.strip().startswith(("@", "/*"))]
     scoped = [r for r in rules if r.startswith(".st-key-picker_active_song_card_content")]
     assert scoped and all(":has(.sc-frag)" in r.split("{")[0] or "sc-" in r.split("{")[0] for r in scoped)
+
+
+def test_the_songs_card_artwork_follows_the_saved_style_like_backing() -> None:
+    """Songs and Backing read the same saved style (song_identity_style), never the groove or a default."""
+    import inspect
+
+    import streamlit_music_practice_app as app
+
+    helper = inspect.getsource(app._songs_art_style)
+    assert "song_style_for_card" in helper and "groove" not in helper.lower().replace("never the backing groove", "")
+    card = inspect.getsource(app._render_active_song_card)
+    assert "_card_identity(_source_label, _songs_art_style(rec, _source_label, _style_label))" in card
