@@ -11207,10 +11207,14 @@ def _render_active_song_card(
     if _songs_art_identity is not None:
         from song_card_art import card_style_tag as _card_style_tag, hero_html as _hero_html
 
+        # A source name in the artist's place ("Composition", "Your progression") is not an artist.
+        _art_artist = "" if _header_artist.strip().lower() in {
+            "composition", "composition song", "custom progression", "your progression", "catalog song", "song",
+        } else _header_artist
         card_html = _card_style_tag(_songs_art_identity) + _hero_html(
             _songs_art_identity,
             title=str(details["title"]),
-            artist=_header_artist,
+            artist=_art_artist,
             page="songs",
             bars=_custom_header_bars,
             bars_note="Your progression" if _custom_header_bars else "",
