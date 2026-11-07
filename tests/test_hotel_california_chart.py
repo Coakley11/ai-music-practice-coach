@@ -160,3 +160,21 @@ class HotelCaliforniaOneBarPerChordTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestSavedChartRefresh(unittest.TestCase):
+    """A saved snapshot of the old 480-bar chart is refreshed; user edits are kept."""
+
+    def test_old_four_bar_hold_snapshot_refreshes_and_edits_are_kept(self) -> None:
+        from songs import chart_provenance as cp
+
+        new = _record()
+        pick = "Hotel California\x1fEagles"
+
+        # The previous pack held every chord four bars: each current cell, repeated four times.
+        old_sections = {name: [c for c in cells for _ in range(4)] for name, cells in new["sections"].items()}
+        snap = {"title": "Hotel California", "artist": "Eagles", "pick_key": pick, "sections": old_sections}
+        self.assertEqual(cp.classify_snapshot(snap, new, pick_key=pick)[0], cp.REFRESH)
+        edited = dict(snap, sections={**old_sections, "Intro": ["Bm"] * 3})
+        self.assertEqual(cp.classify_snapshot(edited, new, pick_key=pick)[0], cp.KEEP)
+        self.assertEqual(cp.classify_snapshot(dict(snap, chart_origin="user"), new, pick_key=pick)[0], cp.KEEP)
