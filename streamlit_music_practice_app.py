@@ -8828,6 +8828,50 @@ def multitrack_studio_track_payloads(track_items, controls):
     return payloads
 
 
+BACKING_LOOP_DIAG_KEY = "backing_loop_diag"
+
+
+def tile_backing_pass(backing_y, loops, events, bpm, time_signature="4/4"):
+    """Repeat a rendered backing pass gaplessly, recording how it went.
+
+    Both the monitor and the exported mix go through here so they stay
+    identical; a degraded result is written to session state instead of being
+    swallowed, so the UI can say so rather than silently looping with the
+    one-second gap this replaces.
+    """
+    try:
+        from backing_loop import pass_sample_count, tile_pass
+
+        tiled, diag = tile_pass(
+            backing_y,
+            int(loops),
+            musical_samples=pass_sample_count(
+                len(events or []), bpm, time_signature
+            ),
+        )
+    except Exception as exc:
+        st.session_state[BACKING_LOOP_DIAG_KEY] = {
+            "strategy": "unavailable",
+            "ok": False,
+            "gap_sec": 0.0,
+            "loops": int(loops),
+            "detail": f"gapless looping is unavailable: {exc}",
+        }
+        return np.tile(backing_y, int(loops))
+    st.session_state[BACKING_LOOP_DIAG_KEY] = diag
+    return tiled
+
+
+def warn_if_backing_loop_degraded():
+    """Say it out loud when the loop could not be made gapless."""
+    diag = st.session_state.get(BACKING_LOOP_DIAG_KEY) or {}
+    if diag and not diag.get("ok", True):
+        st.warning(
+            "Looped backing may pause between repeats — "
+            + str(diag.get("detail") or "gapless looping did not apply.")
+        )
+
+
 def multitrack_monitor_backing_bytes(
     sections,
     selected_section_names,
@@ -8853,17 +8897,9 @@ def multitrack_monitor_backing_bytes(
         # synthesize_chords_to_numpy leaves after the music, putting a full
         # second of silence at every loop boundary. Fold that overhang onto the
         # next downbeat instead, so the last chord rings into the repeat.
-        try:
-            from backing_loop import musical_sample_count, seamless_tile
-
-            _total_beats = sum(float(e.get("beats") or 0) for e in events)
-            backing_y = seamless_tile(
-                backing_y,
-                int(loops),
-                musical_samples=musical_sample_count(_total_beats, bpm),
-            )
-        except Exception:
-            backing_y = np.tile(backing_y, int(loops))
+        backing_y = tile_backing_pass(
+            backing_y, loops, events, bpm, time_signature
+        )
     return wav_bytes_from_float(backing_y), events
 
 
@@ -9095,6 +9131,7 @@ def _render_multitrack_session_setup_panel(
         )
         st.session_state.mt_backing_scope = mt_scope_label
         st.session_state.mt_backing_duration = mt_backing_duration
+        warn_if_backing_loop_degraded()
         try:
             from media_multitrack_catalog import persist_prepared_multitrack_backing
 
@@ -27853,11 +27890,17 @@ elif _studio_page == "multitrack":
                             time_signature=mt_time_sig,
                         )
                         if mt_loops > 1:
-                            backing_y = np.tile(backing_y, int(mt_loops))
+                            # Same gapless tiling as the monitor. The export must
+                            # match what the player heard while recording, or the
+                            # backing drifts a second per lap against the layers.
+                            backing_y = tile_backing_pass(
+                                backing_y, mt_loops, _export_events, mt_bpm, mt_time_sig
+                            )
                         backing_y = backing_y * _backing_volume
 
                     mixed = mix_multitrack(backing_y, track_items_for_mix)
                     mixed = apply_reverb(mixed, sr=44100, amount=mix_reverb_amount(st.session_state))
+                    warn_if_backing_loop_degraded()
                     st.session_state.mixed_track_wav = wav_bytes_from_float(mixed)
                     from multitrack_activity import capture_mix
                     capture_mix(st.session_state, st.session_state.mixed_track_wav,
