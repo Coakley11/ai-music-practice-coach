@@ -976,51 +976,47 @@ def _hotel_california_chart_pack() -> dict[str, Any]:
         F  -> G       C  -> D
         Dm -> Em
 
-    Harmonic rhythm is **slow and spacious**: every chord is held for
-    **four full bars**. One list item = one bar, so a 4-bar chord appears
-    as four consecutive identical cells; the chord-follow highlighter and
-    backing track honor the long sustain honestly.
+    Harmonic rhythm is **one chord per bar** (about 3.2 s at 75 BPM). One
+    list item = one bar, so the 8-chord cycle is eight cells and the whole
+    chart is 120 bars, which is the recording's ~6:30 in a single pass. An
+    earlier version of this pack held every chord for four bars (480 bars,
+    25:36 per pass); the published form (15 eight-chord cycles) and the
+    recording length do not support that.
     """
 
-    def _hold(chord: str, bars: int) -> list[str]:
-        return [chord] * bars
+    # Cells per cycle: the 8-chord cycle, one bar per chord.
+    CYCLE_BARS = 8
 
-    # The iconic 8-chord descending Hotel California cycle (one chord = 4 bars).
-    VERSE_CYCLE = (
-        _hold("Bm", 4) + _hold("F#7", 4) + _hold("A", 4) + _hold("E", 4)
-        + _hold("G", 4) + _hold("D", 4) + _hold("Em", 4) + _hold("F#7", 4)
-    )  # 32 bars
+    # The iconic 8-chord descending Hotel California cycle (one chord = 1 bar).
+    VERSE_CYCLE = ["Bm", "F#7", "A", "E", "G", "D", "Em", "F#7"]  # 8 bars
 
     # Chorus has the same harmonic palette but its own 8-bar voice-leading
     # phrase: G -> D -> F#7 -> Bm, then G -> D -> Em -> F#7 to set up the next
     # verse.
-    CHORUS_CYCLE = (
-        _hold("G", 4) + _hold("D", 4) + _hold("F#7", 4) + _hold("Bm", 4)
-        + _hold("G", 4) + _hold("D", 4) + _hold("Em", 4) + _hold("F#7", 4)
-    )  # 32 bars
+    CHORUS_CYCLE = ["G", "D", "F#7", "Bm", "G", "D", "Em", "F#7"]  # 8 bars
 
     # Outro Solo = the iconic Hotel California guitar-solo jam over the same
     # descending 8-chord cycle as the Intro / Verses, repeated FIVE TIMES
-    # TOTAL (5 x 32 bars = 160 bars). This is the long extended outro.
+    # TOTAL (5 x 8 bars = 40 bars). This is the long extended outro.
     OUTRO_SOLO = (
         list(VERSE_CYCLE)  # cycle 1
         + list(VERSE_CYCLE)  # cycle 2
         + list(VERSE_CYCLE)  # cycle 3
         + list(VERSE_CYCLE)  # cycle 4
         + list(VERSE_CYCLE)  # cycle 5
-    )  # 160 bars
+    )  # 40 bars
 
     base_sections: dict[str, list[str]] = {
-        "Intro": list(VERSE_CYCLE) + list(VERSE_CYCLE),  # 64 bars - two cycles
-        "Verse 1A": list(VERSE_CYCLE),                   # 32 bars
-        "Verse 1B": list(VERSE_CYCLE),                   # 32 bars
-        "Chorus 1": list(CHORUS_CYCLE),                  # 32 bars
-        "Verse 2A": list(VERSE_CYCLE),                   # 32 bars
-        "Verse 2B": list(VERSE_CYCLE),                   # 32 bars
-        "Chorus 2": list(CHORUS_CYCLE),                  # 32 bars
-        "Verse 3A": list(VERSE_CYCLE),                   # 32 bars
-        "Verse 3B": list(VERSE_CYCLE),                   # 32 bars
-        "Outro Solo": list(OUTRO_SOLO),                  # 160 bars - 5 cycles
+        "Intro": list(VERSE_CYCLE) + list(VERSE_CYCLE),  # 16 bars - two cycles
+        "Verse 1A": list(VERSE_CYCLE),                   # 8 bars
+        "Verse 1B": list(VERSE_CYCLE),                   # 8 bars
+        "Chorus 1": list(CHORUS_CYCLE),                  # 8 bars
+        "Verse 2A": list(VERSE_CYCLE),                   # 8 bars
+        "Verse 2B": list(VERSE_CYCLE),                   # 8 bars
+        "Chorus 2": list(CHORUS_CYCLE),                  # 8 bars
+        "Verse 3A": list(VERSE_CYCLE),                   # 8 bars
+        "Verse 3B": list(VERSE_CYCLE),                   # 8 bars
+        "Outro Solo": list(OUTRO_SOLO),                  # 40 bars - 5 cycles
     }
 
     section_order: list[str] = [
@@ -1058,16 +1054,13 @@ def _hotel_california_chart_pack() -> dict[str, Any]:
     # punch is audible. Only the descending walk F#7 cells inside the cycle
     # use the F#7/A# inversion.
     for sec_name, chords in intermediate.items():
-        # Last 4-bar chord of each 32-bar cycle is the cadential F#7 -
+        # Last chord of each 8-bar cycle is the cadential F#7 -
         # restore it to plain F#7 (the inversion is only useful when
         # descending from Bm into A, not when resolving back to Bm/G).
-        for cycle_start in range(0, len(chords), 32):
-            tail_start = cycle_start + 28
-            if tail_start + 4 <= len(chords):
-                tail = chords[tail_start:tail_start + 4]
-                if all(c == "F#7/A#" for c in tail):
-                    for i in range(4):
-                        chords[tail_start + i] = "F#7"
+        for cycle_start in range(0, len(chords), CYCLE_BARS):
+            tail_index = cycle_start + CYCLE_BARS - 1
+            if tail_index < len(chords) and chords[tail_index] == "F#7/A#":
+                chords[tail_index] = "F#7"
 
     # Advanced: maj9 / m9 / 7b9 colors on top of the same Eagles inversions.
     adv_map = {
@@ -1083,24 +1076,21 @@ def _hotel_california_chart_pack() -> dict[str, Any]:
     # Same cadential treatment - the resolving F#7 at the end of each cycle
     # gets the b9 tension (the iconic Hotel California "altered V" sound).
     for sec_name, chords in advanced.items():
-        for cycle_start in range(0, len(chords), 32):
-            tail_start = cycle_start + 28
-            if tail_start + 4 <= len(chords):
-                tail = chords[tail_start:tail_start + 4]
-                if all(c == "F#7/A#" for c in tail):
-                    for i in range(4):
-                        chords[tail_start + i] = "F#7b9"
+        for cycle_start in range(0, len(chords), CYCLE_BARS):
+            tail_index = cycle_start + CYCLE_BARS - 1
+            if tail_index < len(chords) and chords[tail_index] == "F#7/A#":
+                chords[tail_index] = "F#7b9"
 
     lyric_cues: dict[str, list[str]] = {
         "Intro": [
             "Solo nylon-string guitar arpeggio over the full 8-chord cycle",
-            "Twice through the cycle - long, spacious harmonic rhythm",
+            "Twice through the cycle - unhurried, one chord per bar",
             "Bass walks Bm -> F#/A# -> A -> E/G# -> G -> D/F# -> Em -> F#",
         ],
         "Verse 1A": [
             "'On a dark desert highway...' - narrative entry",
             "Voice rides the same descending 8-chord arc",
-            "Each chord rings for 4 full bars - keep the storytelling spacious",
+            "One chord per bar - keep the storytelling spacious",
         ],
         "Verse 1B": [
             "'There she stood in the doorway...' - second half of verse 1",
@@ -1135,7 +1125,7 @@ def _hotel_california_chart_pack() -> dict[str, Any]:
         "Outro Solo": [
             "The iconic dual-guitar solo - twin harmonized leads",
             "Cycles the descending Bm -> F#7 -> A -> E -> G -> D -> Em -> F#7 progression FIVE times",
-            "Long-form solo territory: tension/release over sustained harmony",
+            "Long-form solo territory: tension/release over the repeating cycle",
             "Improvise with B natural minor / B harmonic minor (F# major over the F#7 cadences)",
             "Melodic-minor color on the F#7b9 cadential bars (Advanced tier)",
         ],
@@ -1144,15 +1134,16 @@ def _hotel_california_chart_pack() -> dict[str, Any]:
     arrangement_notes = (
         "**B minor, 4/4 laid-back rock (~75 BPM).** Transposed from the "
         "A-minor reference: **Am->Bm, E7->F#7, G->A, D->E, F->G, C->D, Dm->Em**. "
-        "The iconic descending 8-chord verse cycle holds **each chord for 4 "
-        "full bars**: Bm -> F#7 -> A -> E -> G -> D -> Em -> F#7 (32 bars). "
+        "The iconic descending 8-chord verse cycle gives **each chord one "
+        "bar**: Bm -> F#7 -> A -> E -> G -> D -> Em -> F#7 (8 bars). "
         "The chorus uses the same palette in a new voice-leading shape: "
-        "G -> D -> F#7 -> Bm -> G -> D -> Em -> F#7 (also 32 bars / 4 bars per "
-        "chord). Full form (10 sections): Intro -> Verse 1A -> Verse 1B -> "
-        "Chorus 1 -> Verse 2A -> Verse 2B -> Chorus 2 -> Verse 3A -> Verse 3B "
-        "-> Outro Solo. The Intro plays the verse cycle **twice** (64 bars of "
+        "G -> D -> F#7 -> Bm -> G -> D -> Em -> F#7 (also 8 bars / one bar per "
+        "chord). Full form (10 sections, 120 bars, about 6:24 in one pass at "
+        "75 BPM against the recording's ~6:30): Intro -> Verse 1A -> Verse 1B "
+        "-> Chorus 1 -> Verse 2A -> Verse 2B -> Chorus 2 -> Verse 3A -> Verse 3B "
+        "-> Outro Solo. The Intro plays the verse cycle **twice** (16 bars of "
         "nylon-guitar arpeggios) before the vocal enters. The **Outro Solo** "
-        "repeats the same descending 8-chord cycle **five times total** (160 "
+        "repeats the same descending 8-chord cycle **five times total** (40 "
         "bars) - the famous dual-guitar harmonized lead section. Beginner "
         "uses pure triads / dominant sevenths (Bm / F#7 / A / E / G / D / "
         "Em). Intermediate adds the Eagles bass-inversion voice leading - "
@@ -1162,9 +1153,8 @@ def _hotel_california_chart_pack() -> dict[str, Any]:
         "modal-minor sound. Solo territory: B natural minor + B harmonic "
         "minor (F# major over the F#7 cadences); the Advanced F#7b9 bars "
         "invite F# Phrygian-dominant / melodic-minor lines for the long "
-        "outro jam. **One chart bar = one playback bar** so the long "
-        "sustained pacing is honest; chord-follow holds each cell for the "
-        "full 4-bar window before advancing."
+        "outro jam. **One chart bar = one playback bar**; chord-follow "
+        "advances one chord per bar."
     )
 
     return {
@@ -4118,14 +4108,12 @@ def _how_far_ill_go_chart_pack() -> dict[str, Any]:
     def _beg(ch: str) -> str:
         if ch == "N.C.":
             return "N.C."
+        # Drop the slash bass and simplify the half-diminished chord; every other
+        # minor chord KEEPS its minor quality.  (This used to strip every "m",
+        # turning Dm -> D, Fm -> F, F#m -> F# and Dm7b5 -> "Ddi" - wrong chords that
+        # only stayed hidden while Beginner dropped the Final Chorus / Ending Descent.)
         head = ch.split("/")[0].strip()
-        return (
-            head.replace("F#m", "F#")
-            .replace("C#m", "C#")
-            .replace("Dm7b5", "Ddim")
-            .replace("m7b5", "dim")
-            .replace("m", "")
-        )
+        return head.replace("m7b5", "dim")
 
     beginner = {
         name: [_beg(c) for c in chords]
@@ -5157,7 +5145,6 @@ def _iris_chart_pack() -> dict[str, Any]:
         return (
             head.replace("Bsus2", "Bm")
             .replace("Gmaj7", "G")
-            .replace("F#m", "F#")
             .replace("m7", "m")
             .replace("sus2", "")
             .replace("maj7", "")

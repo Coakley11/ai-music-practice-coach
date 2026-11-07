@@ -101,6 +101,9 @@ PRIOR_REVISIONS: dict[str, tuple[tuple[str, str], ...]] = {
     'rock|hey jude|the beatles': (
         ('fc93bf5d1d044bf6', 'c4bd23855b113364'),
     ),
+    'rock|hotel california|eagles': (
+        ('6c3ce8334c90908f', '2de03a610265b970'),
+    ),
     'rock|imagine|john lennon': (
         ('c1cb8ceb30390ca3', '4257fed65a3180ab'),
     ),

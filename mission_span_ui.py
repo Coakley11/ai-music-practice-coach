@@ -19,6 +19,8 @@ from __future__ import annotations
 import html
 from typing import Any
 
+from practice_ui_labels import level_label
+
 MISSION_TARGET_SCOPE_STATE_KEY = "_improv_mission_target_scope_choice"
 MISSION_TARGET_SCOPE_WIDGET_KEY = "improv_mission_target_scope"
 MISSION_SPAN_SELECTION_STATE_KEY = "_improv_mission_span_selection"
@@ -346,7 +348,7 @@ def _render_span_mission_example(
     st.markdown("---")
     bucket = _BUCKET_LABELS.get(str(example.get("difficulty")), "Normal")
     st.markdown(
-        f"##### Mission example · {html.escape(level)} · {bucket}"
+        f"##### Mission example · {html.escape(level_label(level))} · {bucket}"
         + (f" · idea {int(example.get('idea') or 0) + 1}" if int(example.get("idea") or 0) else "")
     )
     # What the Mission is, and what harmonic situation it is practiced in.

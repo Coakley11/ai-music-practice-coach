@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any, Callable
 
 from music_feature_icons import feature_label
+from practice_ui_labels import level_label
 
 DEFAULT_INSTRUMENT_OPTIONS: list[str] = [
     "Piano",
@@ -425,6 +426,7 @@ def render_setup_quick_controls(
                 "Level",
                 LEVEL_OPTIONS,
                 key=lk,
+                format_func=level_label,
                 on_change=_apply_level,
             )
         with c3:

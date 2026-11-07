@@ -491,6 +491,7 @@ from tuner_tone_ui import (
     tuner_key_prefix_for_song,
 )
 from practice_metronome import render_metronome_widget
+from practice_ui_labels import decorate_levels, level_label
 from practice_setup_controls import (
     DEFAULT_INSTRUMENT_OPTIONS,
     focus_options_for_instrument,
@@ -1165,7 +1166,7 @@ if not _APP_UI_LOADED:
                 on_change=kwargs.get("on_display_key_change"),
             )
         with c3:
-            st.selectbox("Level", ["Beginner", "Intermediate", "Advanced"], key="level")
+            st.selectbox("Level", ["Beginner", "Intermediate", "Advanced"], key="level", format_func=level_label)
         with c4:
             st.selectbox("Instrument", instrument_options, key="instrument")
         with c5:
@@ -3742,7 +3743,7 @@ def full_chord_markdown(
         key_text += f" (catalog {html.escape(str(song_data['key']))})"
     meta_bits = [
         key_text,
-        f"Level: {html.escape(str(level))}",
+        f"Level: {html.escape(level_label(level))}",
         f"Form: {total_bars} bars",
         f"Tempo: {int(bpm)} BPM",
         f"Time: {html.escape(str(time_signature))}",
@@ -3843,7 +3844,7 @@ def guitar_practice_text(focus, level):
 - **Muting:** practice dead-strum bars between chord changes to keep time moving.
 - **Transitions:** isolate the two hardest chord changes and loop each for 2 minutes.
 - **Comping:** use smaller 3- or 4-note voicings for clean rhythmic consistency.
-- **Level target:** {level} players should keep time steady before adding syncopation or extensions.
+- **Level target:** {level_label(level)} players should keep time steady before adding syncopation or extensions.
 """
     if focus == "Melody":
         return f"""
@@ -3860,7 +3861,7 @@ def guitar_practice_text(focus, level):
 - Use playable voicings from the chart; avoid full six-string shapes when a smaller grip sounds cleaner.
 - Mark common tones between chords and keep them ringing where possible.
 - Practice one section with metronome, then with the backing track.
-- For {level} level, prioritize clean time, clean tone, and intentional voicing choices.
+- For {level_label(level)} level, prioritize clean time, clean tone, and intentional voicing choices.
 """
 
 
@@ -8218,7 +8219,7 @@ def song_practice_plan(
 ### Conservatory Coach Plan {cycle}: {section_name}
 **Song:** {song}
 **Target section:** {section_name} — {bars} bars
-**Today:** {blocks['total']} minutes on **{instrument}**, **{level}**, **{focus}**
+**Today:** {blocks['total']} minutes on **{instrument}**, **{level_label(level)}**, **{focus}**
 **Chord focus:** **{first_chord} -> {second_chord}**
 **Loop:** **{chord_path}**
 **Section character:** {_section_character(section_name)}
@@ -8317,7 +8318,7 @@ def practice_text(level, instrument=None, sections=None, focus=None, *, groove_o
 
     if level == "Beginner":
         base = f"""
-### Beginner Practice Sheet
+### 🌱 Beginner Practice Sheet
 - Work on **{section_name}** only: **{chord_path}**.
 - Count aloud, name each chord before playing it, and stop if the pulse wobbles.
 - Coach target: {coach_line}
@@ -8330,7 +8331,7 @@ def practice_text(level, instrument=None, sections=None, focus=None, *, groove_o
 
     if level == "Intermediate":
         base = f"""
-### Intermediate Practice Sheet
+### 🚀 Intermediate Practice Sheet
 - Loop **{section_name}** with a metronome/backing track: **{chord_path}**.
 - First pass: accurate changes. Second pass: dynamic shape. Third pass: one creative variation.
 - Coach target: {coach_line}
@@ -8342,7 +8343,7 @@ def practice_text(level, instrument=None, sections=None, focus=None, *, groove_o
         return base
 
     base = f"""
-### Advanced Practice Sheet
+### 🧠 Advanced Practice Sheet
 - Analyze **{section_name}** as a performance problem, not a chord list: **{chord_path}**.
 - Run one clean take, one color/voicing take (extensions & voice leading), and one final musical take.
 - Name the 3rd and 7th of each chord, then add one upper color (9, 11, or 6) without changing the groove.
@@ -10074,7 +10075,11 @@ def _mark_backing_playback_ended() -> None:
     st.session_state[BACKING_PLAY_FEEDBACK_KEY] = "Playback finished"
 
 
-def _create_backing_card_slots() -> tuple[Any, tuple | None]:
+# The approved artwork of this run's Backing card (None: today's card).
+_backing_art_identity: Any = None
+
+
+def _create_backing_card_slots(art: bool = False) -> tuple[Any, tuple | None]:
     """Card head slot plus its controls row: Original / Practice key | BPM | Play.
 
     The row is ordinary page flow directly under the card (the card reserves the
@@ -10086,6 +10091,20 @@ def _create_backing_card_slots() -> tuple[Any, tuple | None]:
     below jumped up 300-500 px and back. A container re-sent at the same place
     keeps the previous card on screen until the new one replaces it.
     """
+    if art:
+        # Album-cover card: artwork, then keys, facts, then BPM and Play, all inside one framed container.
+        # The same widgets with the same keys; only where they sit changes. Slots: keys, BPM, Play, facts.
+        try:
+            with st.container(key="backing_art_card"):
+                head = st.container()
+                with st.container(key="backing_card_controls"):
+                    keys = st.container()
+                    facts = st.container()
+                    with st.container(key="backing_art_play_row"):
+                        bpm_col, play_col = st.columns([1.6, 1.0], vertical_alignment="center", gap="medium")
+            return head, (keys, bpm_col, play_col, facts)
+        except Exception:
+            pass
     head = st.container()
     try:
         with st.container(key="backing_card_controls"):
@@ -10094,6 +10113,69 @@ def _create_backing_card_slots() -> tuple[Any, tuple | None]:
         return head, tuple(cols)
     except Exception:
         return head, None
+
+
+def _backing_art_wanted(kind: str) -> bool:
+    global _backing_art_identity
+    _backing_art_identity = None
+    try:
+        from backing_art_card import backing_art_enabled
+
+        return backing_art_enabled(kind)
+    except Exception:
+        return False
+
+
+def _render_backing_art_head_for_card(kind: str, *, record: Any, ctx: Any, source_label: str) -> None:
+    """Artwork, title and artist for a Catalog, Custom or Composition card."""
+    global _backing_art_identity
+    from backing_art_card import catalog_card_facts, identity_for, render_backing_art_head
+
+    if kind in {"custom", "composition"} and ctx is not None and str(getattr(ctx, "source", "") or "") != "":
+        title = str(getattr(ctx, "song_title", "") or ("My Composition" if kind == "composition" else "Custom progression"))
+        artist = ""
+        style = str(getattr(ctx, "style", "") or "")
+        if kind == "custom" and style in {"", "Auto"}:
+            style = str(st.session_state.get("progression_style") or "")
+    else:
+        facts = catalog_card_facts(record or {}, source_label=source_label, session=st.session_state)
+        title, artist, style = facts["title"], facts["artist"], facts["style"]
+    karaoke = False
+    try:
+        karaoke = bool(km.is_karaoke_session_active(st.session_state))
+    except Exception:
+        karaoke = False
+    _backing_art_identity = identity_for(kind, source_label=source_label, style=style)
+    render_backing_art_head(st, _backing_art_identity, title=title, artist=artist, karaoke=karaoke)
+
+
+def _render_backing_art_facts(*, groove: str, meter: str, practice_key: str, written_key: str) -> None:
+    if _backing_art_identity is None:
+        return
+    from backing_art_card import render_backing_art_chips
+
+    written = str(written_key or "").strip()
+    label = "Charts in"
+    try:
+        if str(st.session_state.get("instrument") or "") == "Guitar" and st.session_state.get("guitar_capo_enabled"):
+            label = "Shape"
+    except Exception:
+        pass
+    render_backing_art_chips(
+        st, _backing_art_identity, groove=groove, meter=meter,
+        written=written if written and written != str(practice_key or "").strip() else "", written_label=label,
+    )
+
+
+def _backing_art_play_theme() -> dict | None:
+    if _backing_art_identity is None:
+        return None
+    try:
+        from song_card_art import play_theme
+
+        return play_theme(_backing_art_identity)
+    except Exception:
+        return None
 
 
 def _render_backing_pk_owner_select(proxy: dict[str, Any], options: list[str], *, label_visibility: str) -> None:
@@ -10156,6 +10238,11 @@ def _render_backing_card_practice_key(original_key: str, practice_key: str) -> N
         '<p class="ui-skp-cap">Concert pitch</p>'
     )
     pk_label = '<p class="ui-skp-label">Practice key</p>'
+    if _backing_art_identity is not None:
+        from song_card_art import backing_key_label
+
+        orig_cell = backing_key_label("original") + f'<div class="ui-skp-value">{html.escape(orig_name)}</div>'
+        pk_label = backing_key_label("practice")
     proxy = globals().get("_sidebar_pk_proxy")
     if not proxy or proxy.get("rendered"):
         # No owner widget this run (Fixed Key, or the sidebar drew it): the keys as text.
@@ -10183,10 +10270,12 @@ def _render_backing_card_practice_key(original_key: str, practice_key: str) -> N
             st.markdown(pk_label, unsafe_allow_html=True)
             _render_backing_pk_owner_select(proxy, options, label_visibility="collapsed")
             _rel = key_relation_caption(original_key, str(st.session_state.get(widget_key) or current))
+            if _backing_art_identity is not None:
+                _cap = html.escape(_rel) if _rel else "Tap to change"
+            else:
+                _cap = "Concert pitch" + (f' · {html.escape(_rel)}' if _rel else "")
             st.markdown(
-                '<p class="ui-skp-cap">Concert pitch'
-                + (f' · {html.escape(_rel)}' if _rel else "")
-                + "</p>",
+                f'<p class="ui-skp-cap">{_cap}</p>',
                 unsafe_allow_html=True,
             )
 
@@ -10220,6 +10309,11 @@ def _backing_card_key_text_row(original_key: str, practice_key: str, *, orig_cel
         value = (
             f'<div class="ui-skp-value">{name}</div>'
             f'<p class="ui-skp-cap">Concert pitch{(" · " + html.escape(rel)) if rel else ""}</p>'
+        )
+    if _backing_art_identity is not None:
+        # The album-cover card says "Concert pitch" nowhere: the keys speak for themselves.
+        value = value.replace('<p class="ui-skp-cap">Concert pitch</p>', "").replace("Concert pitch · ", "").replace(
+            '<p class="ui-skp-cap">Concert pitch</p>', ""
         )
     with st.container(key="backing_card_key_row"):
         c_orig, c_pk = st.columns(2, gap="small")
@@ -10269,6 +10363,7 @@ def render_backing_card_transport_control(*, enabled: bool) -> None:
             transport=transport_intent(st.session_state),
             restart_on_resume=restart_on_resume(st.session_state),
             cycle_active=_cycle_on,
+            theme=_backing_art_play_theme(),
         )
 
 
@@ -10699,7 +10794,7 @@ def _song_card_guidance_html(
     if not guide.get("harmony"):
         return (
             f'<dl class="ui-active-song-facts">'
-            f'<dt>Levels</dt><dd>{html.escape(details["levels_display"])}</dd>'
+            f'<dt>Levels</dt><dd>{html.escape(decorate_levels(details["levels_display"]))}</dd>'
             f'<dt>Instruments</dt><dd>{html.escape(details["instruments"])}</dd>'
             f'<dt>Practice focus</dt><dd>{html.escape(details["practice_focus"])}</dd>'
             f"</dl>"
@@ -10708,10 +10803,10 @@ def _song_card_guidance_html(
             + f'<p class="ui-active-song-blurb">{html.escape(str(details.get("why_practice", "")))}</p>'
             + (f'<ul class="ui-active-song-goals">{goals_html}</ul>' if goals_html else "")
         )
-    facts = [("Your setup", guide.get("setup") or "")]
+    facts = [("Your setup", decorate_levels(guide.get("setup") or ""))]
     if guide.get("form"):
         facts.append(("Form", guide["form"]))
-    facts.append(("Chart levels", details["levels_display"]))
+    facts.append(("Chart levels", decorate_levels(details["levels_display"])))
     facts.append(("Common instruments", details["instruments"]))
     dl = "".join(f"<dt>{html.escape(k)}</dt><dd>{html.escape(str(v))}</dd>" for k, v in facts if str(v).strip())
     blurbs = [
@@ -12924,7 +13019,7 @@ def _render_catalog_song_picker_block(
                             f"{emoji + ' ' if emoji else ''}{favorite_star}{'✓ ' if is_active else ''}"
                             f"{rec['title']} — {rec['artist']}",
                             key=f"browse_search_result::{pk}",
-                            help=f"{rec.get('genre', '')} · Levels: {levels}",
+                            help=f"{rec.get('genre', '')} · Levels: {decorate_levels(levels)}",
                             use_container_width=True,
                             disabled=is_active,
                             on_click=_apply_catalog_pick,
@@ -13213,6 +13308,7 @@ def _render_catalog_song_picker_block(
                         "Chart level available",
                         ["Any level", "Beginner", "Intermediate", "Advanced"],
                         key="song_picker_level_filter",
+                        format_func=level_label,
                     )
 
         if _library_shell is not None:
@@ -17209,6 +17305,7 @@ st.sidebar.selectbox(
     "Level",
     ["Beginner", "Intermediate", "Advanced"],
     key="level",
+    format_func=level_label,
     on_change=_on_global_level_change,
     help="Applies on every page — controls arrangement length and harmonic detail.",
 )
@@ -19039,7 +19136,7 @@ elif _studio_page == "practice":
                                 st.info(
                                     f"No scale suggestions matched the chords in "
                                     f"**{_active_section_display}** for **{instrument}** at "
-                                    f"**{level}** level. Try a different section or "
+                                    f"**{level_label(level)}** level. Try a different section or "
                                     "switch instruments in the sidebar."
                                 )
                             elif _scale_repeats > 0:
@@ -19449,7 +19546,7 @@ elif _studio_page == "practice":
                                 )
                             else:
                                 st.caption(
-                                    f"Song **{song}** · level **{_pm_melody.level}** · "
+                                    f"Song **{song}** · level **{level_label(_pm_melody.level)}** · "
                                     f"key **{_pm_melody.key_center}** · "
                                     f"{_pm_melody.tempo_bpm:g} BPM · "
                                     f"alternative #{_pm_melody.alt_index + 1} — composed "
@@ -19762,7 +19859,7 @@ elif _studio_page == "practice":
                                         display_key=_practice_chart_key,
                                         current_section=_chart_current,
                                         meta_bits=[
-                                            f"Level: {level}",
+                                            f"Level: {level_label(level)}",
                                             f"Time: {_time_sig}",
                                         ],
                                         header_note=_ug_header,
@@ -21238,6 +21335,18 @@ elif _studio_page == "backing":
             _backing_orig_key = _home_key or str(_backing_card_record.get("key") or "")
             _backing_practice_key = _prac_now
             _backing_source_label = "Catalog song"
+            # A Karaoke entry may be a Custom progression or a Composition: the card names the entry's own source
+            # (the same labels as Karaoke's Skip marker), so its artwork and Source logo follow the song.
+            try:
+                if km.is_voice_mode(st.session_state) and km.is_karaoke_session_active(st.session_state):
+                    from karaoke_ui import _TRANSITION_SOURCE_LABELS
+
+                    _kr_entry = km.current_session_entry(st.session_state) or {}
+                    _backing_source_label = _TRANSITION_SOURCE_LABELS.get(
+                        str(_kr_entry.get("source") or ""), "Catalog song"
+                    )
+            except Exception:
+                _backing_source_label = "Catalog song"
             # Keep sealed ctx Practice fields aligned with live sticky.
             try:
                 if _prac_now and (
@@ -21253,12 +21362,12 @@ elif _studio_page == "backing":
                 pass
         else:
             _backing_card_kind = "song"
-        _backing_card_slot, _backing_card_cols = _create_backing_card_slots()
+        _backing_card_slot, _backing_card_cols = _create_backing_card_slots(art=_backing_art_wanted(_backing_card_kind))
     except Exception as _backing_card_err:
         if _developer_mode_enabled():
             st.caption(f"Developer · backing card render: {_backing_card_err}")
         _backing_card_kind = "song"
-        _backing_card_slot, _backing_card_cols = _create_backing_card_slots()
+        _backing_card_slot, _backing_card_cols = _create_backing_card_slots(art=_backing_art_wanted(_backing_card_kind))
     try:
         from improvisation_intelligence_ui import render_mission_practice_lick_on_backing
         from improvisation_missions import mission_practice_lick_payload
@@ -21771,7 +21880,23 @@ elif _studio_page == "backing":
             )
         except Exception:
             pass
-        if _backing_card_slot is not None:
+        _art_slots = bool(_backing_card_cols is not None and len(_backing_card_cols) > 3)
+        if _backing_card_slot is not None and _art_slots:
+            with _backing_card_slot.container():
+                _render_backing_art_head_for_card(
+                    _backing_card_kind,
+                    record=_backing_card_record,
+                    ctx=_backing_ctx_for_card,
+                    source_label=str(_backing_source_label or ""),
+                )
+            with _backing_card_cols[3]:
+                _render_backing_art_facts(
+                    groove=str(default_groove_style or ""),
+                    meter=str(_applied_meter_pre or ""),
+                    practice_key=str(_backing_practice_key or ""),
+                    written_key=str(_backing_written_key or ""),
+                )
+        elif _backing_card_slot is not None:
             with _backing_card_slot.container():
                 if _backing_card_kind == "creative" and _creative_backing_ctx is not None:
                     render_backing_creative_context_card(
@@ -21845,14 +21970,15 @@ elif _studio_page == "backing":
                     )
                 if _backing_card_cols is None:
                     render_backing_card_transport_control(enabled=bool(backing_chords))
-            if _backing_card_cols is not None:
-                with _backing_card_cols[0]:
-                    _render_backing_card_practice_key(
-                        str(_backing_orig_key or _backing_practice_key or ""),
-                        str(_backing_practice_key or _backing_orig_key or ""),
-                    )
-                with _backing_card_cols[2]:
-                    render_backing_card_transport_control(enabled=bool(backing_chords))
+        # Keys and Play in their row: today's card and the album-cover card alike.
+        if _backing_card_slot is not None and _backing_card_cols is not None:
+            with _backing_card_cols[0]:
+                _render_backing_card_practice_key(
+                    str(_backing_orig_key or _backing_practice_key or ""),
+                    str(_backing_practice_key or _backing_orig_key or ""),
+                )
+            with _backing_card_cols[2]:
+                render_backing_card_transport_control(enabled=bool(backing_chords))
     except Exception as _backing_status_fill_err:
         if _developer_mode_enabled():
             st.caption(f"Developer · backing status fill: {_backing_status_fill_err}")
@@ -25256,7 +25382,7 @@ elif _studio_page == "backing":
             )
             st.caption(
                 f"Song **{song}** · section **{_pmb_scope_label}** · "
-                f"level **{_pmb_melody.level}** · "
+                f"level **{level_label(_pmb_melody.level)}** · "
                 f"key **{_pmb_melody.key_center}** · "
                 f"{_pmb_melody.tempo_bpm:g} BPM · "
                 f"alternative #{_pmb_melody.alt_index + 1} — composed for this "

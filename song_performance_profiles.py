@@ -496,12 +496,12 @@ CURATED_PERFORMANCE: dict[str, PerformanceProfile] = {
             "build_where": "Solo section and final choruses may burn hotter; verses stay trance-like.",
             "relax_where": "Long verse cycles—medium-soft, unchanging pulse.",
             "accompaniment": "Hypnotic foundation; when you add color, it should feel like mirages.",
-            "rush_prone": "Collapsing four-bar holds into two because boredom feels scary.",
+            "rush_prone": "Hurrying the one-bar chord changes because the pace feels too patient.",
             "key_transitions": "Entering the solo cycle; final tag resolutions.",
             "master_challenge": "Making repetition feel intentional, not lazy.",
         },
         "practice_focus": {
-            "Intermediate": {"general": "Desert trance · four-bar breath · solo as release valve"},
+            "Intermediate": {"general": "Desert trance · one chord, one bar, one breath · solo as release valve"},
         },
         "lessons": {
             "Intermediate": {
@@ -523,8 +523,8 @@ CURATED_PERFORMANCE: dict[str, PerformanceProfile] = {
                             "role": ROLE_VERSE,
                             "heading": "Eight landmarks",
                             "body": (
-                                "Each chord gets its full weight—especially the four-bar sustains. "
-                                "Count them aloud once so your body believes they're real."
+                                "Each chord gets its full bar of weight, with no rushing toward the next landmark. "
+                                "Count the bars aloud once so your body believes they're real."
                             ),
                         },
                         {

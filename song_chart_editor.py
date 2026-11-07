@@ -8,6 +8,7 @@ from typing import Any, Callable
 import streamlit as st
 
 from music_feature_icons import feature_label
+from practice_ui_labels import decorate_levels
 from song_catalog.user_overrides import (
     USER_CORRECTED,
     USER_VERIFIED,
@@ -507,7 +508,7 @@ def render_chart_editor_panel(
 
     st.divider()
     apply_all = st.checkbox(
-        "Apply saved chords to Beginner, Intermediate, and Advanced",
+        decorate_levels("Apply saved chords to Beginner, Intermediate, and Advanced"),
         value=True,
         key=f"chart_edit_all_levels::{title}",
         help="When off, only the current sidebar level is stored in your override.",

@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 1600 1800" preserveAspectRatio="xMaxYMin slice">
+<defs>
+<linearGradient id="bg" x1="0" y1="0" x2="1" y2=".7"><stop offset="0" stop-color="#064e3b"/><stop offset=".55" stop-color="#047857"/><stop offset="1" stop-color="#059669"/></linearGradient>
+<linearGradient id="fade" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#04382b" stop-opacity=".88"/><stop offset=".46" stop-color="#04382b" stop-opacity="0"/></linearGradient>
+<linearGradient id="paper" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fffef2"/><stop offset="1" stop-color="#f3edc5"/></linearGradient>
+<linearGradient id="pencil" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fde047"/><stop offset=".5" stop-color="#facc15"/><stop offset="1" stop-color="#ca8a04"/></linearGradient>
+<linearGradient id="brass" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fef9c3"/><stop offset=".4" stop-color="#fde047"/><stop offset=".75" stop-color="#a16207"/><stop offset="1" stop-color="#fde047"/></linearGradient>
+<pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M40 0H0V40" fill="none" stroke="#fde047" stroke-opacity=".13" stroke-width="2"/></pattern>
+<pattern id="ruled" width="44" height="44" patternUnits="userSpaceOnUse"><path d="M44 0H0V44" fill="none" stroke="#059669" stroke-opacity=".22" stroke-width="1.500"/></pattern>
+<filter id="sh" x="-15%" y="-15%" width="130%" height="130%"><feDropShadow dx="-6" dy="10" stdDeviation="9" flood-color="#022c22" flood-opacity=".6"/></filter>
+<g id="n1"><ellipse rx="15" ry="11" transform="rotate(-20)"/><path d="M12-4V-60C14-46 32-42 32-24 28-36 20-40 16-42V-4Z"/></g>
+</defs>
+<rect width="1600" height="1800" fill="url(#bg)"/>
+<rect width="1600" height="1800" fill="url(#grid)"/>
+<g transform="translate(1240 320) rotate(-10) scale(1.2)">
+<path d="M-250-8H180V8H-250Z" fill="url(#brass)"/><path d="M-90 36H130C166 36 166-8 130-8M-160-8C-196-8-196 36-160 36H-90" fill="none" stroke="url(#brass)" stroke-width="13"/>
+<path d="M-250 8C-310 4-360-26-420-66-430-30-430 40-420 76-360 36-310 12-250 8Z" fill="url(#brass)"/>
+<ellipse cx="-420" cy="5" rx="16" ry="70" fill="#14532d" stroke="#fef9c3" stroke-width="4"/>
+<g fill="url(#brass)"><rect x="-60" y="-42" width="26" height="100" rx="3"/><rect x="0" y="-42" width="26" height="100" rx="3"/><rect x="60" y="-42" width="26" height="100" rx="3"/></g>
+<path d="M-47-42V-66M13-42V-66M73-42V-66" stroke="#fef9c3" stroke-width="7"/>
+</g>
+
+<g transform="translate(1369 165) rotate(52) scale(.82)" filter="url(#sh)">
+<rect x="-18" y="0" width="36" height="430" fill="url(#pencil)"/><path d="M-6 0V430M6 0V430" stroke="#a16207" stroke-opacity=".4" stroke-width="2"/>
+<path d="M-18 430H18L0 500Z" fill="#fde9c4"/><path d="M-5 482H5L0 500Z" fill="#1c1917"/>
+<rect x="-18" y="-40" width="36" height="40" fill="#d6d3d1"/><path d="M-18-30H18M-18-20H18M-18-10H18" stroke="#78716c" stroke-width="2"/><path d="M-18-40C-18-74 18-74 18-40Z" fill="#fb7185"/>
+</g>
+<g fill="#fde047"><use xlink:href="#n1" x="760" y="80"/><use xlink:href="#n1" x="680" y="210" fill="#fef9c3"/><use xlink:href="#n1" x="1560" y="520" fill="#fef9c3"/></g>
+<rect width="1600" height="700" fill="url(#fade)"/>
+<rect y="640" width="1600" height="1160" fill="#f8f6d8"/>
+<rect y="640" width="1600" height="1160" fill="url(#ruled)"/>
+<g opacity=".2"><g transform="translate(980 1240) rotate(-18) scale(2.1)">
+<path d="M-250-8H180V8H-250Z" fill="url(#brass)"/><path d="M-90 36H130C166 36 166-8 130-8M-160-8C-196-8-196 36-160 36H-90" fill="none" stroke="url(#brass)" stroke-width="13"/>
+<path d="M-250 8C-310 4-360-26-420-66-430-30-430 40-420 76-360 36-310 12-250 8Z" fill="url(#brass)"/>
+<ellipse cx="-420" cy="5" rx="16" ry="70" fill="#14532d" stroke="#fef9c3" stroke-width="4"/>
+<g fill="url(#brass)"><rect x="-60" y="-42" width="26" height="100" rx="3"/><rect x="0" y="-42" width="26" height="100" rx="3"/><rect x="60" y="-42" width="26" height="100" rx="3"/></g>
+<path d="M-47-42V-66M13-42V-66M73-42V-66" stroke="#fef9c3" stroke-width="7"/>
+</g></g><rect y="628" width="1600" height="12" fill="#facc15"/>
+<g opacity=".3"><use xlink:href="#n1" x="1440" y="860" fill="#ca8a04"/><use xlink:href="#n1" x="620" y="1660" fill="#ca8a04"/></g>
+</svg>
