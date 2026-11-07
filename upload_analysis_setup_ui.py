@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from practice_ui_labels import level_label
+
 from recording_analysis_context import (
     ANALYSIS_EVAL_INSTRUMENT_KEY,
     ANALYSIS_EVAL_INSTRUMENTS_KEY,
@@ -318,6 +320,7 @@ def render_upload_analysis_setup(
         "Player level",
         level_options,
         key=ANALYSIS_PLAYER_LEVEL_KEY,
+        format_func=level_label,
         disabled=identity_locked,
     )
 

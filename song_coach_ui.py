@@ -29,6 +29,8 @@ from __future__ import annotations
 import html
 from typing import Any, Callable
 
+from practice_ui_labels import level_label
+
 from song_coach_state import (
     NOTICE_MESSAGES,
     SONG_COACH_STATE_KEY,
@@ -414,7 +416,7 @@ def _render_selectors(st: Any, session: Any, ctx: Any, rec: Reconciled) -> None:
         st.caption(f"Phrase-sized ranges for this section: {hints} (up to 16 bars at a time).")
     c1, c2 = st.columns(2)
     with c1:
-        st.radio("Level", list(LEVELS), horizontal=True, key=W_LEVEL, **cb)
+        st.radio("Level", list(LEVELS), horizontal=True, key=W_LEVEL, format_func=level_label, **cb)
     with c2:
         st.selectbox("Coaching focus", list(FOCUSES), format_func=lambda f: FOCUS_LABELS[f], key=W_FOCUS, **cb)
     global_focus = str(session.get("focus") or "").strip()
@@ -443,7 +445,7 @@ def _render_plan(st: Any, session: Any, ctx: Any, rec: Reconciled) -> None:
     ch = plan.challenges[stage]
 
     st.markdown(f"#### Your plan · {plan.range_label}")
-    st.caption(f"{plan.level} · {FOCUS_LABELS[plan.focus]} · {total} challenges")
+    st.caption(f"{level_label(plan.level)} · {FOCUS_LABELS[plan.focus]} · {total} challenges")
     _render_welcome_back(st, session, ctx, state)
     if state.draft != state.built:
         st.info("You've changed the section, bars, level or focus. Press **Build My Coaching Plan** to update the plan — your current plan stays until then.")

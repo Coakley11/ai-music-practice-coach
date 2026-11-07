@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 1600 1800" preserveAspectRatio="xMaxYMin slice">
+<defs>
+<linearGradient id="bg" x1="0" y1="0" x2="1" y2=".7"><stop offset="0" stop-color="#1e3a8a"/><stop offset=".55" stop-color="#4c1d95"/><stop offset="1" stop-color="#ca8a04"/></linearGradient>
+<linearGradient id="fade" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#16256e" stop-opacity=".84"/><stop offset=".5" stop-color="#16256e" stop-opacity="0"/></linearGradient>
+<linearGradient id="gold" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fef3c7"/><stop offset=".35" stop-color="#eab308"/><stop offset=".68" stop-color="#fde68a"/><stop offset="1" stop-color="#a16207"/></linearGradient>
+<linearGradient id="silver" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#64748b"/><stop offset=".3" stop-color="#f8fafc"/><stop offset=".6" stop-color="#a8b3c4"/><stop offset="1" stop-color="#475569"/></linearGradient>
+<linearGradient id="stone" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f5e6c4"/><stop offset="1" stop-color="#c9a86a"/></linearGradient>
+<linearGradient id="win" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1e3a8a"/><stop offset=".6" stop-color="#6d28d9"/><stop offset="1" stop-color="#f59e0b"/></linearGradient>
+<linearGradient id="wax" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#d9d4c5"/><stop offset=".4" stop-color="#fffdf5"/><stop offset="1" stop-color="#c7c0ae"/></linearGradient>
+<linearGradient id="clar" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#020617"/><stop offset=".45" stop-color="#3f3f5a"/><stop offset="1" stop-color="#020617"/></linearGradient>
+<radialGradient id="flame" cy=".65"><stop offset="0" stop-color="#fff"/><stop offset=".45" stop-color="#fde047"/><stop offset="1" stop-color="#f97316"/></radialGradient>
+<radialGradient id="glow"><stop offset="0" stop-color="#fde68a" stop-opacity=".85"/><stop offset=".45" stop-color="#fbbf24" stop-opacity=".28"/><stop offset="1" stop-color="#fbbf24" stop-opacity="0"/></radialGradient>
+<pattern id="lattice" width="104" height="180" patternUnits="userSpaceOnUse"><g fill="none" stroke="#fde68a" stroke-opacity=".17" stroke-width="2"><path d="M52 12 96 88H8Z"/><path d="M52 112 8 36H96Z"/><path d="M0 102 44 178H-44Z"/><path d="M0 202-44 126H44Z"/><path d="M104 102 148 178H60Z"/><path d="M104 202 60 126H148Z"/></g></pattern>
+<filter id="b10" x="-40%" y="-40%" width="180%" height="180%"><feGaussianBlur stdDeviation="10"/></filter>
+<g id="magen"><path d="M0-100 86.600 50H-86.600Z" fill="none" stroke="url(#gold)" stroke-width="13" stroke-linejoin="round"/><path d="M0 100-86.600-50H86.600Z" fill="none" stroke="url(#gold)" stroke-width="13" stroke-linejoin="round"/><path d="M0-78 67 38H-67ZM0 78-67-38H67Z" fill="none" stroke="#fffbeb" stroke-opacity=".6" stroke-width="2"/></g>
+<g id="n1"><ellipse rx="15" ry="11" transform="rotate(-20)"/><path d="M12-4V-60C14-46 32-42 32-24 28-36 20-40 16-42V-4Z"/></g>
+<g id="pom"><path d="M0-34C24-34 36-16 36 4 36 26 20 40 0 40-20 40-36 26-36 4-36-16-24-34 0-34Z" fill="#be123c" stroke="#fde68a" stroke-width="3"/><path d="M-10-34-16-52-4-44 0-56 4-44 16-52 10-34Z" fill="url(#gold)"/></g>
+<g id="arch"><path d="M-74 240V-30C-74-90-40-122 0-140 40-122 74-90 74-30V240Z" fill="url(#win)" stroke="url(#gold)" stroke-width="7"/><g transform="translate(0 -30) scale(.42)"><use xlink:href="#magen"/></g><path d="M-74 40H74M0 40V240M-74 130H74" stroke="url(#gold)" stroke-width="4"/></g>
+<g id="candle"><rect x="-17" y="-210" width="34" height="210" fill="url(#wax)"/><path d="M-17-210C-14-222 12-222 17-210" fill="#fffdf5"/><path d="M0-214V-234" stroke="#292524" stroke-width="3"/><circle cy="-262" r="74" fill="url(#glow)"/><path d="M0-306C20-276 18-244 0-234-18-244-20-276 0-306Z" fill="url(#flame)"/><path d="M-26 0H26L14 22H-14Z" fill="url(#silver)"/><path d="M-9 22H9V80H-9Z" fill="url(#silver)"/><circle cy="52" r="15" fill="url(#silver)"/><path d="M-50 134C-30 104-16 90-9 80H9C16 90 30 104 50 134Z" fill="url(#silver)"/><rect x="-54" y="134" width="108" height="10" rx="4" fill="url(#silver)"/></g>
+<linearGradient id="wallfade" gradientUnits="userSpaceOnUse" x1="745" y1="0" x2="985" y2="0"><stop offset="0" stop-color="#000"/><stop offset="1" stop-color="#fff"/></linearGradient>
+<mask id="wallmask" maskUnits="userSpaceOnUse" x="0" y="0" width="1700" height="680"><rect width="1700" height="680" fill="url(#wallfade)"/></mask>
+</defs>
+<rect width="1600" height="1800" fill="url(#bg)"/>
+<rect width="1600" height="680" fill="url(#lattice)"/>
+<g mask="url(#wallmask)">
+<path d="M760 640V170C760 90 830 40 910 40S1060 90 1060 170V640ZM1060 640V170C1060 90 1130 40 1210 40S1360 90 1360 170V640ZM1360 640V170C1360 90 1430 40 1510 40S1660 90 1660 170V640Z" fill="url(#stone)" opacity=".96"/>
+<use xlink:href="#arch" x="910" y="330"/><use xlink:href="#arch" x="1210" y="330"/><use xlink:href="#arch" x="1510" y="330"/>
+<path d="M760 170C760 90 830 40 910 40S1060 90 1060 170C1060 90 1130 40 1210 40S1360 90 1360 170C1360 90 1430 40 1510 40S1660 90 1660 170" fill="none" stroke="url(#gold)" stroke-width="6"/>
+<g fill="none" stroke="#a16207" stroke-opacity=".5" stroke-width="2"><path d="M760 250H810M1010 250H1110M1310 250H1410M760 400H810M1010 400H1110M1310 400H1410M760 550H810M1010 550H1110M1310 550H1410M790 250V400M1060 250V400M1360 250V400M790 400V550M1040 400V550M1090 400V550M1340 400V550M1390 400V550"/></g>
+</g>
+<circle cx="1060" cy="262" r="300" fill="url(#glow)" opacity=".8"/>
+<g transform="translate(1060 235) scale(1.65)"><use xlink:href="#magen"/></g>
+<g transform="translate(1060 235) scale(1.96)" fill="none" stroke="#fde68a" stroke-width="1.500" stroke-dasharray="3 7"><circle r="100"/></g>
+<g transform="translate(860 390)"><use xlink:href="#candle"/></g>
+<g transform="translate(1262 390)"><use xlink:href="#candle"/></g>
+<g transform="translate(1490 330) rotate(26) scale(.92)">
+<rect x="-22" y="-290" width="44" height="510" rx="10" fill="url(#clar)"/>
+<path d="M-22 220C-30 280-58 300-66 324H66C58 300 30 280 22 220Z" fill="url(#clar)"/>
+<ellipse cy="324" rx="66" ry="11" fill="#0a0a14" stroke="url(#silver)" stroke-width="5"/>
+<path d="M-20-290-13-378 13-378 20-290Z" fill="#111827"/><rect x="-23" y="-300" width="46" height="13" fill="url(#silver)"/>
+<g fill="url(#silver)"><rect x="-24" y="-150" width="48" height="10"/><rect x="-24" y="42" width="48" height="10"/><rect x="-25" y="214" width="50" height="12"/></g>
+<g fill="url(#silver)" stroke="#334155" stroke-width="1.500"><circle cx="-4" cy="-240" r="9"/><circle cx="-4" cy="-200" r="9"/><circle cx="-4" cy="-110" r="10"/><circle cx="-4" cy="-66" r="10"/><circle cx="-4" cy="-22" r="10"/><circle cx="-4" cy="86" r="11"/><circle cx="-4" cy="132" r="11"/><circle cx="-4" cy="178" r="11"/></g>
+<path d="M12-280V200" stroke="url(#silver)" stroke-width="4"/>
+</g>
+<g fill="#fde68a"><use xlink:href="#n1" x="880" y="130"/><use xlink:href="#n1" x="820" y="420"/><use xlink:href="#n1" x="1290" y="120"/></g>
+<g><linearGradient id="horn" x1="0" y1="0" x2="1" y2=".3"><stop offset="0" stop-color="#5c3a12"/><stop offset=".3" stop-color="#d9b26a"/><stop offset=".62" stop-color="#fff3d1"/><stop offset="1" stop-color="#a87a35"/></linearGradient>
+<path transform="translate(-200 -300)" d="M668 612C700 520 820 462 920 498 972 516 992 566 974 622 948 574 906 552 866 556 790 562 730 600 682 630Z" fill="url(#horn)" stroke="#4a2e0c" stroke-width="3"/>
+<ellipse cx="948" cy="592" rx="30" ry="46" transform="translate(-200 -300) rotate(-38 948 592)" fill="#2a1806" stroke="#fff3d1" stroke-width="4"/>
+<g transform="translate(-200 -300)" fill="none" stroke="#7a5420" stroke-opacity=".6" stroke-width="2.500"><path d="M736 540C746 556 752 570 750 590M786 510C798 530 804 550 802 572M838 492C850 514 856 534 852 556M890 488C900 506 906 524 902 544"/></g>
+<path transform="translate(-200 -300)" d="M700 576C746 518 830 482 908 506" fill="none" stroke="#fff" stroke-opacity=".6" stroke-width="5" stroke-linecap="round"/></g>
+<path d="M660 640C860 588 1180 590 1600 620V680H660Z" fill="#1a1250"/>
+<rect width="1600" height="700" fill="url(#fade)"/>
+<rect y="640" width="1600" height="1160" fill="#1b1860"/>
+<rect y="640" width="1600" height="1160" fill="url(#lattice)"/>
+<rect y="640" width="1600" height="8" fill="url(#gold)"/>
+<path d="M0 668H1600" stroke="#fde68a" stroke-width="2" stroke-dasharray="2 12"/>
+<g transform="translate(1320 1240) scale(3.100)" opacity=".2"><use xlink:href="#magen"/></g>
+<g transform="translate(180 1560) scale(1.700)" opacity=".2"><use xlink:href="#magen"/></g>
+
+</svg>

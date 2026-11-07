@@ -19,9 +19,9 @@
         display: inline-flex; align-items: center; justify-content: center;
         min-height: 44px; flex: 1 1 auto; min-width: 0; max-width: 100%;
         padding: 0 16px; border-radius: 11px; border: none; cursor: pointer;
-        font-size: 15px; font-weight: 800; letter-spacing: 0.02em; color: #fff;
-        background: linear-gradient(135deg, #22c55e 0%, #16a34a 50%, #15803d 100%);
-        box-shadow: 0 6px 18px rgba(34, 197, 94, 0.35);
+        font-size: 15px; font-weight: 800; letter-spacing: 0.02em; color: var(--theme-ink, #fff);
+        background: var(--theme-bg, linear-gradient(135deg, #22c55e 0%, #16a34a 50%, #15803d 100%));
+        box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
         -webkit-tap-highlight-color: transparent;
       }
       #btn[data-state="playing"] {
@@ -38,7 +38,9 @@
         border: 2px solid rgba(15, 23, 42, 0.18); -webkit-tap-highlight-color: transparent;
       }
       #pz[hidden] { display: none; }
-      #pz[data-mode="resume"] { color: #fff; border-color: transparent; background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%); }
+      #pz[data-mode="resume"] { color: var(--theme-ink, #fff); border-color: transparent; background: var(--theme-bg, linear-gradient(135deg, #22c55e 0%, #16a34a 100%)); }
+      /* An album-cover card: Play a little larger, as on the approved artwork. */
+      body[data-themed="1"] #btn { min-height: 52px; border-radius: 999px; font-size: 17px; }
       #hint { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 700; color: #475569; }
       #hint:empty { display: none; }
       /* Resume already says "paused": the hint stays for screen readers only. */
@@ -423,6 +425,17 @@
         if (intent === "paused" && !(playing && now > stoppingUntil)) state = "paused";
         else if (playing && now > stoppingUntil) state = "playing";
         else if (intent === "playing" || now < pendingUntil) state = "starting";
+        // An album-cover card passes its colors; without them Play keeps today's green.
+        const th = args.theme || null;
+        if (th && th.bg) {
+          document.body.style.setProperty("--theme-bg", th.bg);
+          document.body.style.setProperty("--theme-ink", th.ink || "#fff");
+          document.body.dataset.themed = "1";
+        } else {
+          document.body.style.removeProperty("--theme-bg");
+          document.body.style.removeProperty("--theme-ink");
+          document.body.dataset.themed = "";
+        }
         btn.dataset.state = state;
         // Started, paused or still starting: the session exists and Stop ends it.
         setLabel(btn, state === "stopped" ? LABEL_PLAY : LABEL_STOP);
@@ -537,7 +550,7 @@
         if (!d) return;
         let pdoc = null;
         try { pdoc = window.parent.document; } catch (e) { return; }
-        const card = pdoc.querySelector(".ui-backing-active-song");
+        const card = pdoc.querySelector(".ui-backing-active-song") || pdoc.querySelector(".st-key-backing_art_card .sc-hero");
         const banner = pdoc.querySelector(".ui-backing-context-banner");
         const sheet = Array.prototype.find.call(pdoc.querySelectorAll("iframe"), function (f) {
           try { return !!(f.contentDocument && f.contentDocument.getElementById("live-chord")); } catch (e) { return false; }

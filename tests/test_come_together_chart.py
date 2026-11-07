@@ -53,7 +53,8 @@ class ComeTogetherChart(unittest.TestCase):
 
     def test_bars_and_duration(self):
         rec = _rec()
-        for level, bars in (("Beginner", 28), ("Intermediate", 46), ("Advanced", 70)):
+        # Wave 3 (full_form_levels): Beginner/Intermediate play the whole 70-bar form (were 28 / 46).
+        for level, bars in (("Beginner", 70), ("Intermediate", 70), ("Advanced", 70)):
             _, secs = resolve_level_chart(rec, level)
             self.assertEqual(_beats(secs) / 4, bars, level)
         _, adv = resolve_level_chart(rec, "Advanced")
