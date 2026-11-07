@@ -105,7 +105,7 @@ def _render(style, events, *, textures=True, **kw):
         return orig[0](audio, sr, t, dur, midi, vol, wave)
 
     def comp(bus, sr, t, dur, voicing, vol, wave, **k):
-        if voicing:  # with the pianist on, the arranger's own comp calls carry no notes
+        if voicing or not pianist_on():  # with the pianist on, the arranger's own comp calls carry no notes
             log.append(("comp", t, dur, len(voicing), vol))
         return orig[1](bus, sr, t, dur, voicing, vol, wave, **k)
 

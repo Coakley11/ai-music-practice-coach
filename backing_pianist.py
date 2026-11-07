@@ -654,7 +654,8 @@ class Pianist:
             h = self._h(chord)
             if h.third is None:
                 continue
-            inside = [i for i, x in enumerate(out) if start <= x.beat < end and x.kind != "figure"]
+            # A push already belongs to the next chord: it is never bent toward this one.
+            inside = [i for i, x in enumerate(out) if start <= x.beat < end and x.kind != "figure" and not x.push]
             # The third has to arrive early, not only in a quiet pickup on the way out.
             early = [i for i in inside if out[i].beat < start + 0.75 * (end - start)] or inside
             if not inside or any(h.third in {n % 12 for n in out[i].notes} for i in early):
@@ -671,7 +672,7 @@ class Pianist:
             top = x.notes[-1]
             third = max((top - d for d in range(0, 12) if (top - d) % 12 == h.third), default=top)
             notes = tuple(sorted({*x.notes[:-1], third})) if len(x.notes) > 1 else (third,)
-            out[i] = Hit(x.beat, x.beats, notes, x.velocity, x.kind, x.roll, x.passing)
+            out[i] = Hit(x.beat, x.beats, notes, x.velocity, x.kind, x.roll, x.passing, x.push)
         return out
 
     def _other_meter(self, segments, full: bool, bar_index: int) -> list[Hit]:
