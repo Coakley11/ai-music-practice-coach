@@ -491,3 +491,75 @@
 .sc-frag{--frame:0;container-type:inline-size;container-name:card;position:relative;box-sizing:border-box;width:100%;border:0;border-radius:0;background:none;box-shadow:none;color:var(--ink);font-family:'Source Sans 3',system-ui,sans-serif;font-size:17px;line-height:1.4}
 .sc-frag *{box-sizing:border-box}
 .sc-frag-body .sc-body{padding-top:14px}
+
+/* ---------------------------------------------------------------------------------------------------------
+   Backing: the album cover around the real Streamlit widgets (st.container key "backing_art_card").
+   The fixed 170 px overlay row of today's card (app_ui) becomes ordinary flow inside the frame. */
+.st-key-backing_art_card{--ink:#fff;--muted:rgba(255,255,255,.82);--panel:rgba(10,10,30,.62);--panel-line:rgba(255,255,255,.28);--accent:#fff;--accent-ink:#111;--accent2:#fff;
+  --title:'Source Sans 3',sans-serif;--title-size:58px;--title-tr:0;--label:'Source Sans 3',sans-serif;--key:'Source Sans 3',sans-serif;--key-weight:800;
+  --chip-bg:rgba(255,255,255,.14);--chip-line:rgba(255,255,255,.4);--chip-ink:#fff;--radius:26px;
+  container-type:inline-size;container-name:card;box-sizing:border-box;margin:.25rem 0 1rem;box-shadow:0 18px 44px rgba(10,10,30,.34);
+  font-family:'Source Sans 3',system-ui,sans-serif}
+.st-key-backing_art_card *{box-sizing:border-box}
+.st-key-backing_art_card [data-testid="stElementContainer"]:has(.sc-frag){margin:0!important}
+.st-key-backing_art_card [data-testid="stMarkdownContainer"]:has(.sc-frag){margin:0}
+.st-key-backing_art_card .sc-frag-hero{margin:0}
+/* The controls: no white strip, no fixed height, no negative margin. */
+.st-key-backing_art_card .st-key-backing_card_controls{height:auto!important;min-height:0!important;max-height:none!important;margin:0!important;
+  padding:18px 22px 22px!important;background:transparent!important;border:0!important;border-radius:0!important;overflow:visible!important;gap:16px!important;z-index:auto}
+.st-key-backing_art_card .st-key-backing_card_controls [data-testid="stHorizontalBlock"]{height:auto!important;flex-wrap:nowrap}
+/* Key panels: original -> the key I play in. */
+.st-key-backing_art_card .st-key-backing_card_key_row{background:transparent!important;border:0!important;border-radius:0!important;overflow:visible!important}
+.st-key-backing_art_card .st-key-backing_card_key_row [data-testid="stHorizontalBlock"]{gap:16px!important;align-items:stretch!important}
+.st-key-backing_art_card .st-key-backing_card_key_row [data-testid="stHorizontalBlock"]>[data-testid="stColumn"],
+.st-key-backing_art_card .st-key-backing_card_key_row [data-testid="stHorizontalBlock"]>[data-testid="stColumn"]:first-child{
+  flex:1 1 0!important;min-width:0!important;padding:14px 18px 16px!important;border-right:0!important;
+  background:var(--k-bg,var(--panel));border:var(--k-border,2px solid var(--panel-line));border-radius:var(--k-radius,20px);color:var(--k-ink,var(--ink));box-shadow:var(--k-shadow,none)}
+.st-key-backing_art_card .st-key-backing_card_key_row [data-testid="stHorizontalBlock"]>[data-testid="stColumn"]:last-child{
+  flex:1.25 1 0!important;background:var(--kp-bg,var(--k-bg,var(--panel)));border:var(--kp-border,var(--k-border,3px solid var(--accent)));color:var(--kp-ink,var(--k-ink,var(--ink)));box-shadow:var(--kp-shadow,var(--k-shadow,none))}
+.st-key-backing_art_card .st-key-backing_card_key_row .ui-skp-label{display:flex;align-items:center;gap:8px;margin:0 0 6px!important;color:inherit!important;
+  font:var(--label-weight,700) var(--label-size,15px) var(--label);letter-spacing:.08em;text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.st-key-backing_art_card .bk-label i{flex:none;display:inline-flex;align-items:center;justify-content:center;width:38px;height:38px;border-radius:50%;font-style:normal;font-size:20px;
+  background:var(--ico-bg,rgba(255,255,255,.92));border:2px solid var(--accent);box-shadow:0 2px 6px rgba(0,0,0,.3)}
+.st-key-backing_art_card .st-key-backing_card_key_row .ui-skp-label+.ui-skp-value,
+.st-key-backing_art_card .st-key-backing_card_key_row .ui-skp-label+.ui-skp-locked{margin-top:0}
+.st-key-backing_art_card .st-key-backing_card_key_row .ui-skp-value,
+.st-key-backing_art_card .st-key-backing_card_key_row .ui-skp-locked span{font-family:var(--key);font-weight:var(--key-weight);font-style:var(--key-style,normal);
+  font-size:var(--key-size,38px)!important;line-height:1.1;color:inherit;letter-spacing:var(--key-tr,0);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.st-key-backing_art_card .st-key-backing_card_key_row .ui-skp-locked{display:flex;align-items:center;gap:8px;background:transparent;border:0;padding:0}
+.st-key-backing_art_card .st-key-backing_card_key_row .ui-skp-cap{margin:4px 0 0!important;color:inherit!important;opacity:.92;font-size:14px!important;font-weight:600}
+.st-key-backing_art_card .st-key-backing_card_key_row .ui-skp-cap-fixed{font-weight:800}
+/* The Practice Key dropdown: same widget, dressed as the card's key field. */
+.st-key-backing_art_card .st-key-backing_card_key_row [data-testid="stSelectbox"] [data-baseweb="select"]>div,
+.st-key-backing_art_card .st-key-backing_card_key_row [data-testid="stSelectbox"] .react-aria-ComboBox [role="group"]{
+  min-height:58px!important;background:var(--dd-bg,rgba(0,0,0,.42))!important;border:var(--dd-border,2px solid var(--accent))!important;border-radius:var(--dd-radius,12px)!important;color:var(--dd-ink,inherit)!important}
+.st-key-backing_art_card .st-key-backing_card_key_row [data-testid="stSelectbox"] input[role="combobox"],
+.st-key-backing_art_card .st-key-backing_card_key_row [data-testid="stSelectbox"] [data-baseweb="select"] div{
+  font-family:var(--key)!important;font-weight:var(--key-weight)!important;font-style:var(--key-style,normal);font-size:30px!important;color:var(--dd-ink,inherit)!important;-webkit-text-fill-color:currentColor}
+.st-key-backing_art_card .st-key-backing_card_key_row [data-testid="stSelectbox"] svg{color:var(--accent);width:26px;height:26px}
+/* Style, Backing groove, Meter, Source. */
+.st-key-backing_art_card .bk-stats{gap:10px}
+.st-key-backing_art_card .bk-stats .stat{align-items:center}
+/* BPM and Play on one panel. */
+.st-key-backing_art_card .st-key-backing_art_play_row{padding:12px 18px;background:var(--panel);border:2px solid var(--panel-line);border-radius:var(--tile-radius,18px);color:var(--ink)}
+.st-key-backing_art_card .st-key-backing_art_play_row [data-testid="stHorizontalBlock"]{align-items:center!important;gap:16px!important}
+.st-key-backing_art_card .st-key-backing_art_play_row [data-testid="stHorizontalBlock"]>[data-testid="stColumn"]:last-child{flex:0 0 260px!important;width:260px!important;min-width:0!important}
+.st-key-backing_art_card .st-key-backing_art_play_row label,
+.st-key-backing_art_card .st-key-backing_art_play_row [data-testid="stWidgetLabel"] p,
+.st-key-backing_art_card .st-key-backing_art_play_row [data-testid="stMarkdownContainer"] p,
+.st-key-backing_art_card .st-key-backing_art_play_row [data-testid="stSliderTickBarMin"],
+.st-key-backing_art_card .st-key-backing_art_play_row [data-testid="stSliderTickBarMax"],
+.st-key-backing_art_card .st-key-backing_art_play_row [data-testid="stThumbValue"]{color:var(--ink)!important;font-weight:700}
+.st-key-backing_art_card .st-key-backing_art_play_row [data-testid="stWidgetLabel"] p{font:var(--label-weight,700) 15px var(--label);letter-spacing:.06em;text-transform:uppercase}
+.st-key-backing_art_card .st-key-backing_art_play_row [data-baseweb="slider"] [role="slider"]{background:var(--thumb,#fff)!important;border:4px solid var(--accent)!important;width:26px!important;height:26px!important;box-shadow:0 2px 8px rgba(0,0,0,.45)}
+@container card (max-width:640px){
+  .st-key-backing_art_card .st-key-backing_card_controls{padding:14px 14px 18px!important}
+  .st-key-backing_art_card .st-key-backing_card_key_row [data-testid="stHorizontalBlock"]{flex-direction:column!important;gap:12px!important}
+  .st-key-backing_art_card .st-key-backing_card_key_row [data-testid="stHorizontalBlock"]>[data-testid="stColumn"]{width:100%!important;flex:1 1 auto!important}
+  .st-key-backing_art_card .st-key-backing_art_play_row [data-testid="stHorizontalBlock"]{flex-direction:column!important;align-items:stretch!important}
+  .st-key-backing_art_card .st-key-backing_art_play_row [data-testid="stHorizontalBlock"]>[data-testid="stColumn"],
+  .st-key-backing_art_card .st-key-backing_art_play_row [data-testid="stHorizontalBlock"]>[data-testid="stColumn"]:last-child{flex:1 1 auto!important;width:100%!important}
+  .st-key-backing_art_card .st-key-backing_card_key_row .ui-skp-value,
+  .st-key-backing_art_card .st-key-backing_card_key_row .ui-skp-locked span{font-size:32px!important}
+  .st-key-backing_art_card .st-key-backing_card_key_row [data-testid="stSelectbox"] input[role="combobox"]{font-size:26px!important}
+}

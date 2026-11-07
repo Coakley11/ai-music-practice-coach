@@ -260,3 +260,41 @@ def card_style_tag(identity: CardIdentity, *, container_key: str = "picker_activ
         f'{sel}{{position:relative;overflow:hidden;gap:0;border-radius:var(--radius,26px);border:var(--frame,5px solid var(--accent));background:#111 url("{body_art}") center top/100% 100% no-repeat;color:var(--ink)}}\n'
         "</style>"
     )
+
+
+# --- Backing: the same album cover, with the real Practice Key, BPM and Play widgets in it. ----------------
+
+BACKING_CONTAINER = "backing_art_card"
+
+
+def backing_chips_html(identity: CardIdentity, *, groove: str, meter: str, written: str = "", written_label: str = "") -> str:
+    """Style, Backing groove, Meter, Source (and the written key when charts differ), under the keys."""
+    from practice_ui_labels import GROOVE_ICONS
+
+    groove_name = str(groove or "Auto").strip() or "Auto"
+    chips = [
+        _stat(SEMANTIC_FIELD_ICONS["style"], "Style", identity.style_name, identity.style_logo),
+        _stat(SEMANTIC_FIELD_ICONS["groove"], "Backing groove", groove_name, GROOVE_ICONS.get(groove_name, "")),
+        _stat(SEMANTIC_FIELD_ICONS["meter"], "Meter", str(meter or "4/4")),
+        _stat(SEMANTIC_FIELD_ICONS["source"], "Source", identity.source_name, identity.source_logo),
+    ]
+    if str(written or "").strip():
+        chips.append(_stat(SEMANTIC_FIELD_ICONS["written_key"], str(written_label or "Charts in"), str(written)))
+    return f'<div class="sc-frag sc-frag-chips {identity.classes} p-backing"><div class="stats bk-stats">{"".join(chips)}</div></div>'
+
+
+def backing_key_label(which: str) -> str:
+    """The two key panels' headings, with the app's own key icons."""
+    if which == "original":
+        return f'<p class="ui-skp-label bk-label"><i>{FEATURE_ICONS["original_key"]}</i>Original key</p>'
+    return f'<p class="ui-skp-label bk-label"><i>{FEATURE_ICONS["practice_concert_key"]}</i>I&rsquo;m playing in</p>'
+
+
+def play_theme(identity: CardIdentity) -> dict[str, str]:
+    """The Play button's colors for this card, for the transport control's own frame."""
+    found = dict(part.split(":", 1) for part in _family_vars(identity.family).split(";") if ":" in part)
+    return {
+        "bg": found.get("--play-bg") or found.get("--accent") or "",
+        "ink": found.get("--play-ink") or found.get("--accent-ink") or "#fff",
+        "accent": found.get("--accent") or "",
+    }
