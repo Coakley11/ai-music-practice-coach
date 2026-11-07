@@ -27,6 +27,7 @@ from music_theory import NOTE_TO_MIDI, is_no_chord_token, normalize_root, split_
 import backing_arrangement_profiles as _arr_profiles
 import backing_groove_profiles as _groove_profiles
 import backing_keys_voice as _kv
+import backing_rock_guitar as _rg
 import backing_section_arrangement as _sa
 
 try:
@@ -1594,6 +1595,46 @@ _KEYS_BALANCE: dict[str, float] = {
     "Jazz swing": 0.4,
 }
 
+# Rock guitar level (RMS) relative to the rhythm section, and what is left of the piano.
+_ROCK_GUITAR_BALANCE = 0.8
+_ROCK_KEYS_BEHIND_GUITAR = 0.35
+
+
+def _power_chord_fifth(chord: str) -> int:
+    """The chord's own fifth above its root, in semitones: 7 unless it is written flat or sharp."""
+    notes = chord_notes(chord)
+    for n in notes[1:]:
+        if (n - notes[0]) % 12 in (6, 7, 8) and len(notes) > 2:
+            fifth = (notes[2] - notes[0]) % 12
+            return fifth if fifth in (6, 7, 8) else 7
+    return 7
+
+
+def _add_rock_guitar_bar(part, chord, next_chord, role, texture, event, is_hit, section_edge, pulses_per_bar, bar_start, pulse, bar_seconds, intensity, idx, loop_seed):
+    """One bar of the Rock guitar part, in the tone its section calls for."""
+    quiet = texture is not None and (texture.drums in ("hats", "minimal") or texture.comp == "sustain")
+    tone = _rg.section_tone(role, quiet)
+    if texture is not None and texture.comp == "full":
+        tone = "overdrive"
+    root_of = lambda c: chord_notes(c)[0]
+    if is_hit:
+        strokes = [_rg.Stroke(0.0, 1.0, _rg.power_chord(root_of(chord), _power_chord_fifth(chord), wide=True), 1.0)]
+    else:
+        strokes = _rg.rock_guitar_bar(
+            _sounding_segments(chord, pulses_per_bar),
+            pulses_per_bar,
+            tone=tone,
+            fifth_of=_power_chord_fifth,
+            root_of=root_of,
+            next_chord=_bossa_next_head(next_chord),
+            phrase_end=int(event.get("bar_in_section", 0) or 0) % 4 == 3,
+            section_end=bool(section_edge),
+            seed=part.seed,
+            bar_index=idx + 1009 * loop_seed,
+        )
+    part.play_bar(strokes, bar_start, pulse, tone, bar_seconds, double=tone == "overdrive", level=float(np.clip(intensity, 0.5, 1.2)))
+
+
 # Pre-mix bus levels of the last render (diagnostics / balance tests).
 LAST_MIX_STATS: dict[str, float] = {}
 
@@ -1910,6 +1951,11 @@ def synthesize_chords_to_numpy(
     chord_list = event_cycle * max(1, int(loops))
     audio = np.zeros(int(sr * bar * len(chord_list)) + sr)
     keys_bus = np.zeros_like(audio)
+    guitar_part = (
+        _rg.GuitarPart(len(audio), sr, str(song_groove_seed(song_title, song_artist) if song_title else 0))
+        if style == "Rock groove" and _rg.enabled()
+        else None
+    )
     prev_comp: list[int] | None = None
     strings_bus = np.zeros_like(audio) if strings else None
     prev_strings: list[int] | None = None
@@ -2087,6 +2133,11 @@ def synthesize_chords_to_numpy(
         if groove_seed % 3 == 0 and role == "verse":
             bass_hits = bass_hits[: max(2, len(bass_hits) - 1)]
         comp_wave = _comp_wave_for_style(style, role, song_profile)
+        if guitar_part is not None and not bar_is_no_chord:
+            _add_rock_guitar_bar(
+                guitar_part, sounding_chord if bar_is_hit else chord, next_chord, role, section_tex, event,
+                bar_is_hit, section_edge, pulses_per_bar, bar_start, pulse, bar, intensity, idx, loop_seed,
+            )
 
         def _pulse_chord(b_pos: float) -> str:
             if bar_is_hit:
@@ -2865,6 +2916,13 @@ def synthesize_chords_to_numpy(
                 * float(song_profile.get("strings_level", 1.0))
             )
             strings_bus *= float(np.clip(_s_target * _rhythm_rms / _strings_rms, 0.05, 20.0))
+    if guitar_part is not None:
+        # The guitars lead the band and the piano moves behind them.
+        guitar_bus = guitar_part.finish()
+        _guitar_rms = float(np.sqrt(np.mean(guitar_bus ** 2)))
+        if _rhythm_rms > 1e-6 and _guitar_rms > 1e-6:
+            keys_bus *= _ROCK_KEYS_BEHIND_GUITAR
+            keys_bus += guitar_bus * float(np.clip(_ROCK_GUITAR_BALANCE * _rhythm_rms / _guitar_rms, 0.05, 20.0))
     LAST_MIX_STATS.clear()
     LAST_MIX_STATS.update(
         rhythm_rms=float(np.sqrt(np.mean(audio ** 2))),
