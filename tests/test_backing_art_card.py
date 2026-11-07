@@ -106,3 +106,8 @@ def test_a_karaoke_entry_names_its_own_source_on_the_card():
 
     assert B.identity_for("song", source_label=_TRANSITION_SOURCE_LABELS["custom_progression"]).source == "custom"
     assert B.identity_for("song", source_label=_TRANSITION_SOURCE_LABELS["composition_song"]).source == "composition"
+
+
+def test_fixed_keys_read_only_key_uses_the_cards_ink():
+    css = (ROOT / "song_card_art.css").read_text(encoding="utf-8")
+    assert ".st-key-backing_art_card .ui-skp-locked span" in css and "color:inherit!important" in css.split("Fixed Key's read-only key", 1)[1]
