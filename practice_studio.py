@@ -702,12 +702,9 @@ def active_song_card_details(
     bpm = base.get("bpm") or _default_bpm_for_record(record)
     key = str(practice_key or base.get("key") or "C").strip() or "C"
     coaching_key = str(chart_key or practice_key or base.get("key") or "C").strip() or key
+    # The catalog genre is the song's style. A descriptive label containing "Rock" sent 24 Pop
+    # ballads to the Rock artwork and logo; the feel belongs to the groove and the coaching text.
     style_label = genre
-    g = genre.lower()
-    notes = (ext.get("arrangement_notes") or "").lower()
-    title_low = (record.get("title") or "").lower()
-    if "pop" in g and ("ballad" in notes or "deep" in title_low):
-        style_label = "Pop / Soft Rock Ballad"
 
     # The section flow ("Intro -> Verse -> Chorus -> ...") is the
     # primary way the song card communicates structure. If for any
