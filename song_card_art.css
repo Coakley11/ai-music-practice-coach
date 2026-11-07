@@ -578,3 +578,11 @@
 /* Room under "Tap to change". */
 .st-key-backing_art_card .st-key-backing_card_key_row [data-testid="stHorizontalBlock"]>[data-testid="stColumn"]{padding-bottom:20px!important}
 .st-key-backing_art_card .st-key-backing_card_key_row .ui-skp-cap{margin-top:8px!important}
+/* Phones: the four facts two to a row instead of one each. */
+@container card (max-width:560px){
+  .st-key-backing_art_card .bk-stats{gap:8px}
+  .st-key-backing_art_card .bk-stats .stat{min-height:40px;padding:5px 10px 5px 6px;gap:5px;font-size:12.5px}
+  .st-key-backing_art_card .bk-stats .stat i{width:28px;height:28px;font-size:15px}
+  .st-key-backing_art_card .bk-stats .stat b{font-size:17px}
+  .st-key-backing_art_card .bk-stats .stat .vg{width:21px;height:21px;font-size:12px}
+}
