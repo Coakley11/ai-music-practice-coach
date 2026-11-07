@@ -2328,6 +2328,7 @@ def synthesize_chords_to_numpy(
                     section_end=bool(section_edge),
                     bar_index=idx + 1009 * loop_seed,
                     pulses_per_bar=pulses_per_bar,
+                    lift=bool(section_tex is not None and section_tex.pad),
                 )
                 pianist.perform(
                     keys_bus, sr, _played,

@@ -7,6 +7,7 @@ import unittest
 import numpy as np
 
 import backing_audio as ba
+import backing_pianist as _pn
 import backing_keys_voice as kv
 
 
@@ -35,6 +36,7 @@ CASES = [
 
 class PianoLayerHarmonyTests(unittest.TestCase):
     def test_keys_layer_plays_the_chart_in_every_style(self) -> None:
+        pianist = bool(_pn.mode())
         for prog, style, bpm in CASES:
             with self.subTest(style=style):
                 keys, sr = ba.synthesize_chords_to_numpy(
@@ -47,9 +49,13 @@ class PianoLayerHarmonyTests(unittest.TestCase):
                     root = notes[0] % 12
                     # Chord tones plus the 9th / 13th colour of jazz-family voicings.
                     allowed = {n % 12 for n in notes} | {(root + 2) % 12, (root + 9) % 12}
+                    if pianist and (notes[1] - notes[0]) % 12 == 3:
+                        allowed.add((root + 5) % 12)  # the pianist's 11th on a minor chord
                     strong = {k for k in range(12) if ch[k] > 0.25}
                     self.assertLessEqual(strong, allowed, f"{style} {chord}: {sorted(strong - allowed)}")
-                    self.assertGreater(ch[notes[1] % 12], 0.15, f"{style} {chord}: third missing")
+                    # The pianist's broken chords double the root low down, which outweighs a third that is
+                    # there in every bar (its own tests check each bar's notes state the chord's quality).
+                    self.assertGreater(ch[notes[1] % 12], 0.10 if pianist else 0.15, f"{style} {chord}: third missing")
 
     def test_keys_sit_under_the_rhythm_section_at_the_style_balance(self) -> None:
         for prog, style, bpm in CASES:

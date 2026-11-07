@@ -211,11 +211,11 @@ _ROCK = (
     ((0.5, 0.26, "T", 0.70), (1.0, 0.26, "T", 0.74), (2.5, 0.26, "T", 0.70), (3.0, 0.26, "T", 0.76)),
     ((0.0, 1.4, "C", 0.92), (3.0, 0.8, "T", 0.74)),
 )
-_FUNK = (
-    ((0.0, 0.2, "C", 1.0), (0.75, 0.14, "S", 0.70), (1.75, 0.14, "S", 0.70), (2.5, 0.2, "C", 0.90)),
-    ((0.5, 0.18, "C", 0.84), (1.5, 0.18, "S", 0.72), (3.25, 0.18, "C", 0.84)),
-    ((0.0, 0.22, "C", 0.96), (2.0, 0.14, "S", 0.66), (2.75, 0.18, "C", 0.84), (3.5, 0.14, "S", 0.68)),
-    ((1.0, 0.18, "C", 0.90), (2.5, 0.18, "C", 0.84)),
+_FUNK = (  # stabs about a 16th long: short, but long enough for the chord to speak
+    ((0.0, 0.26, "C", 1.0), (0.75, 0.2, "S", 0.70), (1.75, 0.2, "S", 0.70), (2.5, 0.26, "C", 0.90)),
+    ((0.5, 0.24, "C", 0.84), (1.5, 0.22, "S", 0.72), (3.25, 0.24, "C", 0.84)),
+    ((0.0, 0.26, "C", 0.96), (2.0, 0.2, "S", 0.66), (2.75, 0.24, "C", 0.84), (3.5, 0.2, "S", 0.68)),
+    ((1.0, 0.24, "C", 0.90), (2.5, 0.24, "C", 0.84)),
 )
 _SOUL = (
     ((0.0, 1.0, "C", 0.96), (1.5, 0.5, "S", 0.70), (2.5, 0.5, "C", 0.84), (3.5, 0.5, "N", 0.76)),
@@ -289,6 +289,7 @@ class Hit:
     kind: str = "chord"  # "chord", "bass", "broken", "figure"
     roll: float = 0.0  # seconds between notes of a rolled chord
     passing: bool = False  # a figure's note outside the chord
+    push: bool = False  # the next bar's chord, played ahead of its bar line
 
 
 class Pianist:
@@ -310,6 +311,8 @@ class Pianist:
         self.arc = 0.0
         self.register = 0
         self.filled_last = False
+        self.pushed_in: str | None = None  # the chord the last bar pushed into this one
+        self._came_in: str | None = None
         self.pool: list[int] = []
         self.floor, self.with_melody, self.without_melody = REGISTERS.get(style, _DEFAULT_REGISTER)
         if has_guitar:
@@ -323,12 +326,19 @@ class Pianist:
     def _h(self, chord: str) -> Harmony:
         return harmony_of(chord, self.chord_notes, self.bass_note, colour=self.hands.colour and not self.simple)
 
-    def _new_phrase(self, role_full: bool, bar: int) -> None:
+    def _new_phrase(self, role_full: bool, bar: int, lift: bool = False) -> None:
         self.phrase_no += 1
         r = _roll(self.seed, "phrase", self.phrase_no, bar)
         lengths = self.hands.bars
         self.phrase_left = lengths[int(r * len(lengths)) % len(lengths)]
-        pool = list(range(len(self.hands.ideas))) if role_full else list(self.hands.sparse_ideas)
+        if role_full:
+            # A full section builds: the fuller half of the style's ideas, so a chorus never plays less than a verse.
+            sizes = sorted(len(i) for i in self.hands.ideas)
+            # The last chorus takes the fullest ideas of all.
+            middle = sizes[-2] if lift and len(sizes) > 1 else sizes[(len(sizes) - 1) // 2]
+            pool = [i for i, idea in enumerate(self.hands.ideas) if len(idea) >= middle]
+        else:
+            pool = list(self.hands.sparse_ideas)
         pool = [p for p in pool if p < len(self.hands.ideas)]
         self.pool = pool
         self.contour = _CONTOURS[int(_roll(self.seed, "contour", self.phrase_no) * len(_CONTOURS)) % len(_CONTOURS)]
@@ -401,6 +411,8 @@ class Pianist:
             move = sum(min(abs(n - p) for p in self.prev) for n in placed) / len(placed) if self.prev else 0.0
             ranked.append((move, placed))
         ranked.sort(key=lambda r: r[0])
+        # Variety only among voicings near the smoothest one, so a change of colour never becomes a leap.
+        ranked = [r for r in ranked if r[0] <= ranked[0][0] + 3.0] or ranked
         slot = 2 if pick < 0.16 else 1 if pick < 0.44 else 0
         notes = list(ranked[min(slot, len(ranked) - 1)][1])
         if muddy(notes):
@@ -415,11 +427,13 @@ class Pianist:
         elif voice in {"C", "R"} and 0.30 <= r < 0.50 and notes[0] + 12 <= self.ceiling and notes[0] + 12 not in notes and len(notes) <= 4:
             # A firmer chord with its bottom note doubled above.
             notes = sorted(notes + [notes[0] + 12])
-        elif voice in {"C", "R"} and 0.50 <= r < 0.62 and len(notes) >= 3 and notes[-2] - 12 >= floor:
-            # Spread: the second note from the top drops an octave, where it stays clear.
+        elif voice in {"C", "R"} and 0.50 <= r < 0.62 and kind != "rootless" and len(notes) >= 3 and notes[-2] - 12 >= floor:
+            # Spread: the second note from the top drops an octave, where it stays clear (not in compact
+            # rootless comping, where it reads as a leap of the hand).
             spread = sorted(notes[:-2] + [notes[-2] - 12] + notes[-1:])
             if not muddy(spread):
                 notes = spread
+        notes = sorted(notes)  # low to high, as every hit is
         if voice == "T":
             notes = notes[-2:]
             if _roll(self.seed, "tup", tag) < 0.22 and notes[-1] + 12 <= self.ceiling:
@@ -486,13 +500,19 @@ class Pianist:
         out.append(Hit(2.0, 0.9, (top - 12 + 7, top), 0.82, "figure"))
         return out
 
-    def bar(self, segments, next_chord, *, role: str, quiet: bool, bar_in_section: int, section_end: bool, bar_index: int, pulses_per_bar: int, intensity: float = 1.0, section_bars: int = 0) -> list[Hit]:
+    def bar(self, segments, next_chord, *, role: str, quiet: bool, bar_in_section: int, section_end: bool, bar_index: int, pulses_per_bar: int, intensity: float = 1.0, section_bars: int = 0, lift: bool = False) -> list[Hit]:
+        """``lift``: the arrangement's last chorus, which plays everything and adds weight below."""
         full = role in FULL_ROLES and not quiet
+        lift = lift and full
         self.full = full
+        # Only a bar that ends with a push hands its chord on; every other way out of a bar clears it.
+        self._came_in, self.pushed_in = self.pushed_in, None
         # With no melody playing, the hands have more of the keyboard.
         self.ceiling = self.without_melody if role in NO_MELODY_ROLES else self.with_melody
+        if bar_in_section == 0 and section_bars:
+            self.phrase_left = 0  # a new section starts a new phrase
         if self.phrase_left <= 0:
-            self._new_phrase(full, bar_index)
+            self._new_phrase(full, bar_index, lift)
         self.phrase_left -= 1
         ending_phrase = self.phrase_left == 0 or section_end
         hits: list[Hit] = []
@@ -516,7 +536,7 @@ class Pianist:
         if quiet:
             # A quiet texture holds its chord.
             cells = [(0.0, 3.9, "R", 0.72)]
-        rest = not ending_phrase and _roll(self.seed, "rest", tag0) < hands.rest_bar * (0.5 if full else 1.0)
+        rest = not lift and not ending_phrase and _roll(self.seed, "rest", tag0) < hands.rest_bar * (0.5 if full else 1.0)
         if rest:
             cells = [c for c in cells if c[0] >= 2.5][:1]
         figure_at = None
@@ -529,7 +549,7 @@ class Pianist:
             # A hit left out for air, never the first of a bar that opens the phrase.
             # Styles that flow keep their downbeat; only the sparse ones may leave it out.
             keeps_downbeat = beat == 0.0 and self.style not in _SPARSE_STYLES
-            if (k > 0 or self.phrase_left > 0) and not keeps_downbeat and voice not in {"L", "R"} and not voice.startswith("A"):
+            if not lift and (k > 0 or self.phrase_left > 0) and not keeps_downbeat and voice not in {"L", "R"} and not voice.startswith("A"):
                 keep = 1.0 - hands.space * (0.6 if full else 1.0)
                 if _roll(self.seed, "space", tag0, k) > keep:
                     continue
@@ -567,7 +587,7 @@ class Pianist:
                 hits.append(Hit(at, held, tuple(notes), vel, "chord", roll=0.018 + 0.016 * _roll(self.seed, "roll", tag0)))
             else:
                 notes = self._chord_voicing(h, voice, (tag0, k))
-                hits.append(Hit(at, held, tuple(notes), vel, "chord"))
+                hits.append(Hit(at, held, tuple(notes), vel, "chord", push=push))
         last_seg = segments[-1]
         if figure_at is None and not quiet and last_seg[2] is not None and hands.pickup > 0.0 and last_seg[1] - 3.5 > 0.25 and not self.simple:
             r = _roll(self.seed, "pickup", tag0)
@@ -579,8 +599,51 @@ class Pianist:
             seg = next((s for s in segments if s[0] <= figure_at < s[1]), None)
             if seg is not None and seg[2] is not None:
                 hits += self._figure(self._h(seg[2]), self._h(next_chord), figure_at, 4.0, tag0)
+        hits = self._every_chord_heard(hits, segments, tag0)
         hits.sort(key=lambda x: x.beat)
+        if lift:
+            hits = self._weight_below(hits)
+        self.pushed_in = next((str(next_chord) for x in hits if x.push), None)
         return self._state_quality(hits, segments)
+
+    def _weight_below(self, hits: list[Hit]) -> list[Hit]:
+        """The last chorus: each bar's first chord gains its lowest note an octave down, where that stays clear.
+
+        The weight goes below, never above, so the top of the piano still leaves the melody its room.
+        """
+        for i, x in enumerate(hits):
+            if x.kind != "chord" or len(x.notes) < 2 or x.push:
+                continue
+            low = x.notes[0] - 12
+            fuller = (low, *x.notes)
+            if low >= LEFT_HAND.get(self.style, _DEFAULT_LEFT_HAND)[0] and not muddy(list(fuller)):
+                hits[i] = Hit(x.beat, x.beats, fuller, x.velocity, x.kind, x.roll, x.passing, x.push)
+            break
+        return hits
+
+    def _every_chord_heard(self, hits: list[Hit], segments, tag) -> list[Hit]:
+        """Space, never a missing chord: each chord of the chart sounds at least once while it lasts.
+
+        A bar may hold only one light chord, but a player practising over the song must hear every change.
+        A chord already pushed in from the bar before counts as heard.
+        """
+        out = list(hits)
+        for n, (start, end, chord) in enumerate(segments):
+            if chord is None:
+                continue
+            if n == 0 and self._came_in == str(chord):
+                continue
+            if any(start - 1e-6 <= x.beat < end - 1e-6 and x.kind != "figure" and not x.push for x in out):
+                continue
+            h = self._h(chord)
+            span = end - start
+            held = min(span * 0.9, 1.5) if self.style in _SPARSE_STYLES or self.style == "Rock groove" else span * 0.9
+            later = [x.beat for x in out if start < x.beat < end + 1e-6]
+            if later:
+                held = min(held, min(later) - start - 0.05)
+            notes = self._chord_voicing(h, "C", (tag, "heard", n))
+            out.append(Hit(start, max(0.25, held), tuple(notes), 0.74 * self.arc, "chord"))
+        return out
 
     def _state_quality(self, hits: list[Hit], segments) -> list[Hit]:
         """Variety must never blur the harmony: wherever a chord plays, its third is heard, so major stays major."""
