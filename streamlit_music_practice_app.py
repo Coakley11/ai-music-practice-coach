@@ -10136,7 +10136,7 @@ def _render_backing_art_head_for_card(kind: str, *, record: Any, ctx: Any, sourc
         if kind == "custom" and style in {"", "Auto"}:
             style = str(st.session_state.get("progression_style") or "")
     else:
-        facts = catalog_card_facts(record or {})
+        facts = catalog_card_facts(record or {}, source_label=source_label)
         title, artist, style = facts["title"], facts["artist"], facts["style"]
     karaoke = False
     try:
@@ -21956,14 +21956,15 @@ elif _studio_page == "backing":
                     )
                 if _backing_card_cols is None:
                     render_backing_card_transport_control(enabled=bool(backing_chords))
-            if _backing_card_cols is not None:
-                with _backing_card_cols[0]:
-                    _render_backing_card_practice_key(
-                        str(_backing_orig_key or _backing_practice_key or ""),
-                        str(_backing_practice_key or _backing_orig_key or ""),
-                    )
-                with _backing_card_cols[2]:
-                    render_backing_card_transport_control(enabled=bool(backing_chords))
+        # Keys and Play in their row: today's card and the album-cover card alike.
+        if _backing_card_slot is not None and _backing_card_cols is not None:
+            with _backing_card_cols[0]:
+                _render_backing_card_practice_key(
+                    str(_backing_orig_key or _backing_practice_key or ""),
+                    str(_backing_practice_key or _backing_orig_key or ""),
+                )
+            with _backing_card_cols[2]:
+                render_backing_card_transport_control(enabled=bool(backing_chords))
     except Exception as _backing_status_fill_err:
         if _developer_mode_enabled():
             st.caption(f"Developer · backing status fill: {_backing_status_fill_err}")

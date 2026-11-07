@@ -56,10 +56,34 @@ def render_backing_art_chips(
     )
 
 
-def catalog_card_facts(record: Mapping[str, Any]) -> dict[str, str]:
-    """Title, artist and the catalog genre (the song's own genre decides its artwork, not the groove)."""
-    return {
-        "title": str(record.get("title") or "Active song"),
-        "artist": str(record.get("artist") or ""),
-        "style": str(record.get("genre") or ""),
-    }
+# What today's Backing record puts where an artist belongs when it has none.
+_PLACEHOLDER_ARTISTS = frozenset({"", "catalog song", "composition song", "custom progression", "custom song", "song"})
+
+
+def _catalog_row(title: str) -> Mapping[str, Any]:
+    try:
+        from song_catalog.catalog import load_song_catalog
+
+        for songs in load_song_catalog()[0].values():
+            row = songs.get(title)
+            if row:
+                return row
+    except Exception:
+        pass
+    return {}
+
+
+def catalog_card_facts(record: Mapping[str, Any], *, source_label: str = "") -> dict[str, str]:
+    """Title, artist and the catalog genre (the song's own genre decides its artwork, not the groove).
+
+    The Backing record names its source where the artist belongs when it has no artist ("Catalog song");
+    the catalog has the real one.
+    """
+    title = str(record.get("title") or "Active song")
+    artist = str(record.get("artist") or "")
+    genre = str(record.get("genre") or "")
+    if artist.strip().lower() in _PLACEHOLDER_ARTISTS | {str(source_label or "").strip().lower()}:
+        row = _catalog_row(title)
+        artist = str(row.get("artist") or "")
+        genre = str(row.get("genre") or genre)
+    return {"title": title, "artist": artist, "style": genre}

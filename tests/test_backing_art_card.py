@@ -82,3 +82,13 @@ def test_the_style_sheet_frees_the_controls_from_the_fixed_overlay_row():
     css = (ROOT / "song_card_art.css").read_text(encoding="utf-8")
     assert ".st-key-backing_art_card .st-key-backing_card_controls{height:auto!important" in css
     assert "container-name:card" in css.split(".st-key-backing_art_card{", 1)[1].split("}", 1)[0]
+
+
+def test_a_source_name_in_the_artist_place_is_replaced_by_the_real_artist():
+    facts = B.catalog_card_facts({"title": "Let It Be", "artist": "Catalog song", "genre": "Rock"}, source_label="Catalog song")
+    assert facts["artist"] == "The Beatles"
+
+
+def test_keys_and_play_are_drawn_for_both_card_layouts():
+    i = APP.index("# Keys and Play in their row: today's card and the album-cover card alike.")
+    assert "if _backing_card_slot is not None and _backing_card_cols is not None:" in APP[i:i + 200]
