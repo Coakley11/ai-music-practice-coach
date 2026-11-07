@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 1600 1800" preserveAspectRatio="xMaxYMin slice">
+<defs>
+<linearGradient id="bg" x1="0" y1="0" x2="1" y2=".7"><stop offset="0" stop-color="#064e3b"/><stop offset=".55" stop-color="#047857"/><stop offset="1" stop-color="#059669"/></linearGradient>
+<linearGradient id="fade" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#04382b" stop-opacity=".88"/><stop offset=".46" stop-color="#04382b" stop-opacity="0"/></linearGradient>
+<linearGradient id="paper" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fffef2"/><stop offset="1" stop-color="#f3edc5"/></linearGradient>
+<linearGradient id="pencil" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fde047"/><stop offset=".5" stop-color="#facc15"/><stop offset="1" stop-color="#ca8a04"/></linearGradient>
+<linearGradient id="brass" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fef9c3"/><stop offset=".4" stop-color="#fde047"/><stop offset=".75" stop-color="#a16207"/><stop offset="1" stop-color="#fde047"/></linearGradient>
+<pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M40 0H0V40" fill="none" stroke="#fde047" stroke-opacity=".13" stroke-width="2"/></pattern>
+<pattern id="ruled" width="44" height="44" patternUnits="userSpaceOnUse"><path d="M44 0H0V44" fill="none" stroke="#059669" stroke-opacity=".22" stroke-width="1.500"/></pattern>
+<filter id="sh" x="-15%" y="-15%" width="130%" height="130%"><feDropShadow dx="-6" dy="10" stdDeviation="9" flood-color="#022c22" flood-opacity=".6"/></filter>
+<g id="n1"><ellipse rx="15" ry="11" transform="rotate(-20)"/><path d="M12-4V-60C14-46 32-42 32-24 28-36 20-40 16-42V-4Z"/></g>
+<radialGradient id="ball" cx=".36" cy=".3" r=".78"><stop offset="0" stop-color="#fff"/><stop offset=".32" stop-color="#ecfccb"/><stop offset=".68" stop-color="#65a30d"/><stop offset="1" stop-color="#052e16"/></radialGradient>
+<linearGradient id="grip" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#022c22"/><stop offset=".35" stop-color="#047857"/><stop offset=".6" stop-color="#064e3b"/><stop offset="1" stop-color="#011a14"/></linearGradient>
+<linearGradient id="chr" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#a16207"/><stop offset=".3" stop-color="#fef9c3"/><stop offset=".6" stop-color="#fde047"/><stop offset="1" stop-color="#854d0e"/></linearGradient>
+<linearGradient id="beam" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fef08a" stop-opacity=".75"/><stop offset="1" stop-color="#fef08a" stop-opacity="0"/></linearGradient>
+<radialGradient id="halo"><stop offset="0" stop-color="#fef9c3" stop-opacity=".95"/><stop offset=".45" stop-color="#facc15" stop-opacity=".42"/><stop offset="1" stop-color="#facc15" stop-opacity="0"/></radialGradient>
+<pattern id="mesh" width="14" height="14" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><path d="M0 0H14M0 0V14" stroke="#022c22" stroke-opacity=".6" stroke-width="2.200" fill="none"/></pattern>
+<g id="hand"><path d="M-22 170C-24 110-30 70-26 34-25 22-13 22-12 34L-9 66-8 2C-7-11 7-11 8 2L9 58 14 8C16-5 28-3 27 10L23 64 32 28C35 16 46 20 43 32L33 96C30 124 26 146 26 170Z"/></g>
+<path id="star5" d="M0-20 5-6 20-6 8 3 13 18 0 9-13 18-8 3-20-6-5-6Z"/>
+</defs>
+<rect width="1600" height="1800" fill="url(#bg)"/>
+<rect width="1600" height="1800" fill="url(#grid)"/>
+
+
+
+<g fill="#fde047"><use xlink:href="#n1" x="760" y="80"/><use xlink:href="#n1" x="680" y="210" fill="#fef9c3"/><use xlink:href="#n1" x="1560" y="520" fill="#fef9c3"/></g>
+<g><path d="M760-20 860-20 1240 640 620 640Z" fill="url(#beam)" opacity=".6"/><path d="M1120-20 1230-20 1500 640 860 640Z" fill="url(#beam)" opacity=".85"/><path d="M1500-20 1590-20 1640 640 1090 640Z" fill="url(#beam)" opacity=".6"/></g>
+<circle cx="1190" cy="330" r="330" fill="url(#halo)"/>
+<g fill="none"><circle cx="1190" cy="330" r="240" stroke="#fde047" stroke-width="7"/><circle cx="1190" cy="330" r="284" stroke="#fef9c3" stroke-width="3" stroke-dasharray="4 24"/></g>
+<g transform="translate(1250 335) rotate(20) scale(.95)">
+<path d="M-54 40 54 40 34 400C33 420-33 420-34 400Z" fill="url(#grip)"/>
+<rect x="-14" y="176" width="28" height="56" rx="8" fill="#fde047"/><rect x="-8" y="186" width="16" height="22" rx="4" fill="#fff"/>
+<path d="M-66 8H66L56 56H-56Z" fill="url(#chr)"/><path d="M-60 34H60" stroke="#047857" stroke-width="7"/>
+<circle cx="0" cy="-92" r="108" fill="url(#ball)"/><circle cx="0" cy="-92" r="108" fill="url(#mesh)"/>
+<path d="M-108-92C-74-68 74-68 108-92" fill="none" stroke="url(#chr)" stroke-width="14"/>
+<ellipse cx="-38" cy="-150" rx="34" ry="20" fill="#fff" opacity=".75" transform="rotate(-28 -38 -150)"/>
+</g>
+<g fill="#02382c"><use xlink:href="#hand" x="720" y="500"/><use xlink:href="#hand" x="860" y="474"/><use xlink:href="#hand" x="1000" y="508"/><use xlink:href="#hand" x="1380" y="490"/><use xlink:href="#hand" x="1510" y="476"/><path d="M0 640C260 596 520 616 800 606S1380 592 1600 618V680H0Z"/></g>
+<g fill="#fef9c3"><use xlink:href="#star5" x="930" y="190"/><use xlink:href="#star5" x="1500" y="330" fill="#fde047"/><use xlink:href="#star5" x="820" y="350" fill="#fde047"/></g>
+<rect width="1600" height="700" fill="url(#fade)"/>
+<rect y="640" width="1600" height="1160" fill="#f8f6d8"/>
+<rect y="640" width="1600" height="1160" fill="url(#ruled)"/>
+<g opacity=".2"><g transform="translate(1100 1160) rotate(24) scale(1.65)">
+<path d="M-54 40 54 40 34 400C33 420-33 420-34 400Z" fill="url(#grip)"/>
+<rect x="-14" y="176" width="28" height="56" rx="8" fill="#fde047"/><rect x="-8" y="186" width="16" height="22" rx="4" fill="#fff"/>
+<path d="M-66 8H66L56 56H-56Z" fill="url(#chr)"/><path d="M-60 34H60" stroke="#047857" stroke-width="7"/>
+<circle cx="0" cy="-92" r="108" fill="url(#ball)"/><circle cx="0" cy="-92" r="108" fill="url(#mesh)"/>
+<path d="M-108-92C-74-68 74-68 108-92" fill="none" stroke="url(#chr)" stroke-width="14"/>
+<ellipse cx="-38" cy="-150" rx="34" ry="20" fill="#fff" opacity=".75" transform="rotate(-28 -38 -150)"/>
+</g></g><rect y="628" width="1600" height="12" fill="#facc15"/>
+<g opacity=".3"><use xlink:href="#n1" x="1440" y="860" fill="#ca8a04"/><use xlink:href="#n1" x="620" y="1660" fill="#ca8a04"/></g>
+</svg>

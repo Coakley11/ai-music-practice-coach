@@ -593,8 +593,11 @@ class TestPhrasing(unittest.TestCase):
         self.assertGreaterEqual(within / total, 0.9)
 
     def test_breaths_change_only_note_lengths(self) -> None:
-        plan = _plan("hotel", "Beginner", FOCUS_MELODIC)
-        _ctx, scope = _scope("hotel")
+        # Perfect's Verse 1 gives an idea long enough to reach a breath boundary. Hotel California
+        # was used here while its chords were held four bars each (a long first link); at one bar
+        # per chord its Beginner seed is a two-bar idea, which has no boundary to breathe at.
+        plan = _plan("perfect", "Beginner", FOCUS_MELODIC)
+        _ctx, scope = _scope("perfect")
         seed, link, _ = seed_motif(plan, scope, nonce=0, instrument=plan.instrument)
         phrased = with_breaths(seed)
         rests = [e for e in phrased["rhythm_events"] if e.get("rest")]

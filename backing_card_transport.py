@@ -58,8 +58,11 @@ def render_backing_card_transport(
     transport: str = "",
     restart_on_resume: bool = False,
     cycle_active: bool = False,
+    theme: dict | None = None,
 ) -> None:
     """Mount the transport control (inside the active Backing card).
+
+    ``theme`` (bg / ink / accent) colors Play to match an album-cover card; without it Play is today's green.
 
     ``transport`` is the intent (stopped / playing / paused). With
     ``restart_on_resume`` a setting changed while paused, so Resume leaves the
@@ -81,6 +84,7 @@ def render_backing_card_transport(
         transport=str(transport or ""),
         restart_on_resume=bool(restart_on_resume),
         cycle_active=bool(cycle_active),
+        theme=dict(theme) if theme else None,
         # The newest command the server applied (it is committed a little later
         # for Play: once armed).
         consumed=_echo_token(session),

@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 1600 1800" preserveAspectRatio="xMaxYMin slice">
+<defs>
+<linearGradient id="bg" x1="0" y1="0" x2="1" y2=".7"><stop offset="0" stop-color="#3b0764"/><stop offset=".55" stop-color="#6b21a8"/><stop offset="1" stop-color="#831843"/></linearGradient>
+<linearGradient id="fade" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#2a0548" stop-opacity=".84"/><stop offset=".48" stop-color="#2a0548" stop-opacity="0"/></linearGradient>
+<radialGradient id="vinyl"><stop offset="0" stop-color="#27132f"/><stop offset=".85" stop-color="#150819"/><stop offset="1" stop-color="#34163c"/></radialGradient>
+<linearGradient id="shine" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".42"/><stop offset="1" stop-color="#f0abfc" stop-opacity="0"/></linearGradient>
+<radialGradient id="label" cx=".42" cy=".38"><stop offset="0" stop-color="#fda4af"/><stop offset=".6" stop-color="#e11d48"/><stop offset="1" stop-color="#881337"/></radialGradient>
+<linearGradient id="chrome" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#3f3f46"/><stop offset=".2" stop-color="#fafafa"/><stop offset=".45" stop-color="#a1a1aa"/><stop offset=".7" stop-color="#f4f4f5"/><stop offset="1" stop-color="#3f3f46"/></linearGradient>
+<linearGradient id="gold" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fef3c7"/><stop offset=".5" stop-color="#f59e0b"/><stop offset="1" stop-color="#b45309"/></linearGradient>
+<radialGradient id="glow"><stop offset="0" stop-color="#f0abfc" stop-opacity=".7"/><stop offset=".55" stop-color="#e879f9" stop-opacity=".2"/><stop offset="1" stop-color="#e879f9" stop-opacity="0"/></radialGradient>
+<g id="grooves" fill="none" stroke="#6e4b7a" stroke-opacity=".7" stroke-width="1.500"><circle r="120"/><circle r="132"/><circle r="144"/><circle r="156"/><circle r="168"/><circle r="180"/><circle r="192"/><circle r="204"/><circle r="216"/><circle r="228"/><circle r="240"/><circle r="252"/><circle r="264"/><circle r="276"/><circle r="288"/><circle r="300"/><circle r="312"/></g>
+<g id="n1"><ellipse rx="16" ry="11.500" transform="rotate(-20)"/><path d="M13-4V-64C14-50 34-46 34-26 30-38 22-42 17-44V-4Z"/></g>
+<path id="heart" d="M0 26C-40-4-34-34-14-34-6-34-2-28 0-22 2-28 6-34 14-34 34-34 40-4 0 26Z"/>
+</defs>
+<rect width="1600" height="1800" fill="url(#bg)"/>
+<g fill="none" stroke-linecap="round"><path d="M560 640C720 480 780 280 1000 240S1420 300 1660 120" stroke="#f472b6" stroke-width="44" opacity=".34"/><path d="M520 640C690 500 760 340 1000 300S1440 360 1660 190" stroke="#fbbf24" stroke-width="20" opacity=".48"/><path d="M600 660C760 520 830 400 1040 360S1460 420 1660 260" stroke="#c084fc" stroke-width="30" opacity=".42"/></g>
+<circle cx="1240" cy="310" r="430" fill="url(#glow)"/>
+<g transform="translate(1040 270) rotate(-16)">
+<circle r="330" fill="url(#vinyl)"/><use xlink:href="#grooves"/>
+<path d="M0 0 240-226A330 330 0 0 1 330-40Z" fill="url(#shine)"/><path d="M0 0-240 226A330 330 0 0 1-330 40Z" fill="url(#shine)" opacity=".7"/>
+<circle r="104" fill="url(#label)"/><circle r="104" fill="none" stroke="#fde68a" stroke-width="4"/><circle r="88" fill="none" stroke="#fff" stroke-opacity=".5" stroke-width="1.500"/>
+<path d="M-74-16A76 76 0 0 1 74-16" fill="none" stroke="#fff" stroke-opacity=".8" stroke-width="7" stroke-dasharray="11 7"/>
+<circle r="15" fill="#0a040c"/><circle r="15" fill="none" stroke="#fde68a" stroke-width="2.500"/>
+</g>
+<g transform="translate(1420 340)">
+<circle cy="-24" r="190" fill="url(#glow)"/>
+<path d="M-12 180H12L18 400H-18Z" fill="url(#chrome)"/><path d="M-70 400H70L86 450H-86Z" fill="url(#chrome)" stroke="#27272a" stroke-width="2"/>
+<path d="M-80-110C-80-200-50-230 0-230S80-200 80-110V40C80 110 50 142 0 142S-80 110-80 40Z" fill="url(#chrome)" stroke="#27272a" stroke-width="3"/>
+<g fill="#18181b"><rect x="-68" y="-182" width="136" height="9" rx="4"/><rect x="-74" y="-160" width="148" height="9" rx="4"/><rect x="-76" y="-138" width="152" height="9" rx="4"/><rect x="-76" y="-116" width="152" height="9" rx="4"/><rect x="-76" y="-94" width="152" height="9" rx="4"/><rect x="-76" y="-72" width="152" height="9" rx="4"/></g>
+<rect x="-84" y="-52" width="168" height="24" fill="url(#gold)"/>
+<g fill="#18181b"><rect x="-76" y="-14" width="152" height="9" rx="4"/><rect x="-76" y="8" width="152" height="9" rx="4"/><rect x="-76" y="30" width="152" height="9" rx="4"/><rect x="-74" y="52" width="148" height="9" rx="4"/><rect x="-68" y="74" width="136" height="9" rx="4"/><rect x="-54" y="96" width="108" height="9" rx="4"/></g>
+<path d="M-24 142H24L14 190H-14Z" fill="url(#chrome)"/>
+<path d="M-60-180C-74-140-74-40-62 40" fill="none" stroke="#fff" stroke-opacity=".6" stroke-width="7" stroke-linecap="round"/>
+</g>
+<g transform="translate(420 40)" fill="none" stroke="#fde68a" stroke-width="5" stroke-linecap="round" opacity=".85"><path d="M880 180C860 240 860 300 880 360"/><path d="M840 150C810 230 810 310 840 390"/><path d="M800 120C760 220 760 330 800 420"/></g>
+<g fill="#fde68a"><use xlink:href="#n1" x="720" y="170"/><use xlink:href="#n1" x="680" y="360" fill="#fbcfe8"/></g>
+<g fill="#f472b6"><use xlink:href="#heart" x="770" y="400"/><use xlink:href="#heart" x="860" y="80" fill="#e9d5ff"/></g>
+<rect width="1600" height="700" fill="url(#fade)"/>
+<rect y="640" width="1600" height="1160" fill="#2a0845"/>
+<g transform="translate(1320 1260)" opacity=".6"><circle r="520" fill="#1f0634"/><g transform="scale(1.67)"><use xlink:href="#grooves"/></g><circle r="170" fill="#831843"/><circle r="170" fill="none" stroke="#fbbf24" stroke-width="4"/></g>
+<path d="M-20 1100C300 960 560 1180 860 1060S1300 900 1640 1040" fill="none" stroke="#f472b6" stroke-width="26" opacity=".18"/>
+<path d="M-20 1140C300 1000 560 1220 860 1100S1300 940 1640 1080" fill="none" stroke="#fbbf24" stroke-width="12" opacity=".24"/>
+<rect y="640" width="1600" height="7" fill="url(#gold)"/>
+<g opacity=".5"><use xlink:href="#heart" x="120" y="960" fill="#f472b6"/><use xlink:href="#n1" x="480" y="1500" fill="#fde68a"/><use xlink:href="#heart" x="240" y="1680" fill="#e9d5ff"/></g>
+</svg>

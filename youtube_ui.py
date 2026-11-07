@@ -23,6 +23,8 @@ from __future__ import annotations
 import html
 from typing import Any
 
+from practice_ui_labels import level_label
+
 from youtube_links import (
     build_learning_search_url,
     build_original_song_search_url,
@@ -326,6 +328,7 @@ def render_practice_learning_video_panel(
                 "Level",
                 _opts_level,
                 key=level_widget_key,
+                format_func=level_label,
                 on_change=_on_level_change,
                 help="Syncs across the whole app.",
             )
