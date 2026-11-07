@@ -27,7 +27,7 @@ from backing_sampled_instrument import SampledInstrument
 
 DOUBLE_BASS_PACK = pathlib.Path(__file__).resolve().parent / "assets" / "instruments" / "double_bass"
 # Brings the recordings to the level the Jazz balance was set with.
-RECORDED_TRIM = 1.25
+RECORDED_TRIM = 0.85
 
 _VEL_BUCKETS = 3
 _FREE_SEC = 2.6
