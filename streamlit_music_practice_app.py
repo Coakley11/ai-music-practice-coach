@@ -491,6 +491,7 @@ from tuner_tone_ui import (
     tuner_key_prefix_for_song,
 )
 from practice_metronome import render_metronome_widget
+from practice_ui_labels import decorate_levels, level_label
 from practice_setup_controls import (
     DEFAULT_INSTRUMENT_OPTIONS,
     focus_options_for_instrument,
@@ -1165,7 +1166,7 @@ if not _APP_UI_LOADED:
                 on_change=kwargs.get("on_display_key_change"),
             )
         with c3:
-            st.selectbox("Level", ["Beginner", "Intermediate", "Advanced"], key="level")
+            st.selectbox("Level", ["Beginner", "Intermediate", "Advanced"], key="level", format_func=level_label)
         with c4:
             st.selectbox("Instrument", instrument_options, key="instrument")
         with c5:
@@ -3742,7 +3743,7 @@ def full_chord_markdown(
         key_text += f" (catalog {html.escape(str(song_data['key']))})"
     meta_bits = [
         key_text,
-        f"Level: {html.escape(str(level))}",
+        f"Level: {html.escape(level_label(level))}",
         f"Form: {total_bars} bars",
         f"Tempo: {int(bpm)} BPM",
         f"Time: {html.escape(str(time_signature))}",
@@ -3843,7 +3844,7 @@ def guitar_practice_text(focus, level):
 - **Muting:** practice dead-strum bars between chord changes to keep time moving.
 - **Transitions:** isolate the two hardest chord changes and loop each for 2 minutes.
 - **Comping:** use smaller 3- or 4-note voicings for clean rhythmic consistency.
-- **Level target:** {level} players should keep time steady before adding syncopation or extensions.
+- **Level target:** {level_label(level)} players should keep time steady before adding syncopation or extensions.
 """
     if focus == "Melody":
         return f"""
@@ -3860,7 +3861,7 @@ def guitar_practice_text(focus, level):
 - Use playable voicings from the chart; avoid full six-string shapes when a smaller grip sounds cleaner.
 - Mark common tones between chords and keep them ringing where possible.
 - Practice one section with metronome, then with the backing track.
-- For {level} level, prioritize clean time, clean tone, and intentional voicing choices.
+- For {level_label(level)} level, prioritize clean time, clean tone, and intentional voicing choices.
 """
 
 
@@ -8216,7 +8217,7 @@ def song_practice_plan(
 ### Conservatory Coach Plan {cycle}: {section_name}
 **Song:** {song}
 **Target section:** {section_name} — {bars} bars
-**Today:** {blocks['total']} minutes on **{instrument}**, **{level}**, **{focus}**
+**Today:** {blocks['total']} minutes on **{instrument}**, **{level_label(level)}**, **{focus}**
 **Chord focus:** **{first_chord} -> {second_chord}**
 **Loop:** **{chord_path}**
 **Section character:** {_section_character(section_name)}
@@ -8315,7 +8316,7 @@ def practice_text(level, instrument=None, sections=None, focus=None, *, groove_o
 
     if level == "Beginner":
         base = f"""
-### Beginner Practice Sheet
+### 🌱 Beginner Practice Sheet
 - Work on **{section_name}** only: **{chord_path}**.
 - Count aloud, name each chord before playing it, and stop if the pulse wobbles.
 - Coach target: {coach_line}
@@ -8328,7 +8329,7 @@ def practice_text(level, instrument=None, sections=None, focus=None, *, groove_o
 
     if level == "Intermediate":
         base = f"""
-### Intermediate Practice Sheet
+### 🚀 Intermediate Practice Sheet
 - Loop **{section_name}** with a metronome/backing track: **{chord_path}**.
 - First pass: accurate changes. Second pass: dynamic shape. Third pass: one creative variation.
 - Coach target: {coach_line}
@@ -8340,7 +8341,7 @@ def practice_text(level, instrument=None, sections=None, focus=None, *, groove_o
         return base
 
     base = f"""
-### Advanced Practice Sheet
+### 🧠 Advanced Practice Sheet
 - Analyze **{section_name}** as a performance problem, not a chord list: **{chord_path}**.
 - Run one clean take, one color/voicing take (extensions & voice leading), and one final musical take.
 - Name the 3rd and 7th of each chord, then add one upper color (9, 11, or 6) without changing the groove.
@@ -10697,7 +10698,7 @@ def _song_card_guidance_html(
     if not guide.get("harmony"):
         return (
             f'<dl class="ui-active-song-facts">'
-            f'<dt>Levels</dt><dd>{html.escape(details["levels_display"])}</dd>'
+            f'<dt>Levels</dt><dd>{html.escape(decorate_levels(details["levels_display"]))}</dd>'
             f'<dt>Instruments</dt><dd>{html.escape(details["instruments"])}</dd>'
             f'<dt>Practice focus</dt><dd>{html.escape(details["practice_focus"])}</dd>'
             f"</dl>"
@@ -10706,10 +10707,10 @@ def _song_card_guidance_html(
             + f'<p class="ui-active-song-blurb">{html.escape(str(details.get("why_practice", "")))}</p>'
             + (f'<ul class="ui-active-song-goals">{goals_html}</ul>' if goals_html else "")
         )
-    facts = [("Your setup", guide.get("setup") or "")]
+    facts = [("Your setup", decorate_levels(guide.get("setup") or ""))]
     if guide.get("form"):
         facts.append(("Form", guide["form"]))
-    facts.append(("Chart levels", details["levels_display"]))
+    facts.append(("Chart levels", decorate_levels(details["levels_display"])))
     facts.append(("Common instruments", details["instruments"]))
     dl = "".join(f"<dt>{html.escape(k)}</dt><dd>{html.escape(str(v))}</dd>" for k, v in facts if str(v).strip())
     blurbs = [
@@ -12922,7 +12923,7 @@ def _render_catalog_song_picker_block(
                             f"{emoji + ' ' if emoji else ''}{favorite_star}{'✓ ' if is_active else ''}"
                             f"{rec['title']} — {rec['artist']}",
                             key=f"browse_search_result::{pk}",
-                            help=f"{rec.get('genre', '')} · Levels: {levels}",
+                            help=f"{rec.get('genre', '')} · Levels: {decorate_levels(levels)}",
                             use_container_width=True,
                             disabled=is_active,
                             on_click=_apply_catalog_pick,
@@ -13211,6 +13212,7 @@ def _render_catalog_song_picker_block(
                         "Chart level available",
                         ["Any level", "Beginner", "Intermediate", "Advanced"],
                         key="song_picker_level_filter",
+                        format_func=level_label,
                     )
 
         if _library_shell is not None:
@@ -17207,6 +17209,7 @@ st.sidebar.selectbox(
     "Level",
     ["Beginner", "Intermediate", "Advanced"],
     key="level",
+    format_func=level_label,
     on_change=_on_global_level_change,
     help="Applies on every page — controls arrangement length and harmonic detail.",
 )
@@ -19037,7 +19040,7 @@ elif _studio_page == "practice":
                                 st.info(
                                     f"No scale suggestions matched the chords in "
                                     f"**{_active_section_display}** for **{instrument}** at "
-                                    f"**{level}** level. Try a different section or "
+                                    f"**{level_label(level)}** level. Try a different section or "
                                     "switch instruments in the sidebar."
                                 )
                             elif _scale_repeats > 0:
@@ -19447,7 +19450,7 @@ elif _studio_page == "practice":
                                 )
                             else:
                                 st.caption(
-                                    f"Song **{song}** · level **{_pm_melody.level}** · "
+                                    f"Song **{song}** · level **{level_label(_pm_melody.level)}** · "
                                     f"key **{_pm_melody.key_center}** · "
                                     f"{_pm_melody.tempo_bpm:g} BPM · "
                                     f"alternative #{_pm_melody.alt_index + 1} — composed "
@@ -19760,7 +19763,7 @@ elif _studio_page == "practice":
                                         display_key=_practice_chart_key,
                                         current_section=_chart_current,
                                         meta_bits=[
-                                            f"Level: {level}",
+                                            f"Level: {level_label(level)}",
                                             f"Time: {_time_sig}",
                                         ],
                                         header_note=_ug_header,
@@ -25254,7 +25257,7 @@ elif _studio_page == "backing":
             )
             st.caption(
                 f"Song **{song}** · section **{_pmb_scope_label}** · "
-                f"level **{_pmb_melody.level}** · "
+                f"level **{level_label(_pmb_melody.level)}** · "
                 f"key **{_pmb_melody.key_center}** · "
                 f"{_pmb_melody.tempo_bpm:g} BPM · "
                 f"alternative #{_pmb_melody.alt_index + 1} — composed for this "

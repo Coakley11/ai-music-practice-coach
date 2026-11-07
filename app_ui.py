@@ -7,6 +7,7 @@ import html
 import json
 from typing import Any, Optional
 
+from practice_ui_labels import decorate_levels, level_label
 from music_feature_icons import (
     FEATURE_ICONS,
     feature_label,
@@ -9252,7 +9253,7 @@ def catalog_song_card_html(
         classes.append("active")
     bpm_val = int(bpm) if bpm else 100
     level_pill = (
-        f'<span class="ui-song-pill level">{html.escape(level)}</span>'
+        f'<span class="ui-song-pill level">{html.escape(decorate_levels(level))}</span>'
         if str(level or "").strip()
         else ""
     )
@@ -9610,7 +9611,7 @@ def practice_setup_summary_text(
     """One-line session summary for the practice setup badge."""
     parts = [
         (instrument or "Piano").strip(),
-        (level or "Intermediate").strip(),
+        level_label((level or "Intermediate").strip()),
         (focus or "General").strip(),
         (groove or "Auto").strip(),
         f"{max(10, int(minutes or 30))} min",
@@ -10131,7 +10132,7 @@ def render_creative_studio_panel_header(
         f"""
 <p class="ui-creative-studio-sub ui-creative-studio-sub--compact" data-creative-panel-ui="{CREATIVE_STUDIO_UI_VERSION}">
   Working from <strong>{html.escape(song_title or "your song")}</strong>
-  · {html.escape(instrument or "Instrument")} · {html.escape(level or "Intermediate")}
+  · {html.escape(instrument or "Instrument")} · {html.escape(level_label(level or "Intermediate"))}
 </p>
         """,
         unsafe_allow_html=True,
@@ -11781,7 +11782,7 @@ def render_global_studio_bar(
             on_change=on_display_key_change,
         )
     with row1[2]:
-        st.selectbox("Level", ["Beginner", "Intermediate", "Advanced"], key="level")
+        st.selectbox("Level", ["Beginner", "Intermediate", "Advanced"], key="level", format_func=level_label)
     with row1[3]:
         st.selectbox("Instrument", instrument_options, key="instrument")
     with row1[4]:

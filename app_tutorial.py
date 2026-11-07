@@ -108,7 +108,7 @@ TUTORIAL_STEPS: list[dict[str, Any]] = [
             {
                 "icon": FEATURE_ICONS["level"],
                 "title": "How challenging should it be?",
-                "body": "**Level** — Beginner keeps things simpler. Intermediate adds variety. Advanced can feel more demanding.",
+                "body": "**Level** — 🌱 Beginner keeps things simpler. 🚀 Intermediate adds variety. 🧠 Advanced can feel more demanding.",
                 "tone": "picker",
             },
             {

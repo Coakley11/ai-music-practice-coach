@@ -1075,7 +1075,7 @@ def _ii_v_i_coach(key_name: str, level: str, instrument: str) -> str:
         "- **I:** major / major pentatonic — rest on root or 3rd.",
     ]
     if level == "Beginner":
-        lines.append("- **Beginner:** practice only the *roots* of ii → V → I on one string first.")
+        lines.append("- **🌱 Beginner:** practice only the *roots* of ii → V → I on one string first.")
     if "guitar" in (instrument or "").lower():
         lines.append(
             "- **Guitar:** shell grips (root on bass string, b7 on top for V); "
