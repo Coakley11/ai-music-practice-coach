@@ -52,7 +52,15 @@ def _capture():
         tones.append((float(start), float(dur), int(midi), "piano"))
         return real_piano(bus, sr, start, dur, midi, vol, vel)
 
-    with mock.patch.object(ba, "_add_tone", tone), mock.patch.object(ba._kv, "add_piano_note", piano):
+    real_upright = ba._bv.add_upright_note
+
+    def upright(bus, sr, start, held, midi, gain, velocity, **kw):
+        # The Jazz upright (modelled or recorded) plays the bass line through its own voice: hear it as bass,
+        # so the same root-on-the-bar and approach rules judge the line the listener actually hears.
+        tones.append((float(start), float(held), int(midi), "bass"))
+        return real_upright(bus, sr, start, held, midi, gain, velocity, **kw)
+
+    with mock.patch.object(ba, "_add_tone", tone), mock.patch.object(ba._kv, "add_piano_note", piano),             mock.patch.object(ba._bv, "add_upright_note", upright):
         yield tones
 
 
