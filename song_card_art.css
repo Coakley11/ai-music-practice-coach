@@ -563,3 +563,18 @@
   .st-key-backing_art_card .st-key-backing_card_key_row .ui-skp-locked span{font-size:32px!important}
   .st-key-backing_art_card .st-key-backing_card_key_row [data-testid="stSelectbox"] input[role="combobox"]{font-size:26px!important}
 }
+/* Streamlit's markdown heading and paragraph styles would shrink the title and artist; the card keeps its own. */
+.st-key-backing_art_card h3.sc-title{font-family:var(--title);font-size:var(--title-size);letter-spacing:var(--title-tr);line-height:1.02;color:var(--title-ink,#fff);
+  font-weight:var(--title-weight,800);font-style:var(--title-style,normal);margin:0;padding:0;text-wrap:balance}
+.st-key-backing_art_card p.sc-artist{margin:6px 0 0;padding:0;font-size:20px;font-weight:600;color:#fff;line-height:1.3}
+.st-key-backing_art_card p.sc-flourish{margin:2px 0 0;padding:0}
+@container card (max-width:760px){.st-key-backing_art_card h3.sc-title{font-size:calc(var(--title-size)*.82)}}
+@container card (max-width:560px){.st-key-backing_art_card h3.sc-title{font-size:calc(var(--title-size)*.62)}.st-key-backing_art_card p.sc-artist{font-size:17px}}
+/* The artwork covers the whole hero (a viewBox fragment's "slice" is not honoured on an <img>). */
+.st-key-backing_art_card img.sc-heroart{object-fit:cover;object-position:right top}
+/* BPM reads at a glance, in the card's own lettering. */
+.st-key-backing_art_card .st-key-backing_art_play_row .ui-backing-inline-label{color:var(--ink)!important;font:var(--label-weight,700) 16px var(--label)!important;letter-spacing:.08em}
+.st-key-backing_art_card .st-key-backing_art_play_row [data-testid="stThumbValue"]{font-family:var(--key)!important;font-size:22px!important;color:var(--accent-text,var(--accent))!important}
+/* Room under "Tap to change". */
+.st-key-backing_art_card .st-key-backing_card_key_row [data-testid="stHorizontalBlock"]>[data-testid="stColumn"]{padding-bottom:20px!important}
+.st-key-backing_art_card .st-key-backing_card_key_row .ui-skp-cap{margin-top:8px!important}
