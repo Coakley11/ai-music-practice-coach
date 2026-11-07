@@ -1600,39 +1600,9 @@ _ROCK_GUITAR_BALANCE = 0.8
 _ROCK_KEYS_BEHIND_GUITAR = 0.35
 
 
-def _power_chord_fifth(chord: str) -> int:
-    """The chord's own fifth above its root, in semitones: 7 unless it is written flat or sharp."""
-    notes = chord_notes(chord)
-    for n in notes[1:]:
-        if (n - notes[0]) % 12 in (6, 7, 8) and len(notes) > 2:
-            fifth = (notes[2] - notes[0]) % 12
-            return fifth if fifth in (6, 7, 8) else 7
-    return 7
-
-
-def _add_rock_guitar_bar(part, chord, next_chord, role, texture, event, is_hit, section_edge, pulses_per_bar, bar_start, pulse, bar_seconds, intensity, idx, loop_seed):
-    """One bar of the Rock guitar part, in the tone its section calls for."""
-    quiet = texture is not None and (texture.drums in ("hats", "minimal") or texture.comp == "sustain")
-    tone = _rg.section_tone(role, quiet)
-    if texture is not None and texture.comp == "full":
-        tone = "overdrive"
-    root_of = lambda c: chord_notes(c)[0]
-    if is_hit:
-        strokes = [_rg.Stroke(0.0, 1.0, _rg.power_chord(root_of(chord), _power_chord_fifth(chord), wide=True), 1.0)]
-    else:
-        strokes = _rg.rock_guitar_bar(
-            _sounding_segments(chord, pulses_per_bar),
-            pulses_per_bar,
-            tone=tone,
-            fifth_of=_power_chord_fifth,
-            root_of=root_of,
-            next_chord=_bossa_next_head(next_chord),
-            phrase_end=int(event.get("bar_in_section", 0) or 0) % 4 == 3,
-            section_end=bool(section_edge),
-            seed=part.seed,
-            bar_index=idx + 1009 * loop_seed,
-        )
-    part.play_bar(strokes, bar_start, pulse, tone, bar_seconds, double=tone == "overdrive", level=float(np.clip(intensity, 0.5, 1.2)))
+def chord_notes_for_guitar(chord: str) -> list[int]:
+    """The chord as written, with any bar-split or hit marking already resolved by the caller."""
+    return list(chord_notes(chord))
 
 
 # Pre-mix bus levels of the last render (diagnostics / balance tests).
@@ -1952,7 +1922,11 @@ def synthesize_chords_to_numpy(
     audio = np.zeros(int(sr * bar * len(chord_list)) + sr)
     keys_bus = np.zeros_like(audio)
     guitar_part = (
-        _rg.GuitarPart(len(audio), sr, str(song_groove_seed(song_title, song_artist) if song_title else 0))
+        _rg.start_part(
+            len(audio), sr,
+            [str(e.get("chord") or "") for e in chord_list if not is_no_chord_token(str(e.get("chord") or ""))],
+            chord_notes_for_guitar, bpm, str(song_groove_seed(song_title, song_artist) if song_title else 0),
+        )
         if style == "Rock groove" and _rg.enabled()
         else None
     )
@@ -2134,9 +2108,10 @@ def synthesize_chords_to_numpy(
             bass_hits = bass_hits[: max(2, len(bass_hits) - 1)]
         comp_wave = _comp_wave_for_style(style, role, song_profile)
         if guitar_part is not None and not bar_is_no_chord:
-            _add_rock_guitar_bar(
-                guitar_part, sounding_chord if bar_is_hit else chord, next_chord, role, section_tex, event,
-                bar_is_hit, section_edge, pulses_per_bar, bar_start, pulse, bar, intensity, idx, loop_seed,
+            _rg.add_bar(
+                guitar_part, sounding_chord if bar_is_hit else chord, _bossa_next_head(next_chord), role, section_tex,
+                int(event.get("bar_in_section", 0) or 0), bar_is_hit, section_edge, bar_start, pulse, bar, intensity,
+                idx + 1009 * loop_seed, segments=_sounding_segments(chord, pulses_per_bar), chord_notes=chord_notes_for_guitar,
             )
 
         def _pulse_chord(b_pos: float) -> str:
@@ -2916,24 +2891,27 @@ def synthesize_chords_to_numpy(
                 * float(song_profile.get("strings_level", 1.0))
             )
             strings_bus *= float(np.clip(_s_target * _rhythm_rms / _strings_rms, 0.05, 20.0))
+    guitar_bus = None
     if guitar_part is not None:
-        # The guitars lead the band and the piano moves behind them.
+        # The guitar has its own layer; the piano moves behind it.
         guitar_bus = guitar_part.finish()
         _guitar_rms = float(np.sqrt(np.mean(guitar_bus ** 2)))
         if _rhythm_rms > 1e-6 and _guitar_rms > 1e-6:
             keys_bus *= _ROCK_KEYS_BEHIND_GUITAR
-            keys_bus += guitar_bus * float(np.clip(_ROCK_GUITAR_BALANCE * _rhythm_rms / _guitar_rms, 0.05, 20.0))
+            guitar_bus = guitar_bus * float(np.clip(_ROCK_GUITAR_BALANCE * _rhythm_rms / _guitar_rms, 0.05, 20.0))
     LAST_MIX_STATS.clear()
     LAST_MIX_STATS.update(
         rhythm_rms=float(np.sqrt(np.mean(audio ** 2))),
         keys_rms=float(np.sqrt(np.mean(keys_bus ** 2))),
         strings_rms=float(np.sqrt(np.mean(strings_bus ** 2))) if strings_bus is not None else 0.0,
     )
-    want = {"rhythm", "keys", "strings"} if layers is None else set(layers)
+    want = {"rhythm", "keys", "strings", "guitar"} if layers is None else set(layers)
     if "rhythm" not in want:
         audio[:] = 0.0
     if "keys" in want:
         audio += keys_bus
+    if guitar_bus is not None and "guitar" in want:
+        audio += guitar_bus
     if strings_bus is not None and "strings" in want:
         audio += strings_bus
     audio = np.tanh(audio)
