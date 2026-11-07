@@ -10002,6 +10002,14 @@ def _stop_backing_playback(*, karaoke_index_before: int | None = None) -> bool:
     st.session_state[BACKING_AUTOPLAY] = False
     st.session_state[BACKING_TRANSPORT_STATUS] = "stopped"
     st.session_state["_backing_transport_user_stopped"] = True
+    # An explicit Stop ends Key Cycling's start-up phase: a genuine Off after it must not be swallowed by
+    # the stray-Off guard (it stayed armed when Stop came before the player's play_started proof).
+    try:
+        from backing_key_cycle import disarm_spurious_off_on_user_stop
+
+        disarm_spurious_off_on_user_stop(st.session_state)
+    except Exception:
+        pass
     st.session_state[BACKING_PLAY_FEEDBACK_KEY] = "Playback stopped"
     st.session_state.pop("playback_start_time", None)
     # A render still in flight belongs to the stopped session: finishing later
