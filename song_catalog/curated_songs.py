@@ -6167,11 +6167,13 @@ def _imagine_chart_pack() -> dict[str, Any]:
 
 
 def _wonderwall_chart_pack() -> dict[str, Any]:
-    """Wonderwall — Oasis (Em shapes / capo 2, F# minor concert, 4/4).
+    """Wonderwall — Oasis (stored in the recording's concert key, F# minor; guitarists play Em shapes with a capo on fret 2; 4/4).
 
-    Britpop acoustic anthem on **Em7 · G · Dsus4 · A7sus4** with **Cadd9**
-    and **G/F#** in bridge/chorus. Preserve all sus/add9 voicings exactly.
+    Britpop acoustic anthem on **F#m7 · A · Esus4 · B7sus4** with **Dadd9**
+    and **A/G#** in bridge/chorus (the Em7 · G · Dsus4 · A7sus4 capo-2 shapes,
+    up a whole step). Preserve all sus/add9 voicings exactly.
     """
+    from music_theory import transpose_sections_dict
     loop = ["Em7", "G", "Dsus4", "A7sus4"]
     intro = list(loop) * 4
 
@@ -6222,18 +6224,21 @@ def _wonderwall_chart_pack() -> dict[str, Any]:
     beginner = {name: list(chords) for name, chords in intermediate.items()}
     advanced = {name: list(chords) for name, chords in intermediate.items()}
 
+    intermediate = transpose_sections_dict(intermediate, "E", "F#")
+    beginner = transpose_sections_dict(beginner, "E", "F#")
+    advanced = transpose_sections_dict(advanced, "E", "F#")
     section_order = list(intermediate.keys())
     scale_hints = {
-        "Em7": ["E Minor Pentatonic", "E Natural Minor"],
-        "G": ["G Major"],
-        "Dsus4": ["D Major"],
-        "A7sus4": ["A Mixolydian"],
-        "Cadd9": ["C Major"],
-        "G/F#": ["G Major"],
+        "F#m7": ["F# Minor Pentatonic", "F# Natural Minor"],
+        "A": ["A Major"],
+        "Esus4": ["E Major"],
+        "B7sus4": ["B Mixolydian"],
+        "Dadd9": ["D Major"],
+        "A/G#": ["A Major"],
     }
 
     return {
-        "key": "Em",
+        "key": "F#m",
         "sections": intermediate,
         "chart_versions": _levels(
             beginner=beginner,
@@ -6243,50 +6248,51 @@ def _wonderwall_chart_pack() -> dict[str, Any]:
         "chart_status": "practice_level_verified",
         "section_order": section_order,
         "composer": "Noel Gallagher",
+        # Concert-key (sounding) voicings; the Em-shape / capo-2 view comes from the capo mode.
         "guitar_tabs": {
-            "Em7": "022030",
-            "G": "320003",
-            "Dsus4": "xx0233",
-            "A7sus4": "x02030",
-            "Cadd9": "x32030",
-            "G/F#": "2x0033",
+            "F#m7": "242222",
+            "A": "x02220",
+            "Esus4": "002200",
+            "B7sus4": "x24252",
+            "Dadd9": "xx0230",
         },
         "lyric_cues": {
             "Intro": [
-                "Iconic Em7 · G · Dsus4 · A7sus4 vamp — let chords ring",
+                "Iconic F#m7 · A · Esus4 · B7sus4 vamp — let chords ring",
                 "(breath) before 'Today is gonna be the day…'",
             ],
             "Verse 1": [
                 "Steady acoustic strumming — intimate, singalong delivery",
-                "Land Cadd9 · Dsus4 · A7sus4 tag at end of verse",
+                "Land Dadd9 · Esus4 · B7sus4 tag at end of verse",
             ],
             "Verse 2": ["Second verse — same groove, slightly fuller feel"],
             "Chorus Prep / Bridge": [
-                "Gradual build — Cadd9 · Dsus4 · Em7 lifts",
-                "G · G/F# · Em7 walkdown is the signature Oasis moment",
+                "Gradual build — Dadd9 · Esus4 · F#m7 lifts",
+                "A · A/G# · F#m7 walkdown is the signature Oasis moment",
             ],
             "Chorus": [
                 "'Maybe you're gonna be the one…' — open vowels, full strum",
                 "(breath) before title hook 'Wonderwall'",
                 "Fuller drums and wider guitars",
             ],
-            "Verse 3": ["Third verse — four full loops, no Cadd9 tag"],
+            "Verse 3": ["Third verse — four full loops, no Dadd9 tag"],
             "Bridge 2": ["Second bridge — stronger bass, build to final chorus"],
             "Final Chorus": [
                 "Biggest energy — strongest singalong pass",
                 "Repeat feel; belt the title hook with ringing open chords",
             ],
             "Outro": [
-                "Cadd9 · Em7 · G · Em7 repeat and fade",
+                "Dadd9 · F#m7 · A · F#m7 repeat and fade",
                 "Gradually release strumming intensity",
             ],
         },
         "extensions": _ext(
             arrangement_notes=(
-                "**F# minor** concert; chart in **Em shapes** (capo **2**). "
+                "**F# minor** concert (the recording's key); guitarists play **Em shapes** "
+                "with a capo on fret **2**. "
                 "**4/4**, ~88 BPM britpop / acoustic rock. Core vamp "
-                "**Em7 · G · Dsus4 · A7sus4** — preserve **Em7**, **Dsus4**, "
-                "**A7sus4**, **Cadd9**, and **G/F#** exactly (no plain D or A7 "
+                "**F#m7 · A · Esus4 · B7sus4** — preserve **F#m7**, **Esus4**, "
+                "**B7sus4**, **Dadd9**, and **A/G#** exactly (no plain E or B7 "
                 "substitutions). Verse: steady acoustic strum; bridge: gradual "
                 "build with G/F# bass; chorus: fuller drums and guitars; outro "
                 "repeats and fades. **Not** piano ballad or jazz reharm. "
@@ -6295,7 +6301,7 @@ def _wonderwall_chart_pack() -> dict[str, Any]:
             default_bpm=88,
             default_groove="Pop groove",
             time_signature="4/4",
-            capo_note="Capo 2 (Em-shape chart) · concert key F# minor",
+            capo_note="Capo 2 (Em shapes) · concert key F# minor",
             strumming_pattern=(
                 "Typical feel: down-strokes on beats 1–3, lighter ups on 2 & 4; "
                 "or D · DU · UDU per bar — keep open strings ringing."
@@ -6312,20 +6318,20 @@ def _wonderwall_chart_pack() -> dict[str, Any]:
             vocal_range_notes=(
                 "Verse sits in comfortable chest/mix; chorus opens slightly on "
                 "the title hook. Plan breaths before each chorus and the bridge "
-                "G/F# walk — don't rush the suspended chords."
+                "A/G# walk — don't rush the suspended chords."
             ),
             vocal_harmony_hints=(
                 "Britpop singalong: conversational verses, open vowels on "
-                "'Wonderwall', and let Dsus4 · A7sus4 ring between phrases."
+                "'Wonderwall', and let Esus4 · B7sus4 ring between phrases."
             ),
             harmonic_analysis={
                 "progression_summary": (
-                    "Em-centric britpop loop with sus/add9 colors; bridge "
-                    "Cadd9–Dsus4–Em7 and G/F# bass walk"
+                    "F#m-centric britpop loop with sus/add9 colors (Em-shape chart with capo 2); bridge "
+                    "Dadd9–Esus4–F#m7 and A/G# bass walk"
                 ),
                 "improvisation_notes": (
-                    "E minor pentatonic over the main loop; C major over "
-                    "Cadd9 bridge figures; keep fills sparse and ringing."
+                    "F# minor pentatonic over the main loop; D major over "
+                    "Dadd9 bridge figures; keep fills sparse and ringing."
                 ),
                 "scale_suggestions": scale_hints,
             },
@@ -8863,18 +8869,18 @@ def _requested_verified_song_records() -> list[dict[str, Any]]:
             "Wonderwall",
             "Oasis",
             "Rock",
-            "Em",
+            "F#m",
             {
-                "Intro": ["Em7", "G", "Dsus4", "A7sus4"],
-                "Verse 1": ["Em7", "G", "Dsus4", "A7sus4"],
+                "Intro": ["F#m7", "A", "Esus4", "B7sus4"],
+                "Verse 1": ["F#m7", "A", "Esus4", "B7sus4"],
             },
             {
-                "Intro": ["Em7", "G", "Dsus4", "A7sus4"],
-                "Verse 1": ["Em7", "G", "Dsus4", "A7sus4"],
+                "Intro": ["F#m7", "A", "Esus4", "B7sus4"],
+                "Verse 1": ["F#m7", "A", "Esus4", "B7sus4"],
             },
             composer="Noel Gallagher",
-            lyric_cues={"Intro": ["Em7 · G · Dsus4 · A7sus4 britpop vamp"]},
-            notes="Em-shape chart (capo 2 = F#m concert); full form in override.",
+            lyric_cues={"Intro": ["F#m7 · A · Esus4 · B7sus4 britpop vamp"]},
+            notes="F#m concert (Em shapes with capo 2); full form in override.",
             chart_status=status,
             default_bpm=88,
             default_groove="Pop groove",
