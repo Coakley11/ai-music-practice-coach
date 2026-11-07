@@ -118,6 +118,7 @@ def test_plain_chords_can_stay_plain():
 
 def test_power_chords_get_no_third_and_no_colours():
     h = pn.harmony_of("E5", ba.chord_notes, ba.bass_note)
+    assert set(h.written) == {4, 11}
     assert h.extensions == ()
     assert h.third is None
 
@@ -257,6 +258,23 @@ def test_a_song_plays_the_same_every_time():
     assert play("Jazz swing", LOOP, seed="one") == play("Jazz swing", LOOP, seed="one")
 
 
+@pytest.mark.parametrize("style", ["Jazz swing", "Blues groove", "Pop groove", "Ballad", "Rock groove", "Funk groove"])
+def test_most_bars_are_played_differently(style):
+    chart = ["Am7", "D7", "Gmaj7", "Cmaj7"] * 8
+    root = {c: ba.chord_notes(c)[0] for c in chart}
+    bars = play(style, chart, role="chorus")
+    played = [tuple((h.beat, tuple(n - root[c] for n in h.notes)) for h in b) for c, b in zip(chart, bars)]
+    assert len(set(played)) >= 0.7 * len(played)
+
+
+@pytest.mark.parametrize("style", ["Jazz swing", "Blues groove", "Pop groove"])
+def test_a_phrase_is_still_one_idea(style):
+    """Variety, not noise: neighbouring bars usually share some of their rhythm."""
+    bars = [{round(h.beat, 2) for h in b} for b in play(style, LOOP * 2)]
+    shared = [len(a & b) / max(1, len(a | b)) for a, b in zip(bars, bars[1:]) if a and b]
+    assert np.mean(shared) > 0.18
+
+
 def test_space_is_left_in_jazz():
     empties = sum(len(b) <= 1 for b in play("Jazz swing", LOOP * 2))
     assert empties >= 3
@@ -334,25 +352,65 @@ def test_a_beginner_hears_simpler_playing():
 # --- Leaving room. ----------------------------------------------------------------------------------------
 
 
+def register_of(style):
+    return pn.REGISTERS.get(style, pn._DEFAULT_REGISTER)
+
+
 @pytest.mark.parametrize("style", STYLES)
-def test_the_melodys_space_stays_clear(style):
-    for role in ("verse", "chorus"):
+def test_under_a_melody_each_style_keeps_to_its_ceiling(style):
+    for role in ("verse", "chorus", "bridge"):
         for hits in play(style, LOOP, role=role):
             for h in hits:
-                assert max(h.notes) <= pn.TOP_NOTE
+                assert max(h.notes) <= register_of(style)[1], (style, role, h)
 
 
-@pytest.mark.parametrize("style", ["Jazz swing", "Rock groove", "Funk groove", "Bossa nova"])
+@pytest.mark.parametrize("style", STYLES)
+def test_with_no_melody_the_hands_may_rise_but_stay_on_the_instrument(style):
+    tops = [max(h.notes) for hits in play(style, LOOP, role="intro") for h in hits]
+    assert max(tops) <= register_of(style)[2]
+    assert register_of(style)[2] > register_of(style)[1]
+
+
+def test_styles_live_in_different_places():
+    jazz, bossa, ballad = register_of("Jazz swing"), register_of("Bossa nova"), register_of("Ballad")
+    assert bossa[1] < jazz[1] < ballad[1]
+    low = lambda s: min(min(h.notes) for hits in play(s, ["C", "Am", "F", "G"] * 12) for h in hits)
+    assert low("Ballad") < low("Pop groove") < low("Jazz swing")
+
+
+@pytest.mark.parametrize("style", ["Jazz swing", "Rock groove", "Funk groove", "Bossa nova", "Soul"])
 def test_the_bass_range_stays_clear(style):
     for hits in play(style, LOOP):
         for h in hits:
-            assert min(h.notes) >= pn.LOW_NOTE - 5
+            assert min(h.notes) >= register_of(style)[0], (style, h)
+
+
+@pytest.mark.parametrize("style", STYLES)
+def test_chords_are_not_muddy_low_down(style):
+    total = bad = 0
+    for hits in play(style, ["C", "Am7", "F", "G7", "Dm7", "Bb", "Eb", "Ab"] * 6):
+        for h in hits:
+            if h.kind == "chord" and len(h.notes) >= 2:
+                total += 1
+                bad += pn.muddy(list(h.notes)) > 0
+    assert total and bad <= 0.05 * total, (bad, total)
+
+
+def test_songs_sit_in_slightly_different_places():
+    centres = {pn.Pianist("Pop groove", f"s{n}").song_centre for n in range(40)}
+    assert len(centres) >= 3
+
+
+def test_a_big_left_hand_in_a_ballad_chorus():
+    bars = play("Ballad", ["C", "Am", "F", "G"] * 8, role="chorus")
+    assert any(h.kind == "bass" and len(h.notes) == 2 and h.notes[1] - h.notes[0] == 12 for b in bars for h in b)
 
 
 def test_with_a_guitar_the_piano_plays_above_it():
     plain = [np.mean(h.notes) for b in play("Rock groove", ["E5", "A5"] * 16) for h in b if h.kind == "chord"]
     above = [np.mean(h.notes) for b in play("Rock groove", ["E5", "A5"] * 16, has_guitar=True) for h in b if h.kind == "chord"]
     assert np.mean(above) > np.mean(plain)
+    assert min(min(h.notes) for b in play("Rock groove", ["E5", "A5"] * 16, has_guitar=True) for h in b if h.kind == "chord") >= pn.GUITAR_FLOOR
 
 
 # --- In the engine. ---------------------------------------------------------------------------------------

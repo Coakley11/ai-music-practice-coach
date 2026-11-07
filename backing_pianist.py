@@ -25,8 +25,27 @@ from backing_sampled_instrument import SampledInstrument
 
 PIANO_PACK = pathlib.Path(__file__).resolve().parent / "assets" / "instruments" / "grand_piano"
 FULL_ROLES = frozenset({"chorus", "refrain", "interlude", "solo", "outro"})
-LOW_NOTE = 48  # C3: the left hand stays above the bass line
-TOP_NOTE = 76  # E5: above this is the melody's space
+# Where each style's hands live: (right hand's floor, ceiling under a melody, ceiling when no melody plays).
+REGISTERS = {
+    "Jazz swing": (52, 74, 79),  # above the walking bass, under the soloist
+    "Blues groove": (50, 76, 84),  # figures can sing up high between phrases
+    "Pop groove": (48, 76, 81),
+    "Pop": (48, 76, 81),
+    "Rock groove": (52, 77, 84),
+    "Funk groove": (55, 77, 82),
+    "Soul": (52, 76, 81),
+    "Ballad": (48, 77, 84),  # a wide, open instrument
+    "Jewish ballad": (48, 77, 84),
+    "Bossa nova": (52, 72, 76),  # close and understated
+}
+_DEFAULT_REGISTER = (48, 76, 81)
+# Where the left hand's bass notes may go. The ballad pianist carries the low end himself.
+LEFT_HAND = {"Ballad": (36, 50), "Jewish ballad": (36, 50), "Pop groove": (43, 55), "Pop": (43, 55), "Blues groove": (45, 55)}
+_DEFAULT_LEFT_HAND = (48, 55)
+# Below these notes, an interval this small turns to mud (the arranger's low-interval limits).
+LOW_INTERVAL_LIMITS = {1: 58, 2: 55, 3: 50, 4: 47, 5: 45, 6: 45, 7: 36}
+GUITAR_FLOOR = 60  # the guitar has the middle: the piano answers above it
+NO_MELODY_ROLES = frozenset({"intro", "interlude", "solo", "outro"})
 
 
 def mode() -> str:
@@ -112,6 +131,16 @@ def stack(pcs: list[int], bottom: int) -> list[int]:
         at += 1 + ((pc - at - 1) % 12)
         out.append(at)
     return out
+
+
+def muddy(notes: list[int]) -> int:
+    """How many neighbouring notes sit closer than the low-interval limits allow."""
+    bad = 0
+    for a, b in zip(notes, notes[1:]):
+        limit = LOW_INTERVAL_LIMITS.get(b - a)
+        if limit is not None and a < limit:
+            bad += 1
+    return bad
 
 
 def voicing_choices(h: Harmony, kind: str) -> list[list[int]]:
@@ -226,6 +255,21 @@ HANDS: dict[str, StyleHands] = {
     "Ballad": StyleHands(_BALLAD, "open", 60, True, (4, 2, 3), 0.03, 0.0, 0.26, 0.04, 0.54, (0, 1, 3, 4), True, 0.22),
     "Bossa nova": StyleHands(_BOSSA, "rootless", 62, True, (2, 4, 3), 0.14, 0.05, 0.08, 0.08, 0.50, (0, 1, 2, 3)),
 }
+# How a phrase stays alive: (chance of a contrasting bar, of moving one hit by an eighth, of an answering hit).
+_LIFE = {
+    "Jazz swing": (0.20, 0.42, 0.22),
+    "Blues groove": (0.18, 0.28, 0.32),
+    "Pop groove": (0.26, 0.22, 0.22),
+    "Pop": (0.26, 0.22, 0.22),
+    "Rock groove": (0.20, 0.26, 0.18),
+    "Funk groove": (0.20, 0.30, 0.16),
+    "Soul": (0.22, 0.34, 0.24),
+    "Ballad": (0.24, 0.10, 0.20),
+    "Jewish ballad": (0.24, 0.10, 0.20),
+    "Bossa nova": (0.14, 0.18, 0.10),
+}
+# Broken-chord contours: rising, rocking, falling, wide.
+_CONTOURS = ((0, 1, 2, 3), (0, 2, 1, 3), (0, 3, 2, 1), (0, 2, 3, 1))
 HANDS["Pop"] = HANDS["Pop groove"]
 HANDS["Soul"] = StyleHands(_SOUL, "rootless", 62, True, (2, 3, 4), 0.12, 0.04, 0.2, 0.15, 0.60, (0, 1, 2))
 HANDS["Jewish ballad"] = HANDS["Ballad"]
@@ -262,8 +306,15 @@ class Pianist:
         self.arc = 0.0
         self.register = 0
         self.filled_last = False
-        self.pushed = False
-        self._choice_n = 0
+        self.pool: list[int] = []
+        self.floor, self.with_melody, self.without_melody = REGISTERS.get(style, _DEFAULT_REGISTER)
+        if has_guitar:
+            self.floor = max(self.floor, GUITAR_FLOOR)
+        self.ceiling = self.with_melody
+        self.full = False
+        # A song's own centre: one pianist likes to sit a little higher or lower than another.
+        self.song_centre = int(round((_roll(self.seed, "centre") - 0.5) * 4.0))
+        self.contour = _CONTOURS[0]
 
     def _h(self, chord: str) -> Harmony:
         return harmony_of(chord, self.chord_notes, self.bass_note, colour=self.hands.colour and not self.simple)
@@ -275,6 +326,8 @@ class Pianist:
         self.phrase_left = lengths[int(r * len(lengths)) % len(lengths)]
         pool = list(range(len(self.hands.ideas))) if role_full else list(self.hands.sparse_ideas)
         pool = [p for p in pool if p < len(self.hands.ideas)]
+        self.pool = pool
+        self.contour = _CONTOURS[int(_roll(self.seed, "contour", self.phrase_no) * len(_CONTOURS)) % len(_CONTOURS)]
         fresh = [p for p in pool if p not in self.recent[-2:]] or pool
         self.idea = fresh[int(_roll(self.seed, "idea", self.phrase_no) * len(fresh)) % len(fresh)]
         self.recent.append(self.idea)
@@ -283,14 +336,36 @@ class Pianist:
         step = _roll(self.seed, "reg", self.phrase_no)
         self.register = (-2 if step < 0.28 else 2 if step > 0.72 else 0) + (2 if role_full else 0)
 
+    def _vary(self, cells: list, tag) -> list:
+        """A person does not play one bar twice: sometimes a contrasting bar, a hit moved by an eighth, an answer."""
+        change, displace, answer = _LIFE.get(self.style, (0.2, 0.25, 0.2))
+        if self.pool and _roll(self.seed, "bbar", tag) < change:
+            others = [p for p in self.pool if p != self.idea] or self.pool
+            cells = list(self.hands.ideas[others[int(_roll(self.seed, "bpick", tag) * len(others)) % len(others)]])
+        if _roll(self.seed, "move", tag) < displace:
+            movable = [i for i, c in enumerate(cells) if c[2] in {"C", "S", "T"} and c[0] > 0.0]
+            if movable:
+                i = movable[int(_roll(self.seed, "movei", tag) * len(movable)) % len(movable)]
+                beat, held, voice, accent = cells[i]
+                to = beat + (0.5 if _roll(self.seed, "moved", tag) < 0.5 else -0.5)
+                if 0.5 <= to <= 3.5 and not any(abs(c[0] - to) < 0.3 for j, c in enumerate(cells) if j != i):
+                    cells = list(cells)
+                    cells[i] = (to, min(held, 4.0 - to), voice, accent * 0.96)
+        if _roll(self.seed, "answer", tag) < answer:
+            free = [b for b in (1.5, 2.0, 2.5, 3.0, 3.5) if not any(abs(c[0] - b) < 0.45 for c in cells)]
+            if free:
+                at = free[int(_roll(self.seed, "answerat", tag) * len(free)) % len(free)]
+                cells = list(cells) + [(at, 0.34, "T" if _roll(self.seed, "answerv", tag) < 0.6 else "S", 0.64)]
+        return sorted(cells, key=lambda c: c[0])
+
     def _place(self, pcs: list[int], centre: int, *, tag) -> list[int]:
         """A voicing near the last one, with the top under the melody's space; not always the same answer."""
         options = []
-        floor = 60 if self.has_guitar else LOW_NOTE  # the guitar has the middle: the piano answers above it
+        floor = self.floor
         span = range(max(floor, centre - 10), centre + 8)
         for bottom in span:
             placed = stack(pcs, bottom)
-            if placed[-1] > TOP_NOTE or placed[0] < floor:
+            if placed[-1] > self.ceiling or placed[0] < floor:
                 continue
             if placed[0] != bottom:
                 continue
@@ -298,21 +373,18 @@ class Pianist:
                 move = sum(min(abs(n - p) for p in self.prev) for n in placed) / len(placed)
             else:
                 move = abs(sum(placed) / len(placed) - centre)
-            cost = move + 0.25 * abs(sum(placed) / len(placed) - centre) + (6.0 if len(placed) > 1 and placed[1] - placed[0] <= 2 and placed[0] < 55 else 0.0)
+            cost = move + 0.25 * abs(sum(placed) / len(placed) - centre) + 12.0 * muddy(placed)
             options.append((cost, placed))
         if not options:
-            placed = stack(pcs, LOW_NOTE)
-            return [n - 12 if n > TOP_NOTE else n for n in placed]
+            placed = stack(pcs, floor)
+            return [n - 12 if n > self.ceiling and n - 12 >= floor else n for n in placed]
         options.sort(key=lambda o: o[0])
         return options[0][1]
 
     def _chord_voicing(self, h: Harmony, voice: str, tag) -> list[int]:
         hands = self.hands
-        centre = hands.centre + self.register
+        centre = hands.centre + self.register + self.song_centre
         kind = "shell" if voice == "S" else hands.voicing
-        if self.has_guitar and voice in {"C", "R"}:
-            # With a guitar playing the chord lower down, the piano answers above it.
-            centre += 4
         if self.simple and kind == "rootless":
             kind = "chord"
         choices = voicing_choices(h, kind)
@@ -325,19 +397,40 @@ class Pianist:
             move = sum(min(abs(n - p) for p in self.prev) for n in placed) / len(placed) if self.prev else 0.0
             ranked.append((move, placed))
         ranked.sort(key=lambda r: r[0])
-        best = ranked[1] if len(ranked) > 1 and pick < 0.3 else ranked[0]
-        notes = list(best[1])
+        slot = 2 if pick < 0.16 else 1 if pick < 0.44 else 0
+        notes = list(ranked[min(slot, len(ranked) - 1)][1])
+        if muddy(notes):
+            notes = list(min(ranked, key=lambda r: (muddy(r[1]), r[0]))[1])
+        floor = self.floor
+        r = _roll(self.seed, "shape", tag)
+        if voice in {"C", "R"} and h.extensions and hands.colour and r < 0.30 and kind != "rootless":
+            # A colour on top, when the chord welcomes one.
+            extra = stack([notes[-1] % 12, h.extensions[0]], notes[-1])[-1]
+            if extra <= self.ceiling:
+                notes = notes + [extra]
+        elif voice in {"C", "R"} and 0.30 <= r < 0.50 and notes[0] + 12 <= self.ceiling and notes[0] + 12 not in notes and len(notes) <= 4:
+            # A firmer chord with its bottom note doubled above.
+            notes = sorted(notes + [notes[0] + 12])
+        elif voice in {"C", "R"} and 0.50 <= r < 0.62 and len(notes) >= 3 and notes[-2] - 12 >= floor:
+            # Spread: the second note from the top drops an octave, where it stays clear.
+            spread = sorted(notes[:-2] + [notes[-2] - 12] + notes[-1:])
+            if not muddy(spread):
+                notes = spread
         if voice == "T":
             notes = notes[-2:]
+            if _roll(self.seed, "tup", tag) < 0.22 and notes[-1] + 12 <= self.ceiling:
+                notes = [n + 12 for n in notes]
         self.prev = notes
         return notes
 
     def _lh(self, h: Harmony) -> tuple[int, ...]:
-        low = LOW_NOTE + ((h.bass - LOW_NOTE) % 12)
-        if low > 55:
+        lowest, highest = LEFT_HAND.get(self.style, _DEFAULT_LEFT_HAND)
+        low = lowest + ((h.bass - lowest) % 12)
+        if low > highest:
             low -= 12
-        low = max(low, 43)
-        return (low,)
+        low = max(low, lowest)
+        # In a full section a big left hand doubles the note at the octave, while it stays clear.
+        return (low, low + 12) if self.full and low + 12 <= highest + 10 else (low,)
 
     def _broken(self, h: Harmony, tag) -> list[int]:
         """The notes a broken chord climbs through, under the melody's space."""
@@ -348,8 +441,8 @@ class Pianist:
             tones.append(h.extensions[0])
         else:
             tones.append(h.root)
-        placed = stack(tones, 53 + self.register)
-        while placed[-1] > TOP_NOTE:
+        placed = stack(tones, max(self.floor, self.hands.centre - 9) + self.register)
+        while placed[-1] > self.ceiling:
             placed = [n - 12 for n in placed]
         return placed
 
@@ -357,7 +450,7 @@ class Pianist:
         """A short line into what comes next: chord tones on strong places, passing notes between, landing on a chord tone."""
         goal_pcs = list((target or h).written)
         top = min(self.prev) + 6 if self.prev else self.hands.centre + 4
-        top = int(np.clip(top, 56, TOP_NOTE - 2))
+        top = int(np.clip(top, max(56, self.floor + 4), self.ceiling - 2))
         goal = min((top - 6 + i for i in range(13) if (top - 6 + i) % 12 in goal_pcs), key=lambda m: abs(m - top))
         n = 3 if _roll(self.seed, "fign", tag) < 0.6 else 4
         step = (end - start) / n
@@ -367,7 +460,7 @@ class Pianist:
             m = line[-1] - direction * (1 if i == 0 and _roll(self.seed, "figc", tag) < 0.4 else 2)
             line.append(m)
         line = line[::-1]
-        while max(line) > TOP_NOTE:
+        while max(line) > self.ceiling:
             line = [m - 12 for m in line]
         chord_tones = set(h.written)
         out = []
@@ -379,7 +472,7 @@ class Pianist:
 
     def _turnaround(self, h: Harmony) -> list[Hit]:
         """The classic blues turnaround on the home chord: the root held on top, a line falling under it to the fifth."""
-        top = LOW_NOTE + 12 + ((h.root - LOW_NOTE) % 12)
+        top = 60 + ((h.root - 60) % 12)
         out = []
         for i, step in enumerate((10, 9, 8, 7)):
             low = top - 12 + step
@@ -390,6 +483,9 @@ class Pianist:
 
     def bar(self, segments, next_chord, *, role: str, quiet: bool, bar_in_section: int, section_end: bool, bar_index: int, pulses_per_bar: int, intensity: float = 1.0, section_bars: int = 0) -> list[Hit]:
         full = role in FULL_ROLES and not quiet
+        self.full = full
+        # With no melody playing, the hands have more of the keyboard.
+        self.ceiling = self.without_melody if role in NO_MELODY_ROLES else self.with_melody
         if self.phrase_left <= 0:
             self._new_phrase(full, bar_index)
         self.phrase_left -= 1
@@ -410,6 +506,8 @@ class Pianist:
             self.filled_last = True
             return self._turnaround(self._h(chords[0][2]))
         cells = list(hands.ideas[self.idea])
+        if not quiet and not self.simple:
+            cells = self._vary(cells, tag0)
         if quiet:
             # A quiet texture holds its chord.
             cells = [(0.0, 3.9, "R", 0.72)]
@@ -456,7 +554,7 @@ class Pianist:
                 hits.append(Hit(at, held, self._lh(h), vel * 0.96, "bass"))
             elif voice.startswith("A"):
                 notes = self._broken(h, tag0)
-                hits.append(Hit(at, held, (notes[int(voice[1:]) % len(notes)],), vel, "broken"))
+                hits.append(Hit(at, held, (notes[self.contour[int(voice[1:]) % 4] % len(notes)],), vel, "broken"))
             elif voice == "R":
                 notes = self._chord_voicing(h, "C", (tag0, k))
                 hits.append(Hit(at, held, tuple(notes), vel, "chord", roll=0.018 + 0.016 * _roll(self.seed, "roll", tag0)))
