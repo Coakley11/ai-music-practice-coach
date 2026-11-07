@@ -71,6 +71,10 @@ def main() -> int:
 
     titles = args.title or DEFAULT_TITLES
     old_rows = _dump(Path(args.baseline_root), titles)
+    # Entries equal to the CURRENT chart are redundant (SAME is classified first) and would make the
+    # table claim the live chart is a 'prior' revision, so they are skipped.
+    current = {revision_key(r): (chart_fingerprint(r.get("sections")), versions_fingerprint(r.get("chart_versions")))
+               for r in _dump(REPO, titles)}
 
     table: dict[str, list[tuple[str, str]]] = {}
     try:
@@ -87,6 +91,8 @@ def main() -> int:
         if not sec:
             continue  # NB: an entry equal to the current chart is harmless (classified SAME first)
         entry = (sec, versions_fingerprint(r.get("chart_versions")))
+        if current.get(key) == entry:
+            continue
         if entry not in table.setdefault(key, []):
             table[key].append(entry)
         labels[key] = f"{r['title']} - {r['artist']}"
