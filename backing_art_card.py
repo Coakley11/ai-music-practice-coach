@@ -57,7 +57,28 @@ def render_backing_art_chips(
 
 
 # What today's Backing record puts where an artist belongs when it has none.
-_PLACEHOLDER_ARTISTS = frozenset({"", "catalog song", "composition song", "custom progression", "custom song", "song"})
+_PLACEHOLDER_ARTISTS = frozenset({"", "catalog song", "composition", "composition song", "custom progression", "custom song", "song", "your progression"})
+# Sources a record may put where its style belongs (Karaoke describes Custom / Composition entries this way).
+_SOURCE_NAMES_AS_STYLE = frozenset({"custom", "custom progression", "composition", "composition song", "catalog", "song"})
+
+
+def saved_style(session: Any, pick_key: str) -> str:
+    """The style a Custom progression or a Composition was saved with, from its own saved record ("" if none)."""
+    pk = str(pick_key or "")
+    try:
+        if pk.startswith("custom::"):
+            from songs.music_source import custom_progression_for_pick_key
+
+            prog = custom_progression_for_pick_key(session, pk) or {}
+            return str(prog.get("progression_style") or prog.get("style") or "").strip()
+        if pk.startswith("composition::"):
+            from composition_songs_bridge import find_composition_document
+
+            doc = find_composition_document(session, pk) or {}
+            return str((doc.get("global") or {}).get("progression_style") or "").strip()
+    except Exception:
+        return ""
+    return ""
 
 
 def _catalog_row(title: str) -> Mapping[str, Any]:
@@ -73,7 +94,7 @@ def _catalog_row(title: str) -> Mapping[str, Any]:
     return {}
 
 
-def catalog_card_facts(record: Mapping[str, Any], *, source_label: str = "") -> dict[str, str]:
+def catalog_card_facts(record: Mapping[str, Any], *, source_label: str = "", session: Any = None) -> dict[str, str]:
     """Title, artist and the catalog genre (the song's own genre decides its artwork, not the groove).
 
     The Backing record names its source where the artist belongs when it has no artist ("Catalog song");
@@ -86,4 +107,6 @@ def catalog_card_facts(record: Mapping[str, Any], *, source_label: str = "") -> 
         row = _catalog_row(title)
         artist = str(row.get("artist") or "")
         genre = str(row.get("genre") or genre)
+    if genre.strip().lower() in _SOURCE_NAMES_AS_STYLE:
+        genre = saved_style(session, str(record.get("pick_key") or "")) if session is not None else ""
     return {"title": title, "artist": artist, "style": genre}

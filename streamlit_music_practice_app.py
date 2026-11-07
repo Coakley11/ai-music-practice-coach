@@ -10136,7 +10136,7 @@ def _render_backing_art_head_for_card(kind: str, *, record: Any, ctx: Any, sourc
         if kind == "custom" and style in {"", "Auto"}:
             style = str(st.session_state.get("progression_style") or "")
     else:
-        facts = catalog_card_facts(record or {}, source_label=source_label)
+        facts = catalog_card_facts(record or {}, source_label=source_label, session=st.session_state)
         title, artist, style = facts["title"], facts["artist"], facts["style"]
     karaoke = False
     try:

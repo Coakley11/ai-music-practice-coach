@@ -103,6 +103,9 @@ def _source_id(source: str) -> str:
 def card_identity(source: str, style: str) -> CardIdentity:
     """The artistic identity: source says where the song came from, style says its artistic world."""
     src = _source_id(source)
+    if src != CATALOG and not str(style or "").strip():
+        # A Custom progression or Composition saved without a style: no style is invented for it.
+        return CardIdentity(src, src, "", "", "", src)
     visual = genre_visual_style(str(style or "Pop"))
     name = str(visual.get("label") or style or "Pop")
     style_id = name.lower() if name.lower() in GENRES else ""
@@ -132,7 +135,7 @@ def song_instruments(title: str, source: str, style: str, general: str = "") -> 
         return "Great on", REVIEWED_INSTRUMENTS[title]
     identity = card_identity(source, style)
     names = _STYLE_INSTRUMENTS.get(identity.style_name) or tuple(p.strip() for p in str(general or "").split(",") if p.strip())
-    return f"Common in {identity.style_name}", names
+    return (f"Common in {identity.style_name}" if identity.style_name else "Common instruments"), names
 
 
 _E = html.escape
@@ -146,7 +149,7 @@ def hero_html(identity: CardIdentity, *, title: str, artist: str = "", page: str
     view = "240,0,1360,640" if page.startswith("backing") else "0,0,1600,640"
     phone = _PHONE_VIEW.get(identity.art)
     source_tag = f'<source media="(max-width:560px)" srcset="{_E(_art(identity.art, phone))}">' if phone else ""
-    alt = f"{identity.style_name} artwork for {title}"
+    alt = f"{identity.style_name or identity.source_name} artwork for {title}"
     flourish = _FLOURISH.get(title) if identity.source == CATALOG else None
     flourish_html = f'<p class="sc-flourish" lang="{flourish[1]}">{_E(flourish[0])}</p>' if flourish else ""
     bar_list = [str(b) for b in bars if str(b or "").strip()][:4]
@@ -211,7 +214,7 @@ def songs_body_html(
         (
             _stat(SEMANTIC_FIELD_ICONS["bpm"], "BPM", str(bpm)),
             _stat(SEMANTIC_FIELD_ICONS["meter"], "Meter", str(meter or "4/4")),
-            _stat(SEMANTIC_FIELD_ICONS["style"], "Style", identity.style_name, identity.style_logo),
+            _stat(SEMANTIC_FIELD_ICONS["style"], "Style", identity.style_name, identity.style_logo) if identity.style_name else "",
             _stat(SEMANTIC_FIELD_ICONS["source"], "Source", identity.source_name, identity.source_logo),
         )
         + ((_stat(SEMANTIC_FIELD_ICONS["written_key"], str(written_label or "Charts in"), str(written)),) if str(written or "").strip() else ())
@@ -277,7 +280,7 @@ def backing_chips_html(identity: CardIdentity, *, groove: str, meter: str, writt
 
     groove_name = str(groove or "Auto").strip() or "Auto"
     chips = [
-        _stat(SEMANTIC_FIELD_ICONS["style"], "Style", identity.style_name, identity.style_logo),
+        _stat(SEMANTIC_FIELD_ICONS["style"], "Style", identity.style_name, identity.style_logo) if identity.style_name else "",
         _stat(SEMANTIC_FIELD_ICONS["groove"], "Backing groove", groove_name, GROOVE_ICONS.get(groove_name, "")),
         _stat(SEMANTIC_FIELD_ICONS["meter"], "Meter", str(meter or "4/4")),
         _stat(SEMANTIC_FIELD_ICONS["source"], "Source", identity.source_name, identity.source_logo),

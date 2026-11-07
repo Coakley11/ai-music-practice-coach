@@ -64,3 +64,13 @@ def test_genre_artwork_is_unchanged_by_the_source(genre):
         identity = A.card_identity(source, genre)
         assert identity.crest == SONG_SOURCE_ICONS[key]
         assert identity.crest not in {genre_visual_style(g)["emoji"] for g in GENRES}
+
+
+def test_a_custom_song_saved_without_a_style_gets_no_invented_style():
+    for source in ("Custom", "Composition"):
+        identity = A.card_identity(source, "")
+        assert identity.style_name == "" and identity.art == identity.source
+        assert "Style" not in A.backing_chips_html(identity, groove="Pop groove", meter="4/4")
+        body = A.songs_body_html(identity, title="S", bpm=90, meter="4/4", level="Beginner", instrument="Piano", focus="",
+                                 levels=["Beginner"], instruments_general="Piano", guide={})
+        assert "Style" not in body and "Common instruments" in body
