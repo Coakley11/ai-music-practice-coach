@@ -111,3 +111,14 @@ def test_a_karaoke_entry_names_its_own_source_on_the_card():
 def test_fixed_keys_read_only_key_uses_the_cards_ink():
     css = (ROOT / "song_card_art.css").read_text(encoding="utf-8")
     assert ".st-key-backing_art_card .ui-skp-locked span" in css and "color:inherit!important" in css.split("Fixed Key's read-only key", 1)[1]
+
+
+def test_a_karaoke_custom_entry_is_not_given_a_source_as_its_style_or_artist(monkeypatch):
+    import songs.music_source as ms
+
+    monkeypatch.setattr(ms, "custom_progression_for_pick_key", lambda session, pk: {"progression_style": "Blues"}, raising=False)
+    record = {"title": "Blues in F minor", "artist": "Your progression", "genre": "Custom", "pick_key": "custom::blues-in-f-minor"}
+    facts = B.catalog_card_facts(record, source_label="Custom progression", session={})
+    assert facts["artist"] == "" and facts["style"] == "Blues"
+    identity = B.identity_for("song", source_label="Custom progression", style=facts["style"])
+    assert identity.source == "custom" and identity.style_name == "Blues"
