@@ -386,3 +386,8 @@ def test_a_song_costs_little_memory(monkeypatch):
     render()
     assert 0 < sc.SHARED.bytes < 36 * 1024 * 1024
     assert all(v.dtype == np.int16 for v in sc.SHARED._items.values())
+
+
+def test_a_power_chord_has_no_third_in_any_part():
+    shape = rg.chord_shape(notes_of("E5"))
+    assert 8 not in {p % 12 for p in shape.full + shape.high + shape.wide}

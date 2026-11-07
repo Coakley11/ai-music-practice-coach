@@ -1602,7 +1602,11 @@ _ROCK_KEYS_BEHIND_GUITAR = 0.35
 
 def chord_notes_for_guitar(chord: str) -> list[int]:
     """The chord as written, with any bar-split or hit marking already resolved by the caller."""
-    return list(chord_notes(chord))
+    notes = list(chord_notes(chord))
+    head = str(chord).split("/")[0]
+    if head.endswith("5") and "b5" not in head and "#5" not in head:
+        return [notes[0], notes[0] + 7]  # a power chord: the engine's note list holds a third that the symbol does not
+    return notes
 
 
 # Pre-mix bus levels of the last render (diagnostics / balance tests).
