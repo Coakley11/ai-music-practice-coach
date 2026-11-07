@@ -297,5 +297,93 @@ class TestTheRealRendererWithSplitMeasures(unittest.TestCase):
         self.assertLess(diag["gap_sec"], 0.01, diag)
 
 
+class TestTheNativeLoopWrapsAtTheMusicalEnd(unittest.TestCase):
+    """The player also loops the whole buffer with src.loop.
+
+    The repeats baked into the buffer are gapless, but the buffer still ends
+    with the final chord's decay inside a one-second pad. A native loop would
+    wrap past that pad and play its silence, restoring the gap once per cycle -
+    so the loop has to end at the musical length instead of the buffer length.
+    """
+
+    def _app(self):
+        return APP.read_text(encoding="utf-8")
+
+    def test_the_player_bounds_the_native_loop(self):
+        src = self._app()
+        self.assertIn("src.loopEnd = musicalEnd;", src)
+        self.assertIn("src.loopStart = 0;", src)
+
+    def test_the_bound_comes_from_the_musical_duration(self):
+        src = self._app()
+        self.assertIn("const musicalEnd = Number(cfg.backingDurationSec) || 0;", src)
+        # and it is only applied when it really is shorter than the buffer
+        self.assertIn("musicalEnd < backingBuf.duration", src)
+
+    def test_the_transport_length_uses_the_cycle_not_the_buffer(self):
+        src = self._app()
+        self.assertIn("const backingCycle =", src)
+        self.assertNotIn("backingBuf.duration * (cfg.loopBacking ? 4 : 1)", src)
+
+    def test_the_reported_duration_is_the_tiled_musical_length(self):
+        """backingDurationSec must equal what pass_sample_count measures."""
+        from songs.meter import meter_timing
+
+        for bpm, tsig, bars, loops in ((100, "4/4", 8, 8), (120, "3/4", 4, 4),
+                                       (110, "4/4", 5, 8)):
+            with self.subTest(bpm=bpm, tsig=tsig):
+                # the app's own formula at the monitor call site
+                app_duration = bars * meter_timing(bpm, tsig).bar_sec * max(1, loops)
+                tiled = pass_sample_count(bars, bpm, tsig) * loops
+                self.assertAlmostEqual(app_duration, tiled / SR, delta=0.002)
+
+    def test_the_app_still_computes_duration_from_bars_and_loops(self):
+        src = self._app()
+        self.assertIn(
+            "mt_backing_duration = len(mt_events) * mt_bar_duration * max(1, mt_loops)",
+            src,
+        )
+
+
+class TestTranspositionDoesNotMoveTheFoldPoint(unittest.TestCase):
+    """An alto sax layer reads written chords; the backing sounds concert.
+
+    Transposing changes which chords are played, never how many bars they
+    occupy, so the fold point must be identical. If it were not, the backing
+    for a transposing instrument would loop differently from a concert one.
+    """
+
+    CONCERT = [{"chord": "Dm7", "beats": 4.0}, {"chord": "G7", "beats": 4.0},
+               {"chord": "Cmaj7", "beats": 4.0}, {"chord": "A7", "beats": 4.0}]
+    # the same progression as an alto player reads it (up a major sixth)
+    WRITTEN = [{"chord": "Bm7", "beats": 4.0}, {"chord": "E7", "beats": 4.0},
+               {"chord": "Amaj7", "beats": 4.0}, {"chord": "F#7", "beats": 4.0}]
+
+    def _render(self, events):
+        from backing_audio import backing_bytes_to_float
+
+        return backing_bytes_to_float(events, bpm=120, style="jazz",
+                                      level="intermediate", time_signature="4/4")
+
+    def test_the_fold_point_is_the_same_for_both_spellings(self):
+        a = pass_sample_count(len(self.CONCERT), 120, "4/4")
+        b = pass_sample_count(len(self.WRITTEN), 120, "4/4")
+        self.assertEqual(a, b)
+
+    def test_both_render_to_the_same_length_and_loop_the_same_way(self):
+        ya, yb = self._render(self.CONCERT), self._render(self.WRITTEN)
+        self.assertEqual(len(ya), len(yb))
+        n = pass_sample_count(len(self.CONCERT), 120, "4/4")
+        for y in (ya, yb):
+            _, diag = tile_pass(y, 8, musical_samples=n)
+            self.assertTrue(diag["ok"], diag)
+            self.assertLess(diag["gap_sec"], 0.01, diag)
+
+    def test_the_two_spellings_really_are_different_audio(self):
+        """Guard the premise: if they rendered identically the test is empty."""
+        ya, yb = self._render(self.CONCERT), self._render(self.WRITTEN)
+        self.assertFalse(np.allclose(ya, yb, atol=1e-6))
+
+
 if __name__ == "__main__":
     unittest.main()

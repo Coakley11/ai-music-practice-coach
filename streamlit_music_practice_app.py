@@ -9401,12 +9401,23 @@ def multitrack_studio_html(
         const src = audioCtx.createBufferSource();
         src.buffer = backingBuf;
         src.loop = cfg.loopBacking;
+        // The rendered buffer ends with the last chord's decay sitting inside a
+        // one-second pad. The repeats inside the buffer already fold that decay
+        // onto the next downbeat, but a native loop would wrap past the pad and
+        // play its silence, putting the gap back once per cycle. backingDurationSec
+        // is the buffer's musical length (bars x loops), so wrap exactly there.
+        const musicalEnd = Number(cfg.backingDurationSec) || 0;
+        if (src.loop && musicalEnd > 0 && musicalEnd < backingBuf.duration) {{
+          src.loopStart = 0;
+          src.loopEnd = musicalEnd;
+        }}
         backingGain = audioCtx.createGain();
         backingGain.gain.value = cfg.backingMonitorVolume;
         src.connect(backingGain);
         backingGain.connect(masterGain);
         src.start(musicStart);
-        const backingLen = backingBuf.duration * (cfg.loopBacking ? 4 : 1);
+        const backingCycle = src.loop && src.loopEnd > 0 ? src.loopEnd : backingBuf.duration;
+        const backingLen = backingCycle * (cfg.loopBacking ? 4 : 1);
         maxEnd = Math.max(maxEnd, musicStart + backingLen);
         trackNodes.push({{ source: src }});
       }}
