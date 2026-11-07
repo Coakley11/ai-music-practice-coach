@@ -4108,14 +4108,12 @@ def _how_far_ill_go_chart_pack() -> dict[str, Any]:
     def _beg(ch: str) -> str:
         if ch == "N.C.":
             return "N.C."
+        # Drop the slash bass and simplify the half-diminished chord; every other
+        # minor chord KEEPS its minor quality.  (This used to strip every "m",
+        # turning Dm -> D, Fm -> F, F#m -> F# and Dm7b5 -> "Ddi" - wrong chords that
+        # only stayed hidden while Beginner dropped the Final Chorus / Ending Descent.)
         head = ch.split("/")[0].strip()
-        return (
-            head.replace("F#m", "F#")
-            .replace("C#m", "C#")
-            .replace("Dm7b5", "Ddim")
-            .replace("m7b5", "dim")
-            .replace("m", "")
-        )
+        return head.replace("m7b5", "dim")
 
     beginner = {
         name: [_beg(c) for c in chords]
@@ -5147,7 +5145,6 @@ def _iris_chart_pack() -> dict[str, Any]:
         return (
             head.replace("Bsus2", "Bm")
             .replace("Gmaj7", "G")
-            .replace("F#m", "F#")
             .replace("m7", "m")
             .replace("sus2", "")
             .replace("maj7", "")

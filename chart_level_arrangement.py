@@ -26,7 +26,7 @@ from beginner_arrangement import (
     is_beginner_level,
     select_beginner_section_names,
 )
-from music_theory import split_chord
+from music_theory import is_no_chord_token, split_chord
 
 INTERMEDIATE_LEVEL = "Intermediate"
 ADVANCED_LEVEL = "Advanced"
@@ -57,40 +57,78 @@ def keeps_full_form(song_data: Mapping[str, Any] | None, level: Any) -> bool:
     return bool(wanted) and any(str(lv).strip().lower() == wanted for lv in (levels or ()))
 
 
-def _map_subdivided(token: str, mapper) -> str:
-    if "|" not in token:
-        return mapper(token)
-    parts = [p.strip() for p in token.split("|") if p.strip()]
-    return "|".join(mapper(p) for p in parts)
+def _simplify_one_chord(part: str, genre: str) -> str:
+    head = part
+    if "/" in part:
+        head = part.split("/", 1)[0].strip()
+    root, suffix = split_chord(head)
+    s = suffix.lower()
+    # ``M``/``maj`` is a major quality; ``m``/``min`` minor.  Look at the case-sensitive
+    # suffix first so "CM7" is not mistaken for "Cm7".
+    major_m = suffix.startswith("M") and not suffix.lower().startswith("min")
+    minor = (
+        (s.startswith("m") and not s.startswith("maj")) or s.startswith("-")
+    ) and not major_m
+    # Half-diminished (m7b5) keeps the established Beginner reading as a minor triad (Dm7b5 -> Dm, a common
+    # ii of a minor ii-V); a true diminished chord keeps its flat five as a dim triad (Bdim7 -> Bdim).
+    if "m7b5" in s or "ø" in suffix:
+        return root + "m"
+    if "dim" in s or "°" in suffix:
+        return root + "dim"
+    if "aug" in s or "alt" in s:
+        return root
+    if minor:
+        return root + "m"
+    if "maj7" in s or "maj9" in s or major_m:
+        return root
+    if any(tok in s for tok in ("9", "11", "13", "sus", "add")):
+        return root
+    if "7" in s:
+        # Beginner reads triads; Blues keeps its dominant sevenths. (This
+        # returned the root twice: G7 -> "GG".)
+        return root + ("7" if "blues" in genre.lower() else "")
+    return root
+
+
+def _simplify_piece(piece: str, genre: str) -> str:
+    """Simplify one sub-chord, keeping its beat weight AND push marker; keep ``.hit``."""
+    raw = piece.strip()
+    if not raw:
+        return raw
+    head, weight = (raw.split(":", 1) + [""])[:2] if ":" in raw else (raw, "")
+    head = head.strip()
+    hit = ""
+    if head.lower().endswith(".hit"):
+        head, hit = head[:-4].strip(), ".hit"
+    push = ""
+    if head and head[-1] in "pP!" and len(head) > 1 and not head.endswith("sus"):
+        push, head = head[-1], head[:-1].strip()
+    if is_no_chord_token(head):
+        out = head
+    else:
+        out = _simplify_one_chord(head, genre)
+    weight = weight.strip()
+    return f"{out}{hit}" + (f":{weight}" if weight else "") + push
 
 
 def simplify_chord_for_beginner(chord: str, *, genre: str = "") -> str:
-    """Strip slash chords, extensions, and reharm moves for beginner charts."""
+    """Strip slash chords, extensions, and reharm moves for beginner charts.
+
+    Bar structure is preserved: sub-chord count and ``:weight`` beat shares stay (so
+    ``C:3|G:1`` is still 3+1 beats, not 2+2), ``N.C.`` and ``.hit`` bars pass through,
+    push markers and their timing are kept (a source-supported anticipation is part of the
+    harmonic rhythm, not a difficulty feature).
+    """
     token = str(chord or "").strip()
     if not token:
         return token
-
-    def _one(part: str) -> str:
-        head = part
-        if "/" in part:
-            head = part.split("/", 1)[0].strip()
-        root, suffix = split_chord(head)
-        s = suffix.lower()
-        if any(tok in s for tok in ("m7b5", "dim", "aug", "alt")):
-            return root + ("m" if "m" in s and "maj" not in s else "")
-        if s.startswith("m") and "maj" not in s:
-            return root + "m"
-        if "maj7" in s or "maj9" in s:
-            return root
-        if any(tok in s for tok in ("9", "11", "13", "sus", "add")):
-            return root + ("m" if s.startswith("m") and "maj" not in s else "")
-        if "7" in s:
-            # Beginner reads triads; Blues keeps its dominant sevenths. (This
-            # returned the root twice: G7 -> "GG".)
-            return root + ("7" if "blues" in genre.lower() else "")
-        return root + ("m" if s.startswith("m") and "maj" not in s else "")
-
-    return _map_subdivided(token, _one)
+    if "|" not in token:
+        # A lone ``X:w`` is just chord X for the whole bar (a pushed lone chord keeps its marker).
+        if ":" in token and token.rstrip()[-1] in "pP!":
+            return _simplify_piece(token, genre)
+        return _simplify_piece(token.split(":", 1)[0] if ":" in token else token, genre)
+    parts = [p.strip() for p in token.split("|") if p.strip()]
+    return "|".join(_simplify_piece(p, genre) for p in parts)
 
 
 def normalize_chord_for_intermediate(chord: str) -> str:
