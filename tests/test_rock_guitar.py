@@ -391,3 +391,51 @@ def test_a_song_costs_little_memory(monkeypatch):
 def test_a_power_chord_has_no_third_in_any_part():
     shape = rg.chord_shape(notes_of("E5"))
     assert 8 not in {p % 12 for p in shape.full + shape.high + shape.wide}
+
+
+# --- Chord accuracy of the colour notes (riff, boogie, pickup lines). ------------------------------------------
+
+def _all_strokes(symbol):
+    import backing_audio as ba
+
+    shape = rg.chord_shape(ba.chord_notes_for_guitar(symbol))
+    out = []
+    for writer in rg._WRITERS.values():
+        for chorus in (False, True):
+            for bar in range(12):
+                for seed in "abc":
+                    out += [s for s in writer(0.0, 4.0, shape, chorus, seed, bar) if s.kind != "dead"]
+    return shape, out
+
+
+def _intervals_played(symbol):
+    shape, strokes = _all_strokes(symbol)
+    return {(p - shape.root) % 12 for s in strokes for p in s.pitches}
+
+
+@pytest.mark.parametrize("symbol, clash", [
+    ("Amaj7", 10),   # a flat seventh against the chord's major seventh
+    ("Aaug", 7),     # a plain fifth against the raised fifth
+    ("Aaug", 9),     # the boogie's sixth against the raised fifth
+    ("Adim", 7),     # a plain fifth against the flat fifth
+    ("Am7b5", 7),
+    ("Am7b5", 9),    # the boogie's sixth against the flat seventh
+    ("Adim7", 10),   # a flat seventh against the double-flat seventh
+    ("A7b13", 9),    # the sixth against the flat thirteenth
+])
+def test_colour_notes_never_rub_against_the_chords_own_notes(symbol, clash):
+    assert clash not in _intervals_played(symbol), symbol
+
+
+@pytest.mark.parametrize("symbol", ["A", "A5", "A7"])
+def test_the_blues_vocabulary_stays_over_major_power_and_dominant_chords(symbol):
+    played = _intervals_played(symbol)
+    # Blue third, fourth, sixth and flat seventh: the idiom of rock riffs and boogie, kept on purpose.
+    assert {3, 5, 9, 10} <= played, (symbol, sorted(played))
+
+
+def test_a_power_chord_symbol_never_gets_a_third_in_its_chords():
+    shape, strokes = _all_strokes("B5")
+    for s in strokes:
+        if len(s.pitches) > 1:
+            assert not any((p - shape.root) % 12 in (3, 4) for p in s.pitches), s.pitches

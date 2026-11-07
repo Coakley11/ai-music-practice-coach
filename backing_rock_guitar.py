@@ -46,7 +46,7 @@ def enabled() -> bool:
 
 def guitar_renderer_tag() -> str:
     """Part of saved audio's signature, so takes from another guitar part are never replayed as this one."""
-    return "+rockgtr2" if enabled() else ""
+    return "+rockgtr3" if enabled() else ""
 
 
 def _palm_mute(x: np.ndarray, sr: int) -> np.ndarray:
@@ -94,6 +94,34 @@ class Shape:
     wide: tuple[int, ...]
     full: tuple[int, ...]
     high: tuple[int, ...]
+    tones: frozenset = frozenset()  # the chord's own notes, as intervals above the root
+
+
+def _colour(shape: Shape, step: int) -> int:
+    """A riff or boogie note (semitones above the root), bent to the chord only where the stock blues note
+    would rub against one of the chord's own notes. The blues vocabulary over major, power and dominant
+    chords (blue third, flat seventh, fourth, sixth) is kept: it is the idiom, not a wrong note.
+
+    * major seventh chord: the flat seventh becomes the major seventh, the blue third the major third;
+    * an altered fifth (diminished, half-diminished, augmented): the plain fifth becomes the chord's fifth;
+    * diminished seventh: the flat seventh becomes its double-flat seventh;
+    * a flat thirteenth (or raised fifth): the sixth becomes that note.
+    """
+    t = shape.tones
+    if not t:
+        return step
+    octave, pc = step - step % 12, step % 12
+    if pc in t:
+        return step
+    if pc == 7:
+        pc = 6 if 6 in t else 8 if 8 in t else 7
+    elif pc == 10:
+        pc = 11 if 11 in t else 9 if (9 in t and 6 in t) else 10
+    elif pc == 9:
+        pc = 8 if 8 in t else 9
+    elif pc == 3 and 4 in t and (11 in t or 8 in t):
+        pc = 4
+    return octave + pc
 
 
 def _roll(*parts) -> float:
@@ -125,7 +153,8 @@ def chord_shape(notes: list[int]) -> Shape:
     high = tuple(sorted((root + 12 + (third if third is not None else fifth), root + 12 + fifth, root + 24)))
     while max(high) > TOP_NOTE:
         high = tuple(m - 12 for m in high)
-    return Shape(root, power, wide, tuple(m for m in full if m <= TOP_NOTE), high)
+    tones = frozenset((n - notes[0]) % 12 for n in notes)
+    return Shape(root, power, wide, tuple(m for m in full if m <= TOP_NOTE), high, tones)
 
 
 def choose_plan(chords: list[str], chord_notes, bpm: float, seed: str) -> Plan:
@@ -194,7 +223,11 @@ def _chug(start, end, shape: Shape, chorus: bool, seed, bar) -> list[Stroke]:
 def _boogie(start, end, shape: Shape, chorus: bool, seed, bar) -> list[Stroke]:
     """Root and fifth rocking to the sixth, as on countless blues-rock records."""
     r, fifth = shape.root, shape.power[1]
-    line = [fifth, fifth, r + 9, r + 9, r + 10 if _roll(seed, "boog", bar) < 0.3 else r + 9, r + 9, fifth, fifth]
+    if fifth - r != 7:
+        # Diminished, half-diminished, augmented: the fifth-to-sixth rock does not fit the chord.
+        return _chug(start, end, shape, chorus, seed, bar)
+    six, flat7 = r + _colour(shape, 9), r + _colour(shape, 10)
+    line = [fifth, fifth, six, six, flat7 if _roll(seed, "boog", bar) < 0.3 else six, six, fifth, fifth]
     out = []
     for i, top in enumerate(line):
         accent = 1.0 if i == 0 else 0.86 if i % 2 == 0 else 0.74
@@ -269,7 +302,7 @@ def _riff(start, end, shape: Shape, chorus: bool, seed, bar) -> list[Stroke]:
         return _chug(start, end, shape, True, seed, bar)
     out = []
     for b, step, held in _RIFFS[int(_roll(seed, "riffpick") * len(_RIFFS)) % len(_RIFFS)]:
-        pitches = shape.power if step == 0 and b == 0.0 else (shape.root + step,)
+        pitches = shape.power if step == 0 and b == 0.0 else (shape.root + _colour(shape, step),)
         out.append(Stroke(start + b, held, pitches, 0.95 if b == 0.0 else 0.82, "open" if _roll(seed, "rm", bar, b) < 0.75 else "mute"))
     return _fit(out, end)
 
@@ -286,7 +319,7 @@ def _pickup(shape: Shape, next_pc: int | None, start: float, end: float, roll: f
     if target - root > 7:
         target -= 12
     line = (root + 3, root + 5, root + 6) if roll < 0.34 else (root + 7, root + 5, root + 3) if roll < 0.67 else (target - 3, target - 2, target - 1)
-    line = tuple(max(ROOT_LOW, m) for m in line)
+    line = tuple(max(ROOT_LOW, root + _colour(shape, m - root)) for m in line)
     step = (end - start) / len(line)
     return [Stroke(start + i * step, step * 0.92, (m,), 0.84 + 0.05 * i) for i, m in enumerate(line)]
 
