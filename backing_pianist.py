@@ -24,6 +24,7 @@ import backing_keys_voice as _kv
 from backing_sampled_instrument import SampledInstrument
 
 PIANO_PACK = pathlib.Path(__file__).resolve().parent / "assets" / "instruments" / "grand_piano"
+RECORDED_LEVEL = 4.0
 FULL_ROLES = frozenset({"chorus", "refrain", "interlude", "solo", "outro"})
 # Where each style's hands live: (right hand's floor, ceiling under a melody, ceiling when no melody plays).
 REGISTERS = {
@@ -197,7 +198,7 @@ _POP = (
     ((0.0, 0.9, "L", 0.86), (0.5, 0.5, "A1", 0.60), (1.0, 0.5, "A3", 0.66), (1.5, 0.5, "A2", 0.60), (2.0, 0.9, "T", 0.78), (3.0, 0.9, "T", 0.70)),
 )
 _BALLAD = (
-    ((0.0, 3.9, "L", 0.90), (0.5, 1.5, "A1", 0.58), (1.0, 1.5, "A2", 0.66), (1.5, 1.5, "A3", 0.60), (2.0, 1.5, "A4", 0.70), (2.5, 1.0, "A3", 0.58), (3.0, 0.9, "A2", 0.62), (3.5, 0.5, "A1", 0.56)),
+    ((0.0, 3.9, "L", 0.90), (0.5, 1.5, "A1", 0.58), (1.0, 1.5, "A2", 0.66), (1.5, 1.5, "A3", 0.60), (2.0, 1.5, "A4", 0.70), (3.0, 0.9, "A2", 0.62)),
     ((0.0, 3.9, "R", 0.90),),
     ((0.0, 1.9, "R", 0.92), (2.0, 1.9, "R", 0.76)),
     ((0.0, 3.9, "L", 0.86), (1.0, 2.9, "C", 0.68), (3.0, 0.9, "T", 0.60)),
@@ -250,10 +251,10 @@ class StyleHands:
 HANDS: dict[str, StyleHands] = {
     "Jazz swing": StyleHands(_JAZZ, "rootless", 62, True, (2, 3, 4, 2), 0.14, 0.07, 0.22, 0.20, 0.56, (0, 1, 2, 4, 6)),
     "Blues groove": StyleHands(_BLUES, "chord", 63, False, (2, 4, 3, 2), 0.10, 0.03, 0.42, 0.12, 0.66, (0, 1, 2, 3)),
-    "Pop groove": StyleHands(_POP, "chord", 62, True, (4, 2, 3, 4), 0.06, 0.0, 0.20, 0.10, 0.60, (0, 1, 4, 5, 7), True, 0.32),
+    "Pop groove": StyleHands(_POP, "chord", 62, True, (4, 2, 3, 4), 0.06, 0.0, 0.20, 0.10, 0.60, (1, 2, 3, 4, 5), True, 0.22),
     "Rock groove": StyleHands(_ROCK, "chord", 64, False, (2, 4, 3), 0.12, 0.05, 0.14, 0.12, 0.70, (0, 1, 3)),
     "Funk groove": StyleHands(_FUNK, "rootless", 65, True, (2, 2, 3, 4), 0.14, 0.05, 0.08, 0.04, 0.66, (0, 1, 3)),
-    "Ballad": StyleHands(_BALLAD, "open", 60, True, (4, 2, 3), 0.03, 0.0, 0.26, 0.04, 0.54, (0, 1, 3, 4), True, 0.22),
+    "Ballad": StyleHands(_BALLAD, "open", 60, True, (4, 2, 3), 0.03, 0.0, 0.26, 0.04, 0.54, (1, 2, 3, 4), True, 0.15),
     "Bossa nova": StyleHands(_BOSSA, "rootless", 62, True, (2, 4, 3), 0.14, 0.05, 0.08, 0.08, 0.50, (0, 1, 2, 3)),
 }
 # How a phrase stays alive: (chance of a contrasting bar, of moving one hit by an eighth, of an answering hit).
@@ -429,9 +430,10 @@ class Pianist:
     def _lh(self, h: Harmony) -> tuple[int, ...]:
         lowest, highest = LEFT_HAND.get(self.style, _DEFAULT_LEFT_HAND)
         low = lowest + ((h.bass - lowest) % 12)
-        if low > highest:
+        # Always the chord's own bass note: past the top of the range, the octave below or this one,
+        # whichever sits nearer the range (a range narrower than an octave cannot hold every note).
+        if low > highest and lowest - (low - 12) <= low - highest:
             low -= 12
-        low = max(low, lowest)
         # In a full section a big left hand doubles the note at the octave, while it stays clear.
         return (low, low + 12) if self.full and low + 12 <= highest + 10 else (low,)
 
@@ -629,6 +631,9 @@ class Pianist:
         """Play the hits. Each note is placed by a hand, so chords are never struck by a machine."""
         velocity = self.hands.velocity
         recorded = mode() == "recorded"
+        if recorded:
+            # The recording is quieter than the modelled voice; this keeps the keys balance inside its limits.
+            gain *= RECORDED_LEVEL
         for hit in hits:
             t = time_of(hit.beat)
             vel = float(np.clip(velocity * hit.velocity, 0.08, 1.0))

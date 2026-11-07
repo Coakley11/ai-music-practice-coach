@@ -408,6 +408,29 @@ def test_chords_are_not_muddy_low_down(style):
     assert total and bad <= 0.05 * total, (bad, total)
 
 
+@pytest.mark.parametrize("style", sorted(set(pn.HANDS) | {"Klezmer groove", "Jewish hora"}))
+def test_the_left_hand_always_plays_the_chords_own_bass(style):
+    # A left-hand range narrower than an octave once clamped some notes to its floor: C under an A chord.
+    p = player(style)
+    for root in ["C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B"]:
+        for chord in (root, root + "m", root + "7", f"{root}/E"):
+            h = p._h(chord)
+            for full in (False, True):
+                p.full = full
+                assert {n % 12 for n in p._lh(h)} == {h.bass}, (style, chord, p._lh(h))
+
+
+@pytest.mark.parametrize("style", ["Ballad", "Pop groove"])
+def test_verses_leave_room_and_choruses_open_up(style):
+    def per_bar(role):
+        bars = [b for seed in range(12) for b in play(style, LOOP, role=role, seed=f"s{seed}")]
+        return sum(len(b) for b in bars) / len(bars)
+
+    verse, chorus = per_bar("verse"), per_bar("chorus")
+    assert verse <= 3.6, verse
+    assert chorus > verse, (verse, chorus)
+
+
 def test_songs_sit_in_slightly_different_places():
     centres = {pn.Pianist("Pop groove", f"s{n}").song_centre for n in range(40)}
     assert len(centres) >= 3
@@ -454,6 +477,18 @@ def test_the_keys_layer_sits_at_the_same_balance(monkeypatch):
     render("Pop groove")
     rhythm_rms, keys_rms = ba.LAST_MIX_STATS["rhythm_rms"], ba.LAST_MIX_STATS["keys_rms"]
     assert keys_rms / rhythm_rms == pytest.approx(ba._KEYS_BALANCE["Pop groove"], abs=0.1)
+
+
+@pytest.mark.parametrize("style", ["Jazz swing", "Ballad", "Bossa nova", "Rock groove"])
+def test_the_recorded_piano_reaches_todays_balance_in_sparse_styles(monkeypatch, style):
+    # Sparse playing on a decaying recording once needed more lift than the balance allows, leaving it 3-6 dB low.
+    monkeypatch.delenv("MUSIC_PIANO_V2", raising=False)
+    render(style, chart=sec("Verse 1", LOOP[:8]) + sec("Chorus", LOOP[8:16]))
+    today = ba.LAST_MIX_STATS["keys_rms"] / ba.LAST_MIX_STATS["rhythm_rms"]
+    monkeypatch.setenv("MUSIC_PIANO_V2", "recorded")
+    render(style, chart=sec("Verse 1", LOOP[:8]) + sec("Chorus", LOOP[8:16]))
+    piano = ba.LAST_MIX_STATS["keys_rms"] / ba.LAST_MIX_STATS["rhythm_rms"]
+    assert piano == pytest.approx(today, rel=0.12), (today, piano)
 
 
 def test_recorded_notes_are_in_tune():
