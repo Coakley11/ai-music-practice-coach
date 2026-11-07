@@ -66,9 +66,12 @@ class MobileM5FoldDensityTests(unittest.TestCase):
         text = Path("streamlit_music_practice_app.py").read_text(encoding="utf-8")
         self.assertIn("Advanced playback settings", text)
         self.assertIn("do not force expanded=False", text)
-        # Exact expander call must not pass expanded=
-        needle = 'with st.expander("Advanced playback settings")'
+        # The expander call must not pass expanded= (its open state is the user's, or the card's
+        # settings button through its key -- never forced by a parameter on every run).
+        needle = 'with st.expander("Advanced playback settings"'
         self.assertIn(needle, text)
+        call = text.split(needle, 1)[1].split(")" + ":", 1)[0]
+        self.assertNotIn("expanded=", call)
         self.assertNotIn(
             'with st.expander("Advanced playback settings", expanded=False)',
             text,

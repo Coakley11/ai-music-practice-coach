@@ -63,6 +63,9 @@ ANCHOR_BACKING_MAIN_CONTROLS = "anchor_backing_main_controls"
 ANCHOR_BACKING_FOLLOW_ALONG = "anchor_backing_follow_along"
 """Backing Track page → lead sheet / karaoke follow-along player."""
 
+ANCHOR_BACKING_PLAYBACK_SETTINGS = "anchor_backing_playback_settings"
+"""Backing page -> Advanced playback settings (the album-cover card's settings button)."""
+
 ANCHOR_PRACTICE_COACH = "anchor_practice_coach"
 """Practice page → just above the practice setup + section/jump bar."""
 
@@ -83,6 +86,7 @@ KNOWN_ANCHORS: frozenset[str] = frozenset(
         ANCHOR_CHART_EDITOR,
         ANCHOR_BACKING_MAIN_CONTROLS,
         ANCHOR_BACKING_FOLLOW_ALONG,
+        ANCHOR_BACKING_PLAYBACK_SETTINGS,
         ANCHOR_PRACTICE_COACH,
         ANCHOR_CHORD_COACH,
         ANCHOR_UPLOAD_ANALYSIS,
@@ -100,6 +104,7 @@ __all__ = (
     "ANCHOR_CHART_EDITOR",
     "ANCHOR_BACKING_MAIN_CONTROLS",
     "ANCHOR_BACKING_FOLLOW_ALONG",
+    "ANCHOR_BACKING_PLAYBACK_SETTINGS",
     "ANCHOR_PRACTICE_COACH",
     "ANCHOR_CHORD_COACH",
     "ANCHOR_UPLOAD_ANALYSIS",
