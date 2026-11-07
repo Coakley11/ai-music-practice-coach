@@ -10208,13 +10208,19 @@ def _open_backing_advanced_settings() -> None:
 
 
 def _toggle_backing_key_cycle_from_card() -> None:
-    """Exactly what a click on Key cycling Off / On in Advanced settings does: the radio's value plus the
-    user-toggle mark its own on_change sets. Direction, interval, the saved key's return and Fixed Key all
-    follow from the existing Key Cycling controls on this run."""
+    """What a click on Key cycling Off / On in Advanced settings does: the radio's value plus the user-toggle
+    mark its own on_change sets. Direction, interval, the saved key's return and Fixed Key all follow from the
+    existing Key Cycling controls on this run.
+
+    Off from the card is an unmistakable request, so it also sets the controls' explicit force-off (the flag
+    Key Cycling's own Stop uses). A radio Off can be a Streamlit remount snap and is swallowed while the
+    stray-Off guard is armed after Play; a click on this button never is."""
     mode_key = "backing_key_cycle_enabled_ui"
     on = str(st.session_state.get(mode_key) or "Off") == "On"
     st.session_state[mode_key] = "Off" if on else "On"
     st.session_state["_kc_cycle_user_toggled"] = True
+    if on:
+        st.session_state["_key_cycle_force_ui_off"] = True
 
 
 def _render_backing_art_actions(*, leadsheet_ready: bool, leadsheet_open: bool, set_leadsheet_open: Any) -> bool:

@@ -53,6 +53,17 @@ def test_key_cycling_on_the_card_is_the_radio_click(app, before, after) -> None:
     assert app.st.session_state["backing_key_cycle_enabled_ui"] == after
     # The radio's own on_change sets only this mark; the controls then start or stop cycling as for a click.
     assert app.st.session_state["_kc_cycle_user_toggled"] is True
+    # Off from the card is never mistaken for a remount snap: it carries the controls' explicit force-off.
+    assert bool(app.st.session_state.get("_key_cycle_force_ui_off")) is (after == "Off")
+
+
+def test_the_controls_honour_force_off_even_while_the_stray_off_guard_is_armed() -> None:
+    import backing_key_cycle as kc
+
+    assert kc.should_honor_cycle_off_request(user_toggled=True, force_off=True, suppress_spurious=True)
+    assert not kc.should_honor_cycle_off_request(user_toggled=True, force_off=False, suppress_spurious=True)
+    src = (ROOT / "backing_key_cycle.py").read_text(encoding="utf-8")
+    assert 'force_off = bool(session.pop("_key_cycle_force_ui_off", False))' in src
 
 
 def test_the_radio_sets_the_same_mark() -> None:
