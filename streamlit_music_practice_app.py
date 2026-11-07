@@ -8849,7 +8849,21 @@ def multitrack_monitor_backing_bytes(
         time_signature=time_signature,
     )
     if loops > 1:
-        backing_y = np.tile(backing_y, int(loops))
+        # A plain tile would repeat the one second of decay headroom that
+        # synthesize_chords_to_numpy leaves after the music, putting a full
+        # second of silence at every loop boundary. Fold that overhang onto the
+        # next downbeat instead, so the last chord rings into the repeat.
+        try:
+            from backing_loop import musical_sample_count, seamless_tile
+
+            _total_beats = sum(float(e.get("beats") or 0) for e in events)
+            backing_y = seamless_tile(
+                backing_y,
+                int(loops),
+                musical_samples=musical_sample_count(_total_beats, bpm),
+            )
+        except Exception:
+            backing_y = np.tile(backing_y, int(loops))
     return wav_bytes_from_float(backing_y), events
 
 
