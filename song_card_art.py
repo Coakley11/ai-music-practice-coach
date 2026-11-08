@@ -27,6 +27,7 @@ CHALLENGE_ICON = "\U0001F525"  # the session plan's challenge icon
 CATALOG, CUSTOM, COMPOSITION = "catalog", "custom", "composition"
 GENRES = ("pop", "rock", "jazz", "blues", "country", "soul", "funk", "jewish", "classical")
 _SOURCE_NAME = {CATALOG: "Catalog", CUSTOM: "Custom", COMPOSITION: "Composition"}
+_STYLE_ART = {CUSTOM: ("blues", "pop"), COMPOSITION: ("blues", "classical")}
 # Styles the source pages offer that have no artwork world of their own: the nearest world, real name kept.
 _WORLD_FOR_STYLE = {"bossa": "jazz", "bossa nova": "jazz", "folk": "country", "hip-hop": "funk", "hip hop": "funk",
                     "electronic": "pop", "soul/r&b": "soul", "r&b": "soul"}
@@ -92,8 +93,7 @@ class CardIdentity:
 
     @property
     def classes(self) -> str:
-        branding = f" src-{self.source}" if self.source != CATALOG and self.family != self.source else ""
-        return f"g-{self.family} st-{self.style_id}{branding}"
+        return f"g-{self.family} st-{self.style_id}"
 
 
 def _source_id(source: str) -> str:
@@ -121,18 +121,21 @@ def style_world(style: str) -> tuple[str, str, str]:
 
 
 def card_identity(source: str, style: str) -> CardIdentity:
-    """The artistic identity. The song's saved style picks the whole artwork world (art, palette, type,
-    accents); the source keeps its own branding on top (crest, ribbon, Source badge, tape / quill)."""
+    """The artistic identity: three visually distinct families.
+
+    Catalog songs wear their genre's full world. Custom progressions keep the green notebook world and
+    Compositions the navy-and-gold manuscript world; their saved style picks the style variation inside that
+    world (its own artwork where one exists, the source's artwork otherwise) and the style badge."""
     src = _source_id(source)
     if src != CATALOG and not str(style or "").strip():
-        # A Custom progression or Composition saved without a style: no style is invented for it.
+        # A Custom progression or Composition with no style to show: the source's own world, no style badge.
         return CardIdentity(src, src, "", "", "", src)
     world, name, logo = style_world(str(style or "Pop"))
     if src == CATALOG:
         family = art = world or "pop"
     else:
-        # A style with no artwork world (e.g. "Other") keeps the source's own world, under its real name.
-        family = art = world or src
+        family = src
+        art = f"{src}_{world}" if world in _STYLE_ART[src] else src
     return CardIdentity(src, family, world, name, logo, art)
 
 
