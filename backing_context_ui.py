@@ -372,28 +372,20 @@ def render_backing_context_banner(
     return bool(ctx and ctx.source != "regular_song")
 
 
-def render_backing_creative_context_card(
-    st: Any,
+def creative_card_headline(
     ctx: BackingContext,
     session: dict[str, Any],
     *,
-    applied_bpm: int,
-    applied_groove: str,
-    applied_meter: str = "4/4",
     practice_key: str = "",
-    written_key: str = "",
-    musical_state: Any | None = None,
-) -> None:
-    """Replace the blue active-song card when Creative backing is active."""
-    if ctx.source not in {"entry_jam", "song_improv", "mission"}:
-        return
-    from backing_musical_state import resolve_current_backing_musical_state
+    state: Any = None,
+    applied_groove: str = "",
+) -> dict[str, Any]:
+    """The Creative card's heading, shared by today's card and the album-cover card.
 
-    state = musical_state or resolve_current_backing_musical_state(
-        session,
-        applied_bpm=applied_bpm,
-    )
-    theme = _resolve_theme(ctx)
+    ``title_html`` / ``subtitle_html`` are escaped for HTML (as today's card has always written them); a
+    Mission also gets the chord or 2/3-chord span it shows (``mission_chord``, the player's chart).
+    """
+    mission_chord = ""
     span_summary = None
     if ctx.source == "mission":
         # A 2 / 3-chord Mission owns its card: the span handoff (Mission, span, section) wins
@@ -497,14 +489,24 @@ def render_backing_creative_context_card(
         style_label = str(state.style or ctx.style or applied_groove or "Auto").strip()
         title = html.escape(style_label or ctx.song_title or "Creative backing")
         subtitle = html.escape(f"{source_title} · {mode_label or 'Jam'}")
+    return {
+        "source_title": source_title,
+        "title_html": title,
+        "subtitle_html": subtitle,
+        "mission_chord": mission_chord,
+        "span_summary": span_summary,
+    }
 
-    if ctx.source != "mission":
-        style_label = str(state.style or ctx.style or applied_groove or "Auto").strip()
-    elif ctx.source == "mission":
-        style_label = str(state.style or ctx.style or applied_groove or ctx.style or "Auto").strip()
 
-    # Current Style/Meter = live Backing widgets / play-session (same-rerun owner).
-    # Sealed ctx.style/meter are Default/source only when live values are empty.
+def creative_live_style_meter(
+    ctx: BackingContext,
+    session: dict[str, Any],
+    *,
+    state: Any,
+    applied_groove: str = "",
+    applied_meter: str = "",
+) -> dict[str, str]:
+    """Current Style/Meter (live Backing widgets / play session) beside the Default ones the source sealed."""
     live_groove = ""
     live_meter = ""
     try:
@@ -534,13 +536,65 @@ def render_backing_creative_context_card(
             or state.meter
             or ""
         ).strip()
+    default_style = str(ctx.style or ctx.groove or "").strip()
+    default_meter = str(ctx.meter or "4/4").strip() or "4/4"
+    return {
+        "live_groove": live_groove,
+        "live_meter": live_meter,
+        "default_style": default_style,
+        "default_meter": default_meter,
+    }
+
+
+def render_backing_creative_context_card(
+    st: Any,
+    ctx: BackingContext,
+    session: dict[str, Any],
+    *,
+    applied_bpm: int,
+    applied_groove: str,
+    applied_meter: str = "4/4",
+    practice_key: str = "",
+    written_key: str = "",
+    musical_state: Any | None = None,
+) -> None:
+    """Replace the blue active-song card when Creative backing is active."""
+    if ctx.source not in {"entry_jam", "song_improv", "mission"}:
+        return
+    from backing_musical_state import resolve_current_backing_musical_state
+
+    state = musical_state or resolve_current_backing_musical_state(
+        session,
+        applied_bpm=applied_bpm,
+    )
+    theme = _resolve_theme(ctx)
+    _head = creative_card_headline(
+        ctx, session, practice_key=practice_key, state=state, applied_groove=applied_groove
+    )
+    source_title = _head["source_title"]
+    mission_chord = _head["mission_chord"]
+    title = _head["title_html"]
+    subtitle = _head["subtitle_html"]
+
+    if ctx.source != "mission":
+        style_label = str(state.style or ctx.style or applied_groove or "Auto").strip()
+    elif ctx.source == "mission":
+        style_label = str(state.style or ctx.style or applied_groove or ctx.style or "Auto").strip()
+
+    # Current Style/Meter = live Backing widgets / play-session (same-rerun owner).
+    # Sealed ctx.style/meter are Default/source only when live values are empty.
+    _live = creative_live_style_meter(
+        ctx, session, state=state, applied_groove=applied_groove, applied_meter=applied_meter
+    )
+    live_groove = _live["live_groove"]
+    live_meter = _live["live_meter"]
     if live_groove:
         style_label = live_groove
         backing_style = html.escape(live_groove)
     else:
         backing_style = html.escape(str(applied_groove or state.groove or style_label or "Auto"))
-    default_style = str(ctx.style or ctx.groove or "").strip()
-    default_meter = str(ctx.meter or "4/4").strip() or "4/4"
+    default_style = _live["default_style"]
+    default_meter = _live["default_meter"]
     concert_raw = str(practice_key or state.practice_concert_key or ctx.concert_key or "C")
     if str(getattr(ctx, "source", "") or "") == "entry_jam":
         try:

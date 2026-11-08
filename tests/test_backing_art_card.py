@@ -29,6 +29,16 @@ def test_catalog_custom_and_composition_cards_get_artwork_style_jam_keeps_todays
     assert B.backing_art_enabled(kind) is on
 
 
+@pytest.mark.parametrize("source,on", [("mission", True), ("song_improv", True), ("entry_jam", False), ("", False)])
+def test_missions_and_sbi_wear_their_songs_card_style_jam_keeps_todays(monkeypatch, source, on):
+    """A Mission or Song-Based Improvisation handoff plays a real song and wears its card; Style Jam and the
+    Jam Session Generator ("entry_jam") keep today's Creative card."""
+    monkeypatch.setenv("MUSIC_SONG_ART_CARDS", "1")
+    assert B.backing_art_enabled("creative", creative_source=source) is on
+    monkeypatch.setenv("MUSIC_SONG_ART_CARDS", "0")
+    assert not B.backing_art_enabled("creative", creative_source=source)
+
+
 def test_a_catalog_song_lives_in_its_own_genre_not_its_groove():
     facts = B.catalog_card_facts({"title": "Let It Be", "artist": "The Beatles", "genre": "Rock"})
     identity = B.identity_for("song", source_label="Catalog song", style=facts["style"])

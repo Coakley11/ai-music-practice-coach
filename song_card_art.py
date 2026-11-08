@@ -311,8 +311,12 @@ def card_style_tag(identity: CardIdentity, *, container_key: str = "picker_activ
 BACKING_CONTAINER = "backing_art_card"
 
 
-def backing_chips_html(identity: CardIdentity, *, groove: str, meter: str, written: str = "", written_label: str = "") -> str:
-    """Style, Backing groove, Meter, Source (and the written key when charts differ), under the keys."""
+def backing_chips_html(
+    identity: CardIdentity, *, groove: str, meter: str, written: str = "", written_label: str = "", written_instrument: str = ""
+) -> str:
+    """Style, Backing groove, Meter, Source (and the written key when charts differ), under the keys.
+
+    ``written_instrument``: a Mission's written key wears the active instrument's icon, as today's Mission card does."""
     from practice_ui_labels import GROOVE_ICONS
 
     groove_name = str(groove or "Auto").strip() or "Auto"
@@ -323,8 +327,22 @@ def backing_chips_html(identity: CardIdentity, *, groove: str, meter: str, writt
         _stat(SEMANTIC_FIELD_ICONS["source"], "Source", identity.source_name, identity.source_logo),
     ]
     if str(written or "").strip():
-        chips.append(_stat(SEMANTIC_FIELD_ICONS["written_key"], str(written_label or "Charts in"), str(written)))
+        icon = SEMANTIC_FIELD_ICONS["written_key"]
+        if str(written_instrument or "").strip():
+            from music_feature_icons import semantic_field_icon
+
+            icon = semantic_field_icon("written_key", instrument=str(written_instrument)) or icon
+        chips.append(_stat(icon, str(written_label or "Charts in"), str(written)))
     return f'<div class="sc-frag sc-frag-chips {identity.classes} p-backing"><div class="stats bk-stats">{"".join(chips)}</div></div>'
+
+
+def backing_mission_html(identity: CardIdentity, *, kicker: str, line: str, details: Iterable[str] = ()) -> str:
+    """What a Mission / Song-Based Improvisation backing is for, under the chips: its kicker ("Mission"), the
+    mission and section (or the SBI source line), and the Default vs Current style / meter when they differ."""
+    rows = [f'<p class="sc-mission"><span class="sc-mission-k">{_E(kicker)}</span> <b>{_E(line)}</b></p>' if line else ""]
+    rows += [f'<p class="sc-mission-d">{_E(d)}</p>' for d in details if str(d or "").strip()]
+    body = "".join(r for r in rows if r)
+    return f'<div class="sc-frag sc-frag-mission {identity.classes} p-backing">{body}</div>' if body else ""
 
 
 def backing_key_label(which: str) -> str:
