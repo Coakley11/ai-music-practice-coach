@@ -35,7 +35,7 @@
 <rect x="-18" y="0" width="36" height="430" fill="url(#pencil)"/><path d="M-6 0V430M6 0V430" stroke="#a16207" stroke-opacity=".4" stroke-width="2"/>
 <path d="M-18 430H18L0 500Z" fill="#fde9c4"/><path d="M-5 482H5L0 500Z" fill="#1c1917"/>
 <rect x="-18" y="-40" width="36" height="40" fill="#d6d3d1"/><path d="M-18-30H18M-18-20H18M-18-10H18" stroke="#78716c" stroke-width="2"/><path d="M-18-40C-18-74 18-74 18-40Z" fill="#fb7185"/>
-</g><g opacity=".97"><g transform="translate(1416 216)">
+</g><g opacity=".97" transform="translate(1600 40) scale(.72) translate(-1600 -40)"><g transform="translate(1416 216)">
 <path d="M0-240V-54" stroke="#111" stroke-width="4"/>
 <circle r="58" fill="url(#gfun_ball)"/><circle r="58" fill="url(#gfun_mir)"/>
 <g stroke="#fef08a" stroke-width="4" opacity=".85" stroke-linecap="round"><path d="M-70 40-120 72M-20 72-34 122M40 66 66 110M70 20 130 36"/></g>

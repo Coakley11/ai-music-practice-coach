@@ -44,7 +44,7 @@
 <rect x="-18" y="0" width="36" height="430" fill="url(#pencil)"/><path d="M-6 0V430M6 0V430" stroke="#a16207" stroke-opacity=".4" stroke-width="2"/>
 <path d="M-18 430H18L0 500Z" fill="#fde9c4"/><path d="M-5 482H5L0 500Z" fill="#1c1917"/>
 <rect x="-18" y="-40" width="36" height="40" fill="#d6d3d1"/><path d="M-18-30H18M-18-20H18M-18-10H18" stroke="#78716c" stroke-width="2"/><path d="M-18-40C-18-74 18-74 18-40Z" fill="#fb7185"/>
-</g><g opacity=".97"><g transform="translate(1060 235) scale(1.65)"><use xlink:href="#gjew_magen"/></g><g transform="translate(1490 330) rotate(26) scale(.92)">
+</g><g opacity=".97" transform="translate(1600 40) scale(.72) translate(-1600 -40)"><g transform="translate(1060 235) scale(1.65)"><use xlink:href="#gjew_magen"/></g><g transform="translate(1490 330) rotate(26) scale(.92)">
 <rect x="-22" y="-290" width="44" height="510" rx="10" fill="url(#gjew_clar)"/>
 <path d="M-22 220C-30 280-58 300-66 324H66C58 300 30 280 22 220Z" fill="url(#gjew_clar)"/>
 <ellipse cy="324" rx="66" ry="11" fill="#0a0a14" stroke="url(#gjew_silver)" stroke-width="5"/>

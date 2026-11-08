@@ -80,7 +80,8 @@ for source, styles in MAKE.items():
         keep = [x for n, x in enumerate(b_rest) if n not in DROP[source]]
         if source == "custom":
             # the pencil rests on the chord-chart sheet, the instruments in front (base: bg, grid, chart, pencil, notes)
-            hero = keep[:4] + ['<g opacity=".97">' + "".join(layers) + "</g>"] + keep[4:5]
+            # smaller and anchored at the right edge, so the handwritten chord chart stays the card's subject
+            hero = keep[:4] + ['<g opacity=".97" transform="translate(1600 40) scale(.72) translate(-1600 -40)">' + "".join(layers) + "</g>"] + keep[4:5]
             body = keep[5:]
             # faint watermark of the lead instrument in the body, like custom_blues' trumpet
             water = f'<g opacity=".14" transform="translate(-260 820) scale(1.1)">{lead}</g>'
@@ -89,7 +90,7 @@ for source, styles in MAKE.items():
             extra_defs = ""
         else:
             # gold-tinted instruments over the staff lines and notes, under the quill and inkwell
-            inst = '<g filter="url(#vx_gold)" opacity=".92">' + "".join(layers) + "</g>"
+            inst = '<g filter="url(#vx_gold)" opacity=".92" transform="translate(1600 40) scale(.88) translate(-1600 -40)">' + "".join(layers) + "</g>"
             out = keep[:5] + [inst] + keep[5:]
             extra_defs = GOLD
         defs = "<defs>" + inner_defs(b_defs) + gdefs + extra_defs + "</defs>"

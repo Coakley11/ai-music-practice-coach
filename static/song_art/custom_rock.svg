@@ -41,7 +41,7 @@
 <rect x="-18" y="0" width="36" height="430" fill="url(#pencil)"/><path d="M-6 0V430M6 0V430" stroke="#a16207" stroke-opacity=".4" stroke-width="2"/>
 <path d="M-18 430H18L0 500Z" fill="#fde9c4"/><path d="M-5 482H5L0 500Z" fill="#1c1917"/>
 <rect x="-18" y="-40" width="36" height="40" fill="#d6d3d1"/><path d="M-18-30H18M-18-20H18M-18-10H18" stroke="#78716c" stroke-width="2"/><path d="M-18-40C-18-74 18-74 18-40Z" fill="#fb7185"/>
-</g><g opacity=".97"><g transform="translate(1250 92)">
+</g><g opacity=".97" transform="translate(1600 40) scale(.72) translate(-1600 -40)"><g transform="translate(1250 92)">
 <rect width="340" height="170" rx="10" fill="url(#groc_tolex)" stroke="#71717a" stroke-width="3"/>
 <rect x="16" y="16" width="308" height="62" rx="4" fill="#1c1917" stroke="#d4af37" stroke-width="2"/>
 <g fill="url(#groc_chrome)"><circle cx="52" cy="47" r="15"/><circle cx="100" cy="47" r="15"/><circle cx="148" cy="47" r="15"/><circle cx="196" cy="47" r="15"/><circle cx="244" cy="47" r="15"/></g>

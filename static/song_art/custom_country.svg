@@ -37,7 +37,7 @@
 <rect x="-18" y="0" width="36" height="430" fill="url(#pencil)"/><path d="M-6 0V430M6 0V430" stroke="#a16207" stroke-opacity=".4" stroke-width="2"/>
 <path d="M-18 430H18L0 500Z" fill="#fde9c4"/><path d="M-5 482H5L0 500Z" fill="#1c1917"/>
 <rect x="-18" y="-40" width="36" height="40" fill="#d6d3d1"/><path d="M-18-30H18M-18-20H18M-18-10H18" stroke="#78716c" stroke-width="2"/><path d="M-18-40C-18-74 18-74 18-40Z" fill="#fb7185"/>
-</g><g opacity=".97"><g transform="translate(1330 290) rotate(8) scale(.85)">
+</g><g opacity=".97" transform="translate(1600 40) scale(.72) translate(-1600 -40)"><g transform="translate(1330 290) rotate(8) scale(.85)">
 <path d="M-140 90C-210 30-200-96-78-96-36-96-20-74 0-74 20-74 36-96 78-96 200-96 210 30 140 90 120 106 110 128 124 154 190 226 158 356 0 356-158 356-190 226-124 154-110 128-120 106-140 90Z" fill="url(#gcou_top)" stroke="#2a1305" stroke-width="6"/>
 <path d="M-140 90C-210 30-200-96-78-96" fill="none" stroke="#fff7d6" stroke-opacity=".55" stroke-width="5"/>
 <g fill="none" stroke="#2a1305"><circle cx="0" cy="62" r="66" stroke-width="5"/><circle cx="0" cy="62" r="60" stroke="#a16207" stroke-width="5"/><circle cx="0" cy="62" r="54" stroke-width="3"/></g>

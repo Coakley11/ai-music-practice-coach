@@ -36,7 +36,7 @@
 <rect x="-18" y="0" width="36" height="430" fill="url(#pencil)"/><path d="M-6 0V430M6 0V430" stroke="#a16207" stroke-opacity=".4" stroke-width="2"/>
 <path d="M-18 430H18L0 500Z" fill="#fde9c4"/><path d="M-5 482H5L0 500Z" fill="#1c1917"/>
 <rect x="-18" y="-40" width="36" height="40" fill="#d6d3d1"/><path d="M-18-30H18M-18-20H18M-18-10H18" stroke="#78716c" stroke-width="2"/><path d="M-18-40C-18-74 18-74 18-40Z" fill="#fb7185"/>
-</g><g opacity=".97"><g transform="translate(1040 270) rotate(-16)">
+</g><g opacity=".97" transform="translate(1600 40) scale(.72) translate(-1600 -40)"><g transform="translate(1040 270) rotate(-16)">
 <circle r="330" fill="url(#gsou_vinyl)"/><use xlink:href="#gsou_grooves"/>
 <path d="M0 0 240-226A330 330 0 0 1 330-40Z" fill="url(#gsou_shine)"/><path d="M0 0-240 226A330 330 0 0 1-330 40Z" fill="url(#gsou_shine)" opacity=".7"/>
 <circle r="104" fill="url(#gsou_label)"/><circle r="104" fill="none" stroke="#fde68a" stroke-width="4"/><circle r="88" fill="none" stroke="#fff" stroke-opacity=".5" stroke-width="1.500"/>
