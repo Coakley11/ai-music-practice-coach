@@ -245,17 +245,134 @@ class TestPhase2StyleIdentity(unittest.TestCase):
             )
             feats[style] = self._spectral_features(audio, sr)
 
-        # Rock/Funk are brighter + punchier than Jazz/Bossa.
-        self.assertGreater(feats["Rock groove"]["centroid"], feats["Jazz swing"]["centroid"])
-        self.assertGreater(feats["Funk groove"]["crest"], feats["Jazz swing"]["crest"])
-        # Jazz carries more low-end weight (walking bass + soft kit) than Rock.
-        self.assertGreater(feats["Jazz swing"]["low_ratio"], feats["Rock groove"]["low_ratio"])
-        # Each style has a distinct spectral signature.
+        # Each style has a distinct spectral signature.  (Which style is brighter or
+        # bassier across the whole mix is a mixing choice, not a style rule: the
+        # recorded upright sits under the piano and drums in Jazz on purpose, and
+        # the recorded guitar gives Rock a warmer whole-mix balance.  Each style's
+        # own character is checked part by part in the tests below.)
         sigs = {
             style: (round(f["centroid"], -2), round(f["crest"], 1))
             for style, f in feats.items()
         }
         self.assertGreaterEqual(len(set(sigs.values())), 5)
+
+    # --- Style character, one part of the band at a time -------------------------
+    # Each layer render is peak-normalised by the engine, so these measure the
+    # shape of a part (its tone, where its attacks fall in the beat), never how
+    # loud it is against the others.  They hold with every recorded instrument
+    # switch on or off, and each fails if the style loses the trait it names.
+
+    _BEAT = 60.0 / 100  # the renders below are at 100 BPM
+    _layer_cache: dict[tuple[str, tuple[str, ...]], tuple[Any, int]] = {}
+
+    @classmethod
+    def _render_part(cls, style: str, layers: tuple[str, ...]) -> tuple[Any, int]:
+        key = (style, layers)
+        if key not in cls._layer_cache:
+            prof = resolve_backing_musical_profile(style=style, mood="Mellow", intensity="Medium")
+            cls._layer_cache[key] = synthesize_chords_to_numpy(
+                cls._PROGRESSION, bpm=100, loops=2, style=style, musical_profile=prof, layers=layers
+            )
+        return cls._layer_cache[key]
+
+    @staticmethod
+    def _mono(audio: Any) -> Any:
+        import numpy as np
+
+        x = np.asarray(audio, dtype=np.float64)
+        return x.mean(axis=1) if x.ndim > 1 else x
+
+    @classmethod
+    def _onsets(cls, audio: Any, sr: int, lo: float, hi: float) -> tuple[Any, Any]:
+        """Onset strength in a band: rise in short-time magnitude (12 ms window, 3 ms hop)."""
+        import numpy as np
+
+        n, hop = 512, 128
+        x = cls._mono(audio)
+        band = (np.fft.rfftfreq(n, 1.0 / sr) >= lo) & (np.fft.rfftfreq(n, 1.0 / sr) < hi)
+        frames = np.lib.stride_tricks.sliding_window_view(np.pad(x, (n // 2, n // 2)), n)[::hop]
+        mag = np.abs(np.fft.rfft(frames * np.hanning(n), axis=1))[:, band]
+        rise = np.maximum(np.diff(mag, axis=0), 0.0).sum(axis=1)
+        return (np.arange(len(rise)) + 1) * hop / sr, rise
+
+    @classmethod
+    def _at(cls, onsets: tuple[Any, Any], lo: float, hi: float, period: float = 1.0) -> float:
+        """Onset strength whose position (in beats, modulo ``period``) lies in [lo, hi)."""
+        t, rise = onsets
+        ph = (t / cls._BEAT) % period
+        inside = ((ph >= lo % period) | (ph < hi)) if lo < 0 else ((ph >= lo) & (ph < hi))
+        return float(rise[inside].sum())
+
+    @classmethod
+    def _harmony_presence(cls, style: str) -> float:
+        """Share of the harmony part's power at 1-5 kHz: the bite of a driven guitar or comp."""
+        import numpy as np
+
+        audio, sr = cls._render_part(style, ("keys", "guitar"))
+        x = cls._mono(audio)
+        power = np.abs(np.fft.rfft(x)) ** 2
+        freqs = np.fft.rfftfreq(len(x), 1.0 / sr)
+        return float(power[(freqs >= 1000) & (freqs < 5000)].sum() / power.sum())
+
+    @classmethod
+    def _sixteenth_activity(cls, style: str) -> float:
+        """Rhythm section attacks on the 'e' and 'a' against those on the beat and the '&'."""
+        audio, sr = cls._render_part(style, ("rhythm",))
+        on = cls._onsets(audio, sr, 1000, 16000)
+        # Windows are wide enough for each style's pocket (Funk pushes off-beats early).
+        between = cls._at(on, 0.14, 0.32) + cls._at(on, 0.62, 0.80)
+        on_grid = cls._at(on, -0.06, 0.08) + cls._at(on, 0.38, 0.56)
+        return between / (on_grid + 1e-9)
+
+    @classmethod
+    def _four_beat_evenness(cls, style: str) -> float:
+        """Weakest / strongest low-end attack across beats 1-4 of the bar (1.0 = every beat alike)."""
+        audio, sr = cls._render_part(style, ("rhythm",))
+        on = cls._onsets(audio, sr, 30, 250)
+        per_beat = [cls._at(on, k - 0.06, k + 0.10, period=4.0) for k in range(4)]
+        return min(per_beat) / (max(per_beat) + 1e-9)
+
+    def test_rock_harmony_part_has_bite(self) -> None:
+        """Rock's chords bite: the driven comp (or the recorded guitar) keeps at least 11%
+        of the harmony part's power at 1-5 kHz, and far more than the keys of Pop, Jazz
+        and Bossa.  Measured share 15% on dev, 44% with the recorded guitar, 15% with the
+        Steinway (guitar off); the same Rock comp played on a clean piano drops to 7%.
+        Measured ratio over the others: 6x on dev, 18x guitar, 1.6x Steinway."""
+        rock = self._harmony_presence("Rock groove")
+        self.assertGreater(rock, 0.11, "Rock's harmony part has lost its drive")
+        for other in ("Pop groove", "Jazz swing", "Bossa nova"):
+            self.assertGreater(
+                rock, 1.4 * self._harmony_presence(other),
+                f"Rock's harmony part should bite harder than {other}'s",
+            )
+
+    def test_funk_rhythm_section_plays_sixteenths(self) -> None:
+        """Funk's drums and bass fill the 'e' and 'a' of the beat; Pop and Rock play
+        straight eighths.  Measured activity 0.57 on dev and with the recorded guitar,
+        upright and Steinway, 1.31 with the recorded drums; Funk forced onto a straight
+        grid drops to 0.04.  Measured ratio over Pop and Rock: 48x on dev, 3.5x drums."""
+        funk = self._sixteenth_activity("Funk groove")
+        self.assertGreater(funk, 0.25, "Funk's rhythm section has stopped playing sixteenths")
+        for other in ("Pop groove", "Rock groove"):
+            self.assertGreater(
+                funk, 2.5 * self._sixteenth_activity(other),
+                f"Funk should play more sixteenth notes than {other}",
+            )
+
+    def test_jazz_bass_walks_on_every_beat(self) -> None:
+        """Jazz walks: the bottom of the band lands on all four beats alike, unlike Pop's
+        and Bossa's two-feel or Funk's syncopated line.  This measures where the bass
+        plays, not how loud it is (the recorded upright sits under the piano and
+        drums by design; that balance is pinned by its own test).  Measured evenness
+        0.91 on dev, 0.75 with the recorded upright, 0.89 with recorded drums; the
+        other styles at most 0.41."""
+        jazz = self._four_beat_evenness("Jazz swing")
+        self.assertGreater(jazz, 0.6, "Jazz's low end should land on every beat")
+        for other in ("Pop groove", "Bossa nova", "Funk groove"):
+            self.assertGreater(
+                jazz, 1.5 * self._four_beat_evenness(other),
+                f"Jazz's bass should walk more evenly than {other}'s",
+            )
 
     def test_style_bass_density_differs(self) -> None:
         """Arrangement: Rock eighth bass vs Pop sparse root-fifth."""
