@@ -10113,22 +10113,84 @@ def _create_backing_card_slots(art: bool = False) -> tuple[Any, tuple | None]:
         return head, None
 
 
-def _backing_art_wanted(kind: str) -> bool:
+def _backing_art_wanted(kind: str, creative_source: str = "") -> bool:
     global _backing_art_identity
     _backing_art_identity = None
     try:
         from backing_art_card import backing_art_enabled
 
-        return backing_art_enabled(kind)
+        return backing_art_enabled(kind, creative_source=creative_source)
     except Exception:
         return False
 
 
-def _render_backing_art_head_for_card(kind: str, *, record: Any, ctx: Any, source_label: str) -> None:
-    """Artwork, title and artist for a Catalog, Custom or Composition card."""
+def _creative_art_details(
+    ctx: Any, *, practice_key: str, groove: str, meter: str, musical_state: Any, applied_bpm: int
+) -> dict[str, Any]:
+    """A Mission / SBI card's own facts, from the same helpers today's Creative card uses: the target chord or
+    span (chord strip), the mission and section (or the SBI source), Default vs Current style / meter."""
+    import html as _html
+
+    from backing_context_ui import creative_card_headline, creative_live_style_meter
+
+    state = musical_state
+    if state is None:
+        from backing_musical_state import resolve_current_backing_musical_state
+
+        state = resolve_current_backing_musical_state(st.session_state, applied_bpm=applied_bpm)
+    head = creative_card_headline(
+        ctx, st.session_state, practice_key=practice_key, state=state, applied_groove=groove
+    )
+    live = creative_live_style_meter(
+        ctx, st.session_state, state=state, applied_groove=groove, applied_meter=meter
+    )
+    mission = str(getattr(ctx, "source", "") or "") == "mission"
+    chord = str(head.get("mission_chord") or "").strip()
+    bars = [c.strip() for c in chord.split("\u2192") if c.strip()] if mission and chord else []
+    line = _html.unescape(str(head.get("subtitle_html") or ""))
+    kicker = "Mission" if mission else "Song-Based Improvisation"
+    if not mission and line.startswith(kicker + " \u00b7 "):
+        line = line[len(kicker) + 3:]
+    details = []
+    live_groove = str(live.get("live_groove") or "").strip()
+    default_style = str(live.get("default_style") or "").strip()
+    if default_style and live_groove and default_style.lower() != live_groove.lower():
+        details.append(f"Default style: {default_style} \u00b7 Current style: {live_groove}")
+    current_meter = str(
+        live.get("live_meter") or meter or getattr(state, "meter", "") or getattr(ctx, "meter", "") or "4/4"
+    ).strip()
+    default_meter = str(live.get("default_meter") or "").strip()
+    if default_meter and current_meter and default_meter != current_meter:
+        details.append(f"Default meter: {default_meter} \u00b7 Current meter: {current_meter}")
+    return {
+        "mission": mission,
+        "status": "Mission backing jam" if mission else "Song-Based Improvisation",
+        "bars": bars,
+        "bars_note": ("Mission span" if head.get("span_summary") else "Target chord") if bars else "",
+        "kicker": kicker,
+        "line": line,
+        "details": details,
+    }
+
+
+def _render_backing_art_head_for_card(
+    kind: str, *, record: Any, ctx: Any, source_label: str, creative: dict[str, Any] | None = None
+) -> None:
+    """Artwork, title and artist for a Catalog, Custom or Composition card -- and for a Mission / SBI handoff,
+    the card of the song it plays (its own source and saved style), with the Mission's chord or span."""
     global _backing_art_identity
     from backing_art_card import catalog_card_facts, identity_for, render_backing_art_head, song_style_for_card
 
+    if kind == "creative" and ctx is not None:
+        from backing_art_card import creative_identity
+
+        info = creative or {}
+        _backing_art_identity, title, artist = creative_identity(st.session_state, ctx)
+        render_backing_art_head(
+            st, _backing_art_identity, title=title, artist=artist, status=str(info.get("status") or ""),
+            bars=list(info.get("bars") or []), bars_note=str(info.get("bars_note") or ""),
+        )
+        return
     if kind in {"custom", "composition"} and ctx is not None and str(getattr(ctx, "source", "") or "") != "":
         title = str(getattr(ctx, "song_title", "") or ("My Composition" if kind == "composition" else "Custom progression"))
         artist = ""
@@ -10151,7 +10213,9 @@ def _render_backing_art_head_for_card(kind: str, *, record: Any, ctx: Any, sourc
     render_backing_art_head(st, _backing_art_identity, title=title, artist=artist, karaoke=karaoke)
 
 
-def _render_backing_art_facts(*, groove: str, meter: str, practice_key: str, written_key: str) -> None:
+def _render_backing_art_facts(
+    *, groove: str, meter: str, practice_key: str, written_key: str, creative: dict[str, Any] | None = None
+) -> None:
     if _backing_art_identity is None:
         return
     from backing_art_card import render_backing_art_chips
@@ -10163,10 +10227,22 @@ def _render_backing_art_facts(*, groove: str, meter: str, practice_key: str, wri
             label = "Shape"
     except Exception:
         pass
+    info = creative or {}
     render_backing_art_chips(
         st, _backing_art_identity, groove=groove, meter=meter,
         written=written if written and written != str(practice_key or "").strip() else "", written_label=label,
+        # A Mission's written key wears the active instrument (Clarinet, Sax, ...), as today's Mission card does.
+        written_instrument=str(st.session_state.get("instrument") or "") if info.get("mission") else "",
     )
+    if info:
+        from song_card_art import backing_mission_html
+
+        _mission_html = backing_mission_html(
+            _backing_art_identity, kicker=str(info.get("kicker") or ""), line=str(info.get("line") or ""),
+            details=list(info.get("details") or []),
+        )
+        if _mission_html:
+            st.markdown(_mission_html, unsafe_allow_html=True)
 
 
 def _backing_art_play_theme() -> dict | None:
@@ -21478,7 +21554,12 @@ elif _studio_page == "backing":
                 pass
         else:
             _backing_card_kind = "song"
-        _backing_card_slot, _backing_card_cols = _create_backing_card_slots(art=_backing_art_wanted(_backing_card_kind))
+        _backing_card_slot, _backing_card_cols = _create_backing_card_slots(
+            art=_backing_art_wanted(
+                _backing_card_kind,
+                str(getattr(_creative_backing_ctx, "source", "") or "") if _backing_card_kind == "creative" else "",
+            )
+        )
     except Exception as _backing_card_err:
         if _developer_mode_enabled():
             st.caption(f"Developer · backing card render: {_backing_card_err}")
@@ -21998,12 +22079,28 @@ elif _studio_page == "backing":
             pass
         _art_slots = bool(_backing_card_cols is not None and len(_backing_card_cols) > 3)
         if _backing_card_slot is not None and _art_slots:
+            _creative_art = None
+            if _backing_card_kind == "creative" and _creative_backing_ctx is not None:
+                try:
+                    _creative_art = _creative_art_details(
+                        _creative_backing_ctx,
+                        practice_key=str(_backing_practice_key or ""),
+                        groove=str(default_groove_style or ""),
+                        meter=str(_applied_meter_pre or ""),
+                        musical_state=_backing_musical,
+                        applied_bpm=int(_status_bpm),
+                    )
+                except Exception as _creative_art_err:
+                    _creative_art = {}
+                    if _developer_mode_enabled():
+                        st.caption(f"Developer · mission card facts: {_creative_art_err}")
             with _backing_card_slot.container():
                 _render_backing_art_head_for_card(
                     _backing_card_kind,
                     record=_backing_card_record,
-                    ctx=_backing_ctx_for_card,
+                    ctx=_creative_backing_ctx if _backing_card_kind == "creative" else _backing_ctx_for_card,
                     source_label=str(_backing_source_label or ""),
+                    creative=_creative_art,
                 )
             with _backing_card_cols[3]:
                 _render_backing_art_facts(
@@ -22011,6 +22108,7 @@ elif _studio_page == "backing":
                     meter=str(_applied_meter_pre or ""),
                     practice_key=str(_backing_practice_key or ""),
                     written_key=str(_backing_written_key or ""),
+                    creative=_creative_art,
                 )
         elif _backing_card_slot is not None:
             with _backing_card_slot.container():

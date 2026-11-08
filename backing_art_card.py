@@ -12,11 +12,76 @@ from typing import Any, Mapping
 import song_card_art as art
 
 ART_KINDS = frozenset({"song", "custom", "composition"})
+# Creative handoffs that play a real song: a Mission or Song-Based Improvisation wears that song's card.
+# Style Jam / Jam Session Generator ("entry_jam") keep today's card.
+ART_CREATIVE_SOURCES = frozenset({"mission", "song_improv"})
 
 
-def backing_art_enabled(kind: str) -> bool:
-    """Catalog, Custom and Composition cards have approved artwork; a Style Jam card keeps today's."""
-    return art.song_art_cards_enabled() and str(kind or "") in ART_KINDS
+def backing_art_enabled(kind: str, *, creative_source: str = "") -> bool:
+    """Catalog, Custom and Composition cards have approved artwork, and so do Missions and SBI (their song's);
+    a Style Jam card keeps today's."""
+    if not art.song_art_cards_enabled():
+        return False
+    kind = str(kind or "")
+    if kind == "creative":
+        return str(creative_source or "") in ART_CREATIVE_SOURCES
+    return kind in ART_KINDS
+
+
+def creative_owner_pick(session: Any, ctx: Any) -> str:
+    """The pick key of the song a Mission or SBI backing plays, read now.
+
+    Mission: the Mission's current owner song (the sealed ``bound_pick_key`` can be stale after the song
+    changed). SBI: the song it was opened with, Custom when its owner says Custom.
+    """
+    source = str(getattr(ctx, "source", "") or "")
+    bound = str(getattr(ctx, "bound_pick_key", "") or getattr(ctx, "active_song_id", "") or "").strip()
+    pick = ""
+    if source == "mission":
+        try:
+            from mission_owner_contract import resolve_mission_owner_context
+
+            pick = str(resolve_mission_owner_context(session).underlying_pick or "").strip()
+        except Exception:
+            pick = ""
+        return pick or bound
+    pick = bound
+    if source == "song_improv":
+        kind = ""
+        try:
+            from source_session_state import resolve_sbi_material_kind
+
+            kind = str(resolve_sbi_material_kind(session, ctx=ctx) or "")
+        except Exception:
+            kind = ""
+        if kind == "custom" and not pick.startswith("custom::"):
+            try:
+                from custom_progression_lab import CPL_ACTIVE_KEY
+                from songs.music_source import custom_pick_key_for
+
+                active = session.get(CPL_ACTIVE_KEY)
+                if isinstance(active, dict):
+                    pick = str(custom_pick_key_for(active) or pick)
+            except Exception:
+                pass
+    return pick
+
+
+def creative_identity(session: Any, ctx: Any) -> tuple[art.CardIdentity, str, str]:
+    """(identity, title, artist) for a Mission / SBI card: the song's own source and saved style, never the groove."""
+    from song_identity_style import saved_song_style, song_source
+
+    pick = creative_owner_pick(session, ctx)
+    source = song_source(pick) if pick else "catalog"
+    style = saved_song_style(session, pick) if pick else ""
+    title = str(getattr(ctx, "song_title", "") or "").strip()
+    artist = ""
+    if source == "catalog":
+        facts = catalog_card_facts({"title": title, "pick_key": pick}, session=session)
+        title, artist = facts["title"], facts["artist"]
+        style = style or facts["style"]
+    label = {"custom": "Custom", "composition": "Composition"}.get(source, "Catalog")
+    return art.card_identity(label, style), title or "Active song", artist
 
 
 def identity_for(kind: str, *, source_label: str = "", style: str = "") -> art.CardIdentity:
@@ -31,12 +96,17 @@ def render_backing_art_head(
     title: str,
     artist: str = "",
     karaoke: bool = False,
+    status: str = "",
+    bars: list[str] | tuple[str, ...] = (),
+    bars_note: str = "",
 ) -> None:
-    """The card's colors and frame (on the keyed container) and its artwork with title and artist."""
-    status = "Now singing" if karaoke else ""
+    """The card's colors and frame (on the keyed container) and its artwork with title and artist.
+
+    A Mission shows its target chord or 2/3-chord span in the card's chord strip (``bars``)."""
+    status = "Now singing" if karaoke else status
     st.markdown(
         art.card_style_tag(identity, container_key=art.BACKING_CONTAINER)
-        + art.hero_html(identity, title=title, artist=artist, page="backing", status=status),
+        + art.hero_html(identity, title=title, artist=artist, page="backing", status=status, bars=bars, bars_note=bars_note),
         unsafe_allow_html=True,
     )
 
@@ -49,9 +119,13 @@ def render_backing_art_chips(
     meter: str,
     written: str = "",
     written_label: str = "",
+    written_instrument: str = "",
 ) -> None:
     st.markdown(
-        art.backing_chips_html(identity, groove=groove, meter=meter, written=written, written_label=written_label),
+        art.backing_chips_html(
+            identity, groove=groove, meter=meter, written=written, written_label=written_label,
+            written_instrument=written_instrument,
+        ),
         unsafe_allow_html=True,
     )
 

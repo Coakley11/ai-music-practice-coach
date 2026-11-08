@@ -578,6 +578,15 @@
 /* Room under "Tap to change". */
 .st-key-backing_art_card .st-key-backing_card_key_row [data-testid="stHorizontalBlock"]>[data-testid="stColumn"]{padding-bottom:20px!important}
 .st-key-backing_art_card .st-key-backing_card_key_row .ui-skp-cap{margin-top:8px!important}
+/* A Mission / Song-Based Improvisation card: what the backing is for, in the card's chip colours; long names wrap. */
+.st-key-backing_art_card .sc-frag-mission{display:grid;gap:4px;margin-top:10px;padding:10px 14px;background:var(--chip-bg);border:2px solid var(--chip-line);border-radius:var(--tile-radius,14px);color:var(--chip-ink)}
+.st-key-backing_art_card .sc-mission,.st-key-backing_art_card .sc-mission-d{margin:0;overflow-wrap:anywhere;line-height:1.35}
+.st-key-backing_art_card .sc-mission{font-size:15px;font-weight:600}
+.st-key-backing_art_card .sc-mission b{font-family:var(--key);font-weight:var(--key-weight);font-style:var(--key-style,normal);font-size:18px}
+.st-key-backing_art_card .sc-mission-k{text-transform:uppercase;letter-spacing:.08em;font-size:12px;font-weight:800;opacity:.85}
+.st-key-backing_art_card .sc-mission-d{font-size:13.5px;opacity:.9}
+/* A Mission's chord strip (target chord or 2/3-chord span): long chord names wrap inside the card. */
+.st-key-backing_art_card .sc-prog-bars{flex-wrap:wrap;justify-content:flex-end;max-width:min(520px,calc(100cqw - 92px))}
 /* Phones: the four facts two to a row instead of one each. */
 @container card (max-width:560px){
   .st-key-backing_art_card .bk-stats{gap:8px}
@@ -585,6 +594,9 @@
   .st-key-backing_art_card .bk-stats .stat i{width:28px;height:28px;font-size:15px}
   .st-key-backing_art_card .bk-stats .stat b{font-size:17px}
   .st-key-backing_art_card .bk-stats .stat .vg{width:21px;height:21px;font-size:12px}
+  .st-key-backing_art_card .sc-frag-mission{padding:8px 12px}
+  .st-key-backing_art_card .sc-mission b{font-size:16px}
+  .st-key-backing_art_card .sc-prog-bars{max-width:calc(100cqw - 44px)}
 }
 
 /* ---------------------------------------------------------------------------------------------------------
