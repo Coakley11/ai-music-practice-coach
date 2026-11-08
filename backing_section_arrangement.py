@@ -215,9 +215,12 @@ def style_family(style: str) -> str:
     return "moderate"
 
 
-def shape_intensity(intensity: float, style: str, texture: SectionTexture) -> float:
-    """Narrow the section loudness spread around the neutral level, then apply the texture's trim."""
-    k = _SPREAD[style_family(style)]
+def shape_intensity(intensity: float, style: str, texture: SectionTexture, spread_scale: float = 1.0) -> float:
+    """Narrow the section loudness spread around the neutral level, then apply the texture's trim.
+
+    ``spread_scale`` narrows it further for one band: the recorded Jazz upright sits back and barely swells, so
+    the piano and drums would carry the whole section swell and the trio would lose its pocket."""
+    k = _SPREAD[style_family(style)] * float(spread_scale)
     shaped = _REF_INTENSITY * (max(1e-4, float(intensity)) / _REF_INTENSITY) ** k
     return shaped * texture.intensity
 

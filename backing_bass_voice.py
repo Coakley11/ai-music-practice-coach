@@ -50,7 +50,7 @@ def bass_renderer_tag() -> str:
     """Part of saved audio's signature, so takes from another bass are never replayed as this one."""
     mode = upright_mode()
     if mode == "recorded":
-        return f"+upright-recorded-bus{LOW_SHELF_DB:g}_{HIGH_SHELF_DB:g}_{BUS_TRIM:g}_k{KEYS_LIFT:g}"
+        return f"+upright-recorded-bus{LOW_SHELF_DB:g}_{HIGH_SHELF_DB:g}_{BUS_TRIM:g}_k{KEYS_LIFT:g}_s{SECTION_SPREAD:g}"
     return f"+upright-{mode}" if mode else ""
 
 
@@ -167,6 +167,9 @@ BUS_TRIM = float(os.environ.get("MUSIC_UPRIGHT_BUS_TRIM") or 0.75)
 # the piano down with it. When the recorded upright plays, the Jazz piano target is lifted by this factor so
 # the trio balances (bass under the piano and drums). Tunable for listening rounds.
 KEYS_LIFT = float(os.environ.get("MUSIC_UPRIGHT_KEYS_LIFT") or 1.8)
+# The trio's section swell with the recorded upright: the bass sits back (BUS_TRIM) and plays evenly, so the
+# piano and drums' verse-to-chorus swell is narrowed by this factor to keep Jazz's pocket as it is today.
+SECTION_SPREAD = float(os.environ.get("MUSIC_UPRIGHT_SECTION_SPREAD") or 0.85)
 
 
 def _shelf(x: np.ndarray, sr: int, f0: float, gain_db: float, high: bool) -> np.ndarray:

@@ -2178,7 +2178,10 @@ def synthesize_chords_to_numpy(
         section_tex = _sa.bar_texture(style, section_plan[idx])
         tex_bass = section_tex.bass if section_tex is not None else "groove"
         if section_tex is not None:
-            intensity = _sa.shape_intensity(intensity / max(fade_mul, 1e-6), style, section_tex) * fade_mul
+            intensity = _sa.shape_intensity(
+                intensity / max(fade_mul, 1e-6), style, section_tex,
+                spread_scale=_bv.SECTION_SPREAD if upright_bus is not None else 1.0,
+            ) * fade_mul
             bar_patterns = _sa.apply_to_grid(bar_patterns, section_tex, pulses_per_bar)
         loop_pass = idx // cycle_len
         loop_seed = loop_pass * 9173 + groove_seed * 31
