@@ -439,3 +439,9 @@ def test_a_power_chord_symbol_never_gets_a_third_in_its_chords():
     for s in strokes:
         if len(s.pitches) > 1:
             assert not any((p - shape.root) % 12 in (3, 4) for p in s.pitches), s.pitches
+
+
+def test_the_guitar_band_slot_is_the_users_reference_rock_c():
+    """User's listening choice 2026-11-07 (Band Mix Round 1): Rock C = band-slot EQ (+3 dB presence, -2 dB piano
+    dip), guitar 0.55 of the rhythm section, piano at 0.9 of its balance. Change only with a new listening round."""
+    assert (ba._GTR_SLOT_PRESENCE_DB, ba._GTR_SLOT_PIANO_DIP_DB, ba._ROCK_GUITAR_BALANCE, ba._ROCK_KEYS_BEHIND_GUITAR) == (3.0, -2.0, 0.55, 0.9)
