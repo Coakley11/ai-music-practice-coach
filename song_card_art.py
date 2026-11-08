@@ -234,8 +234,10 @@ def songs_body_html(
     instruments_general: str,
     guide: dict[str, Any],
     shown_in: str = "",
+    written: str = "",
+    written_label: str = "",
 ) -> str:
-    """Everything below the keys on the Songs card."""
+    """Everything below the keys on the Songs card (plus the written / chart key when it differs)."""
     stats = "".join(
         (
             _stat(SEMANTIC_FIELD_ICONS["bpm"], "BPM", str(bpm)),
@@ -243,6 +245,7 @@ def songs_body_html(
             _stat(SEMANTIC_FIELD_ICONS["style"], "Style", identity.style_name, identity.style_logo) if identity.style_name else "",
             _stat(SEMANTIC_FIELD_ICONS["source"], "Source", identity.source_name, identity.source_logo),
         )
+        + ((_stat(SEMANTIC_FIELD_ICONS["written_key"], str(written_label or "Charts in"), str(written)),) if str(written or "").strip() else ())
     )
     pills = [(LEVEL_ICONS.get(level, ""), level), (instrument_icon(instrument) if instrument else "", instrument), (icon_for_focus(focus) if focus else "", focus)]
     pills_html = "".join(f'<span class="pill"><em class="pg">{g}</em> {_E(t)}</span>' for g, t in pills if str(t or "").strip())
