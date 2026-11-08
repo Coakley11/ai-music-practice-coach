@@ -1,10 +1,13 @@
 """The song's own style: what kind of song it is, as saved on its source page.
 
 This decides what the song's card LOOKS like. It is never the Backing groove (how the accompaniment SOUNDS),
-never a Backing play-session snapshot, and never invented: a song saved without a style has none here.
+never a Backing play-session snapshot, and never written back. A Custom song saved without a style shows
+what the Custom page shows for it (its own default, Pop); a Composition without a genre has none.
 
 * Catalog      the catalog genre, fixed by the catalog (the genre part of its pick key, else its catalog row).
-* Custom       the progression's saved ``progression_style`` (the Custom page autosaves its draft there).
+* Custom       the progression's saved ``progression_style`` (the Custom page autosaves its draft there);
+               saved without one, the Custom page's own default (Pop), which it shows in its selector.
+               That default is display only: nothing is written back.
 * Composition  Composition Studio's Genre / Style (``metadata.style``); the Rhythm "Style"
                (``global.progression_style``) only where Genre / Style is unset or "Other".
 
@@ -14,6 +17,7 @@ and Backing cards for the same song, through navigation, playback and reloads.
 
 from __future__ import annotations
 
+from functools import lru_cache
 from typing import Any, Mapping
 
 CUSTOM_PREFIX = "custom::"
@@ -35,10 +39,27 @@ def _clean(value: Any) -> str:
     return "" if text.lower() in _NO_GENRE else text
 
 
+@lru_cache(maxsize=1)
+def custom_display_default() -> str:
+    """What the Custom page shows for a progression saved without a style: its own loader's default.
+
+    A display value only: it is never written into the saved record (the record keeps no style until the
+    user saves one on the Custom page)."""
+    try:
+        from custom_progression_lab import load_saved_progression
+
+        return _clean(load_saved_progression({"_": {"name": "_"}}, "_").get("progression_style")) or "Pop"
+    except Exception:
+        return "Pop"
+
+
 def custom_progression_style(progression: Mapping[str, Any] | None) -> str:
-    """The style a Custom progression is saved with ("" when it has none)."""
-    prog = progression or {}
-    return _clean(prog.get("progression_style") or prog.get("style"))
+    """The style a Custom progression shows on the Custom page: its saved style, else the page's own default
+    (Pop). "" only when there is no such progression."""
+    if not progression:
+        return ""
+    prog = progression
+    return _clean(prog.get("progression_style") or prog.get("style")) or custom_display_default()
 
 
 def composition_style(doc: Mapping[str, Any] | None) -> str:
