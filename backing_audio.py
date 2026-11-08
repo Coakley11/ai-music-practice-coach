@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import os
 import wave
 from dataclasses import dataclass, field
 from functools import lru_cache
@@ -1596,8 +1597,22 @@ _KEYS_BALANCE: dict[str, float] = {
 }
 
 # Rock guitar level (RMS) relative to the rhythm section, and what is left of the piano.
-_ROCK_GUITAR_BALANCE = 0.8
-_ROCK_KEYS_BEHIND_GUITAR = 0.35
+_ROCK_GUITAR_BALANCE = float(os.environ.get("MUSIC_GTR_BALANCE") or 0.55)
+_ROCK_KEYS_BEHIND_GUITAR = float(os.environ.get("MUSIC_GTR_KEYS_BEHIND") or 0.9)
+# The guitar's slot in the band: out of the bass's range, less low-mid mud, a dip where the piano's core
+# sits, presence and air so the band does not turn dark (the cab rolls the top off). Tunable for listening.
+_GTR_SLOT_PRESENCE_DB = float(os.environ.get("MUSIC_GTR_PRESENCE_DB") or 3.0)
+_GTR_SLOT_PIANO_DIP_DB = float(os.environ.get("MUSIC_GTR_PIANO_DIP_DB") or -2.0)
+
+
+def _guitar_slot_eq() -> tuple:
+    return (
+        ("highpass", 110.0, 0.707),
+        ("peak", 280.0, 1.0, -3.0),
+        ("peak", 800.0, 1.2, _GTR_SLOT_PIANO_DIP_DB),
+        ("peak", 3200.0, 0.9, _GTR_SLOT_PRESENCE_DB),
+        ("high_shelf", 6000.0, 2.0),
+    )
 
 
 def chord_notes_for_guitar(chord: str) -> list[int]:
@@ -2898,7 +2913,9 @@ def synthesize_chords_to_numpy(
     guitar_bus = None
     if guitar_part is not None:
         # The guitar has its own layer; the piano moves behind it.
-        guitar_bus = guitar_part.finish()
+        import backing_eq as _eq
+
+        guitar_bus = _eq.apply(guitar_part.finish().astype(np.float64), sr, _guitar_slot_eq())
         _guitar_rms = float(np.sqrt(np.mean(guitar_bus ** 2)))
         if _rhythm_rms > 1e-6 and _guitar_rms > 1e-6:
             keys_bus *= _ROCK_KEYS_BEHIND_GUITAR

@@ -46,7 +46,11 @@ def enabled() -> bool:
 
 def guitar_renderer_tag() -> str:
     """Part of saved audio's signature, so takes from another guitar part are never replayed as this one."""
-    return "+rockgtr3" if enabled() else ""
+    if not enabled():
+        return ""
+    import backing_audio as _ba  # the band slot and the piano's level are part of the take
+
+    return f"+rockgtr3-slot{_ba._GTR_SLOT_PRESENCE_DB:g}_{_ba._GTR_SLOT_PIANO_DIP_DB:g}_{_ba._ROCK_KEYS_BEHIND_GUITAR:g}_{_ba._ROCK_GUITAR_BALANCE:g}"
 
 
 def _palm_mute(x: np.ndarray, sr: int) -> np.ndarray:
