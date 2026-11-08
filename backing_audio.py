@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextvars
 import functools
 import io
+import os
 import wave
 import zlib
 from dataclasses import dataclass, field
@@ -33,6 +34,7 @@ import backing_groove_profiles as _groove_profiles
 import backing_bass_voice as _bv
 import backing_keys_voice as _kv
 import backing_pianist as _pn
+import backing_rock_guitar as _rg
 import backing_section_arrangement as _sa
 
 try:
@@ -1749,6 +1751,34 @@ _KEYS_BALANCE: dict[str, float] = {
     "Jazz swing": 0.4,
 }
 
+# Rock guitar level (RMS) relative to the rhythm section, and what is left of the piano.
+_ROCK_GUITAR_BALANCE = float(os.environ.get("MUSIC_GTR_BALANCE") or 0.55)
+_ROCK_KEYS_BEHIND_GUITAR = float(os.environ.get("MUSIC_GTR_KEYS_BEHIND") or 0.9)
+# The guitar's slot in the band: out of the bass's range, less low-mid mud, a dip where the piano's core
+# sits, presence and air so the band does not turn dark (the cab rolls the top off). Tunable for listening.
+_GTR_SLOT_PRESENCE_DB = float(os.environ.get("MUSIC_GTR_PRESENCE_DB") or 3.0)
+_GTR_SLOT_PIANO_DIP_DB = float(os.environ.get("MUSIC_GTR_PIANO_DIP_DB") or -2.0)
+
+
+def _guitar_slot_eq() -> tuple:
+    return (
+        ("highpass", 110.0, 0.707),
+        ("peak", 280.0, 1.0, -3.0),
+        ("peak", 800.0, 1.2, _GTR_SLOT_PIANO_DIP_DB),
+        ("peak", 3200.0, 0.9, _GTR_SLOT_PRESENCE_DB),
+        ("high_shelf", 6000.0, 2.0),
+    )
+
+
+def chord_notes_for_guitar(chord: str) -> list[int]:
+    """The chord as written, with any bar-split or hit marking already resolved by the caller."""
+    notes = list(chord_notes(chord))
+    head = str(chord).split("/")[0]
+    if head.endswith("5") and "b5" not in head and "#5" not in head:
+        return [notes[0], notes[0] + 7]  # a power chord: the engine's note list holds a third that the symbol does not
+    return notes
+
+
 # Pre-mix bus levels of the last render (diagnostics / balance tests).
 LAST_MIX_STATS: dict[str, float] = {}
 
@@ -2092,10 +2122,19 @@ def synthesize_chords_to_numpy(
     chord_list = event_cycle * max(1, int(loops))
     audio = np.zeros(int(sr * bar * len(chord_list)) + sr)
     keys_bus = np.zeros_like(audio)
+    guitar_part = (
+        _rg.start_part(
+            len(audio), sr,
+            [str(e.get("chord") or "") for e in chord_list if not is_no_chord_token(str(e.get("chord") or ""))],
+            chord_notes_for_guitar, bpm, str(song_groove_seed(song_title, song_artist) if song_title else 0),
+        )
+        if style == "Rock groove" and _rg.enabled()
+        else None
+    )
     pianist = (
         _pn.start(
             style, song_groove_seed(song_title, song_artist) if song_title else 0,
-            has_guitar=False, level=level, chord_notes=chord_notes, bass_note=bass_note,
+            has_guitar=guitar_part is not None, level=level, chord_notes=chord_notes, bass_note=bass_note,
         )
         if _pn.mode()
         else None
@@ -2291,6 +2330,12 @@ def synthesize_chords_to_numpy(
         if groove_seed % 3 == 0 and role == "verse":
             bass_hits = bass_hits[: max(2, len(bass_hits) - 1)]
         comp_wave = "piano" if pianist is not None else _comp_wave_for_style(style, role, song_profile)
+        if guitar_part is not None and not bar_is_no_chord:
+            _rg.add_bar(
+                guitar_part, sounding_chord if bar_is_hit else chord, _bossa_next_head(next_chord), role, section_tex,
+                int(event.get("bar_in_section", 0) or 0), bar_is_hit, section_edge, bar_start, pulse, bar, intensity,
+                idx + 1009 * loop_seed, segments=_sounding_segments(chord, pulses_per_bar), chord_notes=chord_notes_for_guitar,
+            )
 
         def _pulse_chord(b_pos: float) -> str:
             if bar_is_hit:
@@ -3155,17 +3200,29 @@ def synthesize_chords_to_numpy(
                 * float(song_profile.get("strings_level", 1.0))
             )
             strings_bus *= float(np.clip(_s_target * _rhythm_rms / _strings_rms, 0.05, 20.0))
+    guitar_bus = None
+    if guitar_part is not None:
+        # The guitar has its own layer; the piano moves behind it.
+        import backing_eq as _eq
+
+        guitar_bus = _eq.apply(guitar_part.finish().astype(np.float64), sr, _guitar_slot_eq())
+        _guitar_rms = float(np.sqrt(np.mean(guitar_bus ** 2)))
+        if _rhythm_rms > 1e-6 and _guitar_rms > 1e-6:
+            keys_bus *= _ROCK_KEYS_BEHIND_GUITAR
+            guitar_bus = guitar_bus * float(np.clip(_ROCK_GUITAR_BALANCE * _rhythm_rms / _guitar_rms, 0.05, 20.0))
     LAST_MIX_STATS.clear()
     LAST_MIX_STATS.update(
         rhythm_rms=float(np.sqrt(np.mean(audio ** 2))),
         keys_rms=float(np.sqrt(np.mean(keys_bus ** 2))),
         strings_rms=float(np.sqrt(np.mean(strings_bus ** 2))) if strings_bus is not None else 0.0,
     )
-    want = {"rhythm", "keys", "strings"} if layers is None else set(layers)
+    want = {"rhythm", "keys", "strings", "guitar"} if layers is None else set(layers)
     if "rhythm" not in want:
         audio[:] = 0.0
     if "keys" in want:
         audio += keys_bus
+    if guitar_bus is not None and "guitar" in want:
+        audio += guitar_bus
     if strings_bus is not None and "strings" in want:
         audio += strings_bus
     audio = np.tanh(audio)
