@@ -162,11 +162,11 @@ LOW_SHELF_HZ = float(os.environ.get("MUSIC_UPRIGHT_LOW_SHELF_HZ") or 110.0)
 LOW_SHELF_DB = float(os.environ.get("MUSIC_UPRIGHT_LOW_SHELF_DB") or 8.0)
 HIGH_SHELF_HZ = float(os.environ.get("MUSIC_UPRIGHT_HIGH_SHELF_HZ") or 2500.0)
 HIGH_SHELF_DB = float(os.environ.get("MUSIC_UPRIGHT_HIGH_SHELF_DB") or -3.0)
-BUS_TRIM = float(os.environ.get("MUSIC_UPRIGHT_BUS_TRIM") or 2.0)
+BUS_TRIM = float(os.environ.get("MUSIC_UPRIGHT_BUS_TRIM") or 0.75)
 # The piano's level is set relative to the rhythm section (bass + drums), so a quieter upright alone would pull
 # the piano down with it. When the recorded upright plays, the Jazz piano target is lifted by this factor so
 # the trio balances (bass under the piano and drums). Tunable for listening rounds.
-KEYS_LIFT = float(os.environ.get("MUSIC_UPRIGHT_KEYS_LIFT") or 1.0)
+KEYS_LIFT = float(os.environ.get("MUSIC_UPRIGHT_KEYS_LIFT") or 1.8)
 
 
 def _shelf(x: np.ndarray, sr: int, f0: float, gain_db: float, high: bool) -> np.ndarray:

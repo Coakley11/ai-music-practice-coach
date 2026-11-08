@@ -56,7 +56,11 @@ class PianoLayerHarmonyTests(unittest.TestCase):
             with self.subTest(style=style):
                 ba.synthesize_chords_to_numpy(_events(prog), bpm=bpm, loops=2, style=style, song_title="T")
                 ratio = ba.LAST_MIX_STATS["keys_rms"] / ba.LAST_MIX_STATS["rhythm_rms"]
-                self.assertAlmostEqual(ratio, ba._KEYS_BALANCE[style], delta=0.05)
+                want = ba._KEYS_BALANCE[style]
+                if style == "Jazz swing" and ba._bv.uses_own_bus():
+                    # The approved Jazz trio balance with the recorded upright (Round 3 G): piano lifted over it.
+                    want *= ba._bv.KEYS_LIFT
+                self.assertAlmostEqual(ratio, want, delta=0.05)
 
 
 class VoiceLeadingTests(unittest.TestCase):
