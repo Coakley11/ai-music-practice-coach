@@ -27,7 +27,9 @@ CHALLENGE_ICON = "\U0001F525"  # the session plan's challenge icon
 CATALOG, CUSTOM, COMPOSITION = "catalog", "custom", "composition"
 GENRES = ("pop", "rock", "jazz", "blues", "country", "soul", "funk", "jewish", "classical")
 _SOURCE_NAME = {CATALOG: "Catalog", CUSTOM: "Custom", COMPOSITION: "Composition"}
-_STYLE_ART = {CUSTOM: ("blues", "pop"), COMPOSITION: ("blues", "classical")}
+# Every catalog genre has a style variation inside the Custom (green notebook) and Composition (navy and gold
+# manuscript) worlds: the genre's instruments on the source's own artwork, never the Catalog album art.
+_STYLE_ART = {CUSTOM: GENRES, COMPOSITION: GENRES}
 # Styles the source pages offer that have no artwork world of their own: the nearest world, real name kept.
 _WORLD_FOR_STYLE = {"bossa": "jazz", "bossa nova": "jazz", "folk": "country", "hip-hop": "funk", "hip hop": "funk",
                     "electronic": "pop", "soul/r&b": "soul", "r&b": "soul"}
@@ -41,6 +43,13 @@ _PHONE_VIEW = {
     "composition_blues": "740,60,690,580", "composition_classical": "740,40,700,600", "funk": "820,0,720,640",
     "blues": "800,60,720,580", "country": "940,0,660,640",
 }
+# The source style variations keep their genre's instruments in view on a narrow card.
+for _src in ("custom", "composition"):
+    for _g, _view in (("rock", "820,0,700,640"), ("jazz", "860,0,700,640"), ("country", "880,0,700,640"), ("soul", "840,0,720,640"),
+                      ("funk", "800,0,760,640"), ("jewish", "760,0,800,640"), ("classical", "860,0,700,640"), ("pop", "860,0,700,640")):
+        # Custom on a phone: a card-shaped window over the handwritten chord chart, the instruments at its right
+        # edge, so the narrow card still reads as a practice progression, not Catalog album art.
+        _PHONE_VIEW.setdefault(f"{_src}_{_g}", "690,50,660,600" if _src == "custom" else _view)
 # A second line above the title, for songs that have one.
 _FLOURISH = {"Shalom Aleichem": ("שלום עליכם", "he"), "Ode to Joy": ("from Symphony No. 9", "en")}
 
@@ -162,14 +171,19 @@ def song_instruments(title: str, source: str, style: str, general: str = "") -> 
 _E = html.escape
 
 
-def _art(name: str, view: str) -> str:
-    return f"{ART_URL}/{name}.svg#svgView(viewBox({view});preserveAspectRatio(xMaxYMin slice))"
+def _art(name: str, view: str, crop: str = "hero", align: str = "xMaxYMin") -> str:
+    """One crop of an artwork, at its own address. Chrome caches one image per address and ignores the #svgView
+    fragment, so two crops of one file (Songs hero, Backing hero, phone, lower body) were drawn with whichever view
+    loaded first. The view in the query makes every crop a separate image; the server ignores the query."""
+    key = view.replace(",", "-")
+    # "%20", not a space: in srcset a space ends the address, so the phone crop was dropped as invalid.
+    return f"{ART_URL}/{name}.svg?v={crop}-{key}#svgView(viewBox({view});preserveAspectRatio({align}%20slice))"
 
 
 def hero_html(identity: CardIdentity, *, title: str, artist: str = "", page: str = "songs", status: str = "", bars: Iterable[str] = (), bars_note: str = "") -> str:
     view = "240,0,1360,640" if page.startswith("backing") else "0,0,1600,640"
     phone = _PHONE_VIEW.get(identity.art)
-    source_tag = f'<source media="(max-width:560px)" srcset="{_E(_art(identity.art, phone))}">' if phone else ""
+    source_tag = f'<source media="(max-width:560px)" srcset="{_E(_art(identity.art, phone, "phone"))}">' if phone else ""
     alt = f"{identity.style_name or identity.source_name} artwork for {title}"
     flourish = _FLOURISH.get(title) if identity.source == CATALOG else None
     flourish_html = f'<p class="sc-flourish" lang="{flourish[1]}">{_E(flourish[0])}</p>' if flourish else ""
@@ -281,7 +295,7 @@ def _family_vars(family: str) -> str:
 def card_style_tag(identity: CardIdentity, *, container_key: str = "picker_active_song_card_content") -> str:
     """The card's CSS, plus this card's colors, frame and lower artwork on the Streamlit container around it."""
     sel = f".st-key-{container_key}"
-    body_art = f"{ART_URL}/{identity.art}.svg#svgView(viewBox(0,660,1600,1140);preserveAspectRatio(xMidYMin slice))"
+    body_art = _art(identity.art, "0,660,1600,1140", "body", "xMidYMin")
     return (
         f"<style>{_base_css()}\n"
         f"{sel}{{{_family_vars(identity.family)}}}\n"
