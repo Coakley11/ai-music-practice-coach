@@ -47,8 +47,7 @@ _PHONE_VIEW = {
 for _src in ("custom", "composition"):
     for _g, _view in (("rock", "820,0,700,640"), ("jazz", "860,0,700,640"), ("country", "880,0,700,640"), ("soul", "840,0,720,640"),
                       ("funk", "800,0,760,640"), ("jewish", "760,0,800,640"), ("classical", "860,0,700,640"), ("pop", "860,0,700,640")):
-        # Custom: wider, so the handwritten chord chart shows beside the instruments on a narrow card.
-        _PHONE_VIEW.setdefault(f"{_src}_{_g}", "640,40,960,600" if _src == "custom" else _view)
+        _PHONE_VIEW.setdefault(f"{_src}_{_g}", _view)
 # A second line above the title, for songs that have one.
 _FLOURISH = {"Shalom Aleichem": ("שלום עליכם", "he"), "Ode to Joy": ("from Symphony No. 9", "en")}
 
