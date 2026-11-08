@@ -13,6 +13,7 @@ import statistics
 import numpy as np
 
 import backing_audio as ba
+from tests.pianist_capture import chords, recorded_notes
 
 KICKS = (0.0, 0.75, 2.5)  # the funk_rnb groove profile's kick
 
@@ -127,8 +128,10 @@ def test_rendered_funk_pocket() -> None:
         from backing_musical_profile import resolve_backing_musical_profile
 
         prof = resolve_backing_musical_profile(style="Funk groove", tempo=100, level="Intermediate")
-        ba.synthesize_chords_to_numpy(["Em7", "A7", "Em7", "A7"], bpm=100, sr=22050, style="Funk groove",
-                                      musical_profile=prof)
+        with recorded_notes() as piano:
+            ba.synthesize_chords_to_numpy(["Em7", "A7", "Em7", "A7"], bpm=100, sr=22050, style="Funk groove",
+                                          musical_profile=prof)
+        log.extend(("keys", t, d, 1.0) for t, d, _v in chords(piano))
     finally:
         ba._add_tone, ba._add_kick, ba._add_snare = orig
     six = 0.15  # one 16th at 100 BPM
@@ -164,8 +167,10 @@ def test_rendered_push_and_no_chord_bars_agree_with_the_comp() -> None:
         from backing_musical_profile import resolve_backing_musical_profile
 
         prof = resolve_backing_musical_profile(style="Funk groove", tempo=100, level="Intermediate")
-        ba.synthesize_chords_to_numpy(["G:3.5|C:0.5p", "C", "C7:2|N.C.:2", "C7"], bpm=100, sr=22050,
-                                      style="Funk groove", musical_profile=prof)
+        with recorded_notes() as piano:
+            ba.synthesize_chords_to_numpy(["G:3.5|C:0.5p", "C", "C7:2|N.C.:2", "C7"], bpm=100, sr=22050,
+                                          style="Funk groove", musical_profile=prof)
+        log.extend(("comp", t, d, v) for t, d, v in chords(piano))
     finally:
         ba._add_tone, ba._add_comp_chord = orig_tone, orig_comp
     beat, bar = 0.6, 2.4
@@ -176,7 +181,8 @@ def test_rendered_push_and_no_chord_bars_agree_with_the_comp() -> None:
     pushed = [m for t, _d, m in bass if 3.0 * beat - 0.04 <= t < 4.0 * beat - 0.04]
     assert pushed and all(m % 12 in {c_pc, (c_pc + 7) % 12} or m % 12 == (c_pc - 1) % 12 for m in pushed), pushed
     # Funk voicings are often rootless, so tell C from G by the third: E, not B.
-    pushed_comps = [v for k, t, _d, v in log if k == "comp" and 3.0 * beat - 0.04 <= t < 4.0 * beat - 0.04]
+    # (With the pianist on, the arranger's own comp calls carry no notes and play nothing.)
+    pushed_comps = [v for k, t, _d, v in log if k == "comp" and v and 3.0 * beat - 0.04 <= t < 4.0 * beat - 0.04]
     assert pushed_comps
     for v in pushed_comps:
         pcs = {m % 12 for m in v}

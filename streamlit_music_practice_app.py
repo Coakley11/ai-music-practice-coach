@@ -4538,7 +4538,9 @@ def _on_backing_strings_change() -> None:
 def _backing_arrangement_tag(strings: bool | None = None) -> str:
     if strings is None:
         strings = _backing_strings_on()
-    return _BACKING_RENDERER_TAG + ("+strings" if strings else "")
+    from backing_pianist import piano_renderer_tag
+
+    return _BACKING_RENDERER_TAG + piano_renderer_tag() + ("+strings" if strings else "")
 
 
 def _cached_backing_wav(

@@ -14,6 +14,7 @@ import numpy as np
 import pytest
 
 import backing_audio as ba
+from tests.pianist_capture import chords, on as pianist_on, recorded_notes
 import backing_section_arrangement as sa
 from backing_musical_profile import resolve_backing_musical_profile
 
@@ -104,7 +105,8 @@ def _render(style, events, *, textures=True, **kw):
         return orig[0](audio, sr, t, dur, midi, vol, wave)
 
     def comp(bus, sr, t, dur, voicing, vol, wave, **k):
-        log.append(("comp", t, dur, len(voicing or ()), vol))
+        if voicing or not pianist_on():  # with the pianist on, the arranger's own comp calls carry no notes
+            log.append(("comp", t, dur, len(voicing), vol))
         return orig[1](bus, sr, t, dur, voicing, vol, wave, **k)
 
     def kick(audio, sr, t, vol, **k):
@@ -125,7 +127,9 @@ def _render(style, events, *, textures=True, **kw):
         sa.bar_texture = lambda style, place: None  # the arrangement before section textures
     try:
         prof = resolve_backing_musical_profile(style=style, tempo=100, level="Intermediate")
-        audio, sr = ba.synthesize_chords_to_numpy(events, bpm=100, sr=22050, style=style, musical_profile=prof, **kw)
+        with recorded_notes() as piano:
+            audio, sr = ba.synthesize_chords_to_numpy(events, bpm=100, sr=22050, style=style, musical_profile=prof, **kw)
+        log.extend(("comp", t, d, len(v), 1.0) for t, d, v in chords(piano))
     finally:
         ba._add_tone, ba._add_comp_chord, ba._add_kick, ba._add_snare, ba._add_noise_hit = orig
         sa.bar_texture = orig_tex
@@ -152,7 +156,11 @@ def test_sections_are_audibly_different(style) -> None:
     assert drums((0, 2)) == 0
     assert statistics.median(e[2] for e in _in(log, "comp", (0, 2))) > 1.5   # held chords, not stabs
     # Chorus: fuller chords than the verse; the final chorus adds a held layer.
-    assert max(e[3] for e in _in(log, "comp", chorus)) > max(e[3] for e in _in(log, "comp", verse))
+    if pianist_on():
+        # The pianist's chords change size all the time; a chorus is fuller by playing more, the last one most.
+        assert len(_in(log, "comp", chorus)) > len(_in(log, "comp", verse))
+    else:
+        assert max(e[3] for e in _in(log, "comp", chorus)) > max(e[3] for e in _in(log, "comp", verse))
     assert len(_in(log, "comp", final)) > len(_in(log, "comp", chorus))
     # Bridge: a different, thinner texture from the verse (fewer kicks or half the hats, ghosts out).
     kit = lambda b: drums(b) + len(_in(log, "noise", b))  # noqa: E731

@@ -27,6 +27,7 @@ from music_theory import NOTE_TO_MIDI, is_no_chord_token, normalize_root, split_
 import backing_arrangement_profiles as _arr_profiles
 import backing_groove_profiles as _groove_profiles
 import backing_keys_voice as _kv
+import backing_pianist as _pn
 import backing_section_arrangement as _sa
 
 try:
@@ -1910,6 +1911,14 @@ def synthesize_chords_to_numpy(
     chord_list = event_cycle * max(1, int(loops))
     audio = np.zeros(int(sr * bar * len(chord_list)) + sr)
     keys_bus = np.zeros_like(audio)
+    pianist = (
+        _pn.start(
+            style, song_groove_seed(song_title, song_artist) if song_title else 0,
+            has_guitar=False, level=level, chord_notes=chord_notes, bass_note=bass_note,
+        )
+        if _pn.mode()
+        else None
+    )
     prev_comp: list[int] | None = None
     strings_bus = np.zeros_like(audio) if strings else None
     prev_strings: list[int] | None = None
@@ -2086,7 +2095,7 @@ def synthesize_chords_to_numpy(
         bass_hits = bar_patterns["bass_beats"]
         if groove_seed % 3 == 0 and role == "verse":
             bass_hits = bass_hits[: max(2, len(bass_hits) - 1)]
-        comp_wave = _comp_wave_for_style(style, role, song_profile)
+        comp_wave = "piano" if pianist is not None else _comp_wave_for_style(style, role, song_profile)
 
         def _pulse_chord(b_pos: float) -> str:
             if bar_is_hit:
@@ -2308,7 +2317,26 @@ def synthesize_chords_to_numpy(
         else:
             # A "sustain" texture holds one chord per chord of the bar instead of the comp rhythm.
             comp_mode = section_tex.comp if section_tex is not None else "groove"
-            comp_plan = (
+            if pianist is not None and not bar_is_no_chord:
+                _played = pianist.bar(
+                    _sounding_segments(chord, pulses_per_bar),
+                    _bossa_next_head(next_chord),
+                    role=role,
+                    quiet=comp_mode == "sustain",
+                    bar_in_section=int(event.get("bar_in_section", 0) or 0),
+                    section_bars=int(event.get("section_bars", 0) or 0),
+                    section_end=bool(section_edge),
+                    bar_index=idx + 1009 * loop_seed,
+                    pulses_per_bar=pulses_per_bar,
+                    lift=bool(section_tex is not None and section_tex.pad),
+                )
+                pianist.perform(
+                    keys_bus, sr, _played,
+                    lambda b: _groove_time(bar_start, b, pulse, style, swing=swing_amt, pocket=pocket_offset),
+                    pulse,
+                    gain=0.06 * float(np.clip(intensity, 0.4, 1.3)),
+                )
+            comp_plan = [] if pianist is not None else (
                 [(s0, c, e0 - s0) for s0, e0, c in _sounding_segments(chord, pulses_per_bar) if c is not None]
                 if comp_mode == "sustain"
                 else [(b, None, 0.0) for b in bar_patterns["comp_beats"]]
@@ -2453,7 +2481,7 @@ def synthesize_chords_to_numpy(
             for s0, e0, c in _sounding_segments(chord, pulses_per_bar):
                 if c is None:
                     continue
-                pad_voicing = [n + 12 for n in _voicing_for_comp(c, level, style, 0) if n + 12 <= 96]
+                pad_voicing = [] if pianist is not None else [n + 12 for n in _voicing_for_comp(c, level, style, 0) if n + 12 <= 96]
                 _add_comp_chord(
                     keys_bus, sr, bar_start + s0 * pulse, max(0.05, (e0 - s0) * pulse * 0.95), pad_voicing,
                     0.008 * intensity, comp_wave,
@@ -2836,7 +2864,7 @@ def synthesize_chords_to_numpy(
                                 0.085 * intensity,
                                 "bass",
                             )
-                        push_voicing = _kv.lead_voicing(_voicing_for_comp(sub.chord, level, style, 0), prev_comp)
+                        push_voicing = [] if pianist is not None else _kv.lead_voicing(_voicing_for_comp(sub.chord, level, style, 0), prev_comp)
                         prev_comp = push_voicing or prev_comp
                         _add_comp_chord(
                             keys_bus, sr, bar_start + push_b * pulse, pulse * 0.55, push_voicing,
