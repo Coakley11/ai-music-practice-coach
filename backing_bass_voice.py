@@ -159,10 +159,10 @@ def _release_curve(sr: int) -> np.ndarray:
 # end (low-band share 0.225 today -> 0.077). A low shelf restores the fundamental; a gentle high shelf
 # keeps the finger noise from brightening the band. Tunable for listening rounds via the environment.
 LOW_SHELF_HZ = float(os.environ.get("MUSIC_UPRIGHT_LOW_SHELF_HZ") or 110.0)
-LOW_SHELF_DB = float(os.environ.get("MUSIC_UPRIGHT_LOW_SHELF_DB") or 6.0)
+LOW_SHELF_DB = float(os.environ.get("MUSIC_UPRIGHT_LOW_SHELF_DB") or 8.0)
 HIGH_SHELF_HZ = float(os.environ.get("MUSIC_UPRIGHT_HIGH_SHELF_HZ") or 2500.0)
 HIGH_SHELF_DB = float(os.environ.get("MUSIC_UPRIGHT_HIGH_SHELF_DB") or -3.0)
-BUS_TRIM = float(os.environ.get("MUSIC_UPRIGHT_BUS_TRIM") or 1.5)
+BUS_TRIM = float(os.environ.get("MUSIC_UPRIGHT_BUS_TRIM") or 2.0)
 
 
 def _shelf(x: np.ndarray, sr: int, f0: float, gain_db: float, high: bool) -> np.ndarray:

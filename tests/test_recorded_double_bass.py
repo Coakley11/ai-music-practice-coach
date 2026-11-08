@@ -181,3 +181,11 @@ def test_works_when_the_engine_runs_at_another_rate():
     bus = np.zeros(22050, dtype=np.float32)
     inst.add_note(bus, 22050, 0.0, 0.8, 45, 1.0, 0.6, "rate")
     assert bus.any()
+
+
+def test_the_upright_bus_is_the_users_reference_jazz_d():
+    """User's listening choice 2026-11-07 (Band Mix Round 1): Jazz D = +8 dB low shelf at 110 Hz, -3 dB above
+    2.5 kHz, bus trim 2.0. Later refinements must keep this character; change it only with a new listening round."""
+    import backing_bass_voice as bv
+
+    assert (bv.LOW_SHELF_HZ, bv.LOW_SHELF_DB, bv.HIGH_SHELF_HZ, bv.HIGH_SHELF_DB, bv.BUS_TRIM) == (110.0, 8.0, 2500.0, -3.0, 2.0)
