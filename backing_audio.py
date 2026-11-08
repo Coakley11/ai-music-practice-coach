@@ -3020,6 +3020,8 @@ def synthesize_chords_to_numpy(
     _keys_rms = float(np.sqrt(np.mean(keys_bus ** 2)))
     if _rhythm_rms > 1e-6 and _keys_rms > 1e-6:
         _target = _KEYS_BALANCE.get(style, 0.55) * float(song_profile.get("keys_level", 1.0))
+        if upright_bus is not None:
+            _target *= _bv.KEYS_LIFT  # the trio's balance with the recorded upright (bass under piano and drums)
         keys_bus *= float(np.clip(_target * _rhythm_rms / _keys_rms, 0.25, 12.0))
     if strings_bus is not None:
         _strings_rms = float(np.sqrt(np.mean(strings_bus ** 2)))
