@@ -63,35 +63,27 @@ _SOURCE_NAMES_AS_STYLE = frozenset({"custom", "custom progression", "composition
 
 
 def saved_style(session: Any, pick_key: str) -> str:
-    """The style a Custom progression or a Composition was saved with, from its own saved record ("" if none)."""
-    pk = str(pick_key or "")
-    try:
-        if pk.startswith("custom::"):
-            from songs.music_source import custom_progression_for_pick_key
+    """The style a Custom progression or a Composition is saved with on its own page, read now ("" if none)."""
+    from song_identity_style import saved_song_style, song_source
 
-            prog = custom_progression_for_pick_key(session, pk) or {}
-            return str(prog.get("progression_style") or prog.get("style") or "").strip()
-        if pk.startswith("composition::"):
-            from composition_songs_bridge import find_composition_document
-
-            doc = find_composition_document(session, pk) or {}
-            return str((doc.get("global") or {}).get("progression_style") or "").strip()
-    except Exception:
+    if song_source(pick_key) == "catalog":
         return ""
-    return ""
+    return saved_song_style(session, pick_key)
 
 
-def _catalog_row(title: str) -> Mapping[str, Any]:
-    try:
-        from song_catalog.catalog import load_song_catalog
+def song_style_for_card(kind: str, *, session: Any, pick_key: str = "", record: Mapping[str, Any] | None = None) -> str:
+    """The style that decides the card's artwork: the song's own saved style, never the Backing groove.
 
-        for songs in load_song_catalog()[0].values():
-            row = songs.get(title)
-            if row:
-                return row
-    except Exception:
-        pass
-    return {}
+    Catalog: the catalog genre. Custom / Composition: the style saved on the Custom page / in Composition
+    Studio, read fresh (a Backing play-session snapshot goes stale when the song is re-saved).
+    """
+    from song_identity_style import catalog_genre, saved_song_style
+
+    rec = record or {}
+    pk = str(pick_key or rec.get("pick_key") or "").strip()
+    if kind in {"custom", "composition"}:
+        return saved_song_style(session, pk) if pk else ""
+    return catalog_genre(pk, title=str(rec.get("title") or ""), record=rec)
 
 
 def catalog_card_facts(record: Mapping[str, Any], *, source_label: str = "", session: Any = None) -> dict[str, str]:
@@ -104,9 +96,16 @@ def catalog_card_facts(record: Mapping[str, Any], *, source_label: str = "", ses
     artist = str(record.get("artist") or "")
     genre = str(record.get("genre") or "")
     if artist.strip().lower() in _PLACEHOLDER_ARTISTS | {str(source_label or "").strip().lower()}:
+        from song_identity_style import _catalog_row
+
         row = _catalog_row(title)
         artist = str(row.get("artist") or "")
         genre = str(row.get("genre") or genre)
-    if genre.strip().lower() in _SOURCE_NAMES_AS_STYLE:
-        genre = saved_style(session, str(record.get("pick_key") or "")) if session is not None else ""
+    pick = str(record.get("pick_key") or "")
+    if pick.startswith(("custom::", "composition::")) or genre.strip().lower() in _SOURCE_NAMES_AS_STYLE:
+        genre = saved_style(session, pick) if session is not None else ""
+    else:
+        from song_identity_style import catalog_genre
+
+        genre = catalog_genre(pick, title=title, record={"genre": genre}) or genre
     return {"title": title, "artist": artist, "style": genre}
