@@ -1046,6 +1046,15 @@ def render_backing_composition_song_context_card(
     groove = html.escape(str(applied_groove or state.groove or ctx.groove or "Auto").strip() or "Auto")
     meter = html.escape(str(applied_meter or state.meter or ctx.meter or "4/4").strip() or "4/4")
     style_value = str(ctx.style or "Auto").strip() or "Auto"
+    # The composition's own saved Genre / Style, read now (ctx.style is a play-session snapshot).
+    try:
+        from song_identity_style import saved_song_style
+
+        _pick = str(getattr(ctx, "active_song_id", "") or "").strip()
+        if _pick.startswith("composition::"):
+            style_value = saved_song_style(session, _pick) or style_value
+    except Exception:
+        pass
     if not style_value or style_value.lower() in {"", "none", "null"}:
         style_value = "Auto"
     # Generic My Composition has no authored style — keep Style Auto (never inherit

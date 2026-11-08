@@ -10135,14 +10135,18 @@ def _backing_art_wanted(kind: str) -> bool:
 def _render_backing_art_head_for_card(kind: str, *, record: Any, ctx: Any, source_label: str) -> None:
     """Artwork, title and artist for a Catalog, Custom or Composition card."""
     global _backing_art_identity
-    from backing_art_card import catalog_card_facts, identity_for, render_backing_art_head
+    from backing_art_card import catalog_card_facts, identity_for, render_backing_art_head, song_style_for_card
 
     if kind in {"custom", "composition"} and ctx is not None and str(getattr(ctx, "source", "") or "") != "":
         title = str(getattr(ctx, "song_title", "") or ("My Composition" if kind == "composition" else "Custom progression"))
         artist = ""
-        style = str(getattr(ctx, "style", "") or "")
-        if kind == "custom" and style in {"", "Auto"}:
-            style = str(st.session_state.get("progression_style") or "")
+        # The song's own saved style decides the artwork, read now from its Custom / Composition record.
+        # ctx.style is a Backing play-session snapshot: it goes stale when the song is re-saved with a new
+        # style, and playback overrides live beside it. The groove never decides what the song looks like.
+        _pick = str(getattr(ctx, "active_song_id", "") or "").strip()
+        if not _pick.startswith(("custom::", "composition::")):
+            _pick = str((record or {}).get("pick_key") or "").strip()
+        style = song_style_for_card(kind, session=st.session_state, pick_key=_pick, record=record)
     else:
         facts = catalog_card_facts(record or {}, source_label=source_label, session=st.session_state)
         title, artist, style = facts["title"], facts["artist"], facts["style"]
@@ -10857,6 +10861,47 @@ def _composition_saved_style_label(rec: dict) -> str:
     return "Pop"
 
 
+# The approved artwork of this run's Songs card (None: today's card).
+_songs_art_identity: Any = None
+
+
+def _songs_art_style(rec: Any, source_label: str, catalog_style: str) -> str:
+    """The style that decides the Songs card's artwork: the song's own saved style, read now from its source
+    record (the same rule as the Backing card), never the Backing groove and never an invented default."""
+    try:
+        from backing_art_card import song_style_for_card
+
+        pick = str((rec or {}).get("pick_key") or "").strip()
+        low = str(source_label or "").lower()
+        if "compos" in low:
+            if not pick.startswith("composition::"):
+                from composition_session_state import get_active_document
+                from composition_songs_bridge import composition_pick_key_for
+
+                doc = get_active_document(st.session_state)
+                pick = composition_pick_key_for(doc) if isinstance(doc, dict) else ""
+            return song_style_for_card("composition", session=st.session_state, pick_key=pick)
+        if "custom" in low or "progression" in low:
+            if not pick.startswith("custom::"):
+                from songs.music_source import custom_pick_key_for
+
+                active = st.session_state.get(CPL_ACTIVE_KEY)
+                pick = custom_pick_key_for(active) if isinstance(active, dict) else ""
+            return song_style_for_card("custom", session=st.session_state, pick_key=pick)
+        if not pick:
+            pick = str(st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or "")
+        return song_style_for_card("song", session=st.session_state, pick_key=pick, record=rec) or str(catalog_style or "")
+    except Exception:
+        return str(catalog_style or "")
+
+
+def _songs_art_levels(levels_display: Any) -> list[str]:
+    import re as _re
+
+    found = _re.findall(r"Beginner|Intermediate|Advanced", str(levels_display or ""))
+    return list(dict.fromkeys(found)) or ["Beginner", "Intermediate", "Advanced"]
+
+
 def _render_active_song_card(
     rec: dict,
     *,
@@ -11180,6 +11225,15 @@ def _render_active_song_card(
     )
     # v12 header: source identity (Catalog / Custom / Composition) + the song's style artwork.
     _header_artist = _artist_display[3:] if _artist_display.lower().startswith("by ") else _artist_display
+    global _songs_art_identity
+    _songs_art_identity = None
+    try:
+        from song_card_art import card_identity as _card_identity, song_art_cards_enabled as _art_on
+
+        if _art_on():
+            _songs_art_identity = _card_identity(_source_label, _songs_art_style(rec, _source_label, _style_label))
+    except Exception:
+        _songs_art_identity = None
     card_html = (
         f'<div class="ui-active-song-head{trusted_cls}{modifier_cls}{_card_source_cls}">'
         + song_card_header_html(
@@ -11192,6 +11246,21 @@ def _render_active_song_card(
         )
         + "</div>"
     )
+    if _songs_art_identity is not None:
+        from song_card_art import card_style_tag as _card_style_tag, hero_html as _hero_html
+
+        # A source name in the artist's place ("Composition", "Your progression") is not an artist.
+        _art_artist = "" if _header_artist.strip().lower() in {
+            "composition", "composition song", "custom progression", "your progression", "catalog song", "song",
+        } else _header_artist
+        card_html = _card_style_tag(_songs_art_identity) + _hero_html(
+            _songs_art_identity,
+            title=str(details["title"]),
+            artist=_art_artist,
+            page="songs",
+            bars=_custom_header_bars,
+            bars_note="Your progression" if _custom_header_bars else "",
+        )
     with st.container(key="picker_active_song_card_content"):
         st.markdown(card_html, unsafe_allow_html=True)
         if show_key_row:
@@ -11209,19 +11278,49 @@ def _render_active_song_card(
                 with _original_col:
                     from song_card_keys import pretty_key_name as _pretty_key_name
 
-                    st.markdown(
-                        '<p class="ui-skp-label">Original key</p>'
-                        f'<div class="ui-skp-value">{html.escape(_pretty_key_name(_original_key) or _orig_label)}</div>'
-                        '<p class="ui-skp-cap">Concert pitch</p>',
-                        unsafe_allow_html=True,
-                    )
+                    if _songs_art_identity is not None:
+                        from song_card_art import backing_key_label as _key_label
+
+                        st.markdown(
+                            _key_label("original")
+                            + f'<div class="ui-skp-value">{html.escape(_pretty_key_name(_original_key) or _orig_label)}</div>',
+                            unsafe_allow_html=True,
+                        )
+                    else:
+                        st.markdown(
+                            '<p class="ui-skp-label">Original key</p>'
+                            f'<div class="ui-skp-value">{html.escape(_pretty_key_name(_original_key) or _orig_label)}</div>'
+                            '<p class="ui-skp-cap">Concert pitch</p>',
+                            unsafe_allow_html=True,
+                        )
                 with _practice_col:
                     _render_card_practice_key_selector(rec, pick_key=_card_pk)
-        st.markdown(
-            _badge_html + _meta_row
-            + _song_card_guidance_html(details, challenge_hint=challenge_hint, harmony_hint=harmony_hint, goals_html=goals_html),
-            unsafe_allow_html=True,
-        )
+        if _songs_art_identity is not None:
+            from song_card_art import songs_body_html as _songs_body_html
+
+            st.markdown(
+                _songs_body_html(
+                    _songs_art_identity,
+                    title=str(details["title"]),
+                    bpm=int(details.get("bpm") or 100),
+                    meter=str(details.get("time_signature") or "4/4"),
+                    level=str(level or ""),
+                    instrument=active_instrument,
+                    focus=str(_active_focus or ""),
+                    levels=_songs_art_levels(details.get("levels_display")),
+                    instruments_general=str(details.get("instruments") or ""),
+                    guide=details.get("card_guidance") or {},
+                    written=(_written_label if show_key_row else "") or _charts_badge,
+                    written_label=_written_badge_label if (_written_label and show_key_row) else "Charts in",
+                ),
+                unsafe_allow_html=True,
+            )
+        else:
+            st.markdown(
+                _badge_html + _meta_row
+                + _song_card_guidance_html(details, challenge_hint=challenge_hint, harmony_hint=harmony_hint, goals_html=goals_html),
+                unsafe_allow_html=True,
+            )
     if _details_error is not None and _developer_mode_enabled():
         st.warning(
             "Developer Mode · active-song card fell back to defaults "
@@ -11420,6 +11519,11 @@ def _render_card_practice_key_selector(rec: dict, *, pick_key: str) -> None:
         '<p class="ui-skp-label"><span class="ui-skp-wide">Practice / Concert key</span>'
         '<span class="ui-skp-narrow">Practice key</span></p>'
     )
+    _art = _songs_art_identity is not None
+    if _art:
+        from song_card_art import backing_key_label as _key_label
+
+        _pk_label_html = _key_label("practice")
     if practice_key_edit_locked(st.session_state):
         # Fixed Key decides this key: show it, offer nothing to change.
         from practice_key_mode import fixed_key_family_label_for_session
@@ -11440,8 +11544,8 @@ def _render_card_practice_key_selector(rec: dict, *, pick_key: str) -> None:
                 + f'<div class="ui-skp-locked ui-practice-key-locked" '
                 f'title="Set by Fixed Key{(" (" + html.escape(_family) + ")") if _family else ""}">'
                 f"{_lock_svg}<span>{html.escape(pretty_key_name(locked) or locked)}</span></div>"
-                '<p class="ui-skp-cap">Concert pitch</p>'
-                f'<p class="ui-skp-cap ui-skp-cap-fixed">Fixed Key{(" · " + html.escape(_rel)) if _rel else ""}</p>',
+                + ("" if _art else '<p class="ui-skp-cap">Concert pitch</p>')
+                + f'<p class="ui-skp-cap ui-skp-cap-fixed">Fixed Key{(" · " + html.escape(_rel)) if _rel else ""}</p>',
                 unsafe_allow_html=True,
             )
         return
@@ -11474,11 +11578,14 @@ def _render_card_practice_key_selector(rec: dict, *, pick_key: str) -> None:
             help="Change the Practice / Concert Key for this song — stays in sync with the sidebar control.",
         )
         _rel = key_relation_caption(original_key, str(st.session_state.get(widget_key) or current))
-        st.markdown(
-            '<p class="ui-skp-cap">Concert pitch</p>'
-            + (f'<p class="ui-skp-cap">{html.escape(_rel)}</p>' if _rel else ""),
-            unsafe_allow_html=True,
-        )
+        if _art:
+            st.markdown(f'<p class="ui-skp-cap">{html.escape(_rel) if _rel else "Tap to change"}</p>', unsafe_allow_html=True)
+        else:
+            st.markdown(
+                '<p class="ui-skp-cap">Concert pitch</p>'
+                + (f'<p class="ui-skp-cap">{html.escape(_rel)}</p>' if _rel else ""),
+                unsafe_allow_html=True,
+            )
 
 
 def _picker_song_dropdown_label(pick_key: str, *, favorites: set[str] | None = None) -> str:
@@ -14375,11 +14482,13 @@ def _render_backing_step2_playback_action(
         with st.expander("Advanced playback settings", expanded=bool(st.session_state.pop("_home_open_key_cycle", False))):
             st.markdown('<div class="ui-backing-feel-inline">', unsafe_allow_html=True)
             st.markdown("<div>", unsafe_allow_html=True)
-            _feel_ico = html.escape(semantic_field_icon("style") or semantic_field_icon("feel"))
+            # The groove is a playback choice (how it sounds); it is not the song's style (what kind of song
+            # it is, saved on its source page), so it carries the groove's icon and name, not the style's.
+            _feel_ico = html.escape(FEATURE_ICONS.get("backing") or semantic_field_icon("groove"))
             st.markdown(
                 f'<span class="ui-backing-inline-label">'
                 f'<span class="ui-backing-inline-ico" aria-hidden="true">{_feel_ico}</span>'
-                f'Feel</span>',
+                f'Backing groove</span>',
                 unsafe_allow_html=True,
             )
             if lock_style_meter:
@@ -14392,12 +14501,13 @@ def _render_backing_step2_playback_action(
                 )
             else:
                 st.selectbox(
-                    "Groove style",
+                    "Backing groove",
                     list(GROOVE_STYLE_CHOICES),
                     key="backing_groove_style",
                     label_visibility="collapsed",
                     on_change=_on_backing_filter_change,
                 )
+                st.caption("How the backing sounds. The song keeps its own style.")
             st.markdown("</div>", unsafe_allow_html=True)
             st.markdown("<div>", unsafe_allow_html=True)
             _meter_ico = html.escape(semantic_field_icon("meter"))
@@ -21296,6 +21406,7 @@ elif _studio_page == "backing":
             _kr_card_artist = ""
             _kr_card_genre = ""
             _kr_card_home = ""
+            _kr_card_pick = ""
             if km.is_voice_mode(st.session_state) and km.is_karaoke_session_active(
                 st.session_state
             ):
@@ -21322,6 +21433,13 @@ elif _studio_page == "backing":
                         ).strip()
                 except Exception:
                     pass
+                # The card shows the entry being sung: its own pick key, so a Custom or Composition entry's
+                # saved style (and the Custom page's default) decides its artwork. The Backing context can
+                # still name the song that was being edited before the set.
+                try:
+                    _kr_card_pick = str((km.current_session_entry(st.session_state) or {}).get("pick_key") or "").strip()
+                except Exception:
+                    _kr_card_pick = ""
             if _kr_card_home:
                 _home_key = _kr_card_home
             _backing_card_record = {
@@ -21336,7 +21454,7 @@ elif _studio_page == "backing":
                 # Original/home only — never concert_key / Practice.
                 "key": _home_key or str(_backing_card_record.get("key") or ""),
                 "original_key": _home_key,
-                "pick_key": _pick_now,
+                "pick_key": _kr_card_pick or _pick_now,
             }
             _backing_orig_key = _home_key or str(_backing_card_record.get("key") or "")
             _backing_practice_key = _prac_now
