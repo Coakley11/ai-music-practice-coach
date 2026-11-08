@@ -30,6 +30,7 @@ from music_theory import NOTE_TO_MIDI, is_no_chord_token, normalize_root, split_
 import backing_arrangement_profiles as _arr_profiles
 import backing_drum_kit as _drum_kit
 import backing_groove_profiles as _groove_profiles
+import backing_bass_voice as _bv
 import backing_keys_voice as _kv
 import backing_pianist as _pn
 import backing_section_arrangement as _sa
@@ -1008,6 +1009,132 @@ def _bossa_bass_bar(chord, next_chord, pulses_per_bar, state, rng, *, density=1.
         until = hits[j + 1][0] if j + 1 < len(hits) else float(pulses_per_bar)
         until = min([until] + [r for r in rests if r > beat])
         notes.append((beat, until - beat, int(midi), accent))
+    return notes
+
+
+# Jazz upright: a walking line in E1 .. D3, each note in the octave nearest the last.
+JAZZ_BASS_LOW = 28
+JAZZ_BASS_HIGH = 50
+_JAZZ_BASS_CENTER = 38
+_JAZZ_ACCENTS = (1.0, 0.86, 0.95, 0.86)
+UPRIGHT_GAIN = 1.5
+
+
+def _walk_pitch(pc: int, near: int | None) -> int:
+    """``pc`` in the walking range, in the octave nearest ``near``, leaning toward the centre."""
+    ref = _JAZZ_BASS_CENTER if near is None else near
+    cands = [m for m in range(JAZZ_BASS_LOW, JAZZ_BASS_HIGH + 1) if m % 12 == pc % 12]
+    return min(cands, key=lambda m: (abs(m - ref) + 0.25 * abs(m - _JAZZ_BASS_CENTER), m))
+
+
+def _walk_chord_tones(chord: str) -> list[int]:
+    """Pitch classes of the chord's root, 3rd, 5th and 7th (or 6th) as written."""
+    notes = chord_notes(chord)
+    return [n % 12 for n in notes[:4]] or [bass_note(chord) % 12]
+
+
+def _walk_scale(chord: str) -> set[int]:
+    """Chord tones plus the plain steps between them, for passing notes on weak beats."""
+    notes = chord_notes(chord)
+    if not notes:
+        return set()
+    root = notes[0] % 12
+    fifth = (notes[2] - notes[0]) % 12 if len(notes) > 2 else 7
+    # 9th, 11th and a 6th that fits the 5th (the flat 6th over an altered 5th).
+    steps = {2, 5, 9 if fifth == 7 else 8}
+    return {(root + i) % 12 for i in steps} | set(_walk_chord_tones(chord))
+
+
+def _walk_approach(target: int, prev: int, next_chord: str, rng) -> int:
+    """The note before a chord change: a half step, the next chord's 5th, or a whole step."""
+    pick = rng.random()
+    next_fifth = _bass_fifth_interval(next_chord)
+    if pick < 0.58:
+        options = [target - 1, target + 1]
+    elif pick < 0.80:
+        options = [target + next_fifth, target + next_fifth - 12]
+    else:
+        options = [target - 2, target + 2]
+    options = [m for m in options if JAZZ_BASS_LOW <= m <= JAZZ_BASS_HIGH and m != prev]
+    if not options:
+        options = [m for m in (target - 1, target + 1) if JAZZ_BASS_LOW <= m <= JAZZ_BASS_HIGH] or [target]
+    return min(options, key=lambda m: (abs(m - prev), m))
+
+
+def _walk_passing(prev: int, target: int, left: int, chord: str, *, strong: bool, last: int | None, rng) -> int:
+    """A note between the chord's first note and the next target: chord tones on strong beats."""
+    tones = set(_walk_chord_tones(chord))
+    pool = tones if strong else _walk_scale(chord)
+    cands = [m for m in range(max(JAZZ_BASS_LOW, prev - 7), min(JAZZ_BASS_HIGH, prev + 7) + 1) if m % 12 in pool]
+
+    def cost(m: int) -> float:
+        return (
+            0.45 * abs(m - prev)
+            + 0.30 * abs(abs(m - target) - 2.5 * left)
+            + 0.06 * abs(m - _JAZZ_BASS_CENTER)
+            + (5.0 if m == prev else 0.0)
+            + (1.5 if last is not None and m == last else 0.0)
+            + (0.0 if m % 12 in tones else 0.6)
+            + 2.2 * float(rng.random())
+        )
+
+    return min(cands, key=cost) if cands else prev
+
+
+def _jazz_walk_bar(chord, next_chord, pulses_per_bar, state, rng, *, phrase_start=False, phrase_end=False):
+    """One bar of walking bass as ``(beat, beats, midi, accent)`` notes.
+
+    Every chord starts on its written bass (a long-held chord may start on its 3rd or 5th
+    from its second bar, but never at the head of a phrase). The beat before a change leads
+    into the next chord; strong beats between are chord tones and weak ones may step through
+    the scale. An occasional swung skip adds a ghost note. ``state`` carries the last notes
+    and the planned next downbeat across bars.
+    """
+    segs = _sounding_segments(chord, pulses_per_bar)
+    hits: list[list] = []
+    rests = [a for a, _b, c in segs if c is None]
+    for i, (start, end, seg_chord) in enumerate(segs):
+        if seg_chord is None:
+            state["planned"] = None
+            continue
+        nxt = segs[i + 1][2] if i + 1 < len(segs) else _bossa_next_head(next_chord)
+        beats = [start] + [float(b) for b in range(int(np.ceil(start + 1e-6)), int(np.ceil(end - 1e-6)))]
+        first_pc = bass_note(seg_chord) % 12
+        held_on = state.get("head") == seg_chord and "/" not in seg_chord
+        tones = _walk_chord_tones(seg_chord)
+        if held_on and i == 0 and not phrase_start and len(tones) > 2 and rng.random() < 0.35:
+            first_pc = tones[1] if rng.random() < 0.5 else tones[2]
+        planned = state.get("planned")
+        down = planned if planned is not None and planned % 12 == first_pc else _walk_pitch(first_pc, state.get("prev"))
+        state["planned"] = None
+        state["head"] = seg_chord
+        prev, last = down, state.get("prev")
+        hits.append([start, down, _JAZZ_ACCENTS[int(start) % 4]])
+        target = None
+        if nxt is not None:
+            target = _walk_pitch(bass_note(nxt) % 12, prev)
+            state["planned"] = target
+        for n, b in enumerate(beats[1:], start=1):
+            if n == len(beats) - 1 and nxt is not None and nxt != seg_chord:
+                m = _walk_approach(target, prev, nxt, rng)
+            else:
+                goal = target if target is not None else down
+                m = _walk_passing(prev, goal, len(beats) - n, seg_chord, strong=int(b) % 2 == 0, last=last, rng=rng)
+            hits.append([b, m, _JAZZ_ACCENTS[int(b) % 4]])
+            last, prev = prev, m
+        if pulses_per_bar == 4 and end - start >= 4.0 and rng.random() < (0.42 if phrase_end else 0.10):
+            # A swung skip: the note on 2 or 4 picked quietly on the "and" before it.
+            at = 3.0 if phrase_end or rng.random() < 0.5 else 1.0
+            source = next((h for h in hits if abs(h[0] - at) < 1e-6), None)
+            if source is not None:
+                hits.append([at - 0.5, source[1], 0.5])
+        state["prev"] = prev
+    hits.sort(key=lambda h: h[0])
+    notes = []
+    for j, (beat, midi, accent) in enumerate(hits):
+        until = hits[j + 1][0] if j + 1 < len(hits) else float(pulses_per_bar)
+        until = min([until] + [r for r in rests if r > beat])
+        notes.append((beat, until - beat, int(midi), float(accent) * (0.97 + 0.06 * float(rng.random()))))
     return notes
 
 
@@ -2027,6 +2154,12 @@ def synthesize_chords_to_numpy(
     arr_char = _style_arrangement_character(style)
     bass_density = float(song_profile.get("bass_density", 1.0)) * float(song_profile.get("density_mul", 1.0))
     bossa_bass_state: dict[str, Any] = {"prev": None, "planned": None}
+    jazz_bass_state: dict[str, Any] = {"prev": None, "planned": None, "head": None}
+    upright = style == "Jazz swing" and bool(_bv.upright_mode())
+    upright_takes: dict = {}
+    # The recorded upright plays into its own bus, shaped once before the mix is balanced.
+    upright_bus = np.zeros_like(audio) if upright and _bv.uses_own_bus() else None
+    upright_dest = upright_bus if upright_bus is not None else audio
 
     # Pre-compute arrangement memory (chorus passes, phrase positions,
     # bridge-recovery bars) so per-bar decisions know "where am I in
@@ -2113,7 +2246,10 @@ def synthesize_chords_to_numpy(
         section_tex = _sa.bar_texture(style, section_plan[idx])
         tex_bass = section_tex.bass if section_tex is not None else "groove"
         if section_tex is not None:
-            intensity = _sa.shape_intensity(intensity / max(fade_mul, 1e-6), style, section_tex) * fade_mul
+            intensity = _sa.shape_intensity(
+                intensity / max(fade_mul, 1e-6), style, section_tex,
+                spread_scale=_bv.SECTION_SPREAD if upright_bus is not None else 1.0,
+            ) * fade_mul
             bar_patterns = _sa.apply_to_grid(bar_patterns, section_tex, pulses_per_bar)
         loop_pass = idx // cycle_len
         loop_seed = loop_pass * 9173 + groove_seed * 31
@@ -2192,6 +2328,22 @@ def synthesize_chords_to_numpy(
             if style == "Funk groove" and pulses_per_bar == 4 and not bar_is_hit and not bar_is_no_chord
             else None
         )
+        # Jazz walks its own line on the upright; a section texture's held roots or two-feel
+        # and hit / N.C. bars keep the shared paths, on the same instrument.
+        walk_notes = (
+            _jazz_walk_bar(
+                chord,
+                next_chord,
+                pulses_per_bar,
+                jazz_bass_state,
+                np.random.default_rng(idx * 7919 + groove_seed * 131 + loop_seed),
+                phrase_start=int(event.get("bar_in_section", 0) or 0) % 4 == 0,
+                phrase_end=section_edge or int(event.get("bar_in_section", 0) or 0) % 4 == 3,
+            )
+            if upright and pulses_per_bar in (3, 4) and not bar_is_hit and not bar_is_no_chord
+            and tex_bass not in ("roots", "half")
+            else None
+        )
         if bar_is_hit and not bar_is_no_chord:
             stab_pitch = _bass_motion_pitch(
                 sounding_chord, next_chord, style, 0, max(1, len(bass_hits))
@@ -2202,15 +2354,14 @@ def synthesize_chords_to_numpy(
                 amount=humanize * 0.5,
                 beat_len=pulse,
             )
-            _add_tone(
-                audio,
-                sr,
-                t_stab,
-                pulse * 0.40,
-                stab_pitch,
-                _humanize_volume(0.16 * intensity, idx * 41 + loop_seed),
-                "bass",
-            )
+            _stab_vol = _humanize_volume(0.16 * intensity, idx * 41 + loop_seed)
+            if upright:
+                _bv.add_upright_note(
+                    upright_dest, sr, t_stab, pulse * 0.40, stab_pitch, _stab_vol * UPRIGHT_GAIN, 0.8,
+                    seed=f"{groove_seed}:{idx}:stab", avoid=upright_takes,
+                )
+            else:
+                _add_tone(audio, sr, t_stab, pulse * 0.40, stab_pitch, _stab_vol, "bass")
         elif tex_bass in ("roots", "half") and not bar_is_no_chord:
             # Section texture: roots held through each chord, or a two-feel.
             # Held notes carry far more energy than the groove's short ones: keep them under it.
@@ -2225,14 +2376,30 @@ def synthesize_chords_to_numpy(
                     amount=humanize * 0.5,
                     beat_len=pulse,
                 )
-                _add_tone(
-                    audio,
-                    sr,
-                    t_hit,
-                    max(0.05, beats * pulse),
-                    bass_pitch,
-                    _humanize_volume(bass_vol, idx * 41 + n + loop_seed),
-                    "bass",
+                _held_vol = _humanize_volume(bass_vol, idx * 41 + n + loop_seed)
+                if upright:
+                    # A decaying pluck carries less than a held tone at the same level.
+                    _bv.add_upright_note(
+                        upright_dest, sr, t_hit, max(0.05, beats * pulse), bass_pitch, _held_vol * UPRIGHT_GAIN * 1.5, 0.5,
+                        seed=f"{groove_seed}:{idx}:{n}", avoid=upright_takes,
+                    )
+                else:
+                    _add_tone(audio, sr, t_hit, max(0.05, beats * pulse), bass_pitch, _held_vol, "bass")
+        elif walk_notes is not None:
+            bass_vol = 0.11 * intensity * arr_char["bass_vol_mul"] * UPRIGHT_GAIN
+            for n, (b, beats, bass_pitch, accent) in enumerate(walk_notes):
+                t_hit = _humanize_time(
+                    _groove_time(bar_start, b, pulse, style, swing=swing_amt, pocket=pocket_offset),
+                    seed=idx * 41 + n + groove_seed + loop_seed,
+                    amount=humanize * 0.5,
+                    beat_len=pulse,
+                )
+                # Legato: each note rings up to the next, minus the finger coming off.
+                _bv.add_upright_note(
+                    upright_dest, sr, t_hit, max(0.05, beats * pulse - min(0.02, 0.05 * pulse)), bass_pitch,
+                    _humanize_volume(bass_vol * accent, idx * 41 + n + loop_seed),
+                    0.25 + 0.5 * accent,
+                    seed=f"{groove_seed}:{idx}:{n}", avoid=upright_takes,
                 )
         elif funk_notes is not None:
             bass_vol = (0.15 if song_profile.get("groove_based") else 0.11) * intensity * arr_char["bass_vol_mul"]
@@ -2737,6 +2904,7 @@ def synthesize_chords_to_numpy(
                 and not bar_is_hit
                 and not bar_is_subdivided
                 and funk_notes is None  # the funk bar writes its own walk-in on the "a" of 4
+                and walk_notes is None
                 and tex_bass not in ("roots", "half")  # held roots / two-feel: no walk-up
                 and style not in ("Ballad", "Bossa nova")  # Bossa writes its own "and" of 4
             ):
@@ -2898,7 +3066,7 @@ def synthesize_chords_to_numpy(
             # bass attack just because a section ends.
             # Bossa's and Funk's own bar lines already lead into the next section.
             if (not bar_is_no_chord and not is_no_chord_token(tail_chord) and style != "Bossa nova"
-                    and funk_notes is None and tex_bass not in ("roots", "half")):
+                    and funk_notes is None and walk_notes is None and tex_bass not in ("roots", "half")):
                 approach = _bass_motion_pitch(tail_chord, tail_next, style, len(bass_hits) - 1, len(bass_hits))
                 _add_tone(audio, sr, bar_start + tail * pulse, pulse * 0.25, approach, 0.075 * intensity, "bass")
             _add_noise_hit(
@@ -2915,6 +3083,7 @@ def synthesize_chords_to_numpy(
                 and _section_role(next_event.get("section")) == "chorus"
                 and style != "Bossa nova"
                 and funk_notes is None
+                and walk_notes is None
                 and tex_bass not in ("roots", "half")
             ):
                 # A pickup into the chorus on its first root (a fixed C3 clashed in most keys).
@@ -2936,7 +3105,7 @@ def synthesize_chords_to_numpy(
                     if sub.push and beat_cursor > 0:
                         push_b = max(0.0, beat_cursor - 0.5)
                         # Bossa's and Funk's bar lines already play the pushed chord.
-                        if style != "Bossa nova" and funk_notes is None and tex_bass not in ("roots", "half"):
+                        if style != "Bossa nova" and funk_notes is None and walk_notes is None and tex_bass not in ("roots", "half"):
                             push_pitch = _bass_motion_pitch(
                                 sub.chord, None, style, 0, 1
                             )
@@ -2962,6 +3131,8 @@ def synthesize_chords_to_numpy(
     if _finish_kit is not None:
         _finish_kit.flush()  # the held hi-hat hits, with chokes, join the drums before the mix is levelled
 
+    if upright_bus is not None:
+        audio += _bv.finish_upright_bus(upright_bus, sr)
     # Keys bus level per style, relative to the rhythm section (bass + drums):
     # the old per-style comp multipliers were tuned for a sustained organ and
     # left the piano at 0.05x the rhythm in Jazz and 0.2x in Pop / Bossa.
@@ -2969,6 +3140,8 @@ def synthesize_chords_to_numpy(
     _keys_rms = float(np.sqrt(np.mean(keys_bus ** 2)))
     if _rhythm_rms > 1e-6 and _keys_rms > 1e-6:
         _target = _KEYS_BALANCE.get(style, 0.55) * float(song_profile.get("keys_level", 1.0))
+        if upright_bus is not None:
+            _target *= _bv.KEYS_LIFT  # the trio's balance with the recorded upright (bass under piano and drums)
         keys_bus *= float(np.clip(_target * _rhythm_rms / _keys_rms, 0.25, 12.0))
     if strings_bus is not None:
         _strings_rms = float(np.sqrt(np.mean(strings_bus ** 2)))
