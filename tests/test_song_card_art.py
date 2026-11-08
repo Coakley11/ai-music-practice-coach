@@ -116,3 +116,26 @@ def test_every_style_has_its_own_variation_inside_the_source_world(source: str, 
     # The source's own background is the base of every variation.
     bg = base[base.index('<linearGradient id="bg"'):].split("</linearGradient>", 1)[0]
     assert bg in art
+
+
+def _window(name: str) -> tuple[float, float, float, float]:
+    x, y, w, h = (float(v) for v in A._PHONE_VIEW[name].split(","))
+    return x, y, x + w, y + h
+
+
+def test_phone_crops_keep_each_genre_defining_instrument() -> None:
+    """On a phone the Catalog card keeps what makes the genre recognisable (coordinates in the 1600-wide artwork):
+    Jewish keeps the Star of David (x 910-1210) and the clarinet (to x 1595); Country keeps the hat (x 1110-1480,
+    brim at y 612) beside the guitar."""
+    x0, _y0, x1, _y1 = _window("jewish")
+    assert x0 <= 905 and x1 >= 1595
+    x0, _y0, x1, y1 = _window("country")
+    assert x0 <= 1105 and x1 >= 1485 and y1 >= 615
+
+
+def test_custom_soul_record_stays_small_beside_the_chord_chart() -> None:
+    """Custom Soul's vinyl record is drawn at half size near the top-right corner, so the handwritten chord chart
+    stays the subject on a phone (the shared Custom layout draws instruments at .72)."""
+    art = (A.ART_DIR / "custom_soul.svg").read_text(encoding="utf-8")
+    assert 'scale(0.5) translate(-1340 -40)' in art
+    assert art.count('<circle r="330" fill="url(#gsou_vinyl)"/>') == 1
