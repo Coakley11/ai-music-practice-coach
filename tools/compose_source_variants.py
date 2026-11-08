@@ -27,6 +27,9 @@ MAKE = {
     "composition": ["pop", "rock", "jazz", "country", "soul", "funk", "jewish"],
 }
 DROP = {"custom": [2], "composition": [5]}  # custom: the trumpet; composition: the default microphone
+# Custom styles whose instruments need their own placement so the handwritten chord chart stays visible:
+# Soul's record at half size, pushed toward the top-right corner, with the microphone a little smaller in front.
+CUSTOM_LAYOUT = {"soul": {3: (.5, 260, 0), 4: (.62, 0, 0)}}
 GOLD = ('<filter id="vx_gold" color-interpolation-filters="sRGB" x="-10%" y="-10%" width="120%" height="120%">'
         '<feColorMatrix type="matrix" values=".3 .59 .11 0 0  .3 .59 .11 0 0  .3 .59 .11 0 0  0 0 0 1 0"/>'
         '<feComponentTransfer><feFuncR type="table" tableValues=".04 .45 .91 1"/>'
@@ -81,7 +84,14 @@ for source, styles in MAKE.items():
         if source == "custom":
             # the pencil rests on the chord-chart sheet, the instruments in front (base: bg, grid, chart, pencil, notes)
             # smaller and anchored at the right edge, so the handwritten chord chart stays the card's subject
-            hero = keep[:4] + ['<g opacity=".97" transform="translate(1600 40) scale(.72) translate(-1600 -40)">' + "".join(layers) + "</g>"] + keep[4:5]
+            if style in CUSTOM_LAYOUT:
+                # per-layer placement: (scale, x shift, y shift) about the top-right corner
+                parts = [f'<g transform="translate(1600 40) scale({sc}) translate({-1600 + dx} {-40 + dy})">{namespace(g_rest[i], ids, prefix)}</g>'
+                         for i, (sc, dx, dy) in CUSTOM_LAYOUT[style].items()]
+                inst = '<g opacity=".97">' + "".join(parts) + "</g>"
+            else:
+                inst = '<g opacity=".97" transform="translate(1600 40) scale(.72) translate(-1600 -40)">' + "".join(layers) + "</g>"
+            hero = keep[:4] + [inst] + keep[4:5]
             body = keep[5:]
             # faint watermark of the lead instrument in the body, like custom_blues' trumpet
             water = f'<g opacity=".14" transform="translate(-260 820) scale(1.1)">{lead}</g>'
