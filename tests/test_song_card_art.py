@@ -28,22 +28,15 @@ def test_catalog_songs_live_in_their_genre(genre: str) -> None:
 
 
 @pytest.mark.parametrize(
-    "source, style, world",
-    [("Custom", "Blues", "blues"), ("Custom", "Pop", "pop"), ("Custom", "Rock", "rock"),
-     ("Composition", "Blues", "blues"), ("Composition", "Classical", "classical"), ("Composition", "Jazz", "jazz")],
+    "source, style, art",
+    [("Custom", "Blues", "custom_blues"), ("Custom", "Pop", "custom_pop"), ("Custom", "Rock", "custom"),
+     ("Composition", "Blues", "composition_blues"), ("Composition", "Classical", "composition_classical"), ("Composition", "Pop", "composition")],
 )
-def test_the_saved_style_picks_the_world_and_the_source_keeps_its_marks(source: str, style: str, world: str) -> None:
+def test_source_keeps_its_world_and_style_adds_the_art(source: str, style: str, art: str) -> None:
     i = A.card_identity(source, style)
-    assert i.family == world and i.art == world and f"src-{source.lower()}" in i.classes
+    assert i.family == source.lower() and i.art == art
     assert i.crest == FEATURE_ICONS[source.lower()]
-    assert (A.ART_DIR / f"{world}.svg").is_file()
-
-
-@pytest.mark.parametrize("source", ["Custom", "Composition"])
-def test_a_song_without_a_style_keeps_its_source_world(source: str) -> None:
-    i = A.card_identity(source, "")
-    assert (i.family, i.art, i.style_name) == (source.lower(), source.lower(), "")
-    assert "src-" not in i.classes
+    assert (A.ART_DIR / f"{art}.svg").is_file()
 
 
 def test_every_catalog_genre_has_lower_body_artwork_css() -> None:
@@ -96,7 +89,7 @@ def test_text_is_escaped() -> None:
 
 def test_hero_shows_the_style_logo_beside_the_source_crest() -> None:
     out = A.hero_html(A.card_identity("Composition", "Blues"), title="Midnight Walk")
-    assert 'class="sc-stylelogo"' in out and "/blues.svg" in out and "src-composition" in out
+    assert 'class="sc-stylelogo"' in out and "composition_blues.svg" in out
     assert 'class="sc-stylelogo"' not in A.hero_html(A.card_identity("Catalog", "Blues"), title="X")
 
 
