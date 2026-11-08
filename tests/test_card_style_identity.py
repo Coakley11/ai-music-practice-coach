@@ -190,17 +190,33 @@ def test_a_catalog_song_keeps_its_catalog_genre() -> None:
 
 # --- No saved style: nothing invented, nothing written back. -------------------------------------------------------
 
-def test_a_song_without_a_saved_style_gets_none_and_nothing_is_written() -> None:
+def test_a_custom_song_without_a_saved_style_shows_the_custom_pages_default_and_nothing_is_written() -> None:
+    """Option 1 (user, 2026-11-07): the Custom page shows Pop in its selector for such a song, so the cards
+    show Pop artwork too; the default is display only and never written into the saved record."""
     session = custom_session(None)
     before = copy.deepcopy(session)
     style = B.song_style_for_card("custom", session=session, pick_key=CUSTOM_PK)
-    assert style == ""
+    assert style == S.custom_display_default() == "Pop"
     i = A.card_identity("Custom", style)
-    assert (i.family, i.style_name) == ("custom", "") and "src-" not in i.classes
-    assert "Style" not in A.backing_chips_html(i, groove="Pop groove", meter="4/4")
-    assert session == before
+    assert (i.family, i.style_name) == ("pop", "Pop") and "src-custom" in i.classes
+    assert session == before  # nothing written: not the active draft, not the saved library copy
+    saved_only = custom_session(None, saved_only=True)
+    assert S.saved_song_style(saved_only, CUSTOM_PK) == "Pop"  # Karaoke reads the saved copy: the same default
+    assert "progression_style" not in saved_only["cpl_saved_progressions"]["Blues in F minor"]
+
+
+def test_the_default_is_the_custom_pages_own() -> None:
+    from custom_progression_lab import load_saved_progression
+
+    assert load_saved_progression({"x": {"name": "x"}}, "x")["progression_style"] == S.custom_display_default()
+
+
+def test_a_composition_without_a_genre_still_gets_none() -> None:
+    assert S.composition_style(composition_doc("Other", None)) == ""
+    assert A.card_identity("Composition", "").family == "composition"
 
 
 def test_no_pick_key_means_no_style() -> None:
     assert B.song_style_for_card("custom", session=custom_session("Rock"), pick_key="") == ""
+    assert S.saved_song_style({}, "custom::unknown") == ""  # no such progression: nothing to show
     assert S.saved_song_style(SimpleNamespace(), "composition::missing") == ""
