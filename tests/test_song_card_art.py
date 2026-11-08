@@ -118,19 +118,34 @@ def test_every_style_has_its_own_variation_inside_the_source_world(source: str, 
     assert bg in art
 
 
-def _window(name: str) -> tuple[float, float, float, float]:
+# The phone card's artwork box (song_card_art.css, max-width 560px): about 356 x 400 px, the artwork cropped from
+# its top right (xMaxYMin slice); the title and the key panels cover roughly the lower quarter.
+_PHONE_BOX = 356 / 400
+_TITLE_ZONE = 0.25
+
+
+def _phone_visible(name: str) -> tuple[float, float, float, float]:
+    """The part of the 1600-wide artwork a phone shows above the title: (x0, y0, x1, y1)."""
     x, y, w, h = (float(v) for v in A._PHONE_VIEW[name].split(","))
-    return x, y, x + w, y + h
+    shown_w, shown_h = (h * _PHONE_BOX, h) if w / h > _PHONE_BOX else (w, w / _PHONE_BOX)
+    return x + w - shown_w, y, x + w, y + shown_h * (1 - _TITLE_ZONE)
 
 
 def test_phone_crops_keep_each_genre_defining_instrument() -> None:
-    """On a phone the Catalog card keeps what makes the genre recognisable (coordinates in the 1600-wide artwork):
-    Jewish keeps the Star of David (x 910-1210) and the clarinet (to x 1595); Country keeps the hat (x 1110-1480,
-    brim at y 612) beside the guitar."""
-    x0, _y0, x1, _y1 = _window("jewish")
-    assert x0 <= 905 and x1 >= 1595
-    x0, _y0, x1, y1 = _window("country")
+    """On a phone the Catalog card keeps what makes the genre recognisable, above the title (coordinates in the
+    1600-wide artwork): Jewish keeps the Star of David (x 910-1210, y 70-400) and the clarinet (x 1380-1595,
+    y 100-560); Country keeps its hat (x 1110-1480, y 512-612) beside the guitar."""
+    x0, y0, x1, y1 = _phone_visible("jewish")
+    assert x0 <= 905 and x1 >= 1595 and y0 <= 70 and y1 >= 560
+    x0, y0, x1, y1 = _phone_visible("country")
     assert x0 <= 1105 and x1 >= 1485 and y1 >= 615
+
+
+def test_custom_soul_shows_its_chord_chart_and_its_instruments_on_a_phone() -> None:
+    """Custom Soul on a phone: the window starts on the handwritten chord chart (left of x 900) and reaches the
+    small record and microphone at the right edge (x 1500)."""
+    x0, _y0, x1, _y1 = _phone_visible("custom_soul")
+    assert x0 <= 900 and x1 >= 1500
 
 
 def test_custom_soul_record_stays_small_beside_the_chord_chart() -> None:

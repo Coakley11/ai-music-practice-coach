@@ -38,10 +38,12 @@ _GENERIC_STYLE_LOGO = "🎵"
 
 # The part of each artwork a narrow card shows, so the instrument stays in view.
 _PHONE_VIEW = {
-    "jewish": "860,0,740,640", "rock": "820,0,620,640", "soul": "800,0,720,640", "classical": "900,20,640,620",
+    "jewish": "800,10,800,900", "rock": "820,0,620,640", "soul": "800,0,720,640", "classical": "900,20,640,620",
     "jazz": "900,0,620,640", "pop": "900,0,620,640", "custom_blues": "800,120,720,520", "custom_pop": "880,40,620,600",
     "composition_blues": "740,60,690,580", "composition_classical": "740,40,700,600", "funk": "820,0,720,640",
-    "blues": "800,60,720,580", "country": "880,30,720,610",
+    "blues": "800,60,720,580", "country": "900,80,700,786",
+    # Custom Soul on a phone: the chord chart stays the subject; the small record and microphone at its right edge.
+    "custom_soul": "800,40,700,740",
 }
 # The source style variations keep their genre's instruments in view on a narrow card.
 for _src in ("custom", "composition"):
