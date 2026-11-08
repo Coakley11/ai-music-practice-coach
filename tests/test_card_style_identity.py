@@ -220,3 +220,13 @@ def test_no_pick_key_means_no_style() -> None:
     assert B.song_style_for_card("custom", session=custom_session("Rock"), pick_key="") == ""
     assert S.saved_song_style({}, "custom::unknown") == ""  # no such progression: nothing to show
     assert S.saved_song_style(SimpleNamespace(), "composition::missing") == ""
+
+
+def test_the_karaoke_card_looks_up_the_entry_being_sung() -> None:
+    """In Karaoke the card's record names the sung entry's pick key, not the Backing context's (which can still
+    be the song edited before the set), so a Custom entry's saved style or the Custom page's default shows."""
+    import pathlib
+
+    app = (pathlib.Path(__file__).resolve().parents[1] / "streamlit_music_practice_app.py").read_text(encoding="utf-8")
+    assert '"pick_key": _kr_card_pick or _pick_now,' in app
+    assert '_kr_card_pick = str((km.current_session_entry(st.session_state) or {}).get("pick_key") or "").strip()' in app

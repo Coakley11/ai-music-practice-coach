@@ -21398,6 +21398,7 @@ elif _studio_page == "backing":
             _kr_card_artist = ""
             _kr_card_genre = ""
             _kr_card_home = ""
+            _kr_card_pick = ""
             if km.is_voice_mode(st.session_state) and km.is_karaoke_session_active(
                 st.session_state
             ):
@@ -21424,6 +21425,13 @@ elif _studio_page == "backing":
                         ).strip()
                 except Exception:
                     pass
+                # The card shows the entry being sung: its own pick key, so a Custom or Composition entry's
+                # saved style (and the Custom page's default) decides its artwork. The Backing context can
+                # still name the song that was being edited before the set.
+                try:
+                    _kr_card_pick = str((km.current_session_entry(st.session_state) or {}).get("pick_key") or "").strip()
+                except Exception:
+                    _kr_card_pick = ""
             if _kr_card_home:
                 _home_key = _kr_card_home
             _backing_card_record = {
@@ -21438,7 +21446,7 @@ elif _studio_page == "backing":
                 # Original/home only — never concert_key / Practice.
                 "key": _home_key or str(_backing_card_record.get("key") or ""),
                 "original_key": _home_key,
-                "pick_key": _pick_now,
+                "pick_key": _kr_card_pick or _pick_now,
             }
             _backing_orig_key = _home_key or str(_backing_card_record.get("key") or "")
             _backing_practice_key = _prac_now
