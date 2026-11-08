@@ -29,8 +29,8 @@ def test_catalog_songs_live_in_their_genre(genre: str) -> None:
 
 @pytest.mark.parametrize(
     "source, style, art",
-    [("Custom", "Blues", "custom_blues"), ("Custom", "Pop", "custom_pop"), ("Custom", "Rock", "custom"),
-     ("Composition", "Blues", "composition_blues"), ("Composition", "Classical", "composition_classical"), ("Composition", "Pop", "composition")],
+    [("Custom", "Blues", "custom_blues"), ("Custom", "Pop", "custom_pop"), ("Custom", "Rock", "custom_rock"),
+     ("Composition", "Blues", "composition_blues"), ("Composition", "Classical", "composition_classical"), ("Composition", "Pop", "composition_pop")],
 )
 def test_source_keeps_its_world_and_style_adds_the_art(source: str, style: str, art: str) -> None:
     i = A.card_identity(source, style)
@@ -100,3 +100,19 @@ def test_switch_is_on_by_default_and_rolls_back_with_0(monkeypatch: pytest.Monke
     assert A.song_art_cards_enabled() is False
     monkeypatch.setenv("MUSIC_SONG_ART_CARDS", "1")
     assert A.song_art_cards_enabled() is True
+
+
+@pytest.mark.parametrize("source", ["custom", "composition"])
+@pytest.mark.parametrize("genre", list(A.GENRES))
+def test_every_style_has_its_own_variation_inside_the_source_world(source: str, genre: str) -> None:
+    """Three distinct families: a Custom or Composition song in any style keeps its source world (its own art file,
+    built on the green notebook or the navy-and-gold manuscript) and never shows the Catalog album art."""
+    i = A.card_identity(source.title(), genre.title())
+    assert (i.family, i.art) == (source, f"{source}_{genre}")
+    art = (A.ART_DIR / f"{i.art}.svg").read_text(encoding="utf-8")
+    base = (A.ART_DIR / f"{source}.svg").read_text(encoding="utf-8")
+    catalog = (A.ART_DIR / f"{genre}.svg").read_text(encoding="utf-8")
+    assert art != catalog and art != base
+    # The source's own background is the base of every variation.
+    bg = base[base.index('<linearGradient id="bg"'):].split("</linearGradient>", 1)[0]
+    assert bg in art

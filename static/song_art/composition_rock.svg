@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 1600 1800" preserveAspectRatio="xMaxYMin slice"><defs>
+<linearGradient id="bg" x1="0" y1="0" x2="1" y2=".7"><stop offset="0" stop-color="#020617"/><stop offset=".5" stop-color="#0f172a"/><stop offset="1" stop-color="#1e293b"/></linearGradient>
+<linearGradient id="fade" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#020617" stop-opacity=".8"/><stop offset=".46" stop-color="#020617" stop-opacity="0"/></linearGradient>
+<linearGradient id="gold" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fef3c7"/><stop offset=".4" stop-color="#e9c46a"/><stop offset=".7" stop-color="#fde68a"/><stop offset="1" stop-color="#a16207"/></linearGradient>
+<linearGradient id="feather" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fffbeb"/><stop offset=".55" stop-color="#f5e3b5"/><stop offset="1" stop-color="#b58a3a"/></linearGradient>
+<linearGradient id="ink" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#020617"/><stop offset=".35" stop-color="#334155"/><stop offset=".55" stop-color="#0f172a"/><stop offset="1" stop-color="#020617"/></linearGradient>
+<radialGradient id="glow"><stop offset="0" stop-color="#e9c46a" stop-opacity=".5"/><stop offset="1" stop-color="#e9c46a" stop-opacity="0"/></radialGradient>
+<linearGradient id="chrome" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#a16207"/><stop offset=".35" stop-color="#fef3c7"/><stop offset=".65" stop-color="#e9c46a"/><stop offset="1" stop-color="#78510a"/></linearGradient>
+<pattern id="mesh" width="14" height="14" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><path d="M0 0H14M0 0V14" stroke="#020617" stroke-opacity=".55" stroke-width="2"/></pattern>
+<g id="n1"><ellipse rx="16" ry="11.500" transform="rotate(-20)"/><path d="M13-4V-64C14-50 34-46 34-26 30-38 22-42 17-44V-4Z"/></g>
+<g id="n2"><ellipse rx="14" ry="10" transform="rotate(-20)"/><ellipse cx="62" cy="-13" rx="14" ry="10" transform="rotate(-20 62 -13)"/><path d="M11-3V-60L74-74V-16H70V-58L15-46V-3Z"/></g>
+<g id="st" fill="none" stroke="url(#gold)" stroke-width="2.500"><path d="M-40 0C260-60 480 90 800 30S1300-30 1680 40"/><path d="M-40 20C260-40 480 110 800 50S1300-10 1680 60"/><path d="M-40 40C260-20 480 130 800 70S1300 10 1680 80"/><path d="M-40 60C260 0 480 150 800 90S1300 30 1680 100"/><path d="M-40 80C260 20 480 170 800 110S1300 50 1680 120"/></g>
+
+<linearGradient id="groc_bg" x1="0" y1="0" x2="1" y2=".7"><stop offset="0" stop-color="#450a0a"/><stop offset=".55" stop-color="#7f1d1d"/><stop offset="1" stop-color="#1e293b"/></linearGradient>
+<linearGradient id="groc_fade" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#2a0505" stop-opacity=".85"/><stop offset=".5" stop-color="#2a0505" stop-opacity="0"/></linearGradient>
+<linearGradient id="groc_beam" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fca5a5" stop-opacity=".75"/><stop offset="1" stop-color="#ef4444" stop-opacity="0"/></linearGradient>
+<linearGradient id="groc_beam2" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fde68a" stop-opacity=".62"/><stop offset="1" stop-color="#f97316" stop-opacity="0"/></linearGradient>
+<radialGradient id="groc_burst" cx=".5" cy=".62" r=".7"><stop offset="0" stop-color="#fde047"/><stop offset=".3" stop-color="#f97316"/><stop offset=".62" stop-color="#b91c1c"/><stop offset=".86" stop-color="#450a0a"/><stop offset="1" stop-color="#0a0202"/></radialGradient>
+<linearGradient id="groc_neck" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#6b3a12"/><stop offset=".5" stop-color="#d9a35c"/><stop offset="1" stop-color="#7a4518"/></linearGradient>
+<linearGradient id="groc_chrome" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#64748b"/><stop offset=".3" stop-color="#f8fafc"/><stop offset=".62" stop-color="#94a3b8"/><stop offset="1" stop-color="#475569"/></linearGradient>
+<linearGradient id="groc_tolex" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#27272a"/><stop offset="1" stop-color="#09090b"/></linearGradient>
+<linearGradient id="groc_gold" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fde68a"/><stop offset=".5" stop-color="#b45309"/><stop offset="1" stop-color="#fcd34d"/></linearGradient>
+<radialGradient id="groc_cone"><stop offset="0" stop-color="#3f3f46"/><stop offset=".22" stop-color="#18181b"/><stop offset=".3" stop-color="#52525b"/><stop offset=".95" stop-color="#09090b"/><stop offset="1" stop-color="#71717a"/></radialGradient>
+<pattern id="groc_grille" width="9" height="9" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="9" height="9" fill="#2a2015"/><path d="M0 0H9M0 0V9" stroke="#a8875a" stroke-width="1.6"/></pattern>
+<pattern id="groc_plate" width="60" height="60" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><path d="M0 0H60M0 0V60" stroke="#fecaca" stroke-opacity=".08" stroke-width="2"/></pattern>
+<filter id="groc_b12" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="12"/></filter>
+<filter id="groc_b40" x="-40%" y="-40%" width="180%" height="180%"><feGaussianBlur stdDeviation="40"/></filter>
+<g id="groc_horns"><path d="M-30 190V96C-34 70-46 50-44-12-44-30-20-30-20-12L-14 44 -4 44 8 46 12-22C14-40 38-38 38-20L30 80C32 112 30 150 30 190Z"/></g>
+<path id="groc_bolt" d="M34-110-34 12 2 12-22 110 54-22 14-22Z"/>
+<filter id="vx_gold" color-interpolation-filters="sRGB" x="-10%" y="-10%" width="120%" height="120%"><feColorMatrix type="matrix" values=".3 .59 .11 0 0  .3 .59 .11 0 0  .3 .59 .11 0 0  0 0 0 1 0"/><feComponentTransfer><feFuncR type="table" tableValues=".04 .45 .91 1"/><feFuncG type="table" tableValues=".06 .34 .77 .96"/><feFuncB type="table" tableValues=".16 .14 .42 .8"/></feComponentTransfer></filter></defs><rect width="1600" height="1800" fill="url(#bg)"/><circle cx="1200" cy="290" r="440" fill="url(#glow)"/><g opacity=".95" transform="translate(0 280)"><use xlink:href="#st"/></g><g opacity=".32" transform="translate(0 70)"><use xlink:href="#st"/></g><g fill="url(#gold)"><use xlink:href="#n1" x="640" y="380"/><use xlink:href="#n2" x="760" y="380"/><use xlink:href="#n1" x="920" y="372"/><use xlink:href="#n2" x="1020" y="345"/></g><g filter="url(#vx_gold)" opacity=".92" transform="translate(1600 40) scale(.88) translate(-1600 -40)"><g transform="translate(1250 92)">
+<rect width="340" height="170" rx="10" fill="url(#groc_tolex)" stroke="#71717a" stroke-width="3"/>
+<rect x="16" y="16" width="308" height="62" rx="4" fill="#1c1917" stroke="#d4af37" stroke-width="2"/>
+<g fill="url(#groc_chrome)"><circle cx="52" cy="47" r="15"/><circle cx="100" cy="47" r="15"/><circle cx="148" cy="47" r="15"/><circle cx="196" cy="47" r="15"/><circle cx="244" cy="47" r="15"/></g>
+<g stroke="#111" stroke-width="3"><path d="M52 47 46 36M100 47V33M148 47 158 37M196 47 186 36M244 47 256 41"/></g>
+<circle cx="292" cy="47" r="8" fill="#ef4444"/><circle cx="292" cy="47" r="16" fill="#ef4444" opacity=".35"/>
+<rect x="16" y="90" width="308" height="66" fill="url(#groc_grille)" stroke="#d4af37" stroke-width="2"/>
+</g><g transform="translate(1250 270)">
+<rect width="340" height="340" rx="10" fill="url(#groc_tolex)" stroke="#71717a" stroke-width="3"/>
+<rect x="16" y="16" width="308" height="308" fill="url(#groc_grille)" stroke="#d4af37" stroke-width="2"/>
+<circle cx="170" cy="170" r="124" fill="url(#groc_cone)"/><circle cx="170" cy="170" r="42" fill="#27272a" stroke="#71717a" stroke-width="2"/>
+<g fill="url(#groc_chrome)"><circle cx="10" cy="10" r="10"/><circle cx="330" cy="10" r="10"/><circle cx="10" cy="330" r="10"/><circle cx="330" cy="330" r="10"/></g>
+</g><g transform="translate(1120 322) rotate(24) scale(1.02)">
+<path d="M-14-60V-470H14V-60Z" fill="url(#groc_neck)"/><rect x="-18" y="-470" width="36" height="410" fill="#2a1408"/>
+<g stroke="#e2e8f0" stroke-width="3"><path d="M-18-440H18M-18-408H18M-18-378H18M-18-350H18M-18-324H18M-18-300H18M-18-278H18M-18-258H18M-18-238H18M-18-220H18M-18-202H18M-18-186H18M-18-170H18M-18-155H18M-18-141H18M-18-128H18M-18-115H18"/></g>
+<g fill="#fef3c7"><circle cy="-392" r="5"/><circle cy="-336" r="5"/><circle cy="-288" r="5"/><circle cy="-229" r="5"/><circle cx="-8" cy="-163" r="5"/><circle cx="8" cy="-163" r="5"/></g>
+<path d="M-20-470C-40-490-44-540-22-590L42-612C50-580 36-540 22-510L20-470Z" fill="#0a0202" stroke="url(#groc_gold)" stroke-width="3"/>
+<g fill="url(#groc_chrome)"><circle cx="-38" cy="-520" r="10"/><circle cx="-34" cy="-552" r="10"/><circle cx="-24" cy="-584" r="10"/><circle cx="46" cy="-590" r="10"/><circle cx="50" cy="-558" r="10"/><circle cx="42" cy="-526" r="10"/></g>
+<path d="M-112-44C-158-112-118-170-72-156-48-148-44-112-30-92L30-92C42-126 66-196 112-182 146-170 130-96 110-54 96-22 158 40 150 110 142 200 72 240 0 240-72 240-152 198-158 112-162 56-100 8-112-44Z" fill="url(#groc_burst)" stroke="#fde68a" stroke-width="5"/>
+<path d="M28-82C56-60 96-20 96 40 84 70 40 86 22 80Z" fill="#f8fafc" opacity=".92"/>
+<g fill="#111827" stroke="url(#groc_chrome)" stroke-width="4"><rect x="-44" y="-44" width="88" height="42" rx="6"/><rect x="-44" y="36" width="88" height="42" rx="6"/></g>
+<g fill="url(#groc_chrome)"><circle cx="-30" cy="-34" r="3.5"/><circle cx="-10" cy="-34" r="3.5"/><circle cx="10" cy="-34" r="3.5"/><circle cx="30" cy="-34" r="3.5"/><circle cx="-30" cy="-12" r="3.5"/><circle cx="-10" cy="-12" r="3.5"/><circle cx="10" cy="-12" r="3.5"/><circle cx="30" cy="-12" r="3.5"/><circle cx="-30" cy="46" r="3.5"/><circle cx="-10" cy="46" r="3.5"/><circle cx="10" cy="46" r="3.5"/><circle cx="30" cy="46" r="3.5"/><circle cx="-30" cy="68" r="3.5"/><circle cx="-10" cy="68" r="3.5"/><circle cx="10" cy="68" r="3.5"/><circle cx="30" cy="68" r="3.5"/></g>
+<rect x="-44" y="100" width="88" height="16" rx="4" fill="url(#groc_chrome)"/><rect x="-36" y="134" width="72" height="14" rx="4" fill="url(#groc_chrome)"/>
+<g fill="url(#groc_gold)" stroke="#0a0202" stroke-width="2"><circle cx="-92" cy="118" r="17"/><circle cx="-60" cy="166" r="17"/><circle cx="-110" cy="62" r="17"/><circle cx="100" cy="120" r="17"/></g>
+<g stroke="#f8fafc" stroke-width="1.5"><path d="M-12 134V-470M-7 134V-470M-2.500 134V-470M2.500 134V-470M7 134V-470M12 134V-470"/></g>
+<path d="M-112-44C-140-80-130-130-96-146" fill="none" stroke="#fff" stroke-opacity=".55" stroke-width="7" stroke-linecap="round"/>
+</g><g fill="#fde047"><use xlink:href="#groc_bolt" x="890" y="170"/><use xlink:href="#groc_bolt" x="1240" y="470" transform="rotate(14 1240 470) scale(1)" opacity=".95"/></g></g><g transform="translate(800 560) rotate(30) scale(.74)">
+<path d="M0 0C-6-40-6-90-2-160" fill="none" stroke="url(#gold)" stroke-width="8" stroke-linecap="round"/>
+<path d="M-6-5 0 34 6-5Z" fill="url(#gold)"/>
+<path d="M-2-120C-110-230-120-430-20-640 8-560 90-520 96-400 102-300 60-190-2-120Z" fill="url(#feather)" stroke="#a16207" stroke-width="2.500"/>
+<path d="M-2-120C4-300 0-470-20-640" fill="none" stroke="#7c5a13" stroke-width="5"/>
+<g fill="none" stroke="#8a6d2b" stroke-width="2.500" opacity=".85"><path d="M0-190C-30-220-66-250-84-300M2-250C-26-290-60-320-84-380M2-310C-22-350-46-390-68-450M0-380C-18-420-34-460-50-520M-4-450C-14-490-24-530-34-580M0-190C26-214 46-240 64-280M2-250C28-280 52-310 80-350M2-310C26-340 50-370 76-420M0-380C18-404 36-430 52-470M-4-450C8-474 18-500 28-530"/></g>
+<path d="M-70-210C-56-200-46-200-30-202L-62-250Z" fill="#0f172a"/><path d="M78-310C62-300 48-296 34-296L72-352Z" fill="#0f172a"/>
+</g><g transform="translate(1490 480) scale(.8)">
+<path d="M-56 0C-74 0-90 16-90 40V130C-90 150-74 166-56 166H56C74 166 90 150 90 130V40C90 16 74 0 56 0Z" fill="url(#ink)" stroke="url(#gold)" stroke-width="4"/>
+<path d="M-34-40H34V4H-34Z" fill="url(#ink)" stroke="url(#gold)" stroke-width="3"/><rect x="-44" y="-52" width="88" height="16" rx="4" fill="url(#chrome)"/>
+<path d="M-60 80C-44 66-20 66 0 80S44 94 60 80V130C60 142 52 150 42 150H-42C-52 150-60 142-60 130Z" fill="#1e3a8a" opacity=".7"/>
+<ellipse cx="-44" cy="40" rx="11" ry="24" fill="#fff" opacity=".28"/>
+</g><path d="M800 560C760 590 700 590 650 610S560 630 500 620" fill="none" stroke="url(#gold)" stroke-width="5" stroke-linecap="round"/><g fill="#fde68a"><circle cx="1085" cy="120" r="3"/><circle cx="1210" cy="60" r="2.500"/><circle cx="850" cy="150" r="3"/><circle cx="1500" cy="330" r="2.500"/><circle cx="740" cy="90" r="2.500"/></g><rect width="1600" height="700" fill="url(#fade)"/><rect y="640" width="1600" height="1160" fill="#050b1c"/><rect y="640" width="1600" height="5" fill="url(#gold)"/><g opacity=".3" transform="translate(0 860)"><use xlink:href="#st"/></g><g opacity=".3" transform="translate(0 1340)"><use xlink:href="#st"/></g><g opacity=".32" fill="#e9c46a"><use xlink:href="#n1" x="320" y="880"/><use xlink:href="#n2" x="1100" y="890"/><use xlink:href="#n1" x="620" y="1370"/><use xlink:href="#n2" x="1340" y="1390"/></g></svg>
