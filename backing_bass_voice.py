@@ -49,6 +49,8 @@ def upright_mode() -> str:
 def bass_renderer_tag() -> str:
     """Part of saved audio's signature, so takes from another bass are never replayed as this one."""
     mode = upright_mode()
+    if mode == "recorded":
+        return f"+upright-recorded-bus{LOW_SHELF_DB:g}_{HIGH_SHELF_DB:g}_{BUS_TRIM:g}"
     return f"+upright-{mode}" if mode else ""
 
 
@@ -150,6 +152,48 @@ def _upright_free(midi: int, vel_bucket: int, sr: int) -> np.ndarray:
 def _release_curve(sr: int) -> np.ndarray:
     tau = _RELEASE_SEC / 3.0
     return np.exp(-np.arange(int(_RELEASE_SEC * sr), dtype=np.float64) / (tau * sr)).astype(np.float32)
+
+
+# The recorded upright on its own bus, finished once before the mix is balanced: the recordings carry
+# a real bass's harmonics and finger noise, and at their trimmed level the Jazz band lost most of its low
+# end (low-band share 0.225 today -> 0.077). A low shelf restores the fundamental; a gentle high shelf
+# keeps the finger noise from brightening the band. Tunable for listening rounds via the environment.
+LOW_SHELF_HZ = float(os.environ.get("MUSIC_UPRIGHT_LOW_SHELF_HZ") or 110.0)
+LOW_SHELF_DB = float(os.environ.get("MUSIC_UPRIGHT_LOW_SHELF_DB") or 6.0)
+HIGH_SHELF_HZ = float(os.environ.get("MUSIC_UPRIGHT_HIGH_SHELF_HZ") or 2500.0)
+HIGH_SHELF_DB = float(os.environ.get("MUSIC_UPRIGHT_HIGH_SHELF_DB") or -3.0)
+BUS_TRIM = float(os.environ.get("MUSIC_UPRIGHT_BUS_TRIM") or 1.5)
+
+
+def _shelf(x: np.ndarray, sr: int, f0: float, gain_db: float, high: bool) -> np.ndarray:
+    """RBJ cookbook shelf (slope 1)."""
+    if abs(gain_db) < 1e-6:
+        return x
+    from scipy.signal import lfilter
+
+    a_ = 10.0 ** (gain_db / 40.0)
+    w0 = 2.0 * np.pi * f0 / sr
+    cw, sw = np.cos(w0), np.sin(w0)
+    alpha = sw / 2.0 * np.sqrt(2.0)
+    k = 2.0 * np.sqrt(a_) * alpha
+    if high:
+        b = [a_ * ((a_ + 1) + (a_ - 1) * cw + k), -2 * a_ * ((a_ - 1) + (a_ + 1) * cw), a_ * ((a_ + 1) + (a_ - 1) * cw - k)]
+        a = [(a_ + 1) - (a_ - 1) * cw + k, 2 * ((a_ - 1) - (a_ + 1) * cw), (a_ + 1) - (a_ - 1) * cw - k]
+    else:
+        b = [a_ * ((a_ + 1) - (a_ - 1) * cw + k), 2 * a_ * ((a_ - 1) - (a_ + 1) * cw), a_ * ((a_ + 1) - (a_ - 1) * cw - k)]
+        a = [(a_ + 1) + (a_ - 1) * cw + k, -2 * ((a_ - 1) + (a_ + 1) * cw), (a_ + 1) + (a_ - 1) * cw - k]
+    return lfilter(np.array(b) / a[0], np.array(a) / a[0], x)
+
+
+def uses_own_bus() -> bool:
+    return upright_mode() == "recorded"
+
+
+def finish_upright_bus(bus: np.ndarray, sr: int) -> np.ndarray:
+    """The recorded upright's bus, shaped for the band (low shelf up, finger noise down)."""
+    out = _shelf(bus.astype(np.float64), sr, LOW_SHELF_HZ, LOW_SHELF_DB, high=False)
+    out = _shelf(out, sr, HIGH_SHELF_HZ, HIGH_SHELF_DB, high=True)
+    return out * BUS_TRIM
 
 
 def add_upright_note(

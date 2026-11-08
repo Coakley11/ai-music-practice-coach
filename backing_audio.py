@@ -2089,6 +2089,9 @@ def synthesize_chords_to_numpy(
     jazz_bass_state: dict[str, Any] = {"prev": None, "planned": None, "head": None}
     upright = style == "Jazz swing" and bool(_bv.upright_mode())
     upright_takes: dict = {}
+    # The recorded upright plays into its own bus, shaped once before the mix is balanced.
+    upright_bus = np.zeros_like(audio) if upright and _bv.uses_own_bus() else None
+    upright_dest = upright_bus if upright_bus is not None else audio
 
     # Pre-compute arrangement memory (chorus passes, phrase positions,
     # bridge-recovery bars) so per-bar decisions know "where am I in
@@ -2283,7 +2286,7 @@ def synthesize_chords_to_numpy(
             _stab_vol = _humanize_volume(0.16 * intensity, idx * 41 + loop_seed)
             if upright:
                 _bv.add_upright_note(
-                    audio, sr, t_stab, pulse * 0.40, stab_pitch, _stab_vol * UPRIGHT_GAIN, 0.8,
+                    upright_dest, sr, t_stab, pulse * 0.40, stab_pitch, _stab_vol * UPRIGHT_GAIN, 0.8,
                     seed=f"{groove_seed}:{idx}:stab", avoid=upright_takes,
                 )
             else:
@@ -2306,7 +2309,7 @@ def synthesize_chords_to_numpy(
                 if upright:
                     # A decaying pluck carries less than a held tone at the same level.
                     _bv.add_upright_note(
-                        audio, sr, t_hit, max(0.05, beats * pulse), bass_pitch, _held_vol * UPRIGHT_GAIN * 1.5, 0.5,
+                        upright_dest, sr, t_hit, max(0.05, beats * pulse), bass_pitch, _held_vol * UPRIGHT_GAIN * 1.5, 0.5,
                         seed=f"{groove_seed}:{idx}:{n}", avoid=upright_takes,
                     )
                 else:
@@ -2322,7 +2325,7 @@ def synthesize_chords_to_numpy(
                 )
                 # Legato: each note rings up to the next, minus the finger coming off.
                 _bv.add_upright_note(
-                    audio, sr, t_hit, max(0.05, beats * pulse - min(0.02, 0.05 * pulse)), bass_pitch,
+                    upright_dest, sr, t_hit, max(0.05, beats * pulse - min(0.02, 0.05 * pulse)), bass_pitch,
                     _humanize_volume(bass_vol * accent, idx * 41 + n + loop_seed),
                     0.25 + 0.5 * accent,
                     seed=f"{groove_seed}:{idx}:{n}", avoid=upright_takes,
@@ -3008,6 +3011,8 @@ def synthesize_chords_to_numpy(
                         )
                     beat_cursor += float(sub.weight)
 
+    if upright_bus is not None:
+        audio += _bv.finish_upright_bus(upright_bus, sr)
     # Keys bus level per style, relative to the rhythm section (bass + drums):
     # the old per-style comp multipliers were tuned for a sustained organ and
     # left the piano at 0.05x the rhythm in Jazz and 0.2x in Pop / Bossa.
