@@ -27,7 +27,9 @@ CHALLENGE_ICON = "\U0001F525"  # the session plan's challenge icon
 CATALOG, CUSTOM, COMPOSITION = "catalog", "custom", "composition"
 GENRES = ("pop", "rock", "jazz", "blues", "country", "soul", "funk", "jewish", "classical")
 _SOURCE_NAME = {CATALOG: "Catalog", CUSTOM: "Custom", COMPOSITION: "Composition"}
-_STYLE_ART = {CUSTOM: ("blues", "pop"), COMPOSITION: ("blues", "classical")}
+# Every catalog genre has a style variation inside the Custom (green notebook) and Composition (navy and gold
+# manuscript) worlds: the genre's instruments on the source's own artwork, never the Catalog album art.
+_STYLE_ART = {CUSTOM: GENRES, COMPOSITION: GENRES}
 # Styles the source pages offer that have no artwork world of their own: the nearest world, real name kept.
 _WORLD_FOR_STYLE = {"bossa": "jazz", "bossa nova": "jazz", "folk": "country", "hip-hop": "funk", "hip hop": "funk",
                     "electronic": "pop", "soul/r&b": "soul", "r&b": "soul"}
@@ -41,6 +43,11 @@ _PHONE_VIEW = {
     "composition_blues": "740,60,690,580", "composition_classical": "740,40,700,600", "funk": "820,0,720,640",
     "blues": "800,60,720,580", "country": "940,0,660,640",
 }
+# The source style variations keep their genre's instruments in view on a narrow card.
+for _src in ("custom", "composition"):
+    for _g, _view in (("rock", "820,0,700,640"), ("jazz", "860,0,700,640"), ("country", "880,0,700,640"), ("soul", "840,0,720,640"),
+                      ("funk", "800,0,760,640"), ("jewish", "760,0,800,640"), ("classical", "860,0,700,640"), ("pop", "860,0,700,640")):
+        _PHONE_VIEW.setdefault(f"{_src}_{_g}", _view)
 # A second line above the title, for songs that have one.
 _FLOURISH = {"Shalom Aleichem": ("שלום עליכם", "he"), "Ode to Joy": ("from Symphony No. 9", "en")}
 
