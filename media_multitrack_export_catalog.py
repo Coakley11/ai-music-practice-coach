@@ -34,7 +34,11 @@ ANALYSIS_EXPORT_LOADED_LABEL_KEY = "analysis_multitrack_export_loaded_label"
 ANALYSIS_EXPORT_HANDOFF_ID_KEY = "_analysis_export_handoff_id"
 ANALYSIS_EXPORT_HANDOFF_META_KEY = "_analysis_export_handoff_meta"
 ANALYSIS_EXPORT_AUDIO_SIG_KEY = "_analysis_export_audio_sig"
+ANALYSIS_EXPORT_IDENTITY_KEY = "analysis_multitrack_export_identity"
 ANALYSIS_RECORDING_TYPE_MULTITRACK_MIX = "Multitrack mix"
+# A multitrack mix is analysed under the Multitrack workflow, whose allowed recording
+# types are the only ones "Multitrack mix" belongs to.
+ANALYSIS_WORKFLOW_MULTITRACK = "Multitrack recording"
 
 _UPLOAD_ANALYSIS_STALE_KEYS: tuple[str, ...] = (
     "last_analysis_audio",
@@ -57,7 +61,9 @@ _UPLOAD_ANALYSIS_STALE_KEYS: tuple[str, ...] = (
     ANALYSIS_EXPORT_HANDOFF_ID_KEY,
     ANALYSIS_EXPORT_HANDOFF_META_KEY,
     ANALYSIS_EXPORT_AUDIO_SIG_KEY,
+    ANALYSIS_EXPORT_IDENTITY_KEY,
     "_analysis_export_handoff_name",
+    "analysis_multitrack_stems",
 )
 
 
@@ -129,15 +135,30 @@ def suggest_export_name(*, song_title: str = "", project_title: str = "") -> str
     return f"Multitrack mix {stamp}"
 
 
-def build_included_tracks_from_mix_items(track_items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def build_included_tracks_from_mix_items(
+    track_items: list[dict[str, Any]],
+    *,
+    slot_instruments: dict[str, str] | None = None,
+) -> list[dict[str, Any]]:
+    """Rows describing each layer in the mix.
+
+    ``slot_instruments`` names the instrument each slot was actually charted for, so a
+    saved export records that a "Sax / winds" layer was an alto saxophone rather than
+    leaving a later reader to guess from the generic slot name.
+    """
+    slot_instruments = dict(slot_instruments or {})
     included: list[dict[str, Any]] = []
     for item in track_items or []:
         if not isinstance(item, dict):
             continue
+        slot = str(item.get("slot") or "")
         included.append(
             {
-                "slot": str(item.get("slot") or ""),
+                "slot": slot,
                 "name": str(item.get("name") or item.get("layer_name") or "")[:120],
+                "instrument": str(
+                    item.get("instrument") or slot_instruments.get(slot) or ""
+                )[:120],
                 "volume": float(item.get("volume", 1.0)),
                 "delay": float(item.get("delay", 0.0)),
                 "mute": bool(item.get("mute", False)),
@@ -158,12 +179,26 @@ def build_multitrack_export_fields(
     backing_volume: float = 0.75,
     st: Any | None = None,
 ) -> dict[str, Any]:
-    included = build_included_tracks_from_mix_items(track_items or [])
+    # The take's own musical identity (recorded Concert Key, level, song, instruments).
+    try:
+        from multitrack_recording_identity import recording_identity_for_export
+
+        recording_identity = recording_identity_for_export(session_state)
+    except Exception:
+        recording_identity = {}
+    slot_instruments = recording_identity.get("slot_instruments")
+    if not isinstance(slot_instruments, dict):
+        slot_instruments = {}
+
+    included = build_included_tracks_from_mix_items(
+        track_items or [], slot_instruments=slot_instruments
+    )
     if include_backing:
         included.append(
             {
                 "slot": "backing",
                 "name": "Backing track",
+                "instrument": "",
                 "volume": float(backing_volume),
                 "delay": 0.0,
                 "mute": False,
@@ -213,6 +248,7 @@ def build_multitrack_export_fields(
             "backing_volume": float(backing_volume),
         },
         "source_multitrack_snapshot": snapshot,
+        "recording_identity": recording_identity,
         "analysis_status": "pending",
         "playback_status": PLAYBACK_METADATA_ONLY,
     }
@@ -400,6 +436,14 @@ def _compact_export_handoff_meta(meta: dict[str, Any]) -> dict[str, Any]:
         "storage_ref": meta.get("storage_ref"),
         "track_count": meta.get("track_count"),
         "included_tracks": meta.get("included_tracks"),
+        # The take's own musical identity travels with the handoff: a later rerun that
+        # reloads the audio must restore the same song, key, level and instruments.
+        "recording_identity": meta.get("recording_identity"),
+        "workspace_id": meta.get("workspace_id"),
+        "active_song_id": meta.get("active_song_id"),
+        "instrument": meta.get("instrument"),
+        "bpm": meta.get("bpm"),
+        "mix_settings": meta.get("mix_settings"),
     }
 
 
@@ -431,7 +475,9 @@ def clear_multitrack_export_analysis_handoff(session_state: dict[str, Any]) -> N
     session_state.pop(ANALYSIS_EXPORT_HANDOFF_ID_KEY, None)
     session_state.pop(ANALYSIS_EXPORT_HANDOFF_META_KEY, None)
     session_state.pop(ANALYSIS_EXPORT_AUDIO_SIG_KEY, None)
+    session_state.pop(ANALYSIS_EXPORT_IDENTITY_KEY, None)
     session_state.pop("_analysis_export_handoff_name", None)
+    session_state.pop("analysis_multitrack_stems", None)
 
 
 def upload_analysis_has_export_handoff(session_state: dict[str, Any]) -> bool:
@@ -466,7 +512,10 @@ def replace_upload_analysis_with_multitrack_export(
 
     session_state["last_analysis_audio"] = raw
     session_state["last_analysis_source_label"] = filename
-    session_state["analysis_mode"] = "Single recording"
+    # A multitrack mix belongs to the Multitrack workflow. Leaving the workflow on
+    # "Single recording" made normalize_recording_type_for_workflow reject the
+    # "Multitrack mix" recording type and silently reset it to "Practice take".
+    session_state["analysis_mode"] = ANALYSIS_WORKFLOW_MULTITRACK
     session_state["analysis_recording_type"] = ANALYSIS_RECORDING_TYPE_MULTITRACK_MIX
     session_state["_analysis_prepared_upload"] = prepared
     session_state["_analysis_upload_prep_sig"] = _build_upload_prep_sig(raw, filename)
@@ -475,6 +524,23 @@ def replace_upload_analysis_with_multitrack_export(
     session_state[ANALYSIS_EXPORT_HANDOFF_ID_KEY] = export_id
     session_state["_analysis_export_handoff_name"] = str(meta.get("export_name") or "")
     session_state[ANALYSIS_EXPORT_HANDOFF_META_KEY] = compact
+
+    # Seed the Upload setup from the export's own saved identity — its song, the Concert
+    # Key it was recorded in, the level at the time and the instruments on it — so an old
+    # export cannot inherit today's Active Song or sidebar key.
+    try:
+        from multitrack_recording_identity import (
+            apply_identity_to_upload_analysis,
+            upload_analysis_identity,
+        )
+
+        identity = upload_analysis_identity(meta)
+        apply_identity_to_upload_analysis(session_state, identity)
+        session_state[ANALYSIS_EXPORT_IDENTITY_KEY] = identity
+    except Exception:
+        # Identity seeding is additive: the audio handoff above must still succeed.
+        pass
+
     if keep_pending:
         session_state[PENDING_EXPORT_ANALYSIS_KEY] = dict(meta)
     else:

@@ -1,0 +1,42 @@
+diff --git a/streamlit_music_practice_app.py b/streamlit_music_practice_app.py
+index 91469edd..b4265c52 100644
+--- a/streamlit_music_practice_app.py
++++ b/streamlit_music_practice_app.py
+@@ -27747,6 +27747,20 @@ elif _studio_page == "multitrack":
+             except Exception:
+                 _mt_layer_chords_ok = False
+ 
++            # Instrument-friendly microphone capture for every layer mic: the browser's
++            # voice processing (noise suppression / AGC) otherwise pulls down sustained
++            # flute and saxophone notes before MediaRecorder ever sees them.
++            try:
++                from multitrack_capture_quality import (
++                    capture_sample_rate,
++                    install_multitrack_music_capture,
++                )
++
++                install_multitrack_music_capture(st, st.session_state, MT_SLOTS)
++                _mt_capture_sr = capture_sample_rate()
++            except Exception:
++                _mt_capture_sr = None
++
+             for slot in MT_SLOTS:
+                 _slot_ready = bool(st.session_state.mt_tracks.get(slot))
+                 try:
+@@ -27805,9 +27819,16 @@ elif _studio_page == "multitrack":
+                             max_upload_size=UPLOAD_MAX_SIZE_MB,
+                         )
+                         try:
++                            # st.audio_input defaults to sample_rate=16000 — a speech rate
++                            # that discards everything above 8 kHz, so high flute notes and
++                            # guitar attacks lose the partials that define their tone.
++                            _mt_rec_kwargs = (
++                                {"sample_rate": _mt_capture_sr} if _mt_capture_sr else {}
++                            )
+                             recorded = st.audio_input(
+                                 f"Record — {slot}",
+                                 key=recorder_widget_key(st.session_state, slot, "record"),
++                                **_mt_rec_kwargs,
+                             )
+                         except Exception:
+                             recorded = None

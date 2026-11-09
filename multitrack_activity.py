@@ -7,6 +7,14 @@ from typing import Any
 
 def retain_project_source(session: Any) -> dict:
     """Bind once when the first layer arrives; an unknown legacy owner stays unknown."""
+    # The first layer also fixes the take's musical identity: the Concert Key it is being
+    # played in, the player's level and the song that owns it. A later sidebar key change
+    # must not rewrite history, so it is frozen here rather than read again at save time.
+    try:
+        from multitrack_recording_identity import freeze_recording_identity
+        freeze_recording_identity(session)
+    except Exception:
+        pass  # Identity metadata must never prevent a layer from being saved.
     if 'mt_activity_source_context' not in session:
         session['mt_activity_source_context'] = {}
         try:

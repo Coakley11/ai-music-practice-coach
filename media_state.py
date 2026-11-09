@@ -504,6 +504,12 @@ def migrate_multitrack_export(entry: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(analysis, dict):
         analysis = {}
 
+    # The take's recording-time identity (Concert Key, level, song, instruments). Rows
+    # saved before this field existed simply carry {}, and readers treat that as legacy.
+    recording_identity = out.get("recording_identity")
+    if not isinstance(recording_identity, dict):
+        recording_identity = {}
+
     fmt = str(out.get("format") or out.get("mime_type") or "wav").strip().lower()
     if fmt.startswith("audio/"):
         fmt = fmt.split("/", 1)[-1]
@@ -531,6 +537,7 @@ def migrate_multitrack_export(entry: dict[str, Any]) -> dict[str, Any]:
         "included_tracks": included_tracks,
         "mix_settings": mix_settings,
         "source_multitrack_snapshot": snapshot,
+        "recording_identity": recording_identity,
         "analysis_status": str(out.get("analysis_status") or "").strip(),
         "analysis_summary": analysis,
         "playback_status": str(out.get("playback_status") or "").strip(),

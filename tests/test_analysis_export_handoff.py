@@ -80,7 +80,11 @@ class TestAnalysisExportHandoff(unittest.TestCase):
                         ok_apply, err_apply = apply_pending_multitrack_export_analysis(session)
                         self.assertTrue(ok_apply, err_apply)
         self.assertNotIn(PENDING_EXPORT_ANALYSIS_KEY, session)
-        self.assertEqual(session.get("analysis_mode"), "Single recording")
+        # Issue 62: a multitrack mix is analysed under the Multitrack workflow. This used
+        # to assert "Single recording", which left the workflow and the recording type
+        # contradicting each other — normalize_recording_type_for_workflow then rejected
+        # "Multitrack mix" and silently reset the take to "Practice take".
+        self.assertEqual(session.get("analysis_mode"), "Multitrack recording")
         self.assertEqual(session.get("analysis_recording_type"), ANALYSIS_RECORDING_TYPE_MULTITRACK_MIX)
         self.assertIn("Say mix v2", loaded_multitrack_export_analysis_banner(session))
         self.assertTrue(analysis_export_handoff_ready(session))

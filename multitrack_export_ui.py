@@ -131,6 +131,38 @@ def render_multitrack_export_library(
                 if names:
                     st_module.markdown(f"**Included:** {names}")
 
+            # What this export will tell Upload Analysis about itself — shown before the
+            # handoff so the musician can see which take and which key they are sending.
+            try:
+                from multitrack_recording_identity import identity_gaps, upload_analysis_identity
+
+                ident = upload_analysis_identity(row)
+                if ident.get("recording_key_known"):
+                    st_module.markdown(
+                        f"**Recorded in:** {html.escape(str(ident.get('recording_concert_key_label') or ''))}"
+                    )
+                instruments = ident.get("instruments") or []
+                if instruments:
+                    st_module.markdown(
+                        "**Recorded instruments:** "
+                        + ", ".join(html.escape(str(i)) for i in instruments[:8])
+                    )
+                if ident.get("level"):
+                    st_module.markdown(f"**Level when recorded:** {html.escape(str(ident['level']))}")
+                gaps = identity_gaps(ident)
+                if gaps:
+                    st_module.caption(
+                        "This export was saved before its full details were recorded, so "
+                        + ", ".join(gaps)
+                        + " will need checking on the Analysis page."
+                    )
+                st_module.caption(
+                    "Sent as one mixed WAV — the coach grades the ensemble, not separate "
+                    "instrument stems."
+                )
+            except Exception:
+                pass
+
             bc1, bc2, bc3, bc4 = st_module.columns(4)
             with bc1:
                 if st_module.button("Play", key=f"mt_export_play_{eid}"):
