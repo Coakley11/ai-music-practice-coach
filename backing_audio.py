@@ -3226,6 +3226,13 @@ def synthesize_chords_to_numpy(
     if strings_bus is not None and "strings" in want:
         audio += strings_bus
     audio = np.tanh(audio)
+    import backing_loudness as _loud
+
+    if layers is None and _loud.loudness_mode():
+        # One loudness for every full-mix take, peaks held under the ceiling (MUSIC_BACKING_LOUDNESS=match).
+        audio, _loud_stats = _loud.master(audio, sr)
+        LAST_MIX_STATS.update({f"master_{k}": float(v) for k, v in _loud_stats.items()})
+        return audio, sr
     audio = audio / (np.max(np.abs(audio)) + 1e-9) * 0.86
     return audio, sr
 
