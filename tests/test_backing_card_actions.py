@@ -1,6 +1,8 @@
 """The album-cover card's actions drive the existing features; none of them is decorative.
 
-* Show / Close lead sheet: the same buttons (same keys) and the same callback as the row under today's card.
+* Lead sheet On / Off: one preference shared with the Open / Close lead sheet control above the sheet (which
+  stays where it was). On shows the sheet when there is a take and Play opens it for the take it makes; Off
+  closes it and Play leaves it closed.
 * Advanced settings: opens the existing Advanced playback settings (a keyed expander) and scrolls to it;
   only its open state changes, so playback is not stopped.
 * Key Cycling: does exactly what a click on the Off / On radio in Advanced settings does, so direction,
@@ -92,15 +94,57 @@ def test_the_expander_is_keyed_and_the_home_shortcut_opens_the_same_state() -> N
     assert "expanded=" not in APP[i:i + 200].split(")", 1)[0]
 
 
-def test_the_lead_sheet_button_on_the_card_is_the_existing_one() -> None:
-    src = APP[APP.index("def _render_backing_art_actions("):]
-    src = src[:src.index("\ndef ")]
-    assert 'key="backing_leadsheet_show_btn"' in src and 'key="backing_leadsheet_hide_btn"' in src
-    assert "on_click=set_leadsheet_open, args=(True,)" in src and "on_click=set_leadsheet_open, args=(False,)" in src
-    assert "disabled=not leadsheet_ready" in src  # shown, but only usable once there is a take to follow
-    call = APP[APP.index("_ls_in_card = _render_backing_art_actions("):][:260]
-    assert "set_leadsheet_open=_set_backing_lead_sheet_open" in call
-    assert "leadsheet_ready=_leadsheet_controls_ready" in call
+def test_lead_sheet_on_the_card_before_a_take_is_the_preference_play_reads(app) -> None:
+    calls = []
+    app._toggle_backing_lead_sheet_from_card(False, calls.append)
+    assert app.st.session_state[app.BACKING_LEAD_SHEET_ON_PLAY_KEY] is True
+    assert app.backing_lead_sheet_preference(app.st.session_state) is True
+    assert calls == []  # nothing to show yet: no playhead handoff
+    app.st.session_state["backing_lead_sheet_open"] = True
+    app._toggle_backing_lead_sheet_from_card(False, calls.append)
+    assert app.st.session_state[app.BACKING_LEAD_SHEET_ON_PLAY_KEY] is False
+    assert app.st.session_state["backing_lead_sheet_open"] is False
+    assert calls == []
+
+
+@pytest.mark.parametrize("open_now, after", [(False, True), (True, False)])
+def test_lead_sheet_on_the_card_with_a_take_is_the_open_close_click(app, open_now, after) -> None:
+    calls = []
+    app.st.session_state["backing_lead_sheet_open"] = open_now  # an older session: no preference saved yet
+    app._toggle_backing_lead_sheet_from_card(True, calls.append)
+    assert calls == [after]  # the same callback as Open / Close lead sheet
+
+
+def test_the_open_close_control_stays_above_the_sheet_and_writes_the_same_choice() -> None:
+    card = APP[APP.index("def _render_backing_art_actions("):]
+    card = card[:card.index("\ndef ")]
+    assert 'key="backing_art_lead_sheet_btn"' in card
+    assert "backing_leadsheet_show_btn" not in card and "backing_leadsheet_hide_btn" not in card
+    assert ':material/menu_book:" if sheet_on else ":material/book:"' in card  # open / closed sheet icon
+    page = APP[APP.index("def _set_backing_lead_sheet_open(open_: bool)"):]
+    setter, rest = page[:page.index("\n\n    #")], page
+    assert 'st.session_state["backing_lead_sheet_open"] = bool(open_)' in setter
+    assert "st.session_state[BACKING_LEAD_SHEET_ON_PLAY_KEY] = bool(open_)" in setter
+    row = rest[rest.index("if _leadsheet_controls_ready:"):][:1400]
+    assert '"Open lead sheet"' in row and 'key="backing_leadsheet_show_btn"' in row
+    assert '"Close lead sheet"' in row and 'key="backing_leadsheet_hide_btn"' in row
+    call = APP[APP.index("    _render_backing_art_actions("):][:200]
+    assert "leadsheet_ready=_leadsheet_controls_ready" in call and "set_leadsheet_open=_set_backing_lead_sheet_open" in call
+
+
+def test_play_opens_the_sheet_while_lead_sheet_is_on() -> None:
+    i = APP.index("    if _play_clicked:\n")
+    block = APP[i:i + 700]
+    read = block.index("_sheet_on_play = backing_lead_sheet_preference(st.session_state)")
+    init = block.index("initialize_backing_presentation(st.session_state, _bpm_sync_id)")
+    assert read < init  # a new song's presentation starts closed: read the choice first
+    assert 'if _sheet_on_play and not km.is_voice_mode(st.session_state):\n            st.session_state["backing_lead_sheet_open"] = True' in block
+
+
+def test_the_lead_sheet_choice_is_kept_like_the_sheet_itself() -> None:
+    src = (ROOT / "music_persistent_state.py").read_text(encoding="utf-8")
+    assert src.count('"backing_lead_sheet_on_play"') == 3
+    assert 'keys = {"backing_lead_sheet_open", "backing_lead_sheet_on_play"}' in src
 
 
 def test_key_cycling_on_the_card_only_where_the_feature_is_allowed() -> None:

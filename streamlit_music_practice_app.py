@@ -10313,11 +10313,37 @@ def _toggle_backing_key_cycle_from_card() -> None:
         st.session_state["_key_cycle_force_ui_off"] = True
 
 
-def _render_backing_art_actions(*, leadsheet_ready: bool, leadsheet_open: bool, set_leadsheet_open: Any) -> bool:
+# The card's Lead sheet On / Off. One preference that both the card and the Open / Close lead sheet control above
+# the sheet write (through _set_backing_lead_sheet_open), so they always agree: On shows the sheet now when there
+# is a take to follow, and Play opens it for the take it makes; Off closes it and Play leaves it closed.
+BACKING_LEAD_SHEET_ON_PLAY_KEY = "backing_lead_sheet_on_play"
+
+
+def backing_lead_sheet_preference(session: Any) -> bool:
+    """Whether Lead sheet is On. Absent (older sessions), it is whatever the sheet is now."""
+    pref = session.get(BACKING_LEAD_SHEET_ON_PLAY_KEY)
+    if pref is None:
+        return bool(session.get("backing_lead_sheet_open"))
+    return bool(pref)
+
+
+def _toggle_backing_lead_sheet_from_card(ready: bool, set_leadsheet_open: Any) -> None:
+    """The card's Lead sheet button. With a take to follow it is exactly the Open / Close click (same callback,
+    so the playhead handoff is the same); before there is one it only sets the preference Play reads."""
+    on = not backing_lead_sheet_preference(st.session_state)
+    if ready:
+        set_leadsheet_open(on)
+        return
+    st.session_state[BACKING_LEAD_SHEET_ON_PLAY_KEY] = on
+    if not on:
+        st.session_state["backing_lead_sheet_open"] = False
+
+
+def _render_backing_art_actions(*, leadsheet_ready: bool, set_leadsheet_open: Any) -> bool:
     """Lead sheet, Advanced settings and Key Cycling on the album-cover card; each drives the existing feature.
 
-    Returns True when the lead sheet's Open / Close was drawn here (the row under the card then leaves it out).
-    Drawn late in the run, so the Key Cycling label shows the state the controls settled on this run."""
+    Returns True when the row was drawn (album-cover card only). Drawn late in the run, so the Lead sheet and
+    Key Cycling labels show the state the controls settled on this run."""
     slot = _backing_art_actions_slot
     if slot is None or _backing_art_identity is None:
         return False
@@ -10329,21 +10355,21 @@ def _render_backing_art_actions(*, leadsheet_ready: bool, leadsheet_open: bool, 
     except Exception:
         kc_allowed = False
     kc_on = str(st.session_state.get("backing_key_cycle_enabled_ui") or "Off") == "On"
-    sheet_icon = FEATURE_ICONS.get("chord_chart", "🗂️")
+    sheet_on = backing_lead_sheet_preference(st.session_state)
     with slot:
         cols = st.columns(3 if kc_allowed else 2, gap="small")
         with cols[0]:
-            if leadsheet_ready and leadsheet_open:
-                st.button(
-                    f"{sheet_icon} Close lead sheet", key="backing_leadsheet_hide_btn", use_container_width=True,
-                    on_click=set_leadsheet_open, args=(False,),
-                )
-            else:
-                st.button(
-                    f"{sheet_icon} Show lead sheet", key="backing_leadsheet_show_btn", use_container_width=True,
-                    on_click=set_leadsheet_open, args=(True,), disabled=not leadsheet_ready,
-                    help=None if leadsheet_ready else "Ready once this backing track has been made: press Play.",
-                )
+            st.button(
+                f"Lead sheet: {'On' if sheet_on else 'Off'}", key="backing_art_lead_sheet_btn",
+                icon=":material/menu_book:" if sheet_on else ":material/book:",
+                use_container_width=True, type="primary" if sheet_on else "secondary",
+                on_click=_toggle_backing_lead_sheet_from_card, args=(bool(leadsheet_ready), set_leadsheet_open),
+                help=(
+                    "On: the lead sheet opens with the backing track when you press Play."
+                    if not leadsheet_ready
+                    else None
+                ),
+            )
         with cols[1]:
             st.button(
                 f"{FEATURE_ICONS.get('action_settings', '⚙️')} Advanced settings", key="backing_art_settings_btn",
@@ -22106,7 +22132,12 @@ elif _studio_page == "backing":
         bpm_container=(_backing_card_cols[1] if _backing_card_cols else None),
     )
     if _play_clicked:
+        # Lead sheet On (the card's toggle, or an Open lead sheet click): Play opens it for the take it makes.
+        # Read first -- a new source's presentation starts with the sheet closed.
+        _sheet_on_play = backing_lead_sheet_preference(st.session_state)
         initialize_backing_presentation(st.session_state, _bpm_sync_id)
+        if _sheet_on_play and not km.is_voice_mode(st.session_state):
+            st.session_state["backing_lead_sheet_open"] = True
         try:
             from backing_owner_identity_trace import snapshot_backing_identity
 
@@ -25194,28 +25225,21 @@ elif _studio_page == "backing":
     # card transport hands the playhead to whichever player mounts next.
     def _set_backing_lead_sheet_open(open_: bool) -> None:
         st.session_state["backing_lead_sheet_open"] = bool(open_)
+        # The card's Lead sheet On / Off is this same choice (Play reopens it for the next take).
+        st.session_state[BACKING_LEAD_SHEET_ON_PLAY_KEY] = bool(open_)
         # Opened over a live take: the follow-along player mounts with native
         # autoplay and starts at the playhead the card transport handed over
         # (its own JS pauses it again when nothing was playing at the click).
         if open_ and not st.session_state.get("_backing_transport_user_stopped"):
             st.session_state["_backing_sheet_open_handoff"] = True
 
-    # The album-cover card carries Show / Close lead sheet (same keys, same callback) beside its
-    # Advanced settings and Key Cycling controls; today's card keeps the row below.
-    _ls_in_card = _render_backing_art_actions(
+    # The album-cover card carries Lead sheet On / Off (the same choice as the Open / Close control below)
+    # beside its Advanced settings and Key Cycling controls.
+    _render_backing_art_actions(
         leadsheet_ready=_leadsheet_controls_ready,
-        leadsheet_open=bool(_leadsheet_open),
         set_leadsheet_open=_set_backing_lead_sheet_open,
     )
-    if _leadsheet_controls_ready and _ls_in_card:
-        st.caption(
-            "Optional chord follow-along — opens on demand to keep the page light."
-            if not _leadsheet_open
-            else "Live chord highlighting while the backing track plays."
-        )
-        if _leadsheet_open and not km.is_karaoke_session_active(st.session_state):
-            _render_chord_tone_hints_sync()
-    elif _leadsheet_controls_ready:
+    if _leadsheet_controls_ready:
         _ls_col_a, _ls_col_b = st.columns([1, 5])
 
         with _ls_col_a:
