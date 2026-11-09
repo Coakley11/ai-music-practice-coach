@@ -141,6 +141,9 @@ def render_multitrack_export_library(
                     st_module.markdown(
                         f"**Recorded in:** {html.escape(str(ident.get('recording_concert_key_label') or ''))}"
                     )
+                elif ident.get("key_conflict_note"):
+                    # Two keys in one mix: say so rather than naming either of them.
+                    st_module.warning(str(ident["key_conflict_note"]))
                 instruments = ident.get("instruments") or []
                 if instruments:
                     st_module.markdown(
@@ -160,6 +163,9 @@ def render_multitrack_export_library(
                     "Sent as one mixed WAV — the coach grades the ensemble, not separate "
                     "instrument stems."
                 )
+                _stems = ident.get("stems") or {}
+                if isinstance(_stems, dict) and _stems.get("reverb_note"):
+                    st_module.caption(str(_stems["reverb_note"]))
             except Exception:
                 pass
 

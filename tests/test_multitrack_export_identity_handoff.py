@@ -355,3 +355,76 @@ class ExportRowPersistence(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class EnsembleHandoffIsConsumable(unittest.TestCase):
+    """The Multitrack workflow's Step 2 must analyse the mix that was sent to it.
+
+    Switching the workflow to Multitrack moved Upload Analysis into its ensemble branch,
+    which reads its own uploader. Without this the musician was asked to upload the file
+    they had just handed over.
+    """
+
+    def _sent_session(self):
+        from media_multitrack_export_catalog import (
+            _compact_export_handoff_meta,
+            replace_upload_analysis_with_multitrack_export,
+        )
+
+        row = _export_row()
+        meta = _compact_export_handoff_meta({**row, "song_title": row.get("song")})
+        session: dict = {}
+        ok, err = replace_upload_analysis_with_multitrack_export(
+            session, meta, audio=b"RIFF0000WAVEfmt handoff", keep_pending=False
+        )
+        self.assertTrue(ok, err)
+        return session
+
+    def test_the_handoff_becomes_one_ensemble_track(self):
+        from media_multitrack_export_catalog import multitrack_handoff_ensemble_tracks
+
+        tracks = multitrack_handoff_ensemble_tracks(self._sent_session())
+        self.assertEqual(len(tracks), 1)
+        self.assertEqual(bytes(tracks[0]["bytes"]), b"RIFF0000WAVEfmt handoff")
+        self.assertTrue(tracks[0]["name"])
+
+    def test_the_track_satisfies_the_ensemble_request_validator(self):
+        from media_multitrack_export_catalog import multitrack_handoff_ensemble_tracks
+        from multitrack_upload_analysis import validate_multitrack_analyze_request
+
+        session = self._sent_session()
+        tracks = multitrack_handoff_ensemble_tracks(session)
+        err = validate_multitrack_analyze_request(
+            recording_type=RECORDING_TYPE_MT_MIX,
+            file_count=len(tracks),
+            instruments=session[ANALYSIS_EVAL_INSTRUMENTS_KEY],
+            target_layer=None,
+        )
+        self.assertFalse(err, f"validator rejected the handoff: {err}")
+
+    def test_an_empty_uploader_without_a_handoff_still_asks_for_a_file(self):
+        from multitrack_upload_analysis import validate_multitrack_analyze_request
+
+        err = validate_multitrack_analyze_request(
+            recording_type=RECORDING_TYPE_MT_MIX,
+            file_count=0,
+            instruments=["Piano"],
+            target_layer=None,
+        )
+        self.assertTrue(err)
+
+    def test_no_handoff_yields_no_tracks_so_the_uploader_stays_in_charge(self):
+        from media_multitrack_export_catalog import multitrack_handoff_ensemble_tracks
+
+        self.assertEqual(multitrack_handoff_ensemble_tracks({}), [])
+
+    def test_clearing_the_handoff_stops_offering_its_audio(self):
+        from media_multitrack_export_catalog import (
+            clear_multitrack_export_analysis_handoff,
+            multitrack_handoff_ensemble_tracks,
+        )
+
+        session = self._sent_session()
+        self.assertEqual(len(multitrack_handoff_ensemble_tracks(session)), 1)
+        clear_multitrack_export_analysis_handoff(session)
+        self.assertEqual(multitrack_handoff_ensemble_tracks(session), [])

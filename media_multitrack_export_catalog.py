@@ -228,6 +228,16 @@ def build_multitrack_export_fields(
         "track_count": len(included),
     }
 
+    # Reverb is a listening finish baked into the rendered WAV. The analyzer can only be
+    # honest about dryness if the export records whether any was applied.
+    reverb_amount = 0.0
+    try:
+        from multitrack_audio_polish import mix_reverb_amount
+
+        reverb_amount = float(mix_reverb_amount(dict(session_state)) or 0.0)
+    except Exception:
+        reverb_amount = 0.0
+
     name = str(export_name or "").strip() or suggest_export_name(song_title=song)
 
     return {
@@ -246,6 +256,8 @@ def build_multitrack_export_fields(
         "mix_settings": {
             "include_backing_in_mix": bool(include_backing),
             "backing_volume": float(backing_volume),
+            "reverb_amount": reverb_amount,
+            "reverb_applied": reverb_amount > 0.0,
         },
         "source_multitrack_snapshot": snapshot,
         "recording_identity": recording_identity,
@@ -683,6 +695,39 @@ def analysis_export_handoff_ready(session_state: dict[str, Any]) -> bool:
     if prepared is None:
         return False
     return _handoff_prepared_matches(session_state, prepared)
+
+
+def multitrack_handoff_ensemble_tracks(
+    session_state: dict[str, Any],
+    *,
+    st: Any | None = None,
+    instrument: str = "",
+) -> list[dict[str, Any]]:
+    """The handed-off export, shaped as the one ensemble track the analyzer consumes.
+
+    A multitrack mix is analysed under the Multitrack workflow, whose Step 2 reads its own
+    ensemble uploader. Send to Upload Analysis has already supplied the audio, so without
+    this the musician would be asked to upload the very file they just sent. Returns an
+    empty list when no export handoff is active, which leaves the uploader in charge.
+    """
+    if not upload_analysis_has_export_handoff(session_state):
+        return []
+    prepared = resolve_upload_analysis_prepared_upload(session_state, st=st)
+    if prepared is None:
+        return []
+    try:
+        data = bytes(prepared.getvalue())
+    except Exception:
+        return []
+    if not data:
+        return []
+    name = str(getattr(prepared, "name", "") or "").strip() or "multitrack_export.wav"
+    try:
+        from upload_media import prepare_multitrack_track_payload
+
+        return [prepare_multitrack_track_payload(data, name, instrument=instrument)]
+    except Exception:
+        return []
 
 
 def send_export_to_upload_analysis(

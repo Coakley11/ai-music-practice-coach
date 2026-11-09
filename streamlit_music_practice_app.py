@@ -26550,6 +26550,32 @@ elif _studio_page == "analysis":
                     prepare_multitrack_track_payload,
                 )
 
+                # A mix sent over from the Multitrack Export Library is already the ensemble
+                # recording. Show it and analyse it, instead of asking the musician to
+                # upload the file they just sent.
+                _mt_handoff_tracks: list = []
+                try:
+                    from media_multitrack_export_catalog import (
+                        loaded_multitrack_export_analysis_banner,
+                        multitrack_handoff_ensemble_tracks,
+                    )
+
+                    _mt_handoff_label = loaded_multitrack_export_analysis_banner(st.session_state)
+                    _mt_handoff_tracks = multitrack_handoff_ensemble_tracks(
+                        st.session_state, st=st
+                    )
+                    if _mt_handoff_tracks and _mt_handoff_label:
+                        st.success(_mt_handoff_label)
+                        st.markdown("**Preview**")
+                        st.audio(_mt_handoff_tracks[0]["bytes"], format="audio/wav")
+                        _mt_key_conflict = str(
+                            st.session_state.get("analysis_multitrack_key_conflict") or ""
+                        ).strip()
+                        if _mt_key_conflict:
+                            st.warning(_mt_key_conflict)
+                except Exception:
+                    _mt_handoff_tracks = []
+
                 mt_files = st.file_uploader(
                     _uploader_label,
                     type=UPLOAD_AUDIO_FILE_TYPES,
@@ -26571,7 +26597,9 @@ elif _studio_page == "analysis":
                     _mt_target = str(
                         st.session_state.get(ANALYSIS_TARGET_LAYER_KEY) or ""
                     ).strip()
-                    _mt_file_count = len(mt_files or [])
+                    # An explicit upload replaces the handoff; otherwise the handoff is the take.
+                    _mt_use_handoff = not (mt_files or []) and bool(_mt_handoff_tracks)
+                    _mt_file_count = len(mt_files or []) or (1 if _mt_use_handoff else 0)
                     _mt_setup_err = validate_multitrack_analyze_request(
                         recording_type=_mt_rtype,
                         file_count=_mt_file_count,
@@ -26587,7 +26615,7 @@ elif _studio_page == "analysis":
                             "recording_type": _mt_rtype,
                         }
                     else:
-                        tracks = []
+                        tracks = list(_mt_handoff_tracks) if _mt_use_handoff else []
                         _mt_prep_failed = False
                         for f in (mt_files or [])[:6]:
                             _fname = str(getattr(f, "name", None) or "upload.wav")
@@ -27747,6 +27775,32 @@ elif _studio_page == "multitrack":
             except Exception:
                 _mt_layer_chords_ok = False
 
+            # Instrument-friendly microphone capture for every layer mic: the browser's
+            # voice processing (noise suppression / AGC) otherwise pulls down sustained
+            # flute and saxophone notes before MediaRecorder ever sees them.
+            try:
+                from multitrack_capture_quality import (
+                    capture_sample_rate,
+                    install_multitrack_music_capture,
+                )
+
+                install_multitrack_music_capture(st, st.session_state, MT_SLOTS)
+                _mt_capture_sr = capture_sample_rate()
+            except Exception:
+                _mt_capture_sr = None
+
+            # Recorded layers do not transpose with the Practice Key. Warn before the next
+            # layer goes down in a different key, rather than discovering two keys in the
+            # mix at analysis time.
+            try:
+                from multitrack_recording_identity import key_conflict_warning
+
+                _mt_key_warning = key_conflict_warning(st.session_state, concert_key)
+                if _mt_key_warning:
+                    st.warning(_mt_key_warning)
+            except Exception:
+                pass
+
             for slot in MT_SLOTS:
                 _slot_ready = bool(st.session_state.mt_tracks.get(slot))
                 try:
@@ -27805,10 +27859,22 @@ elif _studio_page == "multitrack":
                             max_upload_size=UPLOAD_MAX_SIZE_MB,
                         )
                         try:
-                            recorded = st.audio_input(
-                                f"Record — {slot}",
-                                key=recorder_widget_key(st.session_state, slot, "record"),
-                            )
+                            # st.audio_input defaults to sample_rate=16000 — a speech rate
+                            # that discards everything above 8 kHz, so high flute notes and
+                            # guitar attacks lose the partials that define their tone.
+                            _mt_rec_label = f"Record — {slot}"
+                            _mt_rec_key = recorder_widget_key(st.session_state, slot, "record")
+                            try:
+                                recorded = st.audio_input(
+                                    _mt_rec_label,
+                                    key=_mt_rec_key,
+                                    **({"sample_rate": _mt_capture_sr} if _mt_capture_sr else {}),
+                                )
+                            except TypeError:
+                                # A Streamlit without the sample_rate argument still records,
+                                # at its own default. Asking for better audio must never be
+                                # the reason the recorder disappears.
+                                recorded = st.audio_input(_mt_rec_label, key=_mt_rec_key)
                         except Exception:
                             recorded = None
                             st.caption("Recording unavailable in this build — upload still works.")
@@ -27820,6 +27886,16 @@ elif _studio_page == "multitrack":
                                 from multitrack_activity import retain_project_source
                                 retain_project_source(st.session_state)
                                 st.session_state.mt_tracks[slot] = _mt_bytes
+                                # This layer is audio in the key it was just played in; a
+                                # later Practice Key change cannot transpose it, so stamp it.
+                                try:
+                                    from multitrack_recording_identity import note_layer_recorded
+
+                                    note_layer_recorded(
+                                        st.session_state, slot, concert_key=concert_key
+                                    )
+                                except Exception:
+                                    pass
                                 st.session_state.mt_track_filenames[slot] = getattr(
                                     _mt_audio_obj, "name", f"{slot}.wav"
                                 )

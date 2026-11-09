@@ -24,6 +24,12 @@ from typing import Any, Mapping
 # Session key holding the identity frozen when the first layer was recorded.
 MT_RECORDING_IDENTITY_KEY = "mt_recording_identity"
 
+# Session key holding ``slot -> the Concert Key that slot was recorded in``.
+# The musician may move the Practice Key between layers, and a layer already recorded is
+# audio: it does not transpose with the sidebar. So each layer carries the key it was
+# actually played in, and a project whose layers disagree is never labelled with one key.
+MT_LAYER_RECORDING_KEYS_KEY = "mt_layer_recording_keys"
+
 # Field name carrying that identity inside a saved multitrack export row.
 EXPORT_RECORDING_IDENTITY_FIELD = "recording_identity"
 
@@ -240,6 +246,101 @@ def freeze_recording_identity(
     return dict(identity)
 
 
+def note_layer_recorded(
+    session_state: dict[str, Any],
+    slot: str,
+    *,
+    concert_key: str = "",
+) -> str:
+    """Stamp the Concert Key one layer was just recorded in, and return it.
+
+    Call this as the layer's audio is stored. ``concert_key`` should be the key the page
+    already resolved for the chords and the monitor backing, so the stamp is exactly what
+    the musician was playing against; it falls back to resolving the key here.
+
+    Re-recording a slot re-stamps it: the new take is the one that will be mixed.
+    """
+    slot = _text(slot)
+    if not slot:
+        return ""
+    key = _text(concert_key) or _resolve_recording_concert_key(session_state)
+    keys = session_state.get(MT_LAYER_RECORDING_KEYS_KEY)
+    if not isinstance(keys, dict):
+        keys = {}
+    keys[slot] = key
+    session_state[MT_LAYER_RECORDING_KEYS_KEY] = keys
+    # The first layer still seeds the project-level facts (level, song, focus).
+    freeze_recording_identity(session_state)
+    return key
+
+
+def layer_recording_keys(
+    session_state: Mapping[str, Any] | None,
+    slots: Any = None,
+) -> dict[str, str]:
+    """``slot -> recorded Concert Key`` for the slots that hold audio.
+
+    A slot recorded before per-layer keys existed maps to ``""`` — unknown, not assumed to
+    match the others.
+    """
+    ss = session_state or {}
+    stamped = ss.get(MT_LAYER_RECORDING_KEYS_KEY)
+    stamped = stamped if isinstance(stamped, Mapping) else {}
+    if slots is None:
+        slots = list(recorded_slot_instruments(ss).keys())
+    return {_text(s): _text(stamped.get(s)) for s in slots if _text(s)}
+
+
+def key_conflict_warning(
+    session_state: Mapping[str, Any] | None,
+    current_key: str = "",
+) -> str:
+    """Warn while recording that this layer's key disagrees with the layers already down.
+
+    An already-recorded layer is audio and does not transpose with the Practice Key, so
+    recording the next layer in a different key puts two keys in one mix. Returning a
+    warning (rather than blocking) keeps the musician in control — some will want it.
+    """
+    ss = session_state or {}
+    current = _text(current_key) or _resolve_recording_concert_key(ss)
+    if not current:
+        return ""
+    existing = {
+        slot: key
+        for slot, key in layer_recording_keys(ss).items()
+        if _text(key) and _text(key) != current
+    }
+    if not existing:
+        return ""
+
+    def _labelled(token: str) -> str:
+        try:
+            from recording_analysis_context import concert_key_choice_from_token
+
+            return _text(concert_key_choice_from_token(token)) or token
+        except Exception:
+            return token
+
+    named = ", ".join(f"{slot} in {_labelled(key)}" for slot, key in existing.items())
+    return (
+        f"The Practice Key is now {_labelled(current)}, but {named}. Recorded layers do "
+        "not transpose, so a new layer here puts two keys in the same mix and the export "
+        "cannot be labelled with one recording key."
+    )
+
+
+def _key_agreement(layer_keys: Mapping[str, str]) -> tuple[list[str], bool]:
+    """Distinct known keys across the layers, and whether they disagree."""
+    known = []
+    seen: set[str] = set()
+    for key in layer_keys.values():
+        key = _text(key)
+        if key and key not in seen:
+            seen.add(key)
+            known.append(key)
+    return known, len(known) > 1
+
+
 def recording_identity_for_export(session_state: Mapping[str, Any] | None) -> dict[str, Any]:
     """The identity to store on a saved export row: frozen facts + the layers recorded.
 
@@ -266,6 +367,21 @@ def recording_identity_for_export(session_state: Mapping[str, Any] | None) -> di
     slot_instruments = recorded_slot_instruments(ss)
     identity["slot_instruments"] = dict(slot_instruments)
     identity["instruments"] = _dedupe(slot_instruments.values())
+
+    # Per-layer keys decide what this mix may be labelled. If the musician moved the
+    # Practice Key between layers, the mixed WAV genuinely contains two keys and must not
+    # be presented as being in either one of them.
+    per_layer = layer_recording_keys(ss, list(slot_instruments.keys()))
+    distinct, mixed = _key_agreement(per_layer)
+    identity["layer_recording_keys"] = per_layer
+    identity["recording_keys"] = distinct
+    identity["mixed_recording_keys"] = mixed
+    if mixed:
+        # No single key is true of this audio.
+        identity["recording_concert_key"] = ""
+    elif distinct:
+        # Every layer agrees; that is the key, whatever the sidebar says now.
+        identity["recording_concert_key"] = distinct[0]
     return identity
 
 
@@ -335,10 +451,25 @@ def export_stem_info(row: Mapping[str, Any] | None) -> dict[str, Any]:
             isinstance(t, Mapping) and _text(t.get("slot")).lower() in _NON_PLAYER_SLOTS
             for t in included
         )
+    mix_settings = row.get("mix_settings")
+    mix_settings = mix_settings if isinstance(mix_settings, Mapping) else {}
     if not backing_in_mix:
-        mix_settings = row.get("mix_settings")
-        if isinstance(mix_settings, Mapping):
-            backing_in_mix = bool(mix_settings.get("include_backing_in_mix"))
+        backing_in_mix = bool(mix_settings.get("include_backing_in_mix"))
+
+    # Reverb is baked into the rendered WAV. The recorded layers stay dry, but this export
+    # is the only audio the coach gets, so a wet export is not a dry take.
+    try:
+        reverb_amount = float(mix_settings.get("reverb_amount") or 0.0)
+    except (TypeError, ValueError):
+        reverb_amount = 0.0
+    reverb_applied = bool(mix_settings.get("reverb_applied")) or reverb_amount > 0.0
+    reverb_note = ""
+    if reverb_applied:
+        reverb_note = (
+            "Reverb was applied when this mix was rendered, so the audio sent for analysis "
+            "is not dry. The recorded layers themselves are unchanged, but they are not "
+            "saved separately, so a dry version of this take is not available."
+        )
 
     return {
         "has_isolated_stems": False,
@@ -347,6 +478,9 @@ def export_stem_info(row: Mapping[str, Any] | None) -> dict[str, Any]:
         "mixed_instrument_count": len(instruments),
         "recorded_instruments": list(instruments),
         "backing_in_mix": bool(backing_in_mix),
+        "dry_audio": not reverb_applied,
+        "reverb_applied": reverb_applied,
+        "reverb_note": reverb_note,
         "included_track_count": included_count,
         "mix_polyphony_limited_attribution": len(instruments) > 1 or bool(backing_in_mix),
         "stem_limitation": (
@@ -428,11 +562,42 @@ def upload_analysis_identity(row: Mapping[str, Any] | None) -> dict[str, Any]:
         # and lock identity, so the current Active Song cannot replace it.
         song_type = SONG_SOURCE_CATALOG
 
-    key_token = _text(identity.get("recording_concert_key"))
+    # Layers recorded in different keys: the audio contains both, so neither may be named.
+    per_layer = identity.get("layer_recording_keys")
+    per_layer = dict(per_layer) if isinstance(per_layer, Mapping) else {}
+    distinct, mixed = _key_agreement(per_layer)
+    if not distinct and _text(identity.get("recording_concert_key")):
+        distinct = [_text(identity["recording_concert_key"])]
+    mixed = bool(identity.get("mixed_recording_keys")) or mixed
+
+    key_token = "" if mixed else _text(identity.get("recording_concert_key"))
     try:
         key_label = _text(concert_key_choice_from_token(key_token)) if key_token else ""
     except Exception:
         key_label = key_token
+
+    def _labelled(token: str) -> str:
+        try:
+            return _text(concert_key_choice_from_token(token)) or token
+        except Exception:
+            return token
+
+    key_conflict_note = ""
+    if mixed:
+        named = ", ".join(
+            f"{slot} in {_labelled(key)}" for slot, key in per_layer.items() if _text(key)
+        )
+        unknown = [slot for slot, key in per_layer.items() if not _text(key)]
+        key_conflict_note = (
+            "Layers were recorded in different Concert Keys"
+            + (f" ({named})" if named else "")
+            + (
+                f"; {', '.join(unknown)} recorded before per-layer keys were stored"
+                if unknown
+                else ""
+            )
+            + ". The mix contains more than one key, so no single recording key is claimed."
+        )
 
     return {
         "workflow": MULTITRACK_RECORDING,
@@ -449,6 +614,10 @@ def upload_analysis_identity(row: Mapping[str, Any] | None) -> dict[str, Any]:
         "recording_concert_key": key_token,
         "recording_concert_key_label": key_label,
         "recording_key_known": bool(key_token),
+        "layer_recording_keys": per_layer,
+        "recording_keys": distinct,
+        "mixed_recording_keys": mixed,
+        "key_conflict_note": key_conflict_note,
         "identity_source": _text(identity.get("identity_source"))
         or (IDENTITY_SOURCE_LEGACY if legacy else IDENTITY_SOURCE_SAVE),
         "level": _text(identity.get("level")),
@@ -470,7 +639,10 @@ def identity_gaps(identity: Mapping[str, Any] | None) -> list[str]:
     """Human-readable list of what an incomplete (legacy) export could not tell us."""
     identity = dict(identity or {})
     gaps: list[str] = []
-    if not identity.get("recording_key_known"):
+    if identity.get("mixed_recording_keys"):
+        # Not a gap in the metadata — the metadata is right and the audio is mixed-key.
+        gaps.append("which Concert Key applies, because its layers were recorded in two")
+    elif not identity.get("recording_key_known"):
         gaps.append("the Concert Key it was recorded in")
     if not identity.get("level"):
         gaps.append("the player level at the time")
@@ -534,6 +706,19 @@ def apply_identity_to_upload_analysis(
             )
         except Exception:
             session_state[ANALYSIS_RECORDING_CONCERT_KEY_KEY] = key_token
+    elif identity.get("mixed_recording_keys"):
+        # Two keys in one WAV. Say "unspecified" and let the musician decide, rather than
+        # picking one of them and mislabelling the other layer's audio.
+        try:
+            from recording_analysis_context import RECORDING_CONCERT_KEY_UNSPECIFIED
+
+            session_state[ANALYSIS_RECORDING_CONCERT_KEY_KEY] = RECORDING_CONCERT_KEY_UNSPECIFIED
+        except Exception:
+            pass
+    if identity.get("key_conflict_note"):
+        session_state["analysis_multitrack_key_conflict"] = str(identity["key_conflict_note"])
+    else:
+        session_state.pop("analysis_multitrack_key_conflict", None)
 
     level = _text(identity.get("level"))
     if level:
@@ -578,12 +763,16 @@ __all__ = [
     "IDENTITY_SOURCE_LEGACY",
     "IDENTITY_SOURCE_RECORDING",
     "IDENTITY_SOURCE_SAVE",
+    "MT_LAYER_RECORDING_KEYS_KEY",
     "MT_RECORDING_IDENTITY_KEY",
     "apply_identity_to_upload_analysis",
     "export_stem_info",
     "freeze_recording_identity",
+    "key_conflict_warning",
+    "layer_recording_keys",
     "identity_gaps",
     "layer_instrument_for_slot",
+    "note_layer_recorded",
     "recorded_instruments_from_export",
     "recorded_slot_instruments",
     "recording_identity_for_export",
