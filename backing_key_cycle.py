@@ -693,6 +693,29 @@ def spurious_off_window_expired(session: dict[str, Any]) -> bool:
     return armed_at > 0 and (_time.time() - armed_at) > SPURIOUS_OFF_WINDOW_SEC
 
 
+def disarm_spurious_off_on_user_stop(session: dict[str, Any]) -> bool:
+    """An explicit Stop ends the start-up phase the stray-Off guard protects; disarm it.
+
+    The guard swallows Off snaps from remount churn while Key Cycling arms and its first take starts,
+    and the player's ``play_started`` proof clears it. A user who presses Stop before that proof (a slow
+    first render: 16 s with the recorded kit in the real-app trace, longer than the guard's window) left it
+    armed, and their next genuine Off was turned back On. After an explicit Stop nothing is starting, and
+    the real-app trace shows no remount Off snaps after Stop, so the next Off is the user's.
+
+    Only an explicit user Stop calls this. Key Cycling's own stop, a Pause, settings edits and display
+    reprojects keep the guard (the remount storms they cause are the reason it exists).
+    """
+    armed = bool(session.get("_kc_suppress_spurious_cycle_off")) or int(
+        session.get("_kc_suppress_spurious_cycle_off_runs") or 0
+    ) > 0
+    session.pop("_kc_suppress_spurious_cycle_off", None)
+    session.pop("_kc_suppress_spurious_cycle_off_runs", None)
+    session.pop("_kc_suppress_armed_at", None)
+    if armed:
+        _kc_enable_trace(session, "suppress_disarmed_user_stop")
+    return armed
+
+
 def should_honor_cycle_off_request(
     *,
     user_toggled: bool,
