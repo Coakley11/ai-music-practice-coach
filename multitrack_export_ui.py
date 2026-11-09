@@ -73,6 +73,16 @@ def render_step4_save_export_panel(
     ensure_mixed_export_save_name(session_state, song_title=song_title, mixed=mixed)
 
     st_module.markdown("##### Save Export")
+
+    # Never write a silent or front-trimmed export without saying so.
+    try:
+        from multitrack_capture_quality import mix_contribution_warnings
+
+        for _warning in mix_contribution_warnings(track_items_for_mix):
+            st_module.warning(_warning)
+    except Exception:
+        pass
+
     export_name = st_module.text_input("Export name", key=MT_EXPORT_SAVE_NAME_KEY)
     if st_module.button(action_label("save", "Save Export"), key="mt_export_save_btn", type="primary", use_container_width=True):
         ok, eid, err = save_multitrack_export_from_session(

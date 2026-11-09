@@ -161,6 +161,64 @@ def install_multitrack_music_capture(
     return True
 
 
+def mix_contribution_warnings(track_items: Any) -> list[str]:
+    """Warn when the mixer settings would silence or truncate the recorded layers.
+
+    The Volume and Align sliders were declared without a ``value=``, so Streamlit started
+    them at their minimums — Volume 0.0 and Align -3.0 s. A layer at those settings is
+    inaudible in the export and loses its first three seconds. The defaults are fixed now,
+    but a session that already stored them keeps them, and a stored value is
+    indistinguishable from a deliberate choice. So the panel says what the mix is about to
+    do rather than silently writing a silent or truncated file.
+    """
+    items = [t for t in (track_items or []) if isinstance(t, dict)]
+    if not items:
+        return []
+
+    def _num(value: Any, default: float) -> float:
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return default
+
+    audible = [t for t in items if not t.get("mute")]
+    if any(t.get("solo") for t in audible):
+        audible = [t for t in audible if t.get("solo")]
+    if not audible:
+        return []
+
+    def _name(t: dict) -> str:
+        return str(t.get("name") or t.get("slot") or "a layer")
+
+    out: list[str] = []
+    silent = [_name(t) for t in audible if _num(t.get("volume", 1.0), 1.0) <= 0.0]
+    if len(silent) == len(audible):
+        out.append(
+            "Every layer in this mix has Volume 0, so the exported file would be silent. "
+            "Raise Volume in Layer controls before exporting."
+        )
+    elif silent:
+        out.append(
+            "Volume is 0 for "
+            + ", ".join(silent)
+            + (", so it will not be heard in the export." if len(silent) == 1
+               else ", so they will not be heard in the export.")
+        )
+
+    trimmed = [
+        (_name(t), -_num(t.get("delay", 0.0), 0.0))
+        for t in audible
+        if _num(t.get("delay", 0.0), 0.0) < 0
+    ]
+    if trimmed:
+        out.append(
+            "Align timing is negative for "
+            + ", ".join(f"{n} (-{s:.3g}s)" for n, s in trimmed)
+            + ", which cuts that much off the START of the recording in the mix."
+        )
+    return out
+
+
 def capture_quality_findings(rate: Any) -> list[str]:
     """Plain statements about what a capture at ``rate`` can and cannot preserve."""
     findings: list[str] = []
@@ -187,6 +245,7 @@ __all__ = [
     "capture_sample_rate",
     "install_multitrack_music_capture",
     "is_music_grade_sample_rate",
+    "mix_contribution_warnings",
     "multitrack_capture_class_keys",
     "multitrack_mic_keys",
     "nyquist_hz",

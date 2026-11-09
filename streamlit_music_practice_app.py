@@ -27963,10 +27963,15 @@ elif _studio_page == "multitrack":
                             st.warning("Record or upload audio first.")
 
                     with c2:
+                        # st.slider falls back to min_value when no value= is given, so
+                        # these defaulted to Volume 0.0 and Align -3.0s: every fresh layer
+                        # was silent in the mix AND lost its first three seconds. Neutral
+                        # defaults are the only honest starting point for a recorded take.
                         st.slider(
                             "Volume",
                             0.0,
                             2.0,
+                            value=1.0,
                             step=0.05,
                             key=f"mt_vol_{slot}",
                         )
@@ -27974,6 +27979,7 @@ elif _studio_page == "multitrack":
                             "Align timing",
                             -3.0,
                             3.0,
+                            value=0.0,
                             step=0.05,
                             key=f"mt_delay_{slot}",
                             help="Move this layer earlier or later to line it up with the backing.",
