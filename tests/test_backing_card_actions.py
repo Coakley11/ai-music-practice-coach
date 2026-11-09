@@ -132,6 +132,16 @@ def test_the_open_close_control_stays_above_the_sheet_and_writes_the_same_choice
     assert "leadsheet_ready=_leadsheet_controls_ready" in call and "set_leadsheet_open=_set_backing_lead_sheet_open" in call
 
 
+def test_the_card_lead_sheet_button_hands_the_playhead_over_like_open_close() -> None:
+    # Opening or closing the sheet swaps the player; the transport records where the music was for the button
+    # clicked. Without the card's button here, a close from the card left the music paused.
+    js = (ROOT / "backing_transport_component" / "index.html").read_text(encoding="utf-8")
+    i = js.index("recordHandoff();\n          }")
+    sel = js[js.rindex("if (closest(", 0, i):i]
+    for key in ("backing_leadsheet_show_btn", "backing_leadsheet_hide_btn", "backing_art_lead_sheet_btn"):
+        assert f'[class*="st-key-{key}"] button' in sel
+
+
 def test_play_opens_the_sheet_while_lead_sheet_is_on() -> None:
     i = APP.index("    if _play_clicked:\n")
     block = APP[i:i + 700]
