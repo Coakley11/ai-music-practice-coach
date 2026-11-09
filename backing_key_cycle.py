@@ -49,6 +49,14 @@ _BACKING_KEY_CYCLE_STEP_UI_SEED_KEY = "_backing_key_cycle_step_ui_seed"
 _BACKING_KEY_CYCLE_DIRECTION_UI_SEED_KEY = "_backing_key_cycle_direction_ui_seed"
 
 
+# The Key Cycling dual-buffer holder lives on <body> (Streamlit reruns cannot drop it) and is never shown: off-screen,
+# 1 px, clipped and transparent. Audio plays the same; nothing of it can be seen or tapped.
+KC_HOLDER_HIDDEN_CSS = (
+    "position:fixed;left:0;top:0;width:1px;height:1px;margin:0;padding:0;border:0;overflow:hidden;"
+    "clip-path:inset(50%);opacity:0;pointer-events:none;z-index:-1;"
+)
+
+
 def _queue_key_cycle_widget_seed(
     session: dict[str, Any], *, interval: int, direction: str
 ) -> None:
@@ -4910,9 +4918,15 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
   const WANT = '{label}';
   const parentWin = window.parent;
   const parentDoc = parentWin.document;
+  const KC_HOLDER_HIDDEN_CSS = '{KC_HOLDER_HIDDEN_CSS}';
 
   function ensurePlayer() {{
     let root = parentDoc.getElementById('kc-persistent-root');
+    // The dual-buffer is never shown: the playbar and the card carry the key and the controls. It used to sit in
+    // the page flow under the app, so a phone showed its status line ("Key cycling off") below the toolbar.
+    const hideHolder = (el) => {{
+      if (el) el.style.cssText = KC_HOLDER_HIDDEN_CSS;
+    }};
     const rebuildBuffers = (host) => {{
       if (!host) return;
       if (!parentDoc.getElementById('kc-buf-0') || !parentDoc.getElementById('kc-buf-1')) {{
@@ -4927,7 +4941,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       root = parentDoc.createElement('div');
       root.id = 'kc-persistent-root';
       root.setAttribute('data-testid', 'kc-persistent-root');
-      root.style.cssText = 'margin:.35rem 0 .5rem;padding:0;position:relative;z-index:20;';
+      hideHolder(root);
       rebuildBuffers(root);
       // Attach to body so Streamlit widget rerenders cannot drop the dual-buffer.
       try {{
@@ -4946,6 +4960,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         }}
       }}
     }} else {{
+      hideHolder(root);
       rebuildBuffers(root);
       try {{
         if (root.parentElement !== parentDoc.body) {{
