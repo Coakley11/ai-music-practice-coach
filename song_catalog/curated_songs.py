@@ -364,7 +364,7 @@ def _thinking_out_loud_chart_pack() -> dict[str, Any]:
 
 
 def _piano_man_chart_pack() -> dict[str, Any]:
-    """Piano Man — Billy Joel (C major, 3/4 waltz feel).
+    """Piano Man — Billy Joel (C major, 3/4 waltz feel, ~178 BPM quarter note).
 
     Section-by-section chart. One list item = one bar.
 
@@ -658,7 +658,8 @@ def _piano_man_chart_pack() -> dict[str, Any]:
     }
 
     arrangement_notes = (
-        "**C major, 3/4 waltz (~88 BPM).** Piano-ballad with rolling left-hand "
+        "**C major, 3/4 waltz (~178 BPM, quarter note; about 59 bars a minute).** "
+        "Piano-ballad with rolling left-hand "
         "arpeggios and a descending bass walk: **C → C/B → Am → C/G → F → C/E "
         "→ D7 → G**. Form (21 sections): Harmonica Intro → Verse 1 → Harmonica "
         "Turnaround → Verse 2 → Bridge 1 → Chorus 1 → Harmonica Section 2 → "
@@ -696,7 +697,7 @@ def _piano_man_chart_pack() -> dict[str, Any]:
         "lyric_cues": lyric_cues,
         "extensions": _ext(
             arrangement_notes=arrangement_notes,
-            default_bpm=88,
+            default_bpm=178,
             default_groove="Ballad",
             time_signature="3/4",
         ),
@@ -8709,8 +8710,14 @@ def _requested_verified_song_records() -> list[dict[str, Any]]:
             notes=(
                 "Key F#m; 4/4 groove — one chord = one bar. F#m→G#m→A→G#m vamp is the "
                 "core feel. Verse uses phased Bm bars; chorus adds B5. Advanced uses "
-                "F#m9/G#m7/Amaj7/Bm9 colors without changing the tight loop. Not AI-verified."
+                "F#m9/G#m7/Amaj7/Bm9 colors without changing the tight loop. Not AI-verified. "
+                "Tempo ~117 BPM: that is the figure the tempo listings agree on (118 and 125 "
+                "are outliers), and Musicnotes prints the original published key as F# minor. "
+                "The chart is a rehearsal skeleton — Advanced is 86 bars, about 2:56 at 117, "
+                "against a 4:54 recording — so the form is shorter than the record and is "
+                "left as it stands, because the chords are user-corrected."
             ),
+            default_bpm=117,
             chart_status="user_corrected_reference",
         ),
         v(
