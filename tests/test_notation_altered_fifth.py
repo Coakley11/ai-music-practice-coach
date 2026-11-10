@@ -125,18 +125,56 @@ class ArpeggioAndScaleNoLongerContradict(unittest.TestCase):
                 with self.subTest(chord=chord, key=key):
                     self.assertTrue(_pcs(chord).issubset(set(scale_pcs(chord, key))))
 
-    @unittest.expectedFailure
-    def test_known_open_defect_b9_and_b13_still_disagree(self):
-        """C7b9 keeps its natural fifth (right: b9 alters the ninth), but
-        chord_scale_selection gives it the altered scale, which has none.
+    def test_b9_and_b13_now_agree_too(self):
+        """Resolved: a plain 7b9 or 7b13 keeps its natural fifth on both sides.
 
-        The textbook scale for a plain 7b9 is half-whole diminished, which does contain
-        the natural fifth. Left unfixed on purpose: that is a change to the shared scale
-        selector and needs its own evidence and regression run, not a quiet edit here.
-        This test is expected to fail and will start passing when that is addressed.
+        chord_scale_selection used to answer "altered" for any dominant carrying a b9 or
+        b13. The altered scale has no natural fifth, but only b5/#5/alt take the fifth
+        away - so the scale contradicted a tone the chord was sounding. It now picks the
+        established parent that keeps the fifth and supplies what the symbol asked for.
         """
-        for chord in ("C7b9", "C7b13"):
-            self.assertTrue(_pcs(chord).issubset(set(scale_pcs(chord, "C"))), chord)
+        for chord in ("C7b9", "C7b13", "C7b9b13"):
+            with self.subTest(chord=chord):
+                self.assertTrue(_pcs(chord).issubset(set(scale_pcs(chord, "C"))))
+
+    def test_the_fifth_survives_wherever_the_symbol_keeps_it(self):
+        from chord_scale_selection import chord_scale_pcs
+
+        for chord in ("C7", "C7b9", "C7b13", "C7b9b13", "C7#9", "C7#11"):
+            with self.subTest(chord=chord):
+                self.assertIn(NAMES.index("G"), chord_scale_pcs(chord, "C"), chord)
+
+    def test_the_fifth_is_gone_wherever_the_symbol_removes_it(self):
+        from chord_scale_selection import chord_scale_pcs
+
+        for chord in ("C7alt", "C7b5", "C7#5", "C7b9#9"):
+            with self.subTest(chord=chord):
+                self.assertNotIn(NAMES.index("G"), chord_scale_pcs(chord, "C"), chord)
+
+    def test_a_minor_key_still_prefers_phrygian_dominant_for_a_b9(self):
+        from chord_scale_selection import chord_scale_name
+
+        self.assertEqual(chord_scale_name("C7b9", "Am"), "phrygian_dominant")
+        self.assertEqual(chord_scale_name("C7b9", "C"), "diminished_half_whole")
+
+    def test_plain_and_sharp_nine_dominants_are_untouched(self):
+        from chord_scale_selection import chord_scale_name
+
+        self.assertEqual(chord_scale_name("C7", "C"), "mixolydian")
+        self.assertEqual(chord_scale_name("C7#9", "C"), "mixolydian")
+        self.assertEqual(chord_scale_name("C7#11", "C"), "lydian_dominant")
+
+    def test_arpeggio_and_scale_agree_across_the_dominant_family(self):
+        for chord in ("C7", "C7b9", "C7b13", "C7b9b13", "C7#9", "C7b9#9",
+                      "C7alt", "C7b5", "C7#5", "C7#11", "G7alt", "F7b5"):
+            for key in ("C", "Am", "G", "F", "Bb"):
+                with self.subTest(chord=chord, key=key):
+                    from notation_exercise_patterns import chord_tone_pcs as ctp
+
+                    self.assertTrue(
+                        set(ctp(chord, key)).issubset(set(scale_pcs(chord, key))),
+                        f"{chord} in {key}",
+                    )
 
 
 if __name__ == "__main__":

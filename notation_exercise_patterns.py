@@ -128,7 +128,7 @@ def pattern_plan(
     return [plan[(start + i) % len(plan)] for i in range(n_measures)]
 
 
-def chord_tone_pcs(chord: str) -> list[int]:
+def chord_tone_pcs(chord: str, key_center: str = "C") -> list[int]:
     """Ascending pitch classes of the chord's own tones.
 
     ``spell_chord_tones`` answers with the plain seventh-chord skeleton for every altered
@@ -169,6 +169,20 @@ def chord_tone_pcs(chord: str) -> list[int]:
             out = [pc for pc in out if pc != natural_fifth]
             if replacement is not None and replacement not in out:
                 out.append(replacement)
+    elif alts:
+        # Other alteration combinations (b9 with #9, #9 with b13) also imply the fifth is
+        # gone, and chord_scale_selection already decides that. Rather than restate its
+        # rules here and risk the two drifting apart, defer to the scale it chose: if the
+        # natural fifth is not in the chord's own scale, it is not a tone of this chord.
+        root = out[0]
+        natural_fifth = (root + 7) % 12
+        if natural_fifth in out:
+            try:
+                in_scale = natural_fifth in set(scale_pcs(chord, key_center or "C"))
+            except Exception:
+                in_scale = True
+            if not in_scale:
+                out = [pc for pc in out if pc != natural_fifth]
     return out or [0]
 
 
@@ -280,7 +294,7 @@ def exercise_measure_midis(
 ) -> list[int]:
     """The written pitches for one bar of ``pattern`` on ``chord``, inside [low, high]."""
     count = max(1, int(count))
-    tones = _ladder(chord_tone_pcs(chord), low, high)
+    tones = _ladder(chord_tone_pcs(chord, key_center), low, high)
     scale = _ladder(scale_pcs(chord, key_center), low, high)
     anchor = int(start_midi) if start_midi is not None else (low + high) // 2
 
