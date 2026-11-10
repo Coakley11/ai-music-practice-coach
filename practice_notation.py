@@ -32,6 +32,13 @@ _BEAT_WIDTH = 7  # chars per beat in plain-text export
 # worse, the unrelated song-level time signature.
 NOTATION_METER = "4/4"
 
+
+# Issue 65 candidate. ``abc_pitch_for_spelled_note`` writes scientific C4 as ABC "c",
+# which abcjs decodes as 72, so a single-line staff was drawn an octave above the MIDI
+# the exercise engine chose. Composition corrects the same thing with
+# COMPOSITION_ABC_OCTAVE_SHIFT. Measured over 9720 notes: this alone fixes 97.9% of them.
+PRACTICE_ABC_OCTAVE_SHIFT = -1
+
 GUITAR_SHAPES: dict[str, str] = {
     "C": "x32010",
     "Cmaj7": "x32000",
@@ -1071,6 +1078,8 @@ def _build_arpeggio_line(
             title=sec_name,
             chords=use,
             clef=clef,
+            octave_shift=PRACTICE_ABC_OCTAVE_SHIFT,
+            musical_spelling=True,
         )
         sections_out.append({"name": sec_name, "abc": abc.strip(), "chord_labels": " | ".join(use)})
         all_chords.extend(use)
@@ -1136,6 +1145,8 @@ def _build_bass_line(
             title=sec_name,
             chords=use,
             clef="bass",
+            octave_shift=PRACTICE_ABC_OCTAVE_SHIFT,
+            musical_spelling=True,
         )
         sections_out.append({"name": sec_name, "abc": abc.strip(), "chord_labels": " | ".join(use)})
         all_chords.extend(use)
