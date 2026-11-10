@@ -1394,6 +1394,9 @@ def _consume_auth_recovery_implicit_query(st: Any) -> bool:
 
 
 def _render_recovery_verify_failed(st: Any) -> None:
+    from suite_parent_brand import render_suite_login_brand
+
+    render_suite_login_brand(st)
     st.title("Password reset verification failed")
     err = str(st.session_state.get(AUTH_RECOVERY_LAST_ERROR_KEY) or "").strip()
     st.error(err or "Could not verify the recovery link.")
@@ -1412,6 +1415,9 @@ def _render_recovery_verify_failed(st: Any) -> None:
 
 
 def _render_recovery_bare_site_landing(st: Any) -> None:
+    from suite_parent_brand import render_suite_login_brand
+
+    render_suite_login_brand(st)
     st.title("Password reset link missing tokens")
     diag = auth_recovery_diagnostics(st=st)
     prefix = str(diag.get("expected_email_href_prefix") or "")
@@ -1486,6 +1492,9 @@ def _render_recovery_landing_wait(st: Any) -> None:
 
 
 def _render_recovery_landing_failed(st: Any) -> None:
+    from suite_parent_brand import render_suite_login_brand
+
+    render_suite_login_brand(st)
     st.title("Password reset link incomplete")
     st.error(
         "Command Center opened from your reset email, but **no recovery token reached the app**. "
@@ -1520,6 +1529,9 @@ def complete_password_recovery(session_state: dict[str, Any], new_password: str)
 
 def _render_password_recovery_panel(st: Any) -> None:
     """Block app until the user chooses a new password from an email recovery link."""
+    from suite_parent_brand import render_suite_login_brand
+
+    render_suite_login_brand(st)
     st.title("Set new password")
     st.caption("You opened a password reset link. Choose a new password to continue.")
     pw1 = st.text_input("New password", type="password", key="suite_auth_recovery_pw1")
