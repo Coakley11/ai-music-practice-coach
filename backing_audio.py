@@ -194,6 +194,12 @@ def chord_notes(chord):
     elif "6" in low:
         intervals = [0,4,7,9]
 
+    elif "add2" in low:
+        intervals = [0,2,4,7]
+
+    elif "sus2" in low:
+        intervals = [0,2,7,10] if "7" in low else [0,2,7]
+
     elif "sus" in low:
         intervals = [0,5,7,10] if "7" in low else [0,5,7]
 
