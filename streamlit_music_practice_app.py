@@ -4541,11 +4541,12 @@ def _backing_arrangement_tag(strings: bool | None = None) -> str:
         strings = _backing_strings_on()
     from backing_audio import drum_renderer_tag
     from backing_bass_voice import bass_renderer_tag
+    from backing_loudness import loudness_renderer_tag
     from backing_pianist import piano_renderer_tag
     from backing_rock_guitar import guitar_renderer_tag
 
     return (_BACKING_RENDERER_TAG + drum_renderer_tag() + piano_renderer_tag() + bass_renderer_tag() + guitar_renderer_tag()
-            + ("+strings" if strings else ""))
+            + loudness_renderer_tag() + ("+strings" if strings else ""))
 
 
 def _cached_backing_wav(
