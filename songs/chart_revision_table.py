@@ -117,6 +117,9 @@ PRIOR_REVISIONS: dict[str, tuple[tuple[str, str], ...]] = {
     'rock|while my guitar gently weeps|the beatles': (
         ('0ae5c50ae7efe427', ''),
     ),
+    'rock|wonderwall|oasis': (
+        ('b4aee3b7e51a4b1b', 'c017be1847a6b645'),
+    ),
     'rock|yesterday|the beatles': (
         ('c16e5e4cbfbf6a0b', 'd643a7520ab58e69'),
     ),
