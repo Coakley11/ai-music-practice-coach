@@ -1888,12 +1888,20 @@ def _say_chart_pack() -> dict[str, Any]:
 
 
 def _scientist_chart_pack() -> dict[str, Any]:
-    """The Scientist — Coldplay (D minor concert, piano ballad, 4/4).
+    """The Scientist — Coldplay (F major concert, piano ballad, 4/4).
+
+    The chart is built in the capo-3 guitar shapes (Bm7 · G · D · Dsus2) that
+    most tab sites print, then transposed up a minor third to the key the
+    record actually sounds in, **F major**: Dm7 · Bb · F · Fsus2 (vi–IV–I).
+    Dm7 opens the loop, which is why the song is often mislabelled D minor,
+    but the tonic is F and the only V chord, C, arrives at the end.
 
     One list item = one bar unless token uses ``|`` for an in-bar split
-    (e.g. ``D|Dmaj7`` = two beats each). **N.C.** bars are true tacet.
-    Preserve slash colors: **A/D · D6/9 · A/E · Asus4 · Dsus2/C#**.
+    (e.g. ``F|Fmaj7`` = two beats each). **N.C.** bars are true tacet.
+    Preserve slash colors: **C/F · F6/9 · C/G · Csus4 · Fsus2/E**.
     """
+    from music_theory import transpose_sections_dict
+
     verse_loop = ["Bm7", "G", "D", "Dsus2"]
     chorus = [
         "G",
@@ -1946,22 +1954,25 @@ def _scientist_chart_pack() -> dict[str, Any]:
         name: [_beg(c) for c in chords]
         for name, chords in intermediate.items()
     }
+    # Capo-3 shapes -> sounding key. Guitar reading stays in the capo note.
+    intermediate = transpose_sections_dict(intermediate, "D", "F")
+    beginner = transpose_sections_dict(beginner, "D", "F")
     section_order = list(intermediate.keys())
     scale_hints = {
-        "Bm7": ["B Dorian", "B Minor Pentatonic"],
-        "G": ["G Major"],
-        "D": ["D Major"],
-        "Dsus2": ["D Major"],
-        "Dsus2/C#": ["D Major"],
-        "A/D": ["A Mixolydian"],
-        "D6/9": ["D Major"],
-        "A/E": ["A Mixolydian"],
-        "Asus4": ["A Mixolydian"],
-        "A": ["A Mixolydian"],
-        "Dmaj7": ["D Ionian", "D Lydian"],
+        "Dm7": ["D Aeolian", "D Minor Pentatonic"],
+        "Bb": ["Bb Major", "Bb Lydian"],
+        "F": ["F Major"],
+        "Fsus2": ["F Major"],
+        "Fsus2/E": ["F Major"],
+        "C/F": ["C Mixolydian"],
+        "F6/9": ["F Major"],
+        "C/G": ["C Mixolydian"],
+        "Csus4": ["C Mixolydian"],
+        "C": ["C Mixolydian"],
+        "Fmaj7": ["F Ionian", "F Lydian"],
     }
     return {
-        "key": "Dm",
+        "key": "F",
         "sections": intermediate,
         "chart_versions": _levels(
             beginner=beginner,
@@ -1972,26 +1983,28 @@ def _scientist_chart_pack() -> dict[str, Any]:
         "section_order": section_order,
         "composer": "Coldplay",
         "lyric_cues": {
-            "Intro": ["Piano intro — Bm7 · G · D · Dsus2"],
+            "Intro": ["Piano intro — Dm7 · Bb · F · Fsus2"],
             "Verse 1": ["Come up to meet you, tell you I'm sorry…"],
             "Chorus 1": ["Nobody said it was easy…"],
             "N.C. 1": ['N.C. — "Take me back to the start"'],
-            "Instrumental 1": ["Instrumental — D · G · D · D/Dmaj7"],
-            "Verse 2": ["Second verse — walk down to Dsus2/C#"],
+            "Instrumental 1": ["Instrumental — F · Bb · F · F/Fmaj7"],
+            "Verse 2": ["Second verse — walk down to Fsus2/E"],
             "Chorus 2": ["Chorus lift — wider strings, gentle drums"],
             "N.C. 2": ['N.C. — "I\'m going back to the start"'],
             "Instrumental 2": ["Short instrumental — emotional piano focus"],
             "Ending": ["Outro loop — gradually thin instrumentation"],
-            "Final Tag": ["Final Bm7 · G · D — let the chord ring"],
+            "Final Tag": ["Final Dm7 · Bb · F — let the chord ring"],
         },
         "extensions": _ext(
             arrangement_notes=(
-                "**D minor** (concert) piano ballad (**4/4**, ~73 BPM). "
-                "Common guitar reading uses capo + open-position shapes; "
-                "preserve **Bm7 · G · D · Dsus2 · A/D · D6/9 · A/E · Asus4 · "
-                "A · Dmaj7 · Dsus2/C#** — do not simplify slash colors. "
+                "**F major** (concert, the recording's key) piano ballad "
+                "(**4/4**, ~73 BPM). Guitarists read it as **Bm7 · G · D · "
+                "Dsus2** shapes with a **capo on fret 3**; the chart stores the "
+                "sounding chords. Preserve **Dm7 · Bb · F · Fsus2 · C/F · F6/9 · "
+                "C/G · Csus4 · C · Fmaj7 · Fsus2/E** — do not simplify slash "
+                "colors. The loop starts on **Dm7** (vi), not the tonic. "
                 "Verse: sparse piano; chorus: gentle lift with soft strings; "
-                "ending fades to **Bm7–G–D** tag. Backing: piano primary, "
+                "ending fades to a **Dm7–Bb–F** tag. Backing: piano primary, "
                 "soft strings, bass, light brushes, ambient pads — avoid "
                 "heavy rock guitars. Karaoke- and lyric-focused practice "
                 "friendly; emotional dynamic shaping for performance mode."
@@ -1999,6 +2012,9 @@ def _scientist_chart_pack() -> dict[str, Any]:
             default_bpm=73,
             default_groove="Ballad",
             time_signature="4/4",
+            concert_key="F",
+            guitar_friendly_key="D",
+            capo_note="Capo 3 (Bm7-G-D-Dsus2 shapes) · concert key F major",
             vocal_showcase=True,
             coldplay_piano_ballad=True,
             repertoire_tags=[
@@ -2011,8 +2027,9 @@ def _scientist_chart_pack() -> dict[str, Any]:
             ],
             harmonic_analysis={
                 "progression_summary": (
-                    "Bm7–G–D–Dsus2 verse loop; chorus slash walk "
-                    "A/D → D6/9 → A/E → Asus4 → A"
+                    "F major: Dm7–Bb–F–Fsus2 verse loop (vi–IV–I); chorus "
+                    "slash walk C/F → F6/9 → C/G → Csus4 → C (V arrives last). "
+                    "Guitar reads it as Bm7–G–D–Dsus2 with capo 3"
                 ),
                 "scale_suggestions": scale_hints,
             },
@@ -9615,82 +9632,14 @@ def curated_song_records() -> list[dict[str, Any]]:
                 "verified, so the form is intentionally unchanged."
             ),
         )),
-        _s(
-            "The Scientist",
-            "Coldplay",
-            "Pop",
-            "Dm",
-            {
-                "Intro": ["Bm7", "G", "D", "Dsus2"] * 2,
-                "Verse 1": ["Bm7", "G", "D", "Dsus2"] * 4,
-                "Chorus 1": [
-                    "G",
-                    "D",
-                    "Dsus2",
-                    "A/D",
-                    "D6/9",
-                    "A/E",
-                    "Asus4",
-                    "A",
-                ],
-                "N.C. 1": ["N.C."],
-                "Instrumental 1": [
-                    "D",
-                    "G",
-                    "D",
-                    "D|Dmaj7",
-                    "Bm7",
-                    "G",
-                    "D",
-                    "Dsus2",
-                ],
-                "Verse 2": ["Bm7", "G", "D", "Dsus2"] * 3
-                + ["Bm7", "G", "D", "Dsus2/C#"],
-                "Chorus 2": [
-                    "G",
-                    "D",
-                    "Dsus2",
-                    "A/D",
-                    "D6/9",
-                    "A/E",
-                    "Asus4",
-                    "A",
-                ],
-                "N.C. 2": ["N.C."],
-                "Instrumental 2": ["D", "G", "D", "D"],
-                "Ending": ["Bm7", "G", "D", "D"] * 4,
-                "Final Tag": ["Bm7", "G", "D"],
-            },
-            chart_status="practice_level_verified",
-            section_order=[
-                "Intro",
-                "Verse 1",
-                "Chorus 1",
-                "N.C. 1",
-                "Instrumental 1",
-                "Verse 2",
-                "Chorus 2",
-                "N.C. 2",
-                "Instrumental 2",
-                "Ending",
-                "Final Tag",
-            ],
-            extensions=_ext(
-                default_bpm=73,
-                default_groove="Ballad",
-                time_signature="4/4",
-                vocal_showcase=True,
-                coldplay_piano_ballad=True,
-                repertoire_tags=[
-                    "Coldplay",
-                    "Piano Ballad",
-                    "Alternative Rock",
-                    "Emotional Ballad",
-                    "Karaoke Friendly",
-                    "Vocal Showcase",
-                ],
-            ),
-        ),
+        # Every chart field below is replaced by _scientist_chart_pack() via
+        # _core_chart_overrides(); this placeholder only exists so the override
+        # has a (title, artist) row to patch. It used to carry a second, full
+        # copy of the chart in the capo-3 D shapes, which would now contradict
+        # the F-major pack, so it is reduced to a stub like the other packs.
+        _s("The Scientist", "Coldplay", "Pop", "F", {
+            "Placeholder": ["F"],
+        }),
         _s("Clocks", "Coldplay", "Pop", "Eb", {
             "Intro / Piano Riff": ["Eb", "Bbm", "Fm", "Fm"],
             "Verse (Riff)": ["Eb", "Bbm", "Fm", "Fm"],
