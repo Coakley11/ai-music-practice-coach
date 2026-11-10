@@ -620,7 +620,8 @@
             setLocal("stopped");
             render();
           }
-          if (closest('[class*="st-key-backing_leadsheet_show_btn"] button, [class*="st-key-backing_leadsheet_hide_btn"] button')) {
+          // The card's Lead sheet On / Off opens or closes the same sheet: the same playhead handoff.
+          if (closest('[class*="st-key-backing_leadsheet_show_btn"] button, [class*="st-key-backing_leadsheet_hide_btn"] button, [class*="st-key-backing_art_lead_sheet_btn"] button')) {
             recordHandoff();
           }
         };
