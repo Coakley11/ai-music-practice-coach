@@ -892,16 +892,20 @@ def _build_piano_voicings(
 
             # instrument_register("Piano") is a low left-hand range, which would put the
             # whole exercise below middle C and leave the treble staff a bar of rests.
-            # A two-handed study is written for the RIGHT hand, with the left derived an
-            # octave below, so the generated line belongs in the right hand's register.
-            from piano_grand_staff import PIANO_EXERCISE_HIGH, PIANO_EXERCISE_LOW
+            # A two-handed study is written for the RIGHT hand, with the left derived
+            # below it, so the generated line belongs in the right hand's register - one
+            # octave of it for a beginner, two for the levels whose patterns need the room.
+            from piano_grand_staff import left_hand_octaves, piano_exercise_register
 
+            _low, _high = piano_exercise_register(level)
             per_bar, plan = build_exercise_midis(
                 use, level=level, instrument="Piano", key_center=display_key,
-                focus=focus, mode=mode,
-                low=PIANO_EXERCISE_LOW, high=PIANO_EXERCISE_HIGH,
+                focus=focus, mode=mode, low=_low, high=_high,
             )
             plans.extend(plan)
+            # Decided once for the whole section: the left hand must not change octave
+            # between bars of one study.
+            apart = left_hand_octaves([m for bar in per_bar for m in bar])
             motion = scale_motion_for(level, focus) if mode == "scales" else "parallel"
             for bar_i, line in enumerate(per_bar):
                 if mode == "scales":
@@ -913,13 +917,15 @@ def _build_piano_voicings(
                     _chord = use[bar_i] if bar_i < len(use) else use[-1]
                     bars.append(
                         hands_for_scale(
-                            line, motion=motion,
+                            line, motion=motion, octaves_apart=apart,
                             scale_pcs=_scale_pcs(_chord, display_key or "C"),
                         )
                     )
                 else:
-                    # Arpeggios: the right hand breaks the chord and the left answers an
-                    # octave below. How much it answers is the left hand's job for this
+                    # Arpeggios: the right hand breaks the chord and the left answers
+                    # below it, at the same distance the scales use so a two-octave
+                    # arpeggio does not write the left hand above the bass staff.
+                    # How much it answers is the left hand's job for this
                     # focus - the same roles the Auto voicings use, so one focus means one
                     # thing across the piano's three modes rather than two unrelated ideas.
                     from piano_grand_staff import (
@@ -938,7 +944,7 @@ def _build_piano_voicings(
                     else:
                         answers = lambda i: i % 2 == 0  # alternate notes
                     bars.append([
-                        ([m - 12, m] if answers(i) else [m])
+                        ([m - 12 * apart, m] if answers(i) else [m])
                         for i, m in enumerate(line)
                     ])
         else:

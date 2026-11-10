@@ -179,8 +179,9 @@ class ScaleMotions(unittest.TestCase):
 
 class ItDoesNotReinventHarmony(unittest.TestCase):
     def test_spelling_comes_from_the_apps_own_speller(self):
-        """F# in A minor must be written as ^f, not _g."""
-        self.assertIn("^f", grand_staff_abc([[[66]]], key="Am"))
+        """F# in A minor must be written as an altered F, not as a G flat."""
+        self.assertIn("^F", grand_staff_abc([[[66]]], key="Am"))
+        self.assertNotIn("_G", grand_staff_abc([[[66]]], key="Am"))
 
     def test_the_adapter_takes_events_rather_than_deciding_music(self):
         params = inspect.signature(grand_staff_abc).parameters
@@ -217,10 +218,15 @@ class OctavesSurviveIntoTheAbc(unittest.TestCase):
         self.assertNotEqual(treble.strip(), bass.strip())
 
     def test_abc_octave_marks_follow_the_midi_octave(self):
-        """ABC: C3 is "C", C4 is "c", C5 is "c'"."""
-        self.assertIn("C", grand_staff_abc([[[48]]], key="C").split("V:2\n")[1])
-        self.assertIn("c", grand_staff_abc([[[60]]], key="C").split("V:1\n")[1])
-        self.assertIn("c'", grand_staff_abc([[[72]]], key="C").split("V:1\n")[1])
+        """ABC, as abcjs decodes it: "C," is 48, "C" is 60 (middle C), "c" is 72.
+
+        Asserted the other way round until now - "c" for middle C - which is what the
+        app's speller writes and one octave above what abcjs plays. See
+        tests/test_piano_abc_round_trip.py and scripts/_proof_piano_grand_staff_abcjs.py.
+        """
+        self.assertIn("C,", grand_staff_abc([[[48]]], key="C").split("V:2\n")[1])
+        self.assertIn("C", grand_staff_abc([[[60]]], key="C").split("V:1\n")[1])
+        self.assertIn("c", grand_staff_abc([[[72]]], key="C").split("V:1\n")[1])
 
     def test_a_low_note_gets_a_comma(self):
         self.assertIn("C,", grand_staff_abc([[[36]]], key="C").split("V:2\n")[1])
@@ -240,7 +246,7 @@ class SpellingFollowsTheKeySignature(unittest.TestCase):
         self.assertNotIn("^", bass)
 
     def test_a_sharp_the_key_does_not_carry_is_written_out(self):
-        self.assertIn("^f", grand_staff_abc([[[66]]], key="Am"))
+        self.assertIn("^F", grand_staff_abc([[[66]]], key="Am"))
 
     def test_a_note_the_key_would_sharpen_is_naturalled(self):
         """In G major a bare "f" reads as F#; an F natural has to say so."""

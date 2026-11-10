@@ -46,7 +46,66 @@ PIANO_HIGH = 108  # C8
 PIANO_EXERCISE_LOW = 60   # C4, middle C
 PIANO_EXERCISE_HIGH = 72  # C5
 
+# One octave is the right window for a first scale study and the wrong one for the levels
+# above it. A C major scale between C4 and C5 has eight rungs, and Advanced plays eight
+# notes a bar: the line hits the ceiling and turns round, measured at 21 turnarounds over
+# eight bars against 15 in two octaves, with eight distinct pitches against fifteen. That
+# is not a two-octave study played small, it is a different and worse exercise.
+#
+# So the window grows with the level, the way the study does, and the left hand's octave is
+# chosen per line (see ``left_hand_octaves``) rather than fixed at one - which is what let
+# the one-octave window look necessary in the first place.
+PIANO_EXERCISE_REGISTERS: dict[str, tuple[int, int]] = {
+    "Beginner": (60, 72),      # C4-C5, one octave, hands an octave apart
+    "Intermediate": (60, 84),  # C4-C6, two octaves
+    "Advanced": (60, 84),      # C4-C6; Advanced differs in notes per bar and pattern
+}
+
+# Where the left hand can be written and still be read on the bass staff. The staff spans
+# G2-A3; two ledger lines either side of it is E4 above and C2 below, which is as far as a
+# scale study is normally engraved before it changes clef.
+LEFT_HAND_CEILING = 64  # E4
+LEFT_HAND_FLOOR = 36    # C2
+
+# ``music_theory.abc_pitch_for_spelled_note`` writes scientific C4 (middle C, MIDI 60) as
+# ABC ``c``. Real abcjs 6.4.4 decodes a bare ``C`` as MIDI 60 and ``c`` as 72, so a token
+# written from a scientific octave sounds and is drawn an octave high. The grand staff is
+# the one place that cannot absorb the error: with both hands displaced the same way, the
+# left hand climbs above the bass staff and the right runs off the top of the treble.
+#
+# Composition and the AMI coach each correct the same thing the same way - see
+# ``composition_melody_notation.COMPOSITION_ABC_OCTAVE_SHIFT`` and
+# ``music_coach_ami.musical_idea_engine.COACH_ABC_OCTAVE_SHIFT``. This is that correction,
+# applied once, for the tokens this module writes.
+ABC_OCTAVE_SHIFT = -1
+
+
+def piano_exercise_register(level: str = "Intermediate") -> tuple[int, int]:
+    """The right hand's window for a scale or arpeggio study at this level."""
+    lvl = str(level or "Intermediate").strip().title()
+    return PIANO_EXERCISE_REGISTERS.get(lvl, PIANO_EXERCISE_REGISTERS["Intermediate"])
+
+
+def left_hand_octaves(midis: Sequence[int]) -> int:
+    """How many octaves below the right hand the left hand should answer.
+
+    One octave is the usual answer and the only one a one-octave study needs. A two-octave
+    line reaching C6 cannot be answered an octave below without writing the left hand up to
+    C5, four ledger lines above the bass staff; two octaves below puts the same notes back
+    where they are read. Chosen once for a whole line, never per bar, so the left hand does
+    not change octave in the middle of a study.
+    """
+    notes = [int(m) for m in midis if m is not None]
+    if not notes:
+        return 1
+    for k in (1, 2, 3):
+        if max(notes) - 12 * k <= LEFT_HAND_CEILING:
+            return k
+    return 3
+
 __all__ = [
+    "ABC_OCTAVE_SHIFT",
+    "CHORD_LABEL_SEPARATOR",
     "LH_OCTAVE",
     "LH_ROLE_FOR_FOCUS",
     "LH_ROOT",
@@ -58,10 +117,15 @@ __all__ = [
     "PIANO_HIGH",
     "PIANO_EXERCISE_HIGH",
     "PIANO_EXERCISE_LOW",
+    "PIANO_EXERCISE_REGISTERS",
     "PIANO_LOW",
     "grand_staff_abc",
+    "LEFT_HAND_CEILING",
     "LEFT_HAND_CENTRE",
+    "LEFT_HAND_FLOOR",
     "RIGHT_HAND_FLOOR",
+    "left_hand_octaves",
+    "piano_exercise_register",
     "hands_for_scale",
     "hands_for_voicing",
     "in_piano_range",
@@ -282,12 +346,17 @@ def _abc_token(midi: int, key: str) -> str:
     And ``k_field`` has to be the real key. Left at "C" the token is spelled as if there
     were no key signature, so a natural F in G major would emit a bare "f" that abcjs reads
     as F# - the key signature sharpening a note the harmony wanted natural.
+
+    Then ``ABC_OCTAVE_SHIFT``, which neither of those two covered: getting the octave
+    through the keyword argument still wrote it an octave above where it sounds. Proved
+    against abcjs itself, which decodes a bare "C" as MIDI 60; the speller writes MIDI 60
+    as "c", and abcjs reads that as 72.
     """
     from music_theory import abc_pitch_for_spelled_note, spell_note_in_key
 
     k = key or "C"
     name = spell_note_in_key(int(midi) % 12, k)
-    octave = int(midi) // 12 - 1
+    octave = int(midi) // 12 - 1 + ABC_OCTAVE_SHIFT
     return abc_pitch_for_spelled_note(name, octave=octave, k_field=k)
 
 
@@ -333,6 +402,60 @@ def _header(key: str, meter: str, bpm: int, title: str) -> list[str]:
     ]
 
 
+# How two harmonies sharing one printed note are joined. The app writes a subdivided bar
+# as "Em -> G" wherever it shows one inline, so the score says the same thing.
+CHORD_LABEL_SEPARATOR = " → "
+
+
+def _bar_chord_labels(token: object, hits: int, beats_per_bar: float) -> list[str]:
+    """One chord annotation per printed note, each above the note its harmony starts on.
+
+    A chart cell is not a chord symbol. ``"Em:3.5|G:0.5p"`` is two harmonies and their
+    timing - a bar of Em with a G pushed onto the last half-beat - and printing the cell
+    verbatim put that timing metadata on the staff, where
+    ``chord_subdivisions.chord_names_label`` says it must never go. The engraved answer is
+    both symbols, each over the note where it begins, which is what the wind and bass
+    staves already do through ``composition_melody_notation._chord_onset_beats``.
+
+    The timing itself is untouched: this reads the subdivisions and writes labels. Which
+    chord sounds when is decided upstream, by the chart, and the backing plays from the
+    same token this only reads.
+    """
+    slots = max(1, int(hits))
+    labels = [""] * slots
+    text = str(token or "").strip()
+    if not text:
+        return labels
+    try:
+        from chord_subdivisions import (
+            hit_underlying_chord,
+            is_hit_token,
+            parse_subdivisions,
+        )
+
+        subs = parse_subdivisions(text, beats_per_bar=float(beats_per_bar))
+    except Exception:
+        # Better a symbol that is merely unparsed than a bar with no harmony named.
+        labels[0] = text
+        return labels
+    if not subs:
+        return labels
+    per_hit = float(beats_per_bar) / slots
+    cursor = 0.0
+    for sub in subs:
+        name = str(getattr(sub, "chord", "") or "").strip()
+        if name and is_hit_token(name):
+            # A ".hit" marker is an instruction to the backing, not part of the name.
+            name = hit_underlying_chord(name) or name
+        if name:
+            # Floor, so a harmony is never announced after the note it starts on, and
+            # clamped, so a push landing on the bar line still gets printed.
+            j = min(slots - 1, max(0, int(cursor / per_hit + 1e-6)) if per_hit > 0 else 0)
+            labels[j] = f"{labels[j]}{CHORD_LABEL_SEPARATOR}{name}" if labels[j] else name
+        cursor += float(getattr(sub, "weight", 0.0) or 0.0)
+    return labels
+
+
 def grand_staff_abc(
     bars: Sequence[Sequence[Sequence[int]]],
     *,
@@ -358,9 +481,9 @@ def grand_staff_abc(
             hits = [[]]
         # Eighths per hit, so the bar always adds up to its meter.
         eighths = max(1, (int(beats_per_bar) * 2) // max(1, len(hits)))
-        label = ""
-        if i < len(chords) and str(chords[i] or "").strip():
-            label = f'"{str(chords[i]).strip()}"'
+        slot_labels = _bar_chord_labels(
+            chords[i] if i < len(chords) else "", len(hits), beats_per_bar
+        )
         t_toks, b_toks = [], []
         for j, hit in enumerate(hits):
             # A hit may arrive already assigned to hands as ``(left, right)``. Re-splitting
@@ -376,7 +499,7 @@ def grand_staff_abc(
                 left, right = split_hands(hit)
             # The chord symbol belongs above the top staff only; printing it over both
             # would have abcjs draw the same label twice, once per stave.
-            prefix = label if j == 0 else ""
+            prefix = f'"{slot_labels[j]}"' if j < len(slot_labels) and slot_labels[j] else ""
             t_toks.append(prefix + _chord_token(right, key, str(eighths)))
             b_toks.append(_chord_token(left, key, str(eighths)))
         treble.append(" ".join(t_toks))
@@ -423,11 +546,37 @@ def _descending_from(start: int, pcs: Sequence[int], count: int) -> list[int]:
     return out
 
 
+def _fit_into_bass_staff(notes: Sequence[int]) -> list[int]:
+    """Shift a left-hand line by whole octaves until it reads on the bass staff.
+
+    Whole octaves only, so every scale degree the line was given survives the move: this
+    decides where the hand sits, never which notes it plays. A descent long enough to reach
+    past the floor is placed as high as the ceiling allows, because running off the bottom
+    of the keyboard is the worse of the two failures - the engine clamps there and the bass
+    turns into a held note.
+    """
+    line = [int(m) for m in notes]
+    if not line:
+        return []
+    best, best_cost = line, None
+    for k in (-2, -1, 0, 1, 2):
+        cand = [m + 12 * k for m in line]
+        if min(cand) < PIANO_LOW or max(cand) > PIANO_HIGH:
+            continue
+        cost = (
+            max(0, LEFT_HAND_FLOOR - min(cand)) * 2
+            + max(0, max(cand) - LEFT_HAND_CEILING)
+        )
+        if best_cost is None or cost < best_cost:
+            best, best_cost = cand, cost
+    return best
+
+
 def hands_for_scale(
     midis: Sequence[int],
     *,
     motion: str = "parallel",
-    octaves_apart: int = 1,
+    octaves_apart: int | None = None,
     scale_pcs: Sequence[int] = (),
 ) -> list[list[int]]:
     """A scale line turned into two hands, one voicing per note.
@@ -450,15 +599,20 @@ def hands_for_scale(
     motion = str(motion or "parallel").strip().lower()
     if motion == "contrary" and not scale_pcs:
         motion = "parallel"
+    apart = left_hand_octaves(line) if octaves_apart is None else int(octaves_apart)
     out: list[list[int]] = []
     if motion == "contrary":
-        lefts = _descending_from(line[0] - 12 * octaves_apart, scale_pcs, len(line))
+        # The descent is built first and then placed, because how far it falls depends on
+        # the scale and the note count, not on the right hand's octave.
+        lefts = _fit_into_bass_staff(
+            _descending_from(line[0] - 12, scale_pcs, len(line))
+        )
         return [sorted({lefts[i], _clamp_to_piano(m)}) for i, m in enumerate(line)]
     for m in line:
         right = _clamp_to_piano(m)
         if motion == "separate":
             out.append([right])
             continue
-        left = _clamp_to_piano(m - 12 * octaves_apart)
+        left = _clamp_to_piano(m - 12 * apart)
         out.append(sorted({left, right}))
     return out
