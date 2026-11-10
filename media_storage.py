@@ -174,19 +174,7 @@ def song_document_local_path(workspace_id: str, rel_path: str) -> Path | None:
     and data that has been edited, synced from elsewhere or corrupted must not be able
     to name an arbitrary file on disk. Resolved and checked, every read.
     """
-    rel = str(rel_path or "").strip()
-    if not rel:
-        return None
-    base = recording_local_abs_path(workspace_id, "media/song_documents")
-    path = recording_local_abs_path(workspace_id, rel)
-    try:
-        resolved = path.resolve()
-        root = base.resolve()
-    except Exception:
-        return None
-    if resolved != root and root not in resolved.parents:
-        return None
-    return resolved
+    return workspace_contained_path(workspace_id, rel_path)
 
 
 def build_song_document_object_key(user_id: str, workspace_id: str, document_id: str) -> str:
@@ -213,12 +201,82 @@ def song_document_key_belongs_to(storage_ref: str, user_id: str, workspace_id: s
     return object_key.startswith(f"{uid}/{ws}/song_documents/")
 
 
-def recording_local_abs_path(workspace_id: str, rel_path: str) -> Path:
+def workspace_root(workspace_id: str) -> Path:
     from suite_workspace import workspace_dir
 
     ws = str(workspace_id or "daniel").strip() or "daniel"
-    rel = str(rel_path or "").strip().lstrip("/\\")
-    return workspace_dir(ws) / rel
+    return workspace_dir(ws)
+
+
+def _contained_parts(rel_path: str) -> list[str]:
+    """The components of *rel_path* that can only ever go downwards.
+
+    Drops "", ".", ".." and anything carrying a drive letter, so the result cannot
+    climb out of the directory it is joined to however the input was spelled:
+    "../x", "..\\x", "/etc/x", "C:/x" and "a/../../x" all collapse to something inside.
+    """
+    text = str(rel_path or "").strip().replace("\\", "/")
+    parts: list[str] = []
+    for part in text.split("/"):
+        part = part.strip()
+        if not part or part in (".", "..") or ":" in part:
+            continue
+        parts.append(part)
+    return parts
+
+
+def recording_local_abs_path(workspace_id: str, rel_path: str) -> Path:
+    """A path inside the workspace folder, whatever ``rel_path`` tried to say.
+
+    This used only to strip a leading slash, so a stored path containing ".." resolved
+    outside the workspace entirely - and the catalog rows that supply it are *data*:
+    synced from the cloud, editable on disk, and not necessarily written by this
+    version of the app. Among the callers is ``delete_recording_local``, which unlinks
+    what it is given, so a traversal path there meant arbitrary file deletion rather
+    than merely reading the wrong file.
+
+    Containment is by construction - traversal components are dropped rather than
+    resolved - so every existing caller becomes safe without being changed. Code that
+    needs to *know* a path pointed outside, rather than quietly be handed a safe one,
+    should use ``workspace_contained_path``.
+    """
+    return workspace_root(workspace_id).joinpath(*_contained_parts(rel_path))
+
+
+def workspace_contained_path(workspace_id: str, rel_path: str) -> Path | None:
+    """The real file for *rel_path*, or ``None`` if it is not inside the workspace.
+
+    Stricter than ``recording_local_abs_path`` in three ways. It judges the value as
+    given, so a path that *tried* to climb out is refused rather than quietly corrected
+    into a different file inside the workspace - which for a delete would mean removing
+    something real instead of nothing. It refuses absolute and drive-qualified paths for
+    the same reason. And it compares *canonical* paths, so a symlink planted inside the
+    workspace and pointing elsewhere is refused too; lexical cleaning cannot see through
+    a link.
+    """
+    raw = str(rel_path or "").strip().replace("\\", "/")
+    if not raw:
+        return None
+    if raw.startswith("/") or ":" in raw.split("/")[0]:
+        return None
+    if any(part.strip() == ".." for part in raw.split("/")):
+        return None
+    if not _contained_parts(raw):
+        return None
+    # Built through ``recording_local_abs_path`` rather than from the root directly, so
+    # the one place the rest of the app (and its tests) substitutes to redirect storage
+    # stays the single seam for both. Doing the join here instead would silently bypass
+    # every caller that relies on that.
+    root = recording_local_abs_path(workspace_id, "")
+    candidate = recording_local_abs_path(workspace_id, raw)
+    try:
+        resolved = candidate.resolve()
+        resolved_root = root.resolve()
+    except Exception:
+        return None
+    if resolved != resolved_root and resolved_root not in resolved.parents:
+        return None
+    return resolved
 
 
 def build_supabase_object_key(
@@ -589,7 +647,11 @@ def delete_recording_local(workspace_id: str, rel_path: str) -> str:
     rel = str(rel_path or "").strip()
     if not rel:
         return ""
-    path = recording_local_abs_path(workspace_id, rel)
+    # Deletion is the one operation that cannot be taken back, so it refuses a path it
+    # cannot prove is inside the workspace instead of being handed a corrected one.
+    path = workspace_contained_path(workspace_id, rel)
+    if path is None:
+        return "path_outside_workspace"
     try:
         if path.is_file():
             path.unlink()
