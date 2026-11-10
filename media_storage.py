@@ -165,6 +165,30 @@ def song_document_relpath(document_id: str) -> str:
     return f"media/song_documents/{str(document_id or '').strip()}.pdf"
 
 
+def song_document_local_path(workspace_id: str, rel_path: str) -> Path | None:
+    """The document's file, or ``None`` if the row points outside the workspace.
+
+    ``recording_local_abs_path`` only strips a leading slash, so a relative path holding
+    ``..`` resolves outside the workspace folder entirely. Nothing the app writes ever
+    contains one - the name is built from a generated id - but a catalog row is data,
+    and data that has been edited, synced from elsewhere or corrupted must not be able
+    to name an arbitrary file on disk. Resolved and checked, every read.
+    """
+    rel = str(rel_path or "").strip()
+    if not rel:
+        return None
+    base = recording_local_abs_path(workspace_id, "media/song_documents")
+    path = recording_local_abs_path(workspace_id, rel)
+    try:
+        resolved = path.resolve()
+        root = base.resolve()
+    except Exception:
+        return None
+    if resolved != root and root not in resolved.parents:
+        return None
+    return resolved
+
+
 def build_song_document_object_key(user_id: str, workspace_id: str, document_id: str) -> str:
     """The private object key, scoped by user and workspace exactly like recordings."""
     uid = str(user_id or "local").strip() or "local"
@@ -300,7 +324,21 @@ def validate_pdf_bytes(data: Any) -> tuple[bytes | None, str]:
 
 
 def pdf_page_count(data: bytes) -> int | None:
-    """A best-effort page count for the list, never a reason to reject a file."""
+    """A best-effort page count for the list, never a reason to reject a file.
+
+    PyMuPDF when it is installed, because it reads the page tree rather than guessing;
+    a ``/Type /Page`` scan otherwise, which is close enough for a caption and wrong for
+    a document that stores its pages in an object stream.
+    """
+    try:
+        import pymupdf
+
+        with pymupdf.open(stream=data, filetype="pdf") as doc:
+            count = int(doc.page_count)
+            if count > 0:
+                return count
+    except Exception:
+        pass
     try:
         import re
 

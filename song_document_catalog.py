@@ -347,7 +347,7 @@ def load_song_document_bytes(
     from media_persistence import list_song_documents
     from media_storage import (
         download_song_document_cloud,
-        recording_local_abs_path,
+        song_document_local_path,
     )
 
     did = str(document_id or "").strip()
@@ -369,8 +369,8 @@ def load_song_document_bytes(
     local = str(row.get("local_path") or "")
     if local:
         try:
-            path = recording_local_abs_path(ws, local)
-            if path.is_file() and path.stat().st_size > 0:
+            path = song_document_local_path(ws, local)
+            if path is not None and path.is_file() and path.stat().st_size > 0:
                 return path.read_bytes(), ""
         except Exception:
             pass

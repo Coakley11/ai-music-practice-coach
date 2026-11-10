@@ -19921,13 +19921,18 @@ elif _studio_page == "practice":
                                 else:
                                     render_abc(practice_melody_full_song_abc(_pm_melody))
 
-                with st.expander(feature_label("practice_melody_uploaded", "My Uploaded Melody"), expanded=False):
-                    st.info(
-                        "Coming soon. You'll be able to upload your own melody/sheet-music "
-                        "material (image or PDF) to keep privately alongside this song. "
-                        "This needs a verified private, per-user storage path before it "
-                        "ships — nothing selected here is saved yet."
-                    )
+                with st.expander(
+                    feature_label("practice_melody_uploaded", "My Uploaded Melodies"),
+                    expanded=False,
+                ):
+                    # The musician's own PDFs for this song: licks, exercises, sheet
+                    # music, handwritten pages, notes. Stored privately per workspace
+                    # through the same media catalog the recordings use -- see
+                    # song_document_catalog.py. The panel owns only its own widgets and
+                    # never touches the Practice Key, instrument or backing settings.
+                    from song_document_panel import render_song_documents_panel
+
+                    render_song_documents_panel(st, st.session_state)
 
                 with st.expander(
                     feature_label("practice_melody_original", "Original Melody"),
