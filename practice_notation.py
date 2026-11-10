@@ -885,6 +885,7 @@ def _build_arpeggio_line(
     focus: str = "",
     groove_style: str = "",
     exercise_mode: str = "auto",
+    register_instrument: str = "",
 ) -> NotationResult:
     """A single connected chord-tone line through *chords* for wind/vocal/
     generic instruments -- each chord's tones realized nearest the previous
@@ -919,12 +920,14 @@ def _build_arpeggio_line(
             events, exercise_plan = build_exercise_events(
                 use, level=level, instrument=instrument, key_center=display_key,
                 focus=focus, mode=exercise_mode,
+                register_instrument=register_instrument,
             )
         except Exception:
             events = []
         if not events:
             events = build_connected_arpeggio_line(
-                use, level=level, instrument=instrument, focus=focus, groove_style=groove_style
+                use, level=level, instrument=register_instrument or instrument,
+                focus=focus, groove_style=groove_style,
             )
         exercise_plans.extend(exercise_plan)
         dicts = arpeggio_events_to_melody_dicts(events)
@@ -1027,6 +1030,36 @@ def _build_bass_line(
     )
 
 
+# Which instruments the Scales / Arpeggios choice actually reaches. Guitar renders TAB,
+# Piano renders connected voicings and Bass renders a walking line - three builders that
+# predate the exercise modes and have their own musical logic. Offering a mode that
+# silently does nothing is worse than saying so, which is what this answers.
+EXERCISE_MODE_BUILDERS: dict[str, str] = {
+    "guitar": "guitar TAB",
+    "piano": "piano voicings",
+    "keyboard": "piano voicings",
+    "bass": "a walking bass line",
+}
+
+
+def exercise_mode_supported(instrument: str) -> bool:
+    """True when Scales / Arpeggios changes what this instrument is given."""
+    inst = str(instrument or "").lower()
+    return not any(key in inst for key in EXERCISE_MODE_BUILDERS)
+
+
+def exercise_mode_unsupported_reason(instrument: str) -> str:
+    """Why the choice does nothing here, in the musician's terms. "" when it does work."""
+    inst = str(instrument or "").lower()
+    for key, what in EXERCISE_MODE_BUILDERS.items():
+        if key in inst:
+            return (
+                f"Scales and Arpeggios do not apply to {str(instrument).strip()} yet - "
+                f"its notation is {what}."
+            )
+    return ""
+
+
 def generate_practice_notation(
     *,
     song_title: str,
@@ -1042,6 +1075,7 @@ def generate_practice_notation(
     guitar_tabs: dict[str, str] | None = None,
     difficulty: str = "medium",
     exercise_mode: str = "auto",
+    register_instrument: str = "",
 ) -> NotationResult:
     diff = (difficulty or "medium").lower()
     if diff not in ("easy", "medium", "advanced"):
@@ -1133,6 +1167,7 @@ def generate_practice_notation(
         focus=focus,
         groove_style=groove_style,
         exercise_mode=exercise_mode,
+        register_instrument=register_instrument,
     )
 
 

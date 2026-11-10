@@ -336,6 +336,7 @@ def build_exercise_midis(
     seed: int | None = None,
     focus: str = "",
     mode: str = "auto",
+    register_instrument: str = "",
 ) -> tuple[list[list[int]], list[str]]:
     """``(midis per bar, pattern per bar)`` for a whole progression.
 
@@ -345,7 +346,13 @@ def build_exercise_midis(
     chords = [str(c or "").strip() or "C" for c in (chords or [])]
     lvl = _level(level)
     if low is None or high is None:
-        lo, hi = _register(instrument, lvl)
+        # The Practice page passes the instrument *family* ("Saxophone"), which resolves
+        # to the alto register. A baritone or soprano player needs their own range, so the
+        # caller may pass the specific type it already resolved for the written key.
+        # Only a name the transposition table actually knows is trusted: an unrecognised
+        # one resolves to a generic default profile, which would be a worse answer than
+        # the family's own register rather than a better one.
+        lo, hi = _register(_known_register_name(register_instrument) or instrument, lvl)
     else:
         lo, hi = int(low), int(high)
     per_bar = NOTES_PER_BAR[lvl]
@@ -360,6 +367,19 @@ def build_exercise_midis(
         out.append(bar)
         cursor = bar[-1] if bar else cursor
     return out, plan
+
+
+def _known_register_name(name: str) -> str:
+    """``name`` if the transposition table knows it, else "" so the caller falls back."""
+    text = str(name or "").strip()
+    if not text:
+        return ""
+    try:
+        from instrument_transposition import TRANSPOSING_SEMITONE_STEPS
+
+        return text if text in TRANSPOSING_SEMITONE_STEPS else ""
+    except Exception:
+        return ""
 
 
 def _register(instrument: str, level: str) -> tuple[int, int]:
@@ -415,6 +435,7 @@ def build_exercise_events(
     seed: int | None = None,
     focus: str = "",
     mode: str = "auto",
+    register_instrument: str = "",
 ):
     """``(ArpeggioEvent list, pattern per bar)`` - the exercise as the notation renderer consumes it.
 
@@ -426,7 +447,7 @@ def build_exercise_events(
 
     bars, plan = build_exercise_midis(
         chords, level=level, instrument=instrument, key_center=key_center, seed=seed,
-        focus=focus, mode=mode,
+        focus=focus, mode=mode, register_instrument=register_instrument,
     )
     lvl = _level(level)
     events = []
