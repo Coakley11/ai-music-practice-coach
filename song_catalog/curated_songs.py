@@ -1787,12 +1787,12 @@ def _photograph_chart_pack() -> dict[str, Any]:
 
 
 def _say_chart_pack() -> dict[str, Any]:
-    """Say — John Mayer (G major, pop ballad, 4/4).
+    """Say — John Mayer (B♭ major original key, pop ballad, 4/4; the G-shape chart is played with a capo on fret 3).
 
-    One list item = one bar. Intro **G / Gsus4 / G / Gsus4/A** (2 bars each,
-    twice). Main loop **G–C–Em–D** with **C** and **D** pushed early;
-    bridge **Am–Am–C–D** with pushed **D**; final chorus **Em–G / C7** (×8)
-    with pushed **G**.
+    One list item = one bar. Intro **B♭ / B♭sus4 / B♭ / B♭sus4/C** (2 bars each,
+    twice). Main loop **B♭–E♭–Gm–F** with **E♭** and **F** pushed early;
+    bridge **Cm–Cm–E♭–F** with pushed **F**; final chorus **Gm–B♭ / E♭7** (×8)
+    with pushed **B♭**.
     """
     from song_catalog.lyric_chord_charts import (
         SAY_BRIDGE_BARS,
@@ -1803,7 +1803,7 @@ def _say_chart_pack() -> dict[str, Any]:
         SAY_MAIN_LOOP,
     )
 
-    main4_simple = ["G", "C", "Em", "D"]
+    main4_simple = ["Bb", "Eb", "Gm", "F"]
     intro = list(SAY_INTRO_BARS)
     verse16 = list(SAY_MAIN_LOOP) * 4
     chorus16 = list(SAY_MAIN_LOOP) * 4
@@ -1832,24 +1832,24 @@ def _say_chart_pack() -> dict[str, Any]:
         "Verse 2": list(main4_simple),
         "Chorus 2": list(main4_simple),
         "Turnaround 2": list(main4_simple),
-        "Bridge": ["Am", "Am", "C", "D", "C", "C", "C", "D"],
+        "Bridge": ["Cm", "Cm", "Eb", "F", "Eb", "Eb", "Eb", "F"],
         "Turnaround 3": list(main4_simple),
         "Verse 3": list(main4_simple),
-        "Final Chorus": ["Em", "G", "C7", "C7"] * 2,
+        "Final Chorus": ["Gm", "Bb", "Eb7", "Eb7"] * 2,
     }
     section_order = list(intermediate.keys())
     guitar_tabs = {
-        "G": "320003",
-        "Gsus4": "320013",
-        "Gsus4/A": "x00013",
-        "C": "x32010",
-        "Em": "022000",
-        "D": "xx0232",
-        "Am": "x02210",
-        "C7": "x32310",
+        "Bb": "x13331",
+        "Bbsus4": "x13341",
+        "Bbsus4/C": "x33341",
+        "Eb": "x68886",
+        "Gm": "355333",
+        "F": "133211",
+        "Cm": "x35543",
+        "Eb7": "x68686",
     }
     return {
-        "key": "G",
+        "key": "Bb",
         "sections": intermediate,
         "chart_versions": _levels(
             beginner=beginner,
@@ -1860,7 +1860,7 @@ def _say_chart_pack() -> dict[str, Any]:
         "section_order": section_order,
         "guitar_tabs": guitar_tabs,
         "lyric_cues": {
-            "Intro": ["Instrumental — G · C · Em · D"],
+            "Intro": ["Instrumental — B♭ · E♭ · Gm · F"],
             "Verse 1": [
                 "Take all of your wasted honor",
                 "Every little past frustration",
@@ -1873,7 +1873,7 @@ def _say_chart_pack() -> dict[str, Any]:
                 "Even if your eyes are closing",
                 "Say it anyway",
             ],
-            "Verse 2": ["Second verse — same G · C · Em · D loop"],
+            "Verse 2": ["Second verse — same B♭ · E♭ · Gm · F loop"],
             "Chorus 2": ["Chorus lift — same loop, more energy"],
             "Bridge": [
                 "Walking like a one man army",
@@ -1882,23 +1882,28 @@ def _say_chart_pack() -> dict[str, Any]:
                 "Knowing that it's all a waste of time",
             ],
             "Verse 3": ["Third verse — return to main loop"],
-            "Final Chorus": ["Say what you need to say — Em · G · C7 hold"],
+            "Final Chorus": ["Say what you need to say — Gm · B♭ · E♭7 hold"],
         },
         "extensions": _ext(
             arrangement_notes=(
-                "**G major** pop ballad (**4/4**, mid-tempo, straight 8ths). "
-                "Intro **G / Gsus4 / G / Gsus4/A** (two bars each, twice). "
-                "Main loop **G–C–Em–D** with **C** and **D** pushed slightly "
+                "**B♭ major** pop ballad (**4/4**, mid-tempo, straight 8ths); published "
+                "original key B♭ (Hooktheory, Musicnotes) — guitar charts read it in "
+                "**G shapes with a capo on fret 3**. "
+                "Intro **B♭ / B♭sus4 / B♭ / B♭sus4/C** (two bars each, twice). "
+                "Main loop **B♭–E♭–Gm–F** with **E♭** and **F** pushed slightly "
                 "early (`:0.5p`). Form: **Intro** → **Verse 1** → **Chorus 1** "
                 "→ **Turnaround** → **Verse 2** → **Chorus 2** → **Turnaround** "
-                "→ **Bridge** (**Am–Am–C–D** ×3 with pushed **D**, then "
-                "**C–C–C–D**) → **Turnaround** → **Verse 3** → **Final Chorus** "
-                "(**Em–G / C7**, eight times, **G** pushed early). Backing "
-                "intensity builds on successive choruses; final chorus is the peak."
+                "→ **Bridge** (**Cm–Cm–E♭–F** ×3 with pushed **F**, then "
+                "**E♭–E♭–E♭–F**) → **Turnaround** → **Verse 3** → **Final Chorus** "
+                "(**Gm–B♭ / E♭7**, eight times, **B♭** pushed early). Backing "
+                "intensity builds on successive choruses; final chorus is the peak. "
+                "Repeat counts and section lengths are not source-verified (chart is "
+                "longer than the recording)."
             ),
             default_bpm=82,
             default_groove="Ballad",
             time_signature="4/4",
+            capo_note="Capo 3 (G-shape chart) · concert key B♭ major",
             lyric_chord_chart=SAY_CHART,
         ),
     }
@@ -9440,24 +9445,24 @@ def curated_song_records() -> list[dict[str, Any]]:
             "Say",
             "John Mayer",
             "Pop",
-            "G",
+            "Bb",
             {
-                "Intro": ["G", "C", "Em", "D"],
-                "Verse 1": ["G", "C", "Em", "D"] * 4,
-                "Chorus 1": ["G", "C", "Em", "D"] * 4,
-                "Turnaround 1": ["G", "C", "Em", "D"],
-                "Verse 2": ["G", "C", "Em", "D"] * 4,
-                "Chorus 2": ["G", "C", "Em", "D"] * 4,
-                "Bridge": ["Am", "C", "D", "Am", "C", "D", "C", "D"],
-                "Final Chorus": ["Em", "G", "C7", "C7", "Em", "G", "C7", "C7"],
+                "Intro": ["Bb", "Eb", "Gm", "F"],
+                "Verse 1": ["Bb", "Eb", "Gm", "F"] * 4,
+                "Chorus 1": ["Bb", "Eb", "Gm", "F"] * 4,
+                "Turnaround 1": ["Bb", "Eb", "Gm", "F"],
+                "Verse 2": ["Bb", "Eb", "Gm", "F"] * 4,
+                "Chorus 2": ["Bb", "Eb", "Gm", "F"] * 4,
+                "Bridge": ["Cm", "Eb", "F", "Cm", "Eb", "F", "Eb", "F"],
+                "Final Chorus": ["Gm", "Bb", "Eb7", "Eb7", "Gm", "Bb", "Eb7", "Eb7"],
             },
             guitar_tabs={
-                "G": "320003",
-                "C": "x32010",
-                "Em": "022000",
-                "D": "xx0232",
-                "Am": "x02210",
-                "C7": "x32310",
+                "Bb": "x13331",
+                "Eb": "x68886",
+                "Gm": "355333",
+                "F": "133211",
+                "Cm": "x35543",
+                "Eb7": "x68686",
             },
             chart_status="practice_level_verified",
             section_order=[
