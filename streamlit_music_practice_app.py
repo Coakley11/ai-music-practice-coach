@@ -19117,6 +19117,12 @@ elif _studio_page == "practice":
         _capo_ctx.enabled,
         _capo_ctx.shape_key if _capo_ctx.enabled else "",
         _capo_ctx.capo_fret if _capo_ctx.enabled else 0,
+        # The exercise the musician asked for, and how hard. Without these two the
+        # cached result survived a change to either control, so switching Arpeggios to
+        # Scales (or medium to advanced) left the previous exercise on screen until
+        # Generate was pressed again - stale notation describing a choice no longer made.
+        st.session_state.get("practice_notation_exercise_mode", "auto"),
+        st.session_state.get("practice_notation_difficulty", "medium"),
     )
     if st.session_state.get("practice_notation_sig") != _notation_sig:
         st.session_state.pop(_NOTATION_KEY, None)

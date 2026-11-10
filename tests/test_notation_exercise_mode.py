@@ -258,3 +258,36 @@ class TheSelectorIsWiredIntoThePracticePage(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class StaleNotationIsInvalidated(unittest.TestCase):
+    """Changing the exercise or the difficulty must drop the cached result.
+
+    _notation_sig decides when practice_notation_result is cleared. It listed song,
+    section, instrument, focus, chart key, bpm, groove, sax type and capo - but neither
+    the exercise mode nor the difficulty, so switching either left the previous
+    exercise on screen describing a choice the musician had already changed.
+    """
+
+    def setUp(self):
+        src = (ROOT / "streamlit_music_practice_app.py").read_text(encoding="utf-8")
+        start = src.index("_notation_sig = (")
+        end = src.index('if st.session_state.get("practice_notation_sig")', start)
+        self.sig = src[start:end]
+
+    def test_the_exercise_mode_is_part_of_the_signature(self):
+        self.assertIn("practice_notation_exercise_mode", self.sig)
+
+    def test_the_difficulty_is_part_of_the_signature(self):
+        self.assertIn("practice_notation_difficulty", self.sig)
+
+    def test_the_existing_inputs_are_still_there(self):
+        for token in ("song", "instrument", "focus", "_practice_chart_key", "_practice_bpm"):
+            with self.subTest(token=token):
+                self.assertIn(token, self.sig)
+
+    def test_the_cache_is_cleared_when_the_signature_moves(self):
+        src = (ROOT / "streamlit_music_practice_app.py").read_text(encoding="utf-8")
+        self.assertIn(
+            'if st.session_state.get("practice_notation_sig") != _notation_sig:', src
+        )
