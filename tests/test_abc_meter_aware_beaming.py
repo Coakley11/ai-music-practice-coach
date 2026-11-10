@@ -170,9 +170,18 @@ class TestOnlyWhitespaceChanged(unittest.TestCase):
         abc = build_abc_from_melody_events(
             arpeggio_events_to_melody_dicts(events), key="C", meter="4/4", bpm=120, title="n"
         )
+        # Re-captured deliberately, and not because beaming changed - this class
+        # exists to prove beaming only ever removes separators, and it still does.
+        #
+        # The exercise itself changed, for a reason that can be stated exactly: the
+        # previous golden contained written G3 (55) and A3 (57), and the lowest note
+        # any saxophone can play is written Bb3 (58). The Saxophone Advanced register
+        # began at 52, six semitones below the horn, so the captured line included
+        # notes nobody could sound. It now begins at 58 and this capture contains
+        # nothing below it. See tests/test_instrument_register_playable.py.
         self._assert_content(
             abc,
-            "(!>!fa2c'd'2.c'2|!>!bgfdBG.B2|!>!c2egbc'._a2|!>!ge2^c2AG2)|",
+            "(!>!ac'2d'f'2._e'2|!>!d'bgfdB.^d2|!>!e2gbc'e'._a'2|!>!a'g'2e'2^c'a2)|",
         )
 
 

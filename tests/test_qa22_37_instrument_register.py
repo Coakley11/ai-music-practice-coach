@@ -62,8 +62,28 @@ class TestMissionExamplesStayInRange(unittest.TestCase):
                         span = max(midis) - min(midis)
                         if span <= (hi - lo) - 11:                    # an octave placement exists
                             self.assertLessEqual(max(midis), hi)
-                        else:                                          # too wide for the comfortable window
-                            self.assertLessEqual(max(midis), comfortable_written_range(inst, "Advanced")[1])
+                        else:
+                            # Too wide for the comfortable window, so the phrase has to
+                            # leave it somewhere, and the module's own rule is that it
+                            # leaves at the top: below the floor is unplayable, above
+                            # the comfort ceiling is merely awkward.
+                            #
+                            # This used to allow up to the Advanced *comfortable*
+                            # ceiling. That worked while the saxophone registers began
+                            # six to ten semitones below the horn's lowest written
+                            # note, which made (hi - lo) wide enough that this branch
+                            # was rarely taken. With the floors corrected the window is
+                            # genuinely narrower, so the limit that still means
+                            # something is the physical one - the highest note the
+                            # instrument can play at all.
+                            from music_coach_ami.notation_profile import (
+                                playable_written_range,
+                            )
+
+                            self.assertLessEqual(
+                                max(midis),
+                                playable_written_range(str(args.get("instrument") or inst))[1],
+                            )
 
     def test_pitch_classes_match_the_note_names(self):
         from improvisation_motif import _midi_from_note

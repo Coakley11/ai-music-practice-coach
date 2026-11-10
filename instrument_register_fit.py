@@ -60,7 +60,19 @@ def fit_midis_to_register(midis: list[int], low: int, high: int) -> list[int]:
         lo_m, hi_m = min(out) + shift, max(out) + shift
         return (3 * max(0, low - lo_m) + max(0, hi_m - high), abs(shift))
 
-    best = min((-24, -12, 0, 12, 24), key=cost)
+    shifts = (-24, -12, 0, 12, 24)
+    # The floor is a fact about the instrument, so weighting it three times is not
+    # quite enough: whenever *some* octave clears it, that octave wins outright and the
+    # ceiling - which is only a comfort window - absorbs the overshoot. This follows the
+    # rule stated above rather than changing it. It matters now the floors are the
+    # instruments' real ones; against a saxophone floor six semitones too low, the
+    # weighting happened to be sufficient and a phrase could still land a semitone
+    # under the horn's lowest note.
+    playable = [s for s in shifts if min(out) + s >= low]
+    if playable:
+        best = min(playable, key=lambda s: (max(0, max(out) + s - high), abs(s)))
+    else:
+        best = min(shifts, key=cost)
     return [m + best for m in out]
 
 

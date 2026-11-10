@@ -349,16 +349,14 @@ def instrument_register(instrument: str, level: str = "Intermediate") -> tuple[i
     # instrument (tenor and bari sax do), so clamp it before widening.
     base_lo = min(max(int(profile.midi_low), floor), ceiling)
     base_hi = max(min(int(profile.midi_high), ceiling), floor)
+    # Widened around the profile's own window and then clamped, so each instrument
+    # keeps the part of the range it is meant to emphasise. An earlier version handed
+    # the unusable half of the expansion to the other end to keep the span growing;
+    # that worked, and at Advanced it pushed every saxophone to the same ceiling, so
+    # a baritone and a soprano produced identical exercises. The span still grows with
+    # the level - it just grows from where the instrument sits.
     lo = max(floor, base_lo - expand)
     hi = min(ceiling, base_hi + expand)
-    # Hand the unusable half of the expansion to the other end rather than
-    # dropping it, so a level still means a wider register than the one below.
-    spare_low = expand - (base_lo - lo)
-    if spare_low > 0:
-        hi = min(ceiling, hi + spare_low)
-    spare_high = expand - (hi - base_hi)
-    if spare_high > 0:
-        lo = max(floor, lo - spare_high)
     # Every register this module resolves must span at least an octave, or
     # ``_nearest_octave_in_range`` has no representative of some pitch class to
     # return and the generators emit a note outside their own bounds. Raising
