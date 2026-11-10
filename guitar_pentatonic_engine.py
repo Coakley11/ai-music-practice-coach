@@ -46,6 +46,21 @@ _PREFERRED_LO = {"Beginner": 2, "Intermediate": 2, "Advanced": 1}
 _MAX_SAME_STRING_JUMP = 5  # frets -- consecutive notes on the same string
 _MAX_CONSECUTIVE_JUMP = 7  # frets -- any two consecutive notes, any strings
 
+# The same fretboard policy a *melodic* guitar line must obey wherever it is
+# generated. Exposed because guitar_exercise_tab builds scale and arpeggio lines
+# from absolute pitches rather than pitch classes, and must answer to one set of
+# playability rules rather than its own copy of these numbers.
+MAX_SAME_STRING_JUMP = _MAX_SAME_STRING_JUMP
+MAX_CONSECUTIVE_JUMP = _MAX_CONSECUTIVE_JUMP
+NUM_STRINGS = _NUM_STRINGS
+WINDOW_SPAN = dict(_WINDOW_SPAN)
+PREFERRED_LO = dict(_PREFERRED_LO)
+LEVEL_SLOTS = {
+    "Beginner": _BEGINNER_SLOTS,
+    "Intermediate": _INTERMEDIATE_SLOTS,
+    "Advanced": _ADVANCED_SLOTS_STRAIGHT,
+}
+
 
 @dataclass
 class PentatonicNoteEvent:
@@ -314,7 +329,13 @@ def validate_pentatonic_line(measures: list[list[PentatonicNoteEvent]]) -> tuple
 
 
 __all__ = [
+    "LEVEL_SLOTS",
+    "MAX_CONSECUTIVE_JUMP",
+    "MAX_SAME_STRING_JUMP",
+    "NUM_STRINGS",
+    "PREFERRED_LO",
     "PentatonicNoteEvent",
+    "WINDOW_SPAN",
     "build_guitar_pentatonic_measures",
     "validate_pentatonic_line",
 ]

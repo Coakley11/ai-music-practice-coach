@@ -646,6 +646,8 @@ def _build_guitar_tab(
     section: str,
     song_title: str,
     bpm: int,
+    display_key: str = "C",
+    exercise_mode: str = "auto",
 ) -> NotationResult:
     """Level-aware guitar TAB: real voicing differentiation (open/compact
     shell -> movable barre shapes -> jazz shell/drop-2 voicings) from
@@ -655,7 +657,14 @@ def _build_guitar_tab(
     unique section once, in first-appearance order)."""
     from guitar_voicing_engine import build_level_guitar_voicings
 
+    from notation_exercise_patterns import normalize_exercise_mode
+
     fk = _focus_kind(focus)
+    # An explicitly chosen Scales or Arpeggios exercise is authoritative over whatever the
+    # Practice Focus would otherwise have produced: the selector is the user saying which
+    # study they want, and a focus of Pentatonics must not quietly override it.
+    ex_mode = normalize_exercise_mode(exercise_mode)
+    is_exercise = ex_mode in ("scales", "arpeggios")
     groove_info = _groove_pattern(groove, fk)
     level = _DIFFICULTY_TO_LEVEL.get(difficulty, "Intermediate")
     canonical_groove = groove_resolve_style(groove)
@@ -683,7 +692,30 @@ def _build_guitar_tab(
 
         measures_html: list[str] = []
 
-        if fk == "pentatonic":
+        if is_exercise:
+            # Scales/arpeggios: the notes come from the shared notation_exercise_patterns
+            # engine - the same one the wind instruments and the piano use - and
+            # guitar_exercise_tab only puts them on the fretboard.
+            from guitar_exercise_tab import build_guitar_exercise_measures
+
+            measures = build_guitar_exercise_measures(
+                use,
+                level=level,
+                mode=ex_mode,
+                focus=focus,
+                key_center=display_key or "C",
+            )
+            for i, (ch, events) in enumerate(zip(use, measures), start=1):
+                pentatonic_shift_count += sum(1 for ev in events if ev.position_shift)
+                block, plain = _render_pentatonic_measure_html(
+                    chord=ch,
+                    events=events,
+                    bar_index=i,
+                    groove_info=groove_info,
+                )
+                measures_html.append(block)
+                all_plain_parts.append(plain)
+        elif fk == "pentatonic":
             from guitar_pentatonic_engine import build_guitar_pentatonic_measures
 
             measures = build_guitar_pentatonic_measures(
@@ -767,7 +799,17 @@ def _build_guitar_tab(
         difficulty=difficulty,
         groove_info=groove_info,
     )
-    if fk == "pentatonic":
+    if is_exercise:
+        label = "scale" if ex_mode == "scales" else "arpeggio"
+        cues.append(
+            f"{level} {label} study: "
+            + (
+                f"{pentatonic_shift_count} position shift(s) across the neck"
+                if pentatonic_shift_count
+                else "stays in one position"
+            )
+        )
+    elif fk == "pentatonic":
         cues.append(
             f"{level} pentatonic phrasing: "
             + ("position shifts across the neck" if pentatonic_shift_count else "one connected position")
@@ -1091,30 +1133,49 @@ def _build_bass_line(
 # Piano renders connected voicings and Bass renders a walking line - three builders that
 # predate the exercise modes and have their own musical logic. Offering a mode that
 # silently does nothing is worse than saying so, which is what this answers.
+def notation_builder_kind(instrument: str) -> str:
+    """Which builder an instrument's notation comes from: guitar, piano, bass or line.
+
+    This is the single statement of that precedence. ``generate_practice_notation`` used to
+    decide it inline while ``exercise_mode_supported`` decided it again separately, and the
+    two could disagree - they did: an instrument matching both "bass" and "guitar" routed to
+    the guitar builder but was declared a bass, so the selector claimed to do nothing while
+    actually changing the output. One function cannot contradict itself.
+    """
+    inst = str(instrument or "").lower()
+    if "guitar" in inst:
+        return "guitar"
+    if "piano" in inst or "keyboard" in inst:
+        return "piano"
+    if "bass" in inst:
+        return "bass"
+    return "line"
+
+
+# Builders that do not yet answer to the Scales / Arpeggios choice, and what they render
+# instead. Guitar and piano were here until each grew a real exercise path: guitar via
+# guitar_exercise_tab (absolute pitches on the fretboard) and piano via piano_grand_staff
+# (two staves, hands with roles). Bass still comps a walking line, so it is declared
+# honestly rather than offered a selector that does nothing.
 EXERCISE_MODE_BUILDERS: dict[str, str] = {
-    "guitar": "guitar TAB",
-    "piano": "piano voicings",
-    "keyboard": "piano voicings",
     "bass": "a walking bass line",
 }
 
 
 def exercise_mode_supported(instrument: str) -> bool:
     """True when Scales / Arpeggios changes what this instrument is given."""
-    inst = str(instrument or "").lower()
-    return not any(key in inst for key in EXERCISE_MODE_BUILDERS)
+    return notation_builder_kind(instrument) not in EXERCISE_MODE_BUILDERS
 
 
 def exercise_mode_unsupported_reason(instrument: str) -> str:
     """Why the choice does nothing here, in the musician's terms. "" when it does work."""
-    inst = str(instrument or "").lower()
-    for key, what in EXERCISE_MODE_BUILDERS.items():
-        if key in inst:
-            return (
-                f"Scales and Arpeggios do not apply to {str(instrument).strip()} yet - "
-                f"its notation is {what}."
-            )
-    return ""
+    what = EXERCISE_MODE_BUILDERS.get(notation_builder_kind(instrument))
+    if not what:
+        return ""
+    return (
+        f"Scales and Arpeggios do not apply to {str(instrument).strip()} yet - "
+        f"its notation is {what}."
+    )
 
 
 def generate_practice_notation(
@@ -1178,9 +1239,9 @@ def generate_practice_notation(
     ]
 
     tabs = song_guitar_tabs_for_key(guitar_tabs, original_key, display_key)
-    inst = (instrument or "").lower()
+    kind = notation_builder_kind(instrument)
 
-    if "guitar" in inst:
+    if kind == "guitar":
         return _build_guitar_tab(
             section_chord_pairs=section_chord_pairs,
             guitar_tabs=tabs,
@@ -1190,8 +1251,10 @@ def generate_practice_notation(
             section=section_label,
             song_title=song_title,
             bpm=bpm,
+            display_key=display_key,
+            exercise_mode=exercise_mode,
         )
-    if "piano" in inst or "keyboard" in inst:
+    if kind == "piano":
         return _build_piano_voicings(
             section_chord_pairs=section_chord_pairs,
             display_key=display_key,
@@ -1203,7 +1266,7 @@ def generate_practice_notation(
             groove_style=groove_style,
             exercise_mode=exercise_mode,
         )
-    if "bass" in inst:
+    if kind == "bass":
         return _build_bass_line(
             section_chord_pairs=section_chord_pairs,
             display_key=display_key,
