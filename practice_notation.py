@@ -814,6 +814,7 @@ def _build_piano_voicings(
     bpm: int,
     focus: str = "",
     groove_style: str = "",
+    exercise_mode: str = "auto",
 ) -> NotationResult:
     """Connected close-position chord voicings -- each chosen to minimize
     movement from the previous one (voice leading), not independent
@@ -823,30 +824,86 @@ def _build_piano_voicings(
     resets at each section's own start, matching how a lead sheet presents
     distinct sections rather than treating the whole form as one unbroken
     phrase) -- the UI renders each under its own heading."""
-    from chord_navigation_notation import build_connected_piano_voicings, build_piano_voicing_abc
+    from chord_navigation_notation import build_connected_piano_voicings
+    from piano_grand_staff import (
+        grand_staff_abc,
+        hands_for_scale,
+        hands_for_voicing,
+        scale_motion_for,
+    )
 
     level = _DIFFICULTY_TO_LEVEL.get(difficulty, "Intermediate")
+    mode = str(exercise_mode or "auto").strip().lower()
     sections_out: list[dict[str, Any]] = []
     all_chords: list[str] = []
     all_staff_lines: list[str] = []
+    plans: list[str] = []
     for sec_name, sec_chords in section_chord_pairs:
         use = list(sec_chords) or ["C"]
-        voicings = build_connected_piano_voicings(use, level=level, focus=focus, groove_style=groove_style)
-        abc = build_piano_voicing_abc(
-            voicings, key=display_key, meter=NOTATION_METER, bpm=bpm, title=sec_name
+        bars: list[list[list[int]]] = []
+
+        if mode in ("scales", "arpeggios"):
+            # Both read their pitches from the shared exercise engine, so the harmony is
+            # the same one the wind instruments get - only the two-hand realization here
+            # is piano-specific.
+            from notation_exercise_patterns import build_exercise_midis
+
+            # instrument_register("Piano") is a low left-hand range, which would put the
+            # whole exercise below middle C and leave the treble staff a bar of rests.
+            # A two-handed study is written for the RIGHT hand, with the left derived an
+            # octave below, so the generated line belongs in the right hand's register.
+            from piano_grand_staff import PIANO_EXERCISE_HIGH, PIANO_EXERCISE_LOW
+
+            per_bar, plan = build_exercise_midis(
+                use, level=level, instrument="Piano", key_center=display_key,
+                focus=focus, mode=mode,
+                low=PIANO_EXERCISE_LOW, high=PIANO_EXERCISE_HIGH,
+            )
+            plans.extend(plan)
+            motion = scale_motion_for(level, focus) if mode == "scales" else "parallel"
+            for line in per_bar:
+                if mode == "scales":
+                    bars.append(hands_for_scale(line, motion=motion))
+                else:
+                    # Arpeggios: the right hand breaks the chord, the left answers with
+                    # the same shape an octave down on alternate notes, which is how a
+                    # two-handed broken-chord study is actually practised.
+                    bars.append([
+                        ([m - 12, m] if i % 2 == 0 else [m])
+                        for i, m in enumerate(line)
+                    ])
+        else:
+            voicings = build_connected_piano_voicings(
+                use, level=level, focus=focus, groove_style=groove_style
+            )
+            by_measure: dict[int, list[list[int]]] = {}
+            for v in voicings:
+                # Keep the hands as assigned; merging them would hand the re-split at
+                # middle C back the decision the roles just made.
+                hands = hands_for_voicing(list(v.midis), v.chord, level=level, focus=focus)
+                by_measure.setdefault(v.measure, []).append(hands)
+            bars = [by_measure.get(i, [[]]) for i in range(len(use))]
+            all_staff_lines.extend(
+                f"Bar {v.measure + 1}  {v.chord}:  {' '.join(v.pitches)}" for v in voicings
+            )
+
+        abc = grand_staff_abc(
+            bars, key=display_key, meter=NOTATION_METER, bpm=bpm,
+            title=sec_name, chords=use,
         )
         sections_out.append({"name": sec_name, "abc": abc.strip(), "chord_labels": " | ".join(use)})
         all_chords.extend(use)
-        all_staff_lines.extend(
-            f"Bar {v.measure + 1}  {v.chord}:  {' '.join(v.pitches)}" for v in voicings
-        )
 
     combined_abc = (sections_out[0]["abc"] if len(sections_out) == 1 else "\n\n".join(s["abc"] for s in sections_out))
     return NotationResult(
         format="abc",
         title=f"{song_title} — {section} — Piano",
         chord_labels=" | ".join(all_chords),
-        rhythm_counts=f"{level} connected voicings with comping rhythm",
+        rhythm_counts=(
+            _exercise_rhythm_counts(level, plans)
+            if plans
+            else f"{level} connected voicings with comping rhythm"
+        ),
         body="\n".join(all_staff_lines),
         html="",
         abc=combined_abc,
@@ -1144,6 +1201,7 @@ def generate_practice_notation(
             bpm=bpm,
             focus=focus,
             groove_style=groove_style,
+            exercise_mode=exercise_mode,
         )
     if "bass" in inst:
         return _build_bass_line(

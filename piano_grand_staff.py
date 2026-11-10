@@ -29,13 +29,25 @@ MIDDLE_C = 60
 PIANO_LOW = 21   # A0
 PIANO_HIGH = 108  # C8
 
+# The register a two-handed exercise is written in. The generated line is the RIGHT hand's
+# and the left is derived an octave below it, so this sits above middle C: G3 to C6 gives
+# the right hand a comfortable two octaves and leaves the left hand G2-C5.
+PIANO_EXERCISE_LOW = 55   # G3
+PIANO_EXERCISE_HIGH = 84  # C6
+
 __all__ = [
     "MIDDLE_C",
     "PIANO_HIGH",
+    "PIANO_EXERCISE_HIGH",
+    "PIANO_EXERCISE_LOW",
     "PIANO_LOW",
     "grand_staff_abc",
+    "LEFT_HAND_CENTRE",
+    "RIGHT_HAND_FLOOR",
     "hands_for_scale",
+    "hands_for_voicing",
     "in_piano_range",
+    "scale_motion_for",
     "split_hands",
 ]
 
@@ -77,6 +89,91 @@ def split_hands(
         take = max(min_left, 1)
         left, right = right[:take], right[take:]
     return left, right
+
+
+# Where each hand lives. These are reading registers, not limits: the left hand plays the
+# foundation an octave or two below middle C, the right hand plays the harmony around it.
+LEFT_HAND_CENTRE = 45   # A2
+RIGHT_HAND_FLOOR = 55   # G3
+
+
+def _nearest_octave_of(pc: int, near: int) -> int:
+    """The octave of pitch class ``pc`` closest to ``near``, kept on the keyboard."""
+    base = (int(near) // 12) * 12 + (int(pc) % 12)
+    best = min((base - 12, base, base + 12), key=lambda m: abs(m - int(near)))
+    return _clamp_to_piano(best)
+
+
+def hands_for_voicing(
+    voicing_midis: Sequence[int],
+    chord: str = "",
+    *,
+    level: str = "Intermediate",
+    focus: str = "",
+) -> tuple[list[int], list[int]]:
+    """``(left_hand, right_hand)`` with the hands given *roles*, not a midpoint.
+
+    Splitting a close-position voicing at middle C is arbitrary: it can hand the left
+    thumb a chord's third while the right plays its root, which is not how anyone voices a
+    chord. So the left hand is built for its job - the foundation - and the right hand
+    keeps the voice-led voicing the existing engine produced.
+
+    What the left hand plays grows with the level, which is the progression a pianist
+    actually follows:
+
+        Beginner      the root alone
+        Intermediate  root and fifth
+        Advanced      a root-and-seventh shell, the jazz left hand
+
+    A Guide Tones focus overrides that with the 3rd/7th shell at every level, because that
+    is precisely the exercise Guide Tones names.
+    """
+    right = sorted(_clamp_to_piano(int(m)) for m in voicing_midis if m is not None)
+    if not right:
+        return [], []
+
+    tones: list[int] = []
+    if chord:
+        try:
+            from notation_exercise_patterns import chord_tone_pcs
+
+            tones = [int(p) % 12 for p in chord_tone_pcs(chord)]
+        except Exception:
+            tones = []
+    if not tones:
+        tones = sorted({m % 12 for m in right})
+
+    root_pc = tones[0]
+    lvl = str(level or "Intermediate").strip().title()
+    focus_text = str(focus or "").lower()
+
+    wanted: list[int] = [root_pc]
+    if "guide" in focus_text and len(tones) >= 4:
+        wanted = [tones[1], tones[3]]          # 3rd and 7th
+    elif lvl == "Advanced" and len(tones) >= 4:
+        wanted = [root_pc, tones[3]]           # root and seventh shell
+    elif lvl == "Intermediate" and len(tones) >= 3:
+        wanted = [root_pc, tones[2]]           # root and fifth
+
+    left: list[int] = []
+    anchor = LEFT_HAND_CENTRE
+    for pc in wanted:
+        midi = _nearest_octave_of(pc, anchor)
+        if midi not in left:
+            left.append(midi)
+        anchor = midi + 4
+    left.sort()
+
+    # The hands must not collide or cross: lift the right hand clear if the voicing sits
+    # low enough to overlap what the left hand just took.
+    if left:
+        floor = max(max(left) + 1, RIGHT_HAND_FLOOR)
+        while right and min(right) < floor:
+            right = [m + 12 for m in right]
+            if max(right) > PIANO_HIGH:
+                right = [m - 12 for m in right]
+                break
+    return left, sorted(_clamp_to_piano(m) for m in right)
 
 
 def _abc_token(midi: int, key: str) -> str:
@@ -150,7 +247,7 @@ def grand_staff_abc(
     bass: list[str] = []
 
     for i, bar in enumerate(bars):
-        hits = [h for h in (bar or []) if h]
+        hits = [h for h in (bar or []) if h or isinstance(h, tuple)]
         if not hits:
             hits = [[]]
         # Eighths per hit, so the bar always adds up to its meter.
@@ -160,7 +257,17 @@ def grand_staff_abc(
             label = f'"{str(chords[i]).strip()}"'
         t_toks, b_toks = [], []
         for j, hit in enumerate(hits):
-            left, right = split_hands(hit)
+            # A hit may arrive already assigned to hands as ``(left, right)``. Re-splitting
+            # it at middle C would discard that assignment - which is the whole point of
+            # giving the hands roles - so a pre-split pair is honoured as given.
+            if (
+                isinstance(hit, tuple)
+                and len(hit) == 2
+                and all(isinstance(side, (list, tuple)) for side in hit)
+            ):
+                left, right = list(hit[0]), list(hit[1])
+            else:
+                left, right = split_hands(hit)
             # The chord symbol belongs above the top staff only; printing it over both
             # would have abcjs draw the same label twice, once per stave.
             prefix = label if j == 0 else ""
@@ -174,6 +281,24 @@ def grand_staff_abc(
     lines.append("V:2")
     lines.append(" | ".join(bass) + " |")
     return "\n".join(lines)
+
+
+def scale_motion_for(level: str = "Intermediate", focus: str = "") -> str:
+    """Which two-hand motion this level and focus should be practising.
+
+    The progression is the one a teacher sets: learn the line in one hand, then play both
+    hands together, then split them apart. A Technique focus pulls contrary motion forward
+    at any level, because independence is exactly what that focus is asking for.
+    """
+    lvl = str(level or "Intermediate").strip().title()
+    text = str(focus or "").lower()
+    if "technique" in text or "independence" in text:
+        return "contrary"
+    if lvl == "Beginner":
+        return "separate"
+    if lvl == "Advanced":
+        return "contrary"
+    return "parallel"
 
 
 def hands_for_scale(
