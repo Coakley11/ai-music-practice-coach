@@ -84,6 +84,9 @@ PRIOR_REVISIONS: dict[str, tuple[tuple[str, str], ...]] = {
     'pop|vienna|billy joel': (
         ('6d039a0d4089d973', '65e20ddc34872dcd'),
     ),
+    'pop|viva la vida|coldplay': (
+        ('6557772283d9eed5', '89cf6c2cede3b45d'),
+    ),
     'pop|you belong with me|taylor swift': (
         ('47ad993c1e040fbb', '0a1e5cf18eff60c1'),
     ),
