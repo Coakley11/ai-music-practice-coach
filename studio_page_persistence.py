@@ -926,6 +926,10 @@ def restore_page_snapshot(session_state: dict, page_id: str) -> None:
     except ImportError:
         pass
     apply_page_snapshot(session_state, store.get(page_id))
+    if page_id == "composer":
+        from composition_workspace_state_persistence import prepare_composition_workspace_for_render
+
+        prepare_composition_workspace_for_render(session_state)
     if page_id == "backing":
         try:
             from backing_context import hydrate_backing_context_after_restore
