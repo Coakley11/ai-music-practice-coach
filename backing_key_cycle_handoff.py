@@ -184,7 +184,7 @@ def build_cycle_lead_sheet_html(
                 _karaoke = False
             # Hint lines ride along hidden; the page's checkbox shows them. Karaoke's chord
             # display stays as it is (first version of the hints).
-            html = sheet_with_chord_tone_hints(html, available=not _karaoke)
+            html = sheet_with_chord_tone_hints(html, available=not _karaoke, level=level)
         return html
     except Exception:
         return ""
