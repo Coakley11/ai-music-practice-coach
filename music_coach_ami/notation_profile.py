@@ -270,7 +270,12 @@ PLAYABLE_WRITTEN_RANGE: dict[str, tuple[int, int]] = {
     "trombone": (40, 77),     # E2-F5
     "tuba": (28, 65),
     "bass": (40, 67),         # written E2-G4, sounding E1-G3
-    "guitar": (52, 88),       # written E3-E6, open low E upward
+    # Guitar is bounded by the fretboard the exercise builder actually uses, not by the
+    # instrument's theoretical top. guitar_exercise_tab maps these numbers onto strings
+    # tuned (40, 45, 50, 55, 59, 64) with EXERCISE_MAX_FRET = 12, so 64 + 12 = 76 is the
+    # highest note it can place. Above that it silently drops notes - measured: raising
+    # this ceiling to E6 turned a 32-note Advanced exercise into 21 printed ones.
+    "guitar": (52, 76),
     "piano": (21, 108),
     "keyboard": (21, 108),
     "voice": (48, 79),        # an untrained adult range, C3-G5

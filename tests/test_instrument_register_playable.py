@@ -133,3 +133,117 @@ class TheBeginnerRegisterIsUnchangedWhereItWasAlreadyPlayable(unittest.TestCase)
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TheGuitarStaysOnTheFretboardTheBuilderUses(unittest.TestCase):
+    """A clamp that widens the register must not outrun the fretboard.
+
+    ``guitar_exercise_tab`` places notes on strings tuned (40, 45, 50, 55, 59, 64) with
+    ``EXERCISE_MAX_FRET`` of 12, so the highest note it can reach is 76. It does not
+    complain about one it cannot place - it leaves it out. Raising the guitar ceiling to
+    a theoretical E6 turned a 32-note Advanced exercise into 21 printed notes, silently.
+    """
+
+    CHORDS = ["Am7", "D7", "Gmaj7", "Cmaj7"]
+
+    def test_the_ceiling_matches_what_twelve_frets_can_reach(self):
+        from backing_rock_guitar import OPEN_STRINGS
+        from guitar_exercise_tab import EXERCISE_MAX_FRET
+
+        _floor, ceiling = playable_written_range("Guitar")
+        self.assertEqual(ceiling, max(OPEN_STRINGS) + EXERCISE_MAX_FRET)
+
+    def test_the_floor_is_the_open_low_string(self):
+        from backing_rock_guitar import OPEN_STRINGS
+        from music_coach_ami.notation_profile import notation_profile_for_instrument
+
+        floor, _ceiling = playable_written_range("Guitar")
+        shift = notation_profile_for_instrument("Guitar").sounding_to_written_shift
+        self.assertEqual(floor, min(OPEN_STRINGS) + 12 * shift)
+
+    def test_every_generated_note_reaches_the_tab(self):
+        from guitar_exercise_tab import build_guitar_exercise_measures
+
+        for level, mode in [(l, m) for l in LEVELS
+                            for m in ("auto", "scales", "arpeggios")]:
+            for key in ("C", "G", "Bb", "Eb"):
+                with self.subTest(level=level, mode=mode, key=key):
+                    per_bar, _ = build_exercise_midis(
+                        self.CHORDS, level=level, instrument="Guitar",
+                        key_center=key, seed=7, focus="Improvisation", mode=mode)
+                    wanted = sum(len(b) for b in per_bar)
+                    measures = build_guitar_exercise_measures(
+                        self.CHORDS, level=level, mode=mode,
+                        focus="Improvisation", key_center=key)
+                    self.assertEqual(sum(len(m) for m in measures), wanted,
+                                     "the TAB dropped notes it could not place")
+
+
+class EveryRegisterSpansAtLeastAnOctave(unittest.TestCase):
+    """``_nearest_octave_in_range`` says so, and a narrower one breaks the generator.
+
+    Clamping the baritone saxophone's floor up to its real low Bb left its Beginner
+    register nine semitones wide, and the connected-line generator then emitted a pitch
+    outside its own bounds - a real failure in
+    ``test_chord_navigation_notation.TestRegisterAcrossAllNamedInstruments``, not a
+    hypothetical one.
+    """
+
+    def test_no_instrument_or_level_is_narrower_than_twelve_semitones(self):
+        for name in INSTRUMENTS + ["Trombone", "Tuba", "Theremin", ""]:
+            for level in LEVELS:
+                lo, hi, _start = instrument_register(name, level)
+                with self.subTest(instrument=name, level=level, span=hi - lo):
+                    self.assertGreaterEqual(hi - lo, 12)
+
+    def test_the_narrowest_case_is_the_one_that_caught_it(self):
+        lo, hi, _ = instrument_register("Bari Sax (Eb)", "Beginner")
+        floor, _ceiling = playable_written_range("Bari Sax (Eb)")
+        self.assertEqual(lo, floor)
+        self.assertEqual(hi - lo, 12)
+
+    def test_the_generator_stays_inside_its_own_bounds(self):
+        from chord_navigation_notation import build_connected_arpeggio_line
+
+        for name in INSTRUMENTS:
+            for level in LEVELS:
+                lo, hi, _ = instrument_register(name, level)
+                with self.subTest(instrument=name, level=level):
+                    events = build_connected_arpeggio_line(
+                        ["Fm7", "Bb7", "Ebmaj7", "Abmaj7", "Dm7b5", "G7", "Cm7", "Cm7"],
+                        level=level, instrument=name)
+                    for ev in events:
+                        if not ev.is_rest and ev.midi is not None:
+                            self.assertTrue(lo <= int(ev.midi) <= hi)
+
+
+class OnlyTheOutOfRangeRegistersMoved(unittest.TestCase):
+    """What was already playable must come out byte for byte as before.
+
+    These are the registers the pre-clamp code produced for the instrument/level pairs
+    that were already inside the instrument. If one of these changes, the clamp has
+    reached past what it was for.
+    """
+
+    UNCHANGED = {
+        ("Flute", "Beginner"): (60, 96),
+        ("Alto Sax (Eb)", "Beginner"): (58, 77),
+        ("Soprano Sax (Bb)", "Beginner"): (62, 81),
+        ("Soprano Sax (Bb)", "Intermediate"): (59, 84),
+        ("Bb Clarinet", "Beginner"): (60, 79),
+        ("Bb Clarinet", "Intermediate"): (57, 82),
+        ("Bb Clarinet", "Advanced"): (54, 85),
+        ("Bb Trumpet", "Beginner"): (58, 77),
+        ("Bb Trumpet", "Intermediate"): (55, 80),
+        ("Bass", "Beginner"): (40, 55),
+        ("Guitar", "Beginner"): (52, 67),
+        ("Piano", "Beginner"): (36, 55),
+        ("Piano", "Intermediate"): (33, 58),
+        ("Piano", "Advanced"): (30, 61),
+    }
+
+    def test_registers_that_were_in_range_are_untouched(self):
+        for (name, level), expected in self.UNCHANGED.items():
+            with self.subTest(instrument=name, level=level):
+                lo, hi, _start = instrument_register(name, level)
+                self.assertEqual((lo, hi), expected)
