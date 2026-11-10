@@ -19,6 +19,7 @@ from __future__ import annotations
 import html
 from typing import Any
 
+from music_feature_icons import action_label
 from practice_ui_labels import level_label
 
 MISSION_TARGET_SCOPE_STATE_KEY = "_improv_mission_target_scope_choice"
@@ -206,14 +207,17 @@ def render_span_missions(
     intent = ""
     with st.container(key="improv_span_mission_actions"):
         g1, g2, g3, g4 = st.columns(4)
-        for col, label, key, kind, value in (
-            (g1, "Generate example", "improv_span_mission_gen", "primary", "generate"),
-            (g2, "Easier example", "improv_span_mission_easier", "secondary", "easier"),
-            (g3, "Harder example", "improv_span_mission_harder", "secondary", "harder"),
-            (g4, "New idea", "improv_span_mission_new", "secondary", "new"),
+        # The icon verb is spelled out per row rather than reusing ``value``: the intent
+        # "new" is shown as an idea, and keeping them separate means changing one never
+        # silently changes the other.
+        for col, label, key, kind, value, verb in (
+            (g1, "Generate example", "improv_span_mission_gen", "primary", "generate", "generate"),
+            (g2, "Easier example", "improv_span_mission_easier", "secondary", "easier", "easier"),
+            (g3, "Harder example", "improv_span_mission_harder", "secondary", "harder", "harder"),
+            (g4, "New idea", "improv_span_mission_new", "secondary", "new", "idea"),
         ):
             with col:
-                if st.button(label, key=key, type=kind, use_container_width=True):
+                if st.button(action_label(verb, label), key=key, type=kind, use_container_width=True):
                     intent = value
     if intent:
         bucket, idea = span_mission_intent(state, context=context, intent=intent)

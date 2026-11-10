@@ -169,6 +169,23 @@ ACTION_ICONS: dict[str, str] = {
     "reset": "↩️",            # undo arrow
     "continue": "→",        # trailing arrow, as the Continue buttons already use
     "feel": "✨",            # same glyph as the style / groove field badge
+    # Creative example actions. Each one follows a look this app had already settled on
+    # rather than inventing a glyph: the Composition melody generator reads "🪄 <name>",
+    # Song Vision and the composer's suggestion button both read "💡 ...", and the
+    # difficulty pair reuses the Level badges in practice_ui_labels.LEVEL_ICONS
+    # (Beginner 🌱 / Advanced 🧠) because Easier and Harder step that same scale.
+    "generate": "🪄",        # magic wand, as the Composition melody reference buttons use
+    "idea": "💡",            # light bulb, as Song Vision / "Suggest starting values" use
+    "easier": "🌱",          # LEVEL_ICONS["Beginner"] — one step gentler
+    "harder": "🧠",          # LEVEL_ICONS["Advanced"] — one step more demanding
+    # Hand a take to the AI coach. 🎯 is already this app's AI-evaluation glyph
+    # ("🎯 AI improvisation evaluation"), so sending audio for analysis matches it.
+    "analyze": "🎯",
+    # Open a saved item. FEATURE_ICONS["action_load"] is the same 📂 the Custom
+    # Progression Library's "📂 Load selected" button already shows.
+    "load": FEATURE_ICONS["action_load"],
+    # Play is the same transport triangle as preview; one glyph for one gesture.
+    "play": "▶️",
 }
 
 

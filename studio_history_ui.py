@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
-from music_feature_icons import action_label
+from music_feature_icons import action_label, semantic_action_icon
 
 from multitrack_history import (
     FLASH_KEY as MT_FLASH_KEY,
@@ -181,7 +181,7 @@ def _render_history_list(
         with row_cols[1]:
             st_obj.markdown(f'<div class="{key_prefix}-hist-load"></div>', unsafe_allow_html=True)
             if not is_active and st_obj.button(
-                load_button_label,
+                action_label("load", load_button_label),
                 key=f"{key_prefix}_load_{suffix}",
                 use_container_width=True,
             ):
@@ -194,7 +194,13 @@ def _render_history_list(
                     st_obj.error(msg)
         with row_cols[2]:
             st_obj.markdown(f'<div class="{key_prefix}-hist-del"></div>', unsafe_allow_html=True)
-            if st_obj.button("✕", key=f"{key_prefix}_del_{suffix}", help="Delete"):
+            # One glyph wide either way, but the shared wastebasket reads as "delete"
+            # where a bare ✕ reads as "close".
+            if st_obj.button(
+                semantic_action_icon("delete") or "✕",
+                key=f"{key_prefix}_del_{suffix}",
+                help="Delete",
+            ):
                 ok, err = on_delete(item_key)
                 if ok:
                     st_obj.session_state[f"{key_prefix}_flash"] = "Deleted from history."

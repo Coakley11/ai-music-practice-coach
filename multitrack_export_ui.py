@@ -181,7 +181,7 @@ def render_multitrack_export_library(
 
             bc1, bc2, bc3, bc4 = st_module.columns(4)
             with bc1:
-                if st_module.button("Play", key=f"mt_export_play_{eid}"):
+                if st_module.button(action_label("play", "Play"), key=f"mt_export_play_{eid}"):
                     data, err, _ = load_export_for_playback(eid, st=st_module)
                     if data:
                         st_module.audio(io.BytesIO(data), format="audio/wav")
@@ -189,7 +189,7 @@ def render_multitrack_export_library(
                         st_module.warning(f"Audio unavailable: {err or 'missing file'}")
             with bc2:
                 dl_cache_key = f"_mt_export_dl_cache_{eid}"
-                if st_module.button("Download", key=f"mt_export_dl_{eid}"):
+                if st_module.button(action_label("download", "Download"), key=f"mt_export_dl_{eid}"):
                     data_dl, err_dl, _ = load_export_for_playback(eid, st=st_module)
                     if data_dl:
                         session_state[dl_cache_key] = data_dl
@@ -207,7 +207,7 @@ def render_multitrack_export_library(
                         use_container_width=True,
                     )
             with bc3:
-                if st_module.button("Send to Upload Analysis", key=f"mt_export_analyze_{eid}"):
+                if st_module.button(action_label("analyze", "Send to Upload Analysis"), key=f"mt_export_analyze_{eid}"):
                     ok, err = send_export_to_upload_analysis(session_state, eid, st=st_module)
                     if ok:
                         try:
@@ -220,7 +220,7 @@ def render_multitrack_export_library(
                     else:
                         st_module.warning(f"Could not prepare analysis: {err or 'missing audio'}")
             with bc4:
-                if st_module.button("Delete", key=f"mt_export_del_{eid}"):
+                if st_module.button(action_label("delete", "Delete"), key=f"mt_export_del_{eid}"):
                     if delete_multitrack_export_entry(st_module, eid, row=row):
                         st_module.success("Export deleted.")
                         st_module.rerun()
