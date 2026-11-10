@@ -220,6 +220,22 @@ def canonical_workspace_state_for_fingerprint(state: dict[str, Any] | None) -> d
     # fingerprinted as "unchanged": startup save suppression and the duplicate
     # planner skipped the write, and a refresh restored the older setlist.
     session = state.get("session")
+    composition = state.get("composition_workspace_state")
+    if not isinstance(composition, dict):
+        nested = state.get("music_workspace_state")
+        composition = nested.get("composition_workspace_state") if isinstance(nested, dict) else None
+    if isinstance(composition, dict):
+        from composition_save_verification import workspace_content
+
+        # Do not strip musical section labels or project metadata using the
+        # generic UI-key filter. Only per-document edit timestamps are volatile.
+        content = workspace_content(composition)
+        documents = list((content.get("library") or {}).values())
+        documents.append(content.get("active_document"))
+        for doc in documents:
+            if isinstance(doc, dict):
+                doc.pop("updated_at", None)
+        base["composition_workspace_state"] = content
     if isinstance(session, dict) and isinstance(session.get("karaoke_queue"), list):
         base["karaoke_setlist"] = copy.deepcopy(session["karaoke_queue"])
     # Catalog Favorites are durable user content in the same session slice.

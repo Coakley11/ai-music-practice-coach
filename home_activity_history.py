@@ -31,8 +31,10 @@ def load_practice_events(session_state):
 def practice_entry_from_event(event):
     """Accept only versioned practice-context records; navigation is not practice."""
     from activity_time import parse_activity_timestamp, to_display_local
-    if not isinstance(event, dict) or event.get('event') != 'practice_session_started':
+    if not isinstance(event, dict):
         return None
+    if event.get('event') != 'practice_session_started':
+        return workflow_entry_from_event(event)
     m = event.get('metrics')
     if not isinstance(m, dict) or m.get('activity_schema_version') != 2:
         return None
@@ -57,4 +59,36 @@ def practice_entry_from_event(event):
         'practice_type': 'backing track' if m.get('backing_active') else 'song practice',
         'focus_area': m.get('focus') or m.get('practice_mode', ''),
         'section_name': m.get('practice_focus_section', ''),
+        'resume_payload': dict(m['resume_payload']) if isinstance(m.get('resume_payload'), dict) else {},
     }
+
+
+def workflow_entry_from_event(event):
+    """Known persisted milestones only; navigation or prepared audio is not activity."""
+    from activity_time import parse_activity_timestamp, to_display_local
+    known = {'backing_track_started': ('backing track', 'resume_payload'),
+             'backing_track_completed': ('backing track', 'resume_payload'),
+             'mission_started': ('mission practice', 'progress_activity_id'),
+             'song_coaching_used': ('song-aware coaching', 'progress_activity_id'),
+             'composition_saved': ('composition practice', 'progress_activity_id'),
+             'multitrack_export_saved': ('multitrack/upload', 'export_id'),
+             'audio_uploaded': ('upload analysis', 'recording_id'),
+             'video_uploaded': ('upload analysis', 'recording_id'),
+             'recording_reviewed': ('upload analysis', 'recording_id')}
+    spec = known.get(event.get('event'))
+    m = event.get('metrics')
+    stamp = parse_activity_timestamp(event.get('timestamp'))
+    if not spec or not isinstance(m, dict) or not stamp or not m.get('workspace_id') or not m.get(spec[1]):
+        return None
+    if spec[1]=='progress_activity_id' and m.get('activity_schema_version')!=3:
+        return None
+    payload = dict(m.get('resume_payload') or {}) if isinstance(m.get('resume_payload'), dict) else {}
+    return dict(session_id='activity:'+str(m.get('progress_activity_id') or m.get('export_id') or m.get('recording_id') or event.get('id') or event['timestamp']),
+                date=to_display_local(stamp).date().isoformat(), created_at=event['timestamp'],
+                active_song=m.get('song') or m.get('export_name') or 'Saved recording',
+                artist=m.get('artist',''), song_id=m.get('source_id') or payload.get('pick_key',''),
+                source_type=m.get('source_type',''), workspace_id=m['workspace_id'],
+                instrument=m.get('instrument') or payload.get('instrument',''),
+                practice_concert_key=m.get('practice_key') or payload.get('display_key') or m.get('display_key',''),
+                practice_type=spec[0], resume_payload=payload,
+                multitrack_id=m.get('multitrack_id',''))

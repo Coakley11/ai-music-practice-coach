@@ -167,6 +167,10 @@ def saved_items_list_limit(*, default: int = 50, st: Any | None = None) -> int:
 
 def normalize_music_save_reason(save_reason: str) -> str:
     reason = str(save_reason or "autosave").strip() or "autosave"
+    if reason in ("explicit_library_save", "library_save"):
+        # Composition's Save button is an existing intentional composer edit,
+        # not a passive autosave. Keep it inside the normal strict/CAS gates.
+        return "composer_edit"
     if reason == "capo_widget":
         return "capo_change"
     if reason == "practice_key_mode_change":

@@ -80,6 +80,18 @@ def ensure_composition_library_hydrated(session_state: dict[str, Any]) -> dict[s
     ``composition_workspace_state.library``; else fall back to the composer page
     snapshot (recovery/compatibility) without fully restoring composer UI widgets.
     """
+    canonical = session_state.get("composition_workspace_state") or {}
+    deleted = set(session_state.get("composer_deleted_document_ids") or [])
+    if isinstance(canonical, dict):
+        deleted.update(canonical.get("deleted_document_ids") or [])
+    active = session_state.get(COMPOSER_ACTIVE_KEY)
+    if isinstance(active, dict) and str(active.get("id") or "") in deleted:
+        session_state.pop(COMPOSER_ACTIVE_KEY, None)
+    live = session_state.get(COMPOSER_LIBRARY_KEY)
+    if isinstance(live, dict):
+        for sid, doc in list(live.items()):
+            if sid in deleted or (isinstance(doc, dict) and str(doc.get("id") or "") in deleted):
+                live.pop(sid, None)
     lib = session_state.get(COMPOSER_LIBRARY_KEY)
     if isinstance(lib, dict) and lib:
         mark_composition_songs_source_ready(session_state)
@@ -94,27 +106,32 @@ def ensure_composition_library_hydrated(session_state: dict[str, Any]) -> dict[s
     if isinstance(ws, dict):
         ws_lib = ws.get("library")
         if isinstance(ws_lib, dict) and ws_lib:
-            session_state[COMPOSER_LIBRARY_KEY] = copy.deepcopy(ws_lib)
+            session_state[COMPOSER_LIBRARY_KEY] = {sid: copy.deepcopy(doc) for sid, doc in ws_lib.items() if sid not in deleted and isinstance(doc, dict) and str(doc.get("id") or "") not in deleted}
             if COMPOSER_ACTIVE_KEY not in session_state or not isinstance(
                 session_state.get(COMPOSER_ACTIVE_KEY), dict
             ):
                 ws_active = ws.get("active_document")
-                if isinstance(ws_active, dict):
+                if isinstance(ws_active, dict) and str(ws_active.get("id") or "") not in deleted:
                     session_state[COMPOSER_ACTIVE_KEY] = copy.deepcopy(ws_active)
             mark_composition_songs_source_ready(session_state)
             return session_state[COMPOSER_LIBRARY_KEY]
 
+    if isinstance(ws, dict) and ws.get("library_initialized"):
+        # A confirmed empty library is not permission to resurrect a page snapshot.
+        session_state.setdefault(COMPOSER_LIBRARY_KEY, {})
+        mark_composition_songs_source_ready(session_state)
+        return session_state[COMPOSER_LIBRARY_KEY]
     store = session_state.get("_studio_page_snapshots") or {}
     snap = store.get("composer") if isinstance(store, dict) else None
     if isinstance(snap, dict):
         snap_lib = snap.get(COMPOSER_LIBRARY_KEY)
         if isinstance(snap_lib, dict) and snap_lib:
-            session_state[COMPOSER_LIBRARY_KEY] = copy.deepcopy(snap_lib)
+            session_state[COMPOSER_LIBRARY_KEY] = {sid: copy.deepcopy(doc) for sid, doc in snap_lib.items() if sid not in deleted and isinstance(doc, dict) and str(doc.get("id") or "") not in deleted}
             if COMPOSER_ACTIVE_KEY not in session_state or not isinstance(
                 session_state.get(COMPOSER_ACTIVE_KEY), dict
             ):
                 snap_active = snap.get(COMPOSER_ACTIVE_KEY)
-                if isinstance(snap_active, dict):
+                if isinstance(snap_active, dict) and str(snap_active.get("id") or "") not in deleted:
                     session_state[COMPOSER_ACTIVE_KEY] = copy.deepcopy(snap_active)
             mark_composition_songs_source_ready(session_state)
             return session_state[COMPOSER_LIBRARY_KEY]

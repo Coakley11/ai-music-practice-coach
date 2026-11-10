@@ -96,6 +96,9 @@ class TestCompositionLibrarySave(unittest.TestCase):
         meta = last_library_save_meta(ss)
         self.assertTrue(meta.get("ok"))
         self.assertFalse(meta.get("is_update"))
+        self.assertEqual(library_save_success_message(ss), "")
+        from composition_save_verification import content_fingerprint
+        ss["_composition_persistence_result"] = {"cloud_verified": True, "document_id": sid, "fingerprint": content_fingerprint(ss["composition_workspace_state"])}
         self.assertEqual(library_save_success_message(ss), "Saved to Composition Library.")
 
     def test_repeated_save_upserts_same_id_preserves_created_at(self) -> None:
@@ -117,6 +120,9 @@ class TestCompositionLibrarySave(unittest.TestCase):
         self.assertNotEqual(str(second.get("updated_at") or ""), str(first.get("updated_at") or ""))
         meta = last_library_save_meta(ss)
         self.assertTrue(meta.get("is_update"))
+        self.assertEqual(library_save_success_message(ss), "")
+        from composition_save_verification import content_fingerprint
+        ss["_composition_persistence_result"] = {"cloud_verified": True, "document_id": sid, "fingerprint": content_fingerprint(ss["composition_workspace_state"])}
         self.assertEqual(library_save_success_message(ss), "Composition Library updated.")
 
     def test_partial_draft_saves_without_lyrics_or_review(self) -> None:
@@ -371,14 +377,14 @@ class TestCompositionLibrarySave(unittest.TestCase):
 
 
 class TestLibrarySaveFeedback(unittest.TestCase):
-    """Regression: _library_save_feedback must report success for local-only saves."""
+    """Regression: only confirmed cloud content is a durable hosted save."""
 
     def _call(self, **kw):
         from composition_studio_page import _library_save_feedback
 
         return _library_save_feedback(**kw)
 
-    def test_disk_ok_no_cloud_reports_success(self):
+    def test_disk_ok_no_cloud_reports_temporary_server_copy(self):
         level, msg = self._call(
             saved=True,
             success_message="Saved to Composition Library.",
@@ -387,8 +393,9 @@ class TestLibrarySaveFeedback(unittest.TestCase):
             cloud_ok=False,
             cloud_required=False,
         )
-        self.assertEqual(level, "success")
-        self.assertNotIn("cloud", msg.lower())
+        self.assertEqual(level, "warning")
+        self.assertIn("app server", msg.lower())
+        self.assertIn("not confirmed", msg.lower())
 
     def test_disk_ok_cloud_ok_reports_success(self):
         level, _ = self._call(
@@ -411,8 +418,9 @@ class TestLibrarySaveFeedback(unittest.TestCase):
             cloud_required=True,
         )
         self.assertEqual(level, "warning")
-        self.assertIn("cloud sync", msg.lower())
-        self.assertIn("retry", msg.lower())
+        self.assertIn("cloud persistence", msg.lower())
+        self.assertIn("restart", msg.lower())
+        self.assertNotIn("safe on this device", msg.lower())
 
     def test_not_saved_reports_error(self):
         level, _ = self._call(
@@ -425,7 +433,7 @@ class TestLibrarySaveFeedback(unittest.TestCase):
         )
         self.assertEqual(level, "error")
 
-    def test_saved_but_disk_not_ok_cloud_ok_warns(self):
+    def test_stale_cloud_flag_without_transaction_confirmation_is_error(self):
         level, msg = self._call(
             saved=True,
             success_message="",
@@ -434,11 +442,11 @@ class TestLibrarySaveFeedback(unittest.TestCase):
             cloud_ok=True,
             cloud_required=True,
         )
-        self.assertEqual(level, "warning")
-        self.assertIn("disk", msg.lower())
+        self.assertEqual(level, "error")
+        self.assertIn("No persistent save", msg)
 
-    def test_disk_ok_force_ok_false_no_cloud_still_success(self):
-        """The original bug: force_ok=False with no cloud should still be success."""
+    def test_disk_ok_force_ok_false_is_not_durable_cloud_success(self):
+        """A hosted server file is temporary even if the write succeeds."""
         level, msg = self._call(
             saved=True,
             success_message="",
@@ -447,7 +455,7 @@ class TestLibrarySaveFeedback(unittest.TestCase):
             cloud_ok=False,
             cloud_required=False,
         )
-        self.assertEqual(level, "success")
+        self.assertEqual(level, "warning")
 
 
 if __name__ == "__main__":

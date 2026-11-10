@@ -1236,7 +1236,8 @@ def force_music_workspace_save(
                         revision_reserved=False,
                     )
                     try:
-                        st.warning(STALE_WRITE_USER_MESSAGE)
+                        from music_conflict_notice import show_workspace_conflict_once
+                        show_workspace_conflict_once(st)
                     except Exception:
                         pass
                 except ImportError:

@@ -100,7 +100,9 @@ def test_sidebar_keeps_only_a_slot_on_backing() -> None:
         block = APP[i - 400:i + 900]
         assert '== "backing":' in block[:400]
         assert f'"on_change": {cb},' in block
-        assert '"slot": st.sidebar.empty(),' in block
+        # The Home refinement keeps this placeholder in a stable mounted sidebar
+        # container; the Backing card still owns the sole Practice Key widget.
+        assert '"slot": _working_sidebar.empty(),' in block
         # Every other page keeps its sidebar control.
         assert f"key={widget}," in block and f"on_change={cb}," in block
 
