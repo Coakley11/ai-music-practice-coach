@@ -83,6 +83,10 @@ def section_phrase(name: str) -> str:
     m = re.match(r"^([A-D]\d*)\s*\((.+)\)$", raw)
     if m:
         return f"the {m.group(2).strip().lower()}"
+    # "Section B" / "Part A": the letter is the name ("the B section", not "the Section B section").
+    m = re.fullmatch(r"(?:section|part)\s+([A-D]\d*)", raw, re.I)
+    if m:
+        return f"the {m.group(1).upper()} section"
     if re.search(r"(?:^|\s)[A-D]\d*$", raw):
         return f"the {raw} section"
     m = re.fullmatch(r"([A-D]\d*)\s+section", raw, re.I)
