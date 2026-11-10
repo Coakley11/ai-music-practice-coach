@@ -215,7 +215,7 @@ def test_say_chart_push_timing_is_preserved_under_hri():
         humanize_level="Strong",
         song_data={"title": "Say", "artist": "John Mayer"},
     )
-    assert result.sections["Verse 1"][0] == "G:3.5|C:0.5p"
-    assert result.sections["Verse 1"][2] == "Em:3.5|D:0.5p"
+    assert result.sections["Verse 1"][0] == "Bb:3.5|Eb:0.5p"
+    assert result.sections["Verse 1"][2] == "Gm:3.5|F:0.5p"
     assert "0.5p" in result.sections["Bridge"][2]
-    assert result.sections["Final Chorus"][0] == "Em:3.5|G:0.5p"
+    assert result.sections["Final Chorus"][0] == "Gm:3.5|Bb:0.5p"

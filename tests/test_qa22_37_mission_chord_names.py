@@ -24,7 +24,7 @@ class TestMissionChordMap(unittest.TestCase):
         for _label, clean, raw in rows:
             for c in clean + raw:
                 self.assertNotIn(":", c)
-        self.assertEqual(rows[0][1], ["G", "C", "Em", "D"])
+        self.assertEqual(rows[0][1], ["Bb", "Eb", "Gm", "F"])
 
 
 if __name__ == "__main__":

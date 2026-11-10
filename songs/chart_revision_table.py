@@ -75,6 +75,9 @@ PRIOR_REVISIONS: dict[str, tuple[tuple[str, str], ...]] = {
     'pop|photograph|ed sheeran': (
         ('6ce7dc1b3040166a', '7fcc1c9d4ad33003'),
     ),
+    'pop|say|john mayer': (
+        ('e268b4c248926ef9', '45a2f15297d15892'),
+    ),
     'pop|the scientist|coldplay': (
         ('f06aff48dbf6149c', 'be05644c1a4a9efd'),
     ),

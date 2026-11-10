@@ -33,7 +33,8 @@ import unittest
 from types import SimpleNamespace
 
 SAY_TITLE = "Say — John Mayer"
-SAY_ORIGINAL = "G"
+# Say's published original key is Bb (the older G was the capo-3 shape chart); see test_say_original_key.
+SAY_ORIGINAL = "Bb"
 
 
 class _FakeSt:
@@ -414,7 +415,7 @@ class TestKeyIsolationTemporaryCustomPreview(_SourceSwitchMixin, unittest.TestCa
         )
         self.assertEqual(
             self.original_key(session), SAY_ORIGINAL,
-            "Say's persisted Original Key must remain G during the preview",
+            "Say's persisted Original Key must remain Bb during the preview",
         )
         saved = self.saved_practice_key(session, say)
         self.assertIn(
