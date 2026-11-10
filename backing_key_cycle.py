@@ -2968,6 +2968,18 @@ def mark_cycle_next_pass_playing_clock(
     return gap
 
 
+def remembered_key_cycle_settings(session: dict[str, Any], data: dict[str, Any] | None = None) -> tuple[str, str]:
+    """Interval / Direction to show: the saved choice, else the live cycle session, else Semitone / Up."""
+    step = str(session.get(BACKING_KEY_CYCLE_STEP_KEY) or "").strip().lower()
+    direc = str(session.get(BACKING_KEY_CYCLE_DIRECTION_KEY) or "").strip().lower()
+    enabled = bool(data and data.get("enabled"))
+    if step not in {"semitone", "whole"}:
+        step = ("whole" if int(data.get("interval") or 1) == 2 else "semitone") if enabled else "semitone"
+    if direc not in {"up", "down"}:
+        direc = ("down" if str(data.get("direction") or "up").lower() == "down" else "up") if enabled else "up"
+    return step, direc
+
+
 def cycle_step_semitones(session: dict[str, Any]) -> int:
     step = str(session.get(BACKING_KEY_CYCLE_STEP_KEY) or "semitone").strip().lower()
     direction = str(session.get(BACKING_KEY_CYCLE_DIRECTION_KEY) or "up").strip().lower()
@@ -3914,7 +3926,11 @@ def stop_key_cycle(session: dict[str, Any], *, preserve_pause: bool = False) -> 
 
 
 def end_key_cycle_on_page_leave(session: dict[str, Any]) -> None:
-    """True leave from Backing: stop cycle and reset config defaults (not refresh)."""
+    """True leave from Backing: stop the cycle and turn Key cycling Off (not refresh).
+
+    Interval, Direction and Key Spelling are kept: turning cycling On again, here or after coming back, reuses them.
+    Semitone / Up and the default spellings apply only when nothing was ever chosen.
+    """
     try:
         if is_cycle_active(session):
             stop_key_cycle(session)
@@ -3923,13 +3939,14 @@ def end_key_cycle_on_page_leave(session: dict[str, Any]) -> None:
     clear_key_cycle_prepared_audio(session, stop_player=True)
     session[BACKING_KEY_CYCLE_SESSIONS_KEY] = {}
     session["backing_key_cycle_enabled"] = False
-    session[BACKING_KEY_CYCLE_STEP_KEY] = "semitone"
-    session[BACKING_KEY_CYCLE_DIRECTION_KEY] = "up"
-    session[BACKING_KEY_SPELLING_PREFS_KEY] = default_spelling_prefs()
+    _step, _direc = remembered_key_cycle_settings(session)
+    session[BACKING_KEY_CYCLE_STEP_KEY] = _step
+    session[BACKING_KEY_CYCLE_DIRECTION_KEY] = _direc
+    session[BACKING_KEY_SPELLING_PREFS_KEY] = spelling_prefs_from_session(session)
     session["backing_key_cycle_enabled_ui"] = "Off"
-    _queue_key_cycle_widget_seed(session, interval=1, direction="up")
+    _queue_key_cycle_widget_seed(session, interval=2 if _step == "whole" else 1, direction=_direc)
     session["_key_cycle_force_ui_off"] = True
-    # Drop spelling widget keys so defaults remount cleanly.
+    # Drop spelling widget keys so they remount from the kept preferences.
     for sharp, flat in ENHARMONIC_SPELLING_PAIRS:
         session.pop(f"backing_key_spell__{sharp}/{flat}", None)
 
@@ -13250,19 +13267,20 @@ def render_backing_key_cycle_controls(st: Any, session: dict[str, Any]) -> None:
     # On again reuses them. Widgets themselves only mount while On.
     step_key = "backing_key_cycle_step_ui"
     dir_key = "backing_key_cycle_direction_ui"
+    _step_seeded = _BACKING_KEY_CYCLE_STEP_UI_SEED_KEY in session
+    _dir_seeded = _BACKING_KEY_CYCLE_DIRECTION_UI_SEED_KEY in session
     _apply_queued_key_cycle_widget_seed(session)
     data = get_owner_cycle_session(session, owner)
-    # Seed radios from the live cycle session so a remount after PK reanchor
-    # does not look like the user flipped Interval/Direction.
-    if data and data.get("enabled"):
-        session.setdefault(
-            step_key,
-            "whole" if int(data.get("interval") or 1) == 2 else "semitone",
-        )
-        session.setdefault(dir_key, str(data.get("direction") or "up"))
-    else:
-        session.setdefault(step_key, session.get(BACKING_KEY_CYCLE_STEP_KEY) or "semitone")
-        session.setdefault(dir_key, session.get(BACKING_KEY_CYCLE_DIRECTION_KEY) or "up")
+    # The radios show the remembered choice on every run. They unmount while Off, and on the run that turns cycling
+    # On again Streamlit still holds a stale entry under their keys: a setdefault left it alone, the remounted radios
+    # came back as Semitone / Up and overwrote the saved Whole tone / Down. The saved choice wins, then the live cycle
+    # session, then the defaults (only when nothing was ever chosen). A queued seed (settings reset, reanchor) has
+    # already set this run's value. A user's own click updates the saved choice in its callback first.
+    _want_step, _want_dir = remembered_key_cycle_settings(session, data)
+    if not _step_seeded:
+        session[step_key] = _want_step
+    if not _dir_seeded:
+        session[dir_key] = _want_dir
 
     # Practice Key drift while On → rebuild sequence from the new saved key.
     live_pk = str(current_backing_owner_practice_key(session) or "").strip()
