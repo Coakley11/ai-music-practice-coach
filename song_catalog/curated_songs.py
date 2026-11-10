@@ -7920,6 +7920,11 @@ def _requested_verified_song_records() -> list[dict[str, Any]]:
             ext_patch["default_groove"] = str(ref["default_groove"])
         if ref.get("time_signature"):
             ext_patch["time_signature"] = str(ref["time_signature"])
+        # Capo-corrected references carry the sounding key and the shape set it is
+        # usually read in, so consumers can tell one from the other.
+        for _field in ("concert_key", "guitar_friendly_key", "capo_note"):
+            if ref.get(_field):
+                ext_patch[_field] = str(ref[_field])
         if ext_patch:
             row["extensions"] = ext_patch
         if ref.get("section_order"):
