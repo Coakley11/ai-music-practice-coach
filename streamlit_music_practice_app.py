@@ -19625,6 +19625,37 @@ elif _studio_page == "practice":
                             key="practice_notation_difficulty",
                             on_change=_on_practice_filter_change,
                         )
+                        # Scales vs Arpeggios is the musician asking directly, so it
+                        # outranks the Practice Focus guess. "Auto" keeps the existing
+                        # behaviour where Focus and level choose the drills.
+                        try:
+                            from notation_exercise_patterns import (
+                                EXERCISE_MODES,
+                                MODE_LABELS,
+                            )
+
+                            _mode_opts = list(EXERCISE_MODES)
+                            _mode_default = st.session_state.get(
+                                "practice_notation_exercise_mode", "auto"
+                            )
+                            _notation_exercise_mode = st.selectbox(
+                                "Exercise",
+                                options=_mode_opts,
+                                index=(
+                                    _mode_opts.index(_mode_default)
+                                    if _mode_default in _mode_opts
+                                    else 0
+                                ),
+                                format_func=lambda m: MODE_LABELS.get(m, m),
+                                key="practice_notation_exercise_mode",
+                                on_change=_on_practice_filter_change,
+                                help=(
+                                    "Arpeggios drill the chord tones; Scales drill the "
+                                    "chord scale in runs, thirds, fourths and sequences."
+                                ),
+                            )
+                        except Exception:
+                            _notation_exercise_mode = "auto"
                     with _n_col3:
                         st.write("")
                         _gen_notation = st.button(
@@ -19657,6 +19688,7 @@ elif _studio_page == "practice":
                             sections=sections_for_practice,
                             guitar_tabs=song_data.get("guitar_tabs") or {},
                             difficulty=_notation_difficulty,
+                            exercise_mode=_notation_exercise_mode,
                         )
                         st.rerun()
 

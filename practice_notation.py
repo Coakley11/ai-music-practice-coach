@@ -884,6 +884,7 @@ def _build_arpeggio_line(
     bpm: int,
     focus: str = "",
     groove_style: str = "",
+    exercise_mode: str = "auto",
 ) -> NotationResult:
     """A single connected chord-tone line through *chords* for wind/vocal/
     generic instruments -- each chord's tones realized nearest the previous
@@ -916,7 +917,8 @@ def _build_arpeggio_line(
             from notation_exercise_patterns import build_exercise_events
 
             events, exercise_plan = build_exercise_events(
-                use, level=level, instrument=instrument, key_center=display_key, focus=focus
+                use, level=level, instrument=instrument, key_center=display_key,
+                focus=focus, mode=exercise_mode,
             )
         except Exception:
             events = []
@@ -1039,6 +1041,7 @@ def generate_practice_notation(
     sections: dict[str, list[str]],
     guitar_tabs: dict[str, str] | None = None,
     difficulty: str = "medium",
+    exercise_mode: str = "auto",
 ) -> NotationResult:
     diff = (difficulty or "medium").lower()
     if diff not in ("easy", "medium", "advanced"):
@@ -1129,6 +1132,7 @@ def generate_practice_notation(
         bpm=bpm,
         focus=focus,
         groove_style=groove_style,
+        exercise_mode=exercise_mode,
     )
 
 

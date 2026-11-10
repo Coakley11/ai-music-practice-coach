@@ -30,7 +30,41 @@ EXERCISE_PATTERNS: dict[str, str] = {
     "thirds": "Scale in thirds",
     "fourths": "Scale in fourths",
     "voice_leading": "Nearest chord tone (voice leading)",
+    "arpeggio_inversions": "Arpeggio through inversions",
+    "triplet_sequence": "Scale in three-note groups",
+    "four_note_sequence": "Scale in four-note groups",
 }
+
+# The two things a musician asks for by name. "auto" keeps today's behaviour, where
+# Practice Focus and level choose the drills.
+EXERCISE_MODES: tuple[str, ...] = ("auto", "arpeggios", "scales")
+
+MODE_LABELS: dict[str, str] = {
+    "auto": "Auto (follow Practice Focus)",
+    "arpeggios": "Arpeggios",
+    "scales": "Scales",
+}
+
+# Choosing a mode must not flatten the levels: each still drills something harder than
+# the last, inside the mode the musician asked for.
+_MODE_PLANS: dict[str, dict[str, tuple[str, ...]]] = {
+    "arpeggios": {
+        "Beginner": ("arpeggio_up", "arpeggio_down"),
+        "Intermediate": ("arpeggio_up", "arpeggio_down", "arpeggio_up_down"),
+        "Advanced": ("arpeggio_up_down", "arpeggio_inversions", "voice_leading"),
+    },
+    "scales": {
+        "Beginner": ("scale_up", "scale_down"),
+        "Intermediate": ("scale_up", "scale_down", "scale_up_down", "thirds"),
+        "Advanced": ("thirds", "fourths", "triplet_sequence", "four_note_sequence"),
+    },
+}
+
+
+def normalize_exercise_mode(mode: str) -> str:
+    text = str(mode or "auto").strip().lower()
+    return text if text in EXERCISE_MODES else "auto"
+
 
 # Which patterns each level drills, in the order they cycle through the progression.
 _LEVEL_PLANS: dict[str, tuple[str, ...]] = {
@@ -68,10 +102,26 @@ def _level(level: str) -> str:
     return text if text in _LEVEL_PLANS else "Intermediate"
 
 
-def pattern_plan(level: str, n_measures: int, *, seed: int | None = None, focus: str = "") -> list[str]:
+def pattern_plan(
+    level: str,
+    n_measures: int,
+    *,
+    seed: int | None = None,
+    focus: str = "",
+    mode: str = "auto",
+) -> list[str]:
     """One pattern per bar: the drills for this level (or Practice Focus) cycled so the exercise
-    keeps changing direction."""
-    plan = _focus_plan(focus) or _LEVEL_PLANS[_level(level)]
+    keeps changing direction.
+
+    An explicit ``mode`` of "arpeggios" or "scales" is the musician asking directly, so it
+    outranks the Practice Focus guess; "auto" leaves today's behaviour alone.
+    """
+    lvl = _level(level)
+    chosen = normalize_exercise_mode(mode)
+    if chosen != "auto":
+        plan = _MODE_PLANS[chosen][lvl]
+    else:
+        plan = _focus_plan(focus) or _LEVEL_PLANS[lvl]
     if n_measures <= 0:
         return []
     start = (random.Random(seed).randrange(len(plan))) if seed is not None else 0
@@ -127,6 +177,35 @@ def _walk(ladder: Sequence[int], start_index: int, count: int, step: int, direct
     return out
 
 
+def _grouped_walk(
+    ladder: Sequence[int], start_index: int, count: int, group: int
+) -> list[int]:
+    """Overlapping ascending groups: 0 1 2 / 1 2 3 / 2 3 4 ...
+
+    This is what makes a sequence a sequence rather than a plain run - each group starts
+    one rung higher than the last, so the shape repeats while the pitch moves.
+    """
+    if not ladder or group <= 0:
+        return []
+    out: list[int] = []
+    offset = 0
+    while len(out) < count:
+        base = start_index + offset
+        for step in range(group):
+            idx = base + step
+            if idx < 0 or idx >= len(ladder):
+                idx = max(0, min(len(ladder) - 1, idx))
+            out.append(ladder[idx])
+            if len(out) >= count:
+                break
+        offset += 1
+        if offset > len(ladder) * 2:  # never spin on a one-note ladder
+            break
+    while len(out) < count:
+        out.append(out[-1] if out else ladder[0])
+    return out[:count]
+
+
 def _nearest_index(ladder: Sequence[int], midi: int) -> int:
     if not ladder:
         return 0
@@ -173,7 +252,10 @@ def exercise_measure_midis(
     scale = _ladder(scale_pcs(chord, key_center), low, high)
     anchor = int(start_midi) if start_midi is not None else (low + high) // 2
 
-    if pattern in ("arpeggio_up", "arpeggio_down", "arpeggio_up_down", "voice_leading"):
+    if pattern in (
+        "arpeggio_up", "arpeggio_down", "arpeggio_up_down", "voice_leading",
+        "arpeggio_inversions",
+    ):
         ladder = tones or scale
     else:
         ladder = scale or tones
@@ -195,6 +277,14 @@ def exercise_measure_midis(
         return _walk(ladder, _start_index(ladder, anchor, count, 2, +1), count, 2, +1)
     if pattern == "fourths":
         return _walk(ladder, _start_index(ladder, anchor, count, 3, +1), count, 3, +1)
+    if pattern == "arpeggio_inversions":
+        # Successive chord tones, not a repeated root-position outline: each group of
+        # three starts one chord tone higher than the one before.
+        return _grouped_walk(ladder, _nearest_index(ladder, anchor), count, 3)
+    if pattern == "triplet_sequence":
+        return _grouped_walk(ladder, _nearest_index(ladder, anchor), count, 3)
+    if pattern == "four_note_sequence":
+        return _grouped_walk(ladder, _nearest_index(ladder, anchor), count, 4)
     if pattern in ("arpeggio_up_down", "scale_up_down"):
         half = max(1, count // 2)
         up = _walk(ladder, _start_index(ladder, anchor, half, 1, +1), half, 1, +1)
@@ -213,6 +303,7 @@ def build_exercise_midis(
     high: int | None = None,
     seed: int | None = None,
     focus: str = "",
+    mode: str = "auto",
 ) -> tuple[list[list[int]], list[str]]:
     """``(midis per bar, pattern per bar)`` for a whole progression.
 
@@ -226,7 +317,7 @@ def build_exercise_midis(
     else:
         lo, hi = int(low), int(high)
     per_bar = NOTES_PER_BAR[lvl]
-    plan = pattern_plan(lvl, len(chords), seed=seed, focus=focus)
+    plan = pattern_plan(lvl, len(chords), seed=seed, focus=focus, mode=mode)
     out: list[list[int]] = []
     cursor: int | None = None
     for chord, pattern in zip(chords, plan):
@@ -291,6 +382,7 @@ def build_exercise_events(
     beats_per_measure: int = 4,
     seed: int | None = None,
     focus: str = "",
+    mode: str = "auto",
 ):
     """``(ArpeggioEvent list, pattern per bar)`` - the exercise as the notation renderer consumes it.
 
@@ -301,7 +393,8 @@ def build_exercise_events(
     from music_theory import spell_note_in_key
 
     bars, plan = build_exercise_midis(
-        chords, level=level, instrument=instrument, key_center=key_center, seed=seed, focus=focus
+        chords, level=level, instrument=instrument, key_center=key_center, seed=seed,
+        focus=focus, mode=mode,
     )
     lvl = _level(level)
     events = []
@@ -334,6 +427,9 @@ def build_exercise_events(
 
 
 __all__ = [
+    "EXERCISE_MODES",
+    "MODE_LABELS",
+    "normalize_exercise_mode",
     "EXERCISE_PATTERNS",
     "NOTES_PER_BAR",
     "build_exercise_events",
