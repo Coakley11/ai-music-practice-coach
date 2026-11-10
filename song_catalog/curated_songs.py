@@ -4334,13 +4334,16 @@ def _viva_la_vida_chart_pack() -> dict[str, Any]:
                 "Final Chorus": "Full arena delivery — commit to the Cm → Fm cadence.",
             },
             harmonic_analysis={
-                "progression_summary": "C major loop C–Dadd11–G–Em with Bm color in chorus tags",
+                "progression_summary": (
+                    "Ab major loop Db–Ebadd11–Ab–Fm (IV–V–I–vi) with Cm color in "
+                    "chorus/outro tags; guitarists read it as C–Dadd11–G–Em shapes with capo 1"
+                ),
                 "scale_suggestions": {
-                    "C": ["C major", "C major pentatonic"],
-                    "Dadd11": ["D mixolydian", "G major"],
-                    "G": ["G major"],
-                    "Em": ["E natural minor", "G major"],
-                    "Bm": ["B natural minor"],
+                    "Db": ["Db major", "Db major pentatonic"],
+                    "Ebadd11": ["Eb mixolydian", "Ab major"],
+                    "Ab": ["Ab major"],
+                    "Fm": ["F natural minor", "Ab major"],
+                    "Cm": ["C natural minor"],
                 },
             },
             backing_character="disney_cinematic",
