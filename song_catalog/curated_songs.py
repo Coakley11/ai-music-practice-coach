@@ -10660,6 +10660,62 @@ def curated_song_records() -> list[dict[str, Any]]:
             "A Section": ["Dbmaj7", "Ebm7", "E7", "Amaj7", "Abm7", "Db7", "Gbmaj7", "Gbmaj7"],
             "B Section": ["Fm7", "Bb7", "Ebmaj7", "Gm7b5", "C7", "Fm7", "Bb7", "Eb7"],
         }, composer="Johnny Green"),
+        _s("Confirmation", "Charlie Parker", "Jazz", "F", {
+            # AABA, 32 bars, F major, bebop.  The first four bars of each A walk down ii-V pairs (Em7b5|A7 a half step
+            # under the tonic, Dm7|G7, Cm7|F7); bars 5-6 repeat the idea from the IV (Fm7|Bb7, Am7b5|D7); bar 7 is G7
+            # (II7) in the FIRST A and Gm7|C7 in the second and last A; bar 8 is C7 (first A, turnaround) or Fmaj7.  The bridge
+            # moves by ii-V-I to Bb (Cm7, F7, Bbmaj7 x2) and to Db (Ebm7, Ab7, Dbmaj7), then Gm7|C7 back to F.
+            "A": ["Fmaj7", "Em7b5|A7", "Dm7|G7", "Cm7|F7", "Fm7|Bb7", "Am7b5|D7", "G7", "C7"],
+            "A2": ["Fmaj7", "Em7b5|A7", "Dm7|G7", "Cm7|F7", "Fm7|Bb7", "Am7b5|D7", "Gm7|C7", "Fmaj7"],
+            "Bridge": ["Cm7", "F7", "Bbmaj7", "Bbmaj7", "Ebm7", "Ab7", "Dbmaj7", "Gm7|C7"],
+            "A3": ["Fmaj7", "Em7b5|A7", "Dm7|G7", "Cm7|F7", "Fm7|Bb7", "Am7b5|D7", "Gm7|C7", "Fmaj7"],
+        }, composer="Charlie Parker",
+          section_order=["A", "A2", "Bridge", "A3"],
+          chart_versions={
+              # Beginner: one complete chorus with triads/dominant sevenths (half-diminished -> minor triad, maj7 -> major).
+              "Beginner": {
+                  "A": ["F", "Em|A7", "Dm|G7", "Cm|F7", "Fm|Bb7", "Am|D7", "G7", "C7"],
+                  "A2": ["F", "Em|A7", "Dm|G7", "Cm|F7", "Fm|Bb7", "Am|D7", "Gm|C7", "F"],
+                  "Bridge": ["Cm", "F7", "Bb", "Bb", "Ebm", "Ab7", "Db", "Gm|C7"],
+                  "A3": ["F", "Em|A7", "Dm|G7", "Cm|F7", "Fm|Bb7", "Am|D7", "Gm|C7", "F"],
+              },
+              # Intermediate keeps the full harmonic structure (the chart carries no stacked alterations to reduce).
+              "Intermediate": {
+                  "A": ["Fmaj7", "Em7b5|A7", "Dm7|G7", "Cm7|F7", "Fm7|Bb7", "Am7b5|D7", "G7", "C7"],
+                  "A2": ["Fmaj7", "Em7b5|A7", "Dm7|G7", "Cm7|F7", "Fm7|Bb7", "Am7b5|D7", "Gm7|C7", "Fmaj7"],
+                  "Bridge": ["Cm7", "F7", "Bbmaj7", "Bbmaj7", "Ebm7", "Ab7", "Dbmaj7", "Gm7|C7"],
+                  "A3": ["Fmaj7", "Em7b5|A7", "Dm7|G7", "Cm7|F7", "Fm7|Bb7", "Am7b5|D7", "Gm7|C7", "Fmaj7"],
+              },
+              "Advanced": {
+                  "A": ["Fmaj7", "Em7b5|A7", "Dm7|G7", "Cm7|F7", "Fm7|Bb7", "Am7b5|D7", "G7", "C7"],
+                  "A2": ["Fmaj7", "Em7b5|A7", "Dm7|G7", "Cm7|F7", "Fm7|Bb7", "Am7b5|D7", "Gm7|C7", "Fmaj7"],
+                  "Bridge": ["Cm7", "F7", "Bbmaj7", "Bbmaj7", "Ebm7", "Ab7", "Dbmaj7", "Gm7|C7"],
+                  "A3": ["Fmaj7", "Em7b5|A7", "Dm7|G7", "Cm7|F7", "Fm7|Bb7", "Am7b5|D7", "Gm7|C7", "Fmaj7"],
+              },
+          },
+          extensions=_ext(
+              arrangement_notes=(
+                  "**AABA**, 32 bars, **4/4**, **F major**, bebop (recordings run about 209 bpm and up; the default tempo "
+                  "here is a practice tempo). A: **Fmaj7 - Em7b5|A7 - Dm7|G7 - Cm7|F7 - Fm7|Bb7 - Am7b5|D7** then **G7 - C7** "
+                  "(first A) or **Gm7|C7 - Fmaj7** (second and last A). Bridge: ii-V-I to **Bb** (Cm7 F7 Bbmaj7) and to **Db** "
+                  "(Ebm7 Ab7 Dbmaj7), then **Gm7|C7**. Sources agree on the structure; published sheets differ in A bars 5, 6 "
+                  "and 8 and some versions add C7b9 / Gm7 C7alt turnarounds, which are not used here. Chart is one complete "
+                  "chorus; playback repeats it for practice."
+              ),
+              default_bpm=176,
+              default_groove="Jazz swing",
+              time_signature="4/4",
+              form="AABA (32 bars)",
+              full_form_levels=["Beginner"],
+              jazz_standard_flagship=True,
+              repertoire_tags=["Jazz Standard", "Bebop", "Charlie Parker", "ii-V-I Progressions", "Essential Repertoire", "Improvisation"],
+              chart_confidence={"chords": "medium-high", "timing": "medium", "form": "high", "groove": "low"},
+              chart_sources=(
+                  "jazzchanges.app (changes taken from Michael Brecker's solo on Chick Corea's Three Quartets); a guitar "
+                  "transcription of the head; Jazzadvice's measure-by-measure analysis (ii-V walk-down, IV7 at bar 5, II7 "
+                  "at bar 7 of the first A, bridge ii-V-Is to Bb and Db). No score was used or copied; not checked by ear."
+              ),
+          )),
         _s("Misty", "Erroll Garner", "Jazz", "Eb", {
             # AABA, 32 bars. The A section has the signature Abmaj7 and the
             # Abm7|Db7 backdoor ii-V; first ending (Gm7|C7, Fm7|Bb7) leads back
