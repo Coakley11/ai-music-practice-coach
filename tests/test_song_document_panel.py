@@ -9,6 +9,7 @@ musician's note about the page and not an instruction to transpose anything.
 from __future__ import annotations
 
 import re
+import unittest.mock
 import unittest
 from pathlib import Path
 
@@ -62,7 +63,8 @@ class ItTouchesNothingMusical(unittest.TestCase):
                 )
 
     def test_its_key_constants_all_share_the_panel_prefix(self):
-        for name in ("SELECTED_KEY", "CONFIRM_KEY", "PAGE_KEY", "UPLOAD_KEY", "NOTICE_KEY"):
+        for name in ("SELECTED_KEY", "CONFIRM_KEY", "PAGE_KEY", "UPLOAD_KEY",
+                     "NOTICE_KEY", "PICKER_KEY"):
             with self.subTest(constant=name):
                 self.assertTrue(getattr(panel, name).startswith(panel.KEY_PREFIX))
 
@@ -185,3 +187,67 @@ class ThePracticePageUsesThePanel(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ASessionIsNotNecessarilyADict(unittest.TestCase):
+    """Streamlit's session_state is a proxy, and an isinstance(dict) check rejects it.
+
+    The panel reported "Open a song first" on a page that was plainly showing a song,
+    because the only session object that matters in production is not a dict. Nothing
+    but a browser could show that: every unit test here passes a real dict.
+    """
+
+    class ProxyLike:
+        """A mapping that is deliberately not a dict, the way session_state is not."""
+
+        def __init__(self, data):
+            self._data = dict(data)
+
+        def get(self, key, default=None):
+            return self._data.get(key, default)
+
+        def __getitem__(self, key):
+            return self._data[key]
+
+        def __setitem__(self, key, value):
+            self._data[key] = value
+
+        def __contains__(self, key):
+            return key in self._data
+
+    def test_a_proxy_is_accepted_as_a_session(self):
+        import song_document_catalog as sdc
+
+        self.assertTrue(sdc._is_session_like(self.ProxyLike({"a": 1})))
+        self.assertTrue(sdc._is_session_like({}))
+
+    def test_things_that_are_not_sessions_are_rejected(self):
+        import song_document_catalog as sdc
+
+        for value in (None, 7, "text", object()):
+            with self.subTest(value=value):
+                self.assertFalse(sdc._is_session_like(value))
+
+    def test_the_owner_lookup_reads_a_proxy_rather_than_giving_up(self):
+        """It must reach song_coach_context, not bail out at the type check."""
+        import song_document_catalog as sdc
+
+        seen = {}
+
+        def fake_owner(sess):
+            seen["session"] = sess
+            return "catalog"
+
+        def fake_identity(sess, owner):
+            return "catalog|catalog::abc"
+
+        import song_coach_context
+
+        with unittest.mock.patch.object(song_coach_context, "source_owner", fake_owner), \
+                unittest.mock.patch.object(
+                    song_coach_context, "global_song_identity", fake_identity):
+            proxy = self.ProxyLike({"active_catalog_pick_key": "catalog::abc"})
+            owner = sdc.active_song_owner(proxy)
+        self.assertEqual(owner.get("source_type"), "catalog")
+        self.assertEqual(owner.get("source_id"), "catalog::abc")
+        self.assertIs(seen.get("session"), proxy)

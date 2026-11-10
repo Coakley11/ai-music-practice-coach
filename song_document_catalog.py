@@ -49,12 +49,23 @@ __all__ = [
 ]
 
 
-def _session(st: Any | None) -> dict[str, Any]:
+def _is_session_like(value: Any) -> bool:
+    """Can this be read as a session?
+
+    Not ``isinstance(value, dict)``. Streamlit's ``session_state`` is a proxy object,
+    not a dict, so a dict check rejects the only session that matters and the panel
+    reports no active song on a page that is plainly showing one. Every reader here and
+    in ``song_coach_context`` wants a mapping, which is ``.get`` and ``__getitem__``.
+    """
+    return value is not None and hasattr(value, "get") and hasattr(value, "__getitem__")
+
+
+def _session(st: Any | None) -> Any:
     if st is None:
         return {}
     try:
         ss = st.session_state if hasattr(st, "session_state") else st
-        return ss if isinstance(ss, dict) else {}
+        return ss if _is_session_like(ss) else {}
     except Exception:
         return {}
 
@@ -76,8 +87,8 @@ def active_song_owner(session: Any, *, st: Any | None = None) -> dict[str, str]:
     an identity that cannot be confirmed is worse than none, because it files a private
     document against the wrong song.
     """
-    sess = session if isinstance(session, dict) else _session(st)
-    if not sess:
+    sess = session if _is_session_like(session) else _session(st)
+    if sess is None:
         return {}
     try:
         from song_coach_context import global_song_identity, source_owner

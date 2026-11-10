@@ -32,6 +32,7 @@ CONFIRM_KEY = f"{KEY_PREFIX}confirm_delete"
 PAGE_KEY = f"{KEY_PREFIX}page"
 UPLOAD_KEY = f"{KEY_PREFIX}upload"
 NOTICE_KEY = f"{KEY_PREFIX}notice"
+PICKER_KEY = f"{KEY_PREFIX}picker"
 
 # Wide enough to read a stave on a laptop, small enough not to cost a megabyte a page.
 _RENDER_WIDTH_DESKTOP = 1100
@@ -210,7 +211,13 @@ def _manage(st: Any, row: dict) -> None:
     from song_document_catalog import delete_song_document, rename_song_document, retag_song_document
 
     did = str(row.get("document_id") or "")
-    with st.expander("Rename, tag or delete", expanded=False):
+    # Not an expander. This panel is already inside one, and nested expanders behave
+    # badly: a checkbox in one does not toggle when its label is clicked, and a button
+    # that sets session state and reruns leaves the state unchanged - both measured in
+    # a real browser, both silent. A plain container has none of that and costs the
+    # musician one less click.
+    with st.container(border=True):
+        st.caption("Rename, tag or delete")
         cols = st.columns([2, 1, 1, 1])
         title = cols[0].text_input("Name", value=str(row.get("title") or ""),
                                    key=f"{KEY_PREFIX}edit_title_{did}")
@@ -233,25 +240,34 @@ def _manage(st: Any, row: dict) -> None:
             st.rerun()
 
         st.caption("Deleting removes this reference and its file. It cannot be undone.")
-        if st.session_state.get(CONFIRM_KEY) == did:
-            confirm = st.columns(2)
-            if confirm[0].button("Delete permanently", key=f"{KEY_PREFIX}del_yes_{did}",
-                                 type="primary", use_container_width=True):
+        # Two buttons rather than a tick box and a disabled button. A deletion should
+        # take a deliberate second action either way, and a button is the control both
+        # a person and a test can actually operate: Streamlit renders a checkbox as a
+        # visually hidden input inside a label, and inside this nested expander a click
+        # on that label does not toggle it - measured, not assumed, so the tick-box
+        # version could never have been confirmed to work.
+        armed = str(st.session_state.get(CONFIRM_KEY) or "") == did
+        if not armed:
+            if st.button("Delete this reference", key=f"{KEY_PREFIX}del_{did}"):
+                st.session_state[CONFIRM_KEY] = did
+                st.rerun()
+        else:
+            st.warning("Delete this reference permanently?")
+            yes, no = st.columns(2)
+            if yes.button("Yes, delete it", key=f"{KEY_PREFIX}del_yes_{did}",
+                          type="primary", use_container_width=True):
                 result = delete_song_document(did, st=st)
-                st.session_state[CONFIRM_KEY] = None
+                st.session_state[CONFIRM_KEY] = ""
                 st.session_state[SELECTED_KEY] = None
                 st.session_state[NOTICE_KEY] = [
                     ("ok", "Deleted.") if result.get("ok")
                     else ("error", f"Could not delete: {result.get('error')}")
                 ]
                 st.rerun()
-            if confirm[1].button("Keep it", key=f"{KEY_PREFIX}del_no_{did}",
-                                 use_container_width=True):
-                st.session_state[CONFIRM_KEY] = None
+            if no.button("Keep it", key=f"{KEY_PREFIX}del_no_{did}",
+                         use_container_width=True):
+                st.session_state[CONFIRM_KEY] = ""
                 st.rerun()
-        elif st.button("Delete this reference", key=f"{KEY_PREFIX}del_{did}"):
-            st.session_state[CONFIRM_KEY] = did
-            st.rerun()
 
 
 def _preview(st: Any, row: dict, *, compact: bool) -> None:
@@ -330,12 +346,17 @@ def render_song_documents_panel(st: Any, session: Any, *, compact: bool = False)
     current = st.session_state.get(SELECTED_KEY)
     if current not in ids:
         current = ids[0]
+    # Seed the widget's own state rather than passing ``index``. A keyed selectbox uses
+    # what it has stored and ignores the index, and this list is rebuilt and reordered
+    # whenever a document is added, renamed or removed - so the stored id can be one
+    # that no longer exists.
+    if st.session_state.get(PICKER_KEY) not in ids:
+        st.session_state[PICKER_KEY] = current
     chosen = st.selectbox(
         "Saved references",
         ids,
-        index=ids.index(current),
         format_func=lambda d: labels.get(d, d),
-        key=f"{KEY_PREFIX}picker",
+        key=PICKER_KEY,
     )
     if chosen != st.session_state.get(SELECTED_KEY):
         st.session_state[SELECTED_KEY] = chosen
