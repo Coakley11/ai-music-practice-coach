@@ -129,7 +129,18 @@ def pattern_plan(
 
 
 def chord_tone_pcs(chord: str) -> list[int]:
-    """Ascending pitch classes of the chord's own tones."""
+    """Ascending pitch classes of the chord's own tones.
+
+    ``spell_chord_tones`` answers with the plain seventh-chord skeleton for every altered
+    dominant: C7b5, C7#5, C7alt and C7b9 all come back as C E G Bb. The scale side already
+    reads the symbol correctly (C7b5 runs altered), but an arpeggio built from those tones
+    would sound a natural fifth the symbol explicitly denies. So the fifth is corrected
+    here, from the symbol, without touching the shared speller.
+
+    An explicit b5 or #5 says which fifth to play. A bare "alt" does not, so the natural
+    fifth is simply dropped rather than a replacement being invented - root, third and
+    seventh are the tones an altered dominant is sure of.
+    """
     from music_theory import pitch_class_from_spelled_note, spell_chord_tones
 
     out: list[int] = []
@@ -137,6 +148,27 @@ def chord_tone_pcs(chord: str) -> list[int]:
         pc = pitch_class_from_spelled_note(tone) % 12
         if pc not in out:
             out.append(pc)
+    if not out:
+        return [0]
+
+    try:
+        from chord_scale_selection import _alterations
+
+        alts = _alterations(chord)
+    except Exception:
+        alts = set()
+    if alts & {"b5", "#5", "alt"}:
+        root = out[0]
+        natural_fifth = (root + 7) % 12
+        if natural_fifth in out:
+            replacement = None
+            if "b5" in alts:
+                replacement = (root + 6) % 12
+            elif "#5" in alts:
+                replacement = (root + 8) % 12
+            out = [pc for pc in out if pc != natural_fifth]
+            if replacement is not None and replacement not in out:
+                out.append(replacement)
     return out or [0]
 
 
