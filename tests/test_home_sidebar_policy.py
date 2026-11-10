@@ -63,7 +63,7 @@ def test_sidebar_text_and_gold_contrast_on_brand_surfaces():
         values=[int(color[i:i+2],16)/255 for i in (1,3,5)]
         values=[v/12.92 if v<=0.04045 else ((v+0.055)/1.055)**2.4 for v in values]
         return sum(v*w for v,w in zip(values,(0.2126,0.7152,0.0722)))
-    for foreground in ('#facc15','#e0e7ff'):
-        for background in ('#0f172a','#211e54'):
+    for foreground in ('#facc15','#e0e7ff','#eef2ff'):
+        for background in ('#0f172a','#211e54','#292657','#383374'):
             light,dark=sorted((luminance(foreground),luminance(background)),reverse=True)
             assert (light+0.05)/(dark+0.05)>4.5

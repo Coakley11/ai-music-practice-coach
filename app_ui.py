@@ -3407,6 +3407,16 @@ def _purple_sidebar_css() -> str:
 [data-testid="stSidebar"] [data-testid="stExpander"] {
   background: rgba(255,255,255,0.06); border-color: rgba(199,210,254,0.35);
 }
+[data-testid="stSidebar"] [data-testid="stExpander"] summary {
+  background: #292657 !important; color: #eef2ff !important;
+}
+[data-testid="stSidebar"] [data-testid="stExpander"] summary * { color: #eef2ff !important; }
+[data-testid="stSidebar"] [data-testid="stExpander"] summary:hover {
+  background: #383374 !important;
+}
+[data-testid="stSidebar"] [data-testid="stExpander"] summary:focus-visible {
+  outline: 2px solid #facc15; outline-offset: 2px;
+}
 [data-testid="stSidebar"] [data-testid="stSidebarUserContent"] button[data-testid="stBaseButton-secondary"] {
   background: #292657 !important; border-color: #818cf8 !important;
 }
