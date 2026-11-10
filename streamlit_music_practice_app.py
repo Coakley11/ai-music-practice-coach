@@ -25601,20 +25601,19 @@ elif _studio_page == "backing":
                 _ls_tgen(st.session_state),
                 st.session_state.get("_karaoke_playback_generation", ""),
             )
-        if (
-            _ls_take
-            and transport_intent(st.session_state) in ("playing", "paused")
-            and st.session_state.get("_ls_rendered_take") == _ls_take
-        ):
-            _ls_autoplay = bool(st.session_state.get("_ls_autoplay_rendered", _ls_autoplay))
-            _show_countdown = bool(st.session_state.get("_ls_countdown_rendered", _show_countdown))
-            _ls_handoff_autoplay = bool(st.session_state.get("_ls_handoff_rendered", _ls_handoff_autoplay))
-        st.session_state["_ls_rendered_take"] = _ls_take
-        st.session_state["_ls_autoplay_rendered"] = bool(_ls_autoplay)
-        st.session_state["_ls_countdown_rendered"] = bool(_show_countdown)
-        # The one-shot "sheet just opened" hand-off flag too: it flipped off on
-        # the next run and re-created the player from 0:00.
-        st.session_state["_ls_handoff_rendered"] = bool(_ls_handoff_autoplay)
+        # The props stay as first drawn while this take is mounted (the one-shot
+        # "sheet just opened" hand-off flag too: it flipped off on the next run and
+        # re-created the player from 0:00). Reopening the sheet is a new mount.
+        from backing_sheet_mount import lead_sheet_mount_props
+
+        _ls_autoplay, _show_countdown, _ls_handoff_autoplay = lead_sheet_mount_props(
+            st.session_state,
+            take=_ls_take,
+            intent=transport_intent(st.session_state),
+            autoplay=_ls_autoplay,
+            countdown=_show_countdown,
+            handoff=_ls_handoff_autoplay,
+        )
         # What the browser player is actually handed. "Backing ready" in the UI
         # proves nothing: autoplay with zero bytes mounts a silent player, so
         # record bytes, autoplay intent and countdown together. autoplay True
