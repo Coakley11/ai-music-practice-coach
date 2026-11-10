@@ -3388,9 +3388,11 @@ div[class*="st-key-cpl_chord_pick_grid"] [data-testid="stColumn"] > div {
 
 
 def _purple_sidebar_css() -> str:
-    """Visual-only sidebar treatment using the brand header's #312e81 stop."""
+    """Visual-only sidebar treatment using the header's dark navy and gold."""
     return """
-[data-testid="stSidebar"] { background: #312e81; }
+[data-testid="stSidebar"] { background: linear-gradient(180deg, #0f172a 0%, #211e54 100%); }
+[data-testid="stSidebar"] .ui-sb-section,
+[data-testid="stSidebar"] .ui-source-kind { color: #facc15 !important; }
 [data-testid="stSidebar"] [data-testid="stSidebarContent"],
 [data-testid="stSidebar"] [data-testid="stSidebarHeader"],
 [data-testid="stSidebar"] [data-testid="stSidebarUserContent"] { background: transparent; }
@@ -3405,15 +3407,25 @@ def _purple_sidebar_css() -> str:
 [data-testid="stSidebar"] [data-testid="stExpander"] {
   background: rgba(255,255,255,0.06); border-color: rgba(199,210,254,0.35);
 }
+[data-testid="stSidebar"] [data-testid="stExpander"] summary {
+  background: #292657 !important; color: #eef2ff !important;
+}
+[data-testid="stSidebar"] [data-testid="stExpander"] summary * { color: #eef2ff !important; }
+[data-testid="stSidebar"] [data-testid="stExpander"] summary:hover {
+  background: #383374 !important;
+}
+[data-testid="stSidebar"] [data-testid="stExpander"] summary:focus-visible {
+  outline: 2px solid #facc15; outline-offset: 2px;
+}
 [data-testid="stSidebar"] [data-testid="stSidebarUserContent"] button[data-testid="stBaseButton-secondary"] {
-  background: #454199 !important; border-color: #818cf8 !important;
+  background: #292657 !important; border-color: #818cf8 !important;
 }
 [data-testid="stSidebar"] [data-testid="stSidebarUserContent"] button[data-testid="stBaseButton-secondary"],
 [data-testid="stSidebar"] [data-testid="stSidebarUserContent"] button[data-testid="stBaseButton-secondary"] * {
   color: #eef2ff !important;
 }
 [data-testid="stSidebar"] [data-testid="stSidebarUserContent"] button:disabled {
-  background: #3b387f !important; border-color: #68639e !important; opacity: 1 !important;
+  background: #25243f !important; border-color: #68639e !important; opacity: 1 !important;
 }
 [data-testid="stSidebar"] [data-testid="stSidebarUserContent"] button:disabled,
 [data-testid="stSidebar"] [data-testid="stSidebarUserContent"] button:disabled * { color: #c7c4e6 !important; }
@@ -10469,21 +10481,21 @@ def session_badges(
     return badges
 
 
-def sidebar_section(title: str, *, icon: str = "", tone: str = "") -> None:
+def sidebar_section(title: str, *, icon: str = "", tone: str = "", target: Any = None) -> None:
     import streamlit as st
 
     label = f"{icon} {title}".strip() if icon else title
     tone_cls = f" tone-{tone}" if tone else ""
-    st.sidebar.markdown(
+    (target if target is not None else st.sidebar).markdown(
         f'<p class="ui-sb-section{tone_cls}">{html.escape(label)}</p>',
         unsafe_allow_html=True,
     )
 
 
-def sidebar_source_banner(source_kind: str, detail: str) -> None:
+def sidebar_source_banner(source_kind: str, detail: str, *, target: Any = None) -> None:
     import streamlit as st
 
-    st.sidebar.markdown(
+    (target if target is not None else st.sidebar).markdown(
         f'<div class="ui-source-banner">'
         f'<div class="ui-source-kind">{html.escape(source_kind)}</div>'
         f'<div class="ui-source-detail">{html.escape(detail)}</div>'
@@ -10492,11 +10504,11 @@ def sidebar_source_banner(source_kind: str, detail: str) -> None:
     )
 
 
-def sidebar_goto_song_selection(*, on_navigate: Any) -> None:
+def sidebar_goto_song_selection(*, on_navigate: Any, target: Any = None) -> None:
     """Small sidebar shortcut to Song Selection (preserves global session state)."""
     import streamlit as st
 
-    st.sidebar.button(
+    (target if target is not None else st.sidebar).button(
         nav_icon_button_label("picker"),
         key="sidebar_goto_song_selection",
         use_container_width=True,
@@ -10513,8 +10525,8 @@ STUDIO_PAGE_META: dict[str, dict[str, str]] = {
     "custom": {"label": "Custom Progression", "icon": page_feature_icon("custom"), "nav_class": "custom"},
     "composer": {"label": "Composition Studio", "icon": page_feature_icon("composer"), "nav_class": "composer"},
     "creative": {"label": "Creative Lab", "icon": page_feature_icon("creative"), "nav_class": "creative"},
-    "multitrack": {"label": "Multitrack", "icon": page_feature_icon("multitrack"), "nav_class": "multitrack"},
     "analysis": {"label": "Upload Analysis", "icon": page_feature_icon("analysis"), "nav_class": "analysis"},
+    "multitrack": {"label": "Multitrack", "icon": page_feature_icon("multitrack"), "nav_class": "multitrack"},
     "log": {"label": "Practice Log", "icon": page_feature_icon("log"), "nav_class": "log"},
     "openai": {"label": "OpenAI", "icon": "✨", "nav_class": "openai"},
 }
@@ -11587,6 +11599,8 @@ def render_sidebar_studio_nav(
     import streamlit as st
 
     current = ensure_studio_page(session_state, default=current_page)
+    from music_sidebar_policy import apply_page_defaults
+    apply_page_defaults(session_state, current)
     ensure_sidebar_nav_defaults(session_state)
     collapsed = sidebar_nav_is_collapsed(session_state)
     collapsed_attr = "true" if collapsed else "false"

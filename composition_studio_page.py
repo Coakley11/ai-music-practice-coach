@@ -1265,30 +1265,11 @@ def _library_save_feedback(
     cloud_ok: bool,
     cloud_required: bool,
 ) -> tuple[str, str]:
-    """Return an accurate UI level/message for one explicit save transaction."""
-    if saved and success_message and force_ok and disk_ok and (not cloud_required or cloud_ok):
-        return "success", success_message
-    if saved and disk_ok and not cloud_required:
-        return "success", success_message or "Saved to Composition Library."
-    if saved and disk_ok and cloud_required and cloud_ok:
-        return "success", success_message or "Saved to Composition Library."
-    if saved and disk_ok and cloud_required and not cloud_ok:
-        return (
-            "warning",
-            "Saved locally, but cloud sync was not confirmed. "
-            "Your composition is safe on this device. "
-            "Try saving again to retry cloud sync.",
-        )
-    if saved and cloud_ok:
-        return (
-            "warning",
-            "Saved to the cloud Composition Library, but the local disk write was not confirmed.",
-        )
-    if saved and not cloud_required:
-        return "success", success_message or "Saved to Composition Library."
-    if saved:
-        return "error", "Could not save to Composition Library. Please try again."
-    return "error", "Could not save to Composition Library. Please try again."
+    """Arguments are verified readbacks, never raw write-return flags."""
+    from composition_save_verification import save_feedback
+
+    return save_feedback({"cloud_verified": bool(saved and force_ok and cloud_ok),
+                          "disk_verified": bool(saved and disk_ok)})
 
 
 def _render_library_sidebar(session_state: dict) -> None:
@@ -1315,38 +1296,19 @@ def _render_library_sidebar(session_state: dict) -> None:
                     reason="explicit_library_save",
                     explicit=True,
                 )
-                force_ok = bool(session_state.get("_music_force_save_ok", False))
-                if not force_ok and not session_state.get("_composition_workspace_force_save_error"):
-                    try:
-                        from composition_workspace_state_persistence import checkpoint_composition_workspace
-
-                        checkpoint_composition_workspace(
-                            session_state,
-                            reason="explicit_library_save",
-                            force_disk=True,
-                            st=st,
-                        )
-                        force_ok = bool(session_state.get("_music_force_save_ok", False))
-                    except Exception:
-                        pass
-                disk_ok = bool(session_state.get("_suite_persist_last_save_disk", False))
-                cloud_ok = bool(session_state.get("_suite_persist_last_save_cloud", False))
-                try:
-                    from suite_storage_config import cloud_storage_enabled
-
-                    cloud_required = bool(cloud_storage_enabled())
-                except Exception:
-                    cloud_required = False
-                msg = library_save_success_message(session_state)
+                from composition_save_verification import RESULT_KEY, content_fingerprint
+                result = session_state.get(RESULT_KEY) or {}
+                expected = session_state.get("composition_workspace_state") or {}
+                current = (result.get("document_id") == str(saved.get("id") or "")
+                           and result.get("fingerprint") == content_fingerprint(expected))
+                cloud_ok = bool(current and result.get("cloud_verified"))
+                disk_ok = bool(current and result.get("disk_verified"))
                 level, feedback = _library_save_feedback(
-                    saved=bool(saved),
-                    success_message=msg,
-                    force_ok=force_ok,
-                    disk_ok=disk_ok,
-                    cloud_ok=cloud_ok,
-                    cloud_required=cloud_required,
+                    saved=bool(saved), success_message=library_save_success_message(session_state),
+                    force_ok=bool(result.get("force_ok")), disk_ok=disk_ok,
+                    cloud_ok=cloud_ok, cloud_required=bool(result.get("cloud_required", True)),
                 )
-                if saved and (disk_ok or cloud_ok):
+                if saved and cloud_ok:
                     try:
                         from music_progress_activity import report_composition_saved
                         report_composition_saved(session_state, saved, durable=True)
@@ -3273,11 +3235,11 @@ def _render_section_score_view(
 
     if has_chords and has_lyrics and not has_melody:
         st.caption(
-            "Chords and accepted lyrics are saved together in this section. "
+            "Chords and accepted lyrics are kept together in this section. "
             "A melody can be added later; alignment is optional."
         )
     elif has_lyrics and not has_chords and not has_melody:
-        st.caption("These accepted lyrics are saved independently. Add chords or melody whenever you like.")
+        st.caption("These lyrics are accepted in this draft. Use Save to Composition Library to verify persistence.")
     elif has_melody and not has_lyrics:
         st.caption("The original melody is saved. Accepted lyrics can be added and aligned later.")
     elif has_chords and not has_melody:
@@ -6815,6 +6777,17 @@ def _render_phase_chords(session_state: dict, doc: dict[str, Any], *, host_side_
 
 def render_composition_studio_page() -> None:
     session_state = st.session_state
+    from composition_workspace_state_persistence import COMPOSITION_RECOVERY_KEY, resolve_legacy_recovery
+    if session_state.get(COMPOSITION_RECOVERY_KEY):
+        st.warning("A preserved legacy Composition document conflicts with an empty saved workspace. "
+                   "Nothing has been overwritten. Choose whether to recover it before continuing.")
+        if st.button("Recover preserved legacy Composition", key="composer_recover_legacy"):
+            resolve_legacy_recovery(session_state, recover=True)
+            st.rerun()
+        if st.button("Keep current workspace", key="composer_keep_current"):
+            resolve_legacy_recovery(session_state, recover=False)
+            st.rerun()
+        return
     try:
         from composition_workspace_state_persistence import prepare_composition_workspace_for_render
 
@@ -6845,6 +6818,16 @@ def render_composition_studio_page() -> None:
         st.rerun()
         return
 
+    from composition_save_verification import RESULT_KEY, content_fingerprint
+    result = session_state.get(RESULT_KEY) or {}
+    workspace = session_state.get("composition_workspace_state") or {}
+    current = result.get("fingerprint") == content_fingerprint(workspace)
+    if current and result.get("cloud_verified"):
+        st.caption("Save status: complete Composition cloud save verified.")
+    elif current and result.get("disk_verified"):
+        st.caption("Save status: temporary app-server copy only; cloud persistence is unconfirmed.")
+    else:
+        st.caption("Save status: no verified save for the current draft. Keep this tab open until saving is confirmed.")
     ensure_workflow(doc)
     st.markdown(
         f'<div class="composer-identity-header">{_composition_identity_header_html(doc)}</div>',

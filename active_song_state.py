@@ -1843,6 +1843,7 @@ def _active_song_context_from_blob(state: dict[str, Any]) -> dict[str, Any] | No
             return _merge_transposing_from_blob_sources(ctx, state)
     core = state.get("core") if isinstance(state.get("core"), dict) else state
     if isinstance(core, dict) and (core.get("pick_key") or core.get("song")):
+        core_pick = str(core.get("pick_key") or "").strip()
         sel: dict[str, Any] = {}
         if core.get("song"):
             sel["title"] = str(core.get("song") or "")
@@ -1850,6 +1851,14 @@ def _active_song_context_from_blob(state: dict[str, Any]) -> dict[str, Any] | No
         return _normalize_context(
             {
                 "pick_key": core.get("pick_key"),
+                # A legacy Catalog core must carry its source as well as its ID.
+                # Otherwise a stale Custom marker can reclaim the ID during
+                # display-key resolution. Typed canonical contexts win above.
+                "music_source": (
+                    SOURCE_CATALOG
+                    if core_pick and not core_pick.startswith(("custom::", "composition::"))
+                    else ""
+                ),
                 "display_key": core.get("display_key"),
                 "instrument": core.get("instrument"),
                 "level": core.get("level"),
