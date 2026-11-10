@@ -14815,6 +14815,15 @@ def _render_backing_step2_playback_action(
                 "song, key and tempo stay the same.",
             )
 
+            if _developer_mode_enabled():
+                # Which recorded instruments this server actually plays (they follow its environment).
+                try:
+                    from backing_sound_status import sound_engine_line
+
+                    st.caption(f"Developer · Backing sound: {sound_engine_line()}")
+                except Exception as _sound_status_err:
+                    st.caption(f"Developer · Backing sound: unavailable ({type(_sound_status_err).__name__})")
+
             try:
                 from backing_key_cycle import render_backing_key_cycle_controls
 
