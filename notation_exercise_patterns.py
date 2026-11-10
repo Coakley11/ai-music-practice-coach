@@ -30,7 +30,131 @@ EXERCISE_PATTERNS: dict[str, str] = {
     "thirds": "Scale in thirds",
     "fourths": "Scale in fourths",
     "voice_leading": "Nearest chord tone (voice leading)",
+    "arpeggio_inversions": "Arpeggio through inversions",
+    "triplet_sequence": "Scale in three-note groups",
+    "four_note_sequence": "Scale in four-note groups",
 }
+
+# The two things a musician asks for by name. "auto" keeps today's behaviour, where
+# Practice Focus and level choose the drills.
+EXERCISE_MODES: tuple[str, ...] = ("auto", "arpeggios", "scales")
+
+MODE_LABELS: dict[str, str] = {
+    "auto": "Auto (follow Practice Focus)",
+    "arpeggios": "Arpeggios",
+    "scales": "Scales",
+}
+
+# Choosing a mode must not flatten the levels: each still drills something harder than
+# the last, inside the mode the musician asked for.
+_MODE_PLANS: dict[str, dict[str, tuple[str, ...]]] = {
+    "arpeggios": {
+        "Beginner": ("arpeggio_up", "arpeggio_down"),
+        "Intermediate": ("arpeggio_up", "arpeggio_down", "arpeggio_up_down"),
+        "Advanced": ("arpeggio_up_down", "arpeggio_inversions", "voice_leading"),
+    },
+    "scales": {
+        "Beginner": ("scale_up", "scale_down"),
+        "Intermediate": ("scale_up", "scale_down", "scale_up_down", "thirds"),
+        "Advanced": ("thirds", "fourths", "triplet_sequence", "four_note_sequence"),
+    },
+}
+
+
+# Which patterns belong to each mode. An explicit mode is the musician saying which study
+# they want, so the Practice Focus may shape *how* that study is practised but may never
+# reach outside these sets - a Guide Tones focus must not turn a scale study into an
+# arpeggio study.
+_MODE_FAMILIES: dict[str, frozenset[str]] = {
+    "arpeggios": frozenset(
+        {"arpeggio_up", "arpeggio_down", "arpeggio_up_down", "arpeggio_inversions",
+         "voice_leading"}
+    ),
+    "scales": frozenset(
+        {"scale_up", "scale_down", "scale_up_down", "thirds", "fourths",
+         "triplet_sequence", "four_note_sequence"}
+    ),
+}
+
+# What each Practice Focus emphasises, in preference order, as patterns. Matched as a
+# substring of the focus label, the way _FOCUS_PLANS already matches, so the one canonical
+# focus list in practice_setup_controls stays the only list of foci - this names no new ones.
+# Unlisted foci simply leave the mode's level plan alone, which is the honest answer for a
+# focus like Tone or Timing that does not change *which notes* to play.
+_FOCUS_EMPHASIS: dict[str, tuple[str, ...]] = {
+    "guide tones": ("voice_leading", "thirds", "arpeggio_up_down"),
+    "voice leading": ("voice_leading", "thirds", "arpeggio_up_down"),
+    "inversions": ("arpeggio_inversions", "arpeggio_up_down", "thirds"),
+    "bebop": ("four_note_sequence", "thirds", "voice_leading", "arpeggio_up_down"),
+    "technique": ("triplet_sequence", "four_note_sequence", "fourths",
+                  "arpeggio_inversions"),
+    "phrasing": ("scale_up_down", "arpeggio_up_down", "thirds"),
+    "ear training": ("scale_up", "arpeggio_up", "scale_down", "arpeggio_down"),
+    "melody": ("scale_up_down", "thirds", "arpeggio_up_down"),
+    "harmony": ("arpeggio_up_down", "voice_leading", "thirds"),
+    "improvisation": ("thirds", "scale_up_down", "arpeggio_up_down", "four_note_sequence"),
+    "soloing": ("thirds", "fourths", "scale_up_down", "arpeggio_up_down"),
+    "lead": ("thirds", "scale_up_down", "arpeggio_up_down"),
+    "triads": ("arpeggio_up", "arpeggio_down", "arpeggio_inversions"),
+    "double stops": ("thirds", "fourths"),
+    "root motion": ("arpeggio_up", "arpeggio_down"),
+    "walking": ("scale_up", "arpeggio_up", "scale_down", "arpeggio_down"),
+    "left-hand": ("arpeggio_up", "arpeggio_down", "voice_leading"),
+    "comping": ("voice_leading", "arpeggio_up_down"),
+    "voicings": ("arpeggio_up_down", "voice_leading", "arpeggio_inversions"),
+    "reharmonization": ("voice_leading", "arpeggio_inversions", "thirds"),
+}
+
+
+def _focus_emphasis(focus: str) -> tuple[str, ...]:
+    text = str(focus or "").strip().lower()
+    if not text:
+        return ()
+    for needle, patterns in _FOCUS_EMPHASIS.items():
+        if needle in text:
+            return patterns
+    return ()
+
+
+def _level_appropriate(mode: str, level: str) -> list[str]:
+    """Patterns this mode drills at this level or any easier one.
+
+    The ceiling matters: without it a Technique focus would hand a Beginner the Advanced
+    four-note sequences, which is the focus overruling the level rather than colouring it.
+    """
+    plans = _MODE_PLANS[mode]
+    order = ("Beginner", "Intermediate", "Advanced")
+    allowed: list[str] = []
+    for name in order[: order.index(level) + 1]:
+        for pattern in plans[name]:
+            if pattern not in allowed:
+                allowed.append(pattern)
+    return allowed
+
+
+def mode_plan_for_focus(mode: str, level: str, focus: str = "") -> tuple[str, ...]:
+    """The pattern cycle for an explicit mode, ordered by what the focus emphasises.
+
+    The mode stays authoritative - every pattern returned is one this mode drills at this
+    level - and the focus decides which of them lead. A focus the exercise patterns have no
+    opinion about returns the mode's plain level plan unchanged.
+    """
+    base = _MODE_PLANS[mode][level]
+    emphasis = _focus_emphasis(focus)
+    if not emphasis:
+        return base
+    family = _MODE_FAMILIES[mode]
+    allowed = _level_appropriate(mode, level)
+    lead = [p for p in emphasis if p in family and p in allowed]
+    if not lead:
+        return base
+    return tuple(lead) + tuple(p for p in base if p not in lead)
+
+
+def normalize_exercise_mode(mode: str) -> str:
+    text = str(mode or "auto").strip().lower()
+    return text if text in EXERCISE_MODES else "auto"
+
 
 # Which patterns each level drills, in the order they cycle through the progression.
 _LEVEL_PLANS: dict[str, tuple[str, ...]] = {
@@ -68,18 +192,46 @@ def _level(level: str) -> str:
     return text if text in _LEVEL_PLANS else "Intermediate"
 
 
-def pattern_plan(level: str, n_measures: int, *, seed: int | None = None, focus: str = "") -> list[str]:
+def pattern_plan(
+    level: str,
+    n_measures: int,
+    *,
+    seed: int | None = None,
+    focus: str = "",
+    mode: str = "auto",
+) -> list[str]:
     """One pattern per bar: the drills for this level (or Practice Focus) cycled so the exercise
-    keeps changing direction."""
-    plan = _focus_plan(focus) or _LEVEL_PLANS[_level(level)]
+    keeps changing direction.
+
+    An explicit ``mode`` of "arpeggios" or "scales" is the musician asking directly, so it
+    outranks the Practice Focus guess; "auto" leaves today's behaviour alone.
+    """
+    lvl = _level(level)
+    chosen = normalize_exercise_mode(mode)
+    if chosen != "auto":
+        # The mode decides which study; the focus decides how it is practised within it.
+        plan = mode_plan_for_focus(chosen, lvl, focus)
+    else:
+        plan = _focus_plan(focus) or _LEVEL_PLANS[lvl]
     if n_measures <= 0:
         return []
     start = (random.Random(seed).randrange(len(plan))) if seed is not None else 0
     return [plan[(start + i) % len(plan)] for i in range(n_measures)]
 
 
-def chord_tone_pcs(chord: str) -> list[int]:
-    """Ascending pitch classes of the chord's own tones."""
+def chord_tone_pcs(chord: str, key_center: str = "C") -> list[int]:
+    """Ascending pitch classes of the chord's own tones.
+
+    ``spell_chord_tones`` answers with the plain seventh-chord skeleton for every altered
+    dominant: C7b5, C7#5, C7alt and C7b9 all come back as C E G Bb. The scale side already
+    reads the symbol correctly (C7b5 runs altered), but an arpeggio built from those tones
+    would sound a natural fifth the symbol explicitly denies. So the fifth is corrected
+    here, from the symbol, without touching the shared speller.
+
+    An explicit b5 or #5 says which fifth to play. A bare "alt" does not, so the natural
+    fifth is simply dropped rather than a replacement being invented - root, third and
+    seventh are the tones an altered dominant is sure of.
+    """
     from music_theory import pitch_class_from_spelled_note, spell_chord_tones
 
     out: list[int] = []
@@ -87,6 +239,41 @@ def chord_tone_pcs(chord: str) -> list[int]:
         pc = pitch_class_from_spelled_note(tone) % 12
         if pc not in out:
             out.append(pc)
+    if not out:
+        return [0]
+
+    try:
+        from chord_scale_selection import _alterations
+
+        alts = _alterations(chord)
+    except Exception:
+        alts = set()
+    if alts & {"b5", "#5", "alt"}:
+        root = out[0]
+        natural_fifth = (root + 7) % 12
+        if natural_fifth in out:
+            replacement = None
+            if "b5" in alts:
+                replacement = (root + 6) % 12
+            elif "#5" in alts:
+                replacement = (root + 8) % 12
+            out = [pc for pc in out if pc != natural_fifth]
+            if replacement is not None and replacement not in out:
+                out.append(replacement)
+    elif alts:
+        # Other alteration combinations (b9 with #9, #9 with b13) also imply the fifth is
+        # gone, and chord_scale_selection already decides that. Rather than restate its
+        # rules here and risk the two drifting apart, defer to the scale it chose: if the
+        # natural fifth is not in the chord's own scale, it is not a tone of this chord.
+        root = out[0]
+        natural_fifth = (root + 7) % 12
+        if natural_fifth in out:
+            try:
+                in_scale = natural_fifth in set(scale_pcs(chord, key_center or "C"))
+            except Exception:
+                in_scale = True
+            if not in_scale:
+                out = [pc for pc in out if pc != natural_fifth]
     return out or [0]
 
 
@@ -125,6 +312,35 @@ def _walk(ladder: Sequence[int], start_index: int, count: int, step: int, direct
             nxt = max(0, min(nxt, len(ladder) - 1))
         i = nxt
     return out
+
+
+def _grouped_walk(
+    ladder: Sequence[int], start_index: int, count: int, group: int
+) -> list[int]:
+    """Overlapping ascending groups: 0 1 2 / 1 2 3 / 2 3 4 ...
+
+    This is what makes a sequence a sequence rather than a plain run - each group starts
+    one rung higher than the last, so the shape repeats while the pitch moves.
+    """
+    if not ladder or group <= 0:
+        return []
+    out: list[int] = []
+    offset = 0
+    while len(out) < count:
+        base = start_index + offset
+        for step in range(group):
+            idx = base + step
+            if idx < 0 or idx >= len(ladder):
+                idx = max(0, min(len(ladder) - 1, idx))
+            out.append(ladder[idx])
+            if len(out) >= count:
+                break
+        offset += 1
+        if offset > len(ladder) * 2:  # never spin on a one-note ladder
+            break
+    while len(out) < count:
+        out.append(out[-1] if out else ladder[0])
+    return out[:count]
 
 
 def _nearest_index(ladder: Sequence[int], midi: int) -> int:
@@ -169,11 +385,14 @@ def exercise_measure_midis(
 ) -> list[int]:
     """The written pitches for one bar of ``pattern`` on ``chord``, inside [low, high]."""
     count = max(1, int(count))
-    tones = _ladder(chord_tone_pcs(chord), low, high)
+    tones = _ladder(chord_tone_pcs(chord, key_center), low, high)
     scale = _ladder(scale_pcs(chord, key_center), low, high)
     anchor = int(start_midi) if start_midi is not None else (low + high) // 2
 
-    if pattern in ("arpeggio_up", "arpeggio_down", "arpeggio_up_down", "voice_leading"):
+    if pattern in (
+        "arpeggio_up", "arpeggio_down", "arpeggio_up_down", "voice_leading",
+        "arpeggio_inversions",
+    ):
         ladder = tones or scale
     else:
         ladder = scale or tones
@@ -195,6 +414,14 @@ def exercise_measure_midis(
         return _walk(ladder, _start_index(ladder, anchor, count, 2, +1), count, 2, +1)
     if pattern == "fourths":
         return _walk(ladder, _start_index(ladder, anchor, count, 3, +1), count, 3, +1)
+    if pattern == "arpeggio_inversions":
+        # Successive chord tones, not a repeated root-position outline: each group of
+        # three starts one chord tone higher than the one before.
+        return _grouped_walk(ladder, _nearest_index(ladder, anchor), count, 3)
+    if pattern == "triplet_sequence":
+        return _grouped_walk(ladder, _nearest_index(ladder, anchor), count, 3)
+    if pattern == "four_note_sequence":
+        return _grouped_walk(ladder, _nearest_index(ladder, anchor), count, 4)
     if pattern in ("arpeggio_up_down", "scale_up_down"):
         half = max(1, count // 2)
         up = _walk(ladder, _start_index(ladder, anchor, half, 1, +1), half, 1, +1)
@@ -213,6 +440,8 @@ def build_exercise_midis(
     high: int | None = None,
     seed: int | None = None,
     focus: str = "",
+    mode: str = "auto",
+    register_instrument: str = "",
 ) -> tuple[list[list[int]], list[str]]:
     """``(midis per bar, pattern per bar)`` for a whole progression.
 
@@ -222,11 +451,17 @@ def build_exercise_midis(
     chords = [str(c or "").strip() or "C" for c in (chords or [])]
     lvl = _level(level)
     if low is None or high is None:
-        lo, hi = _register(instrument, lvl)
+        # The Practice page passes the instrument *family* ("Saxophone"), which resolves
+        # to the alto register. A baritone or soprano player needs their own range, so the
+        # caller may pass the specific type it already resolved for the written key.
+        # Only a name the transposition table actually knows is trusted: an unrecognised
+        # one resolves to a generic default profile, which would be a worse answer than
+        # the family's own register rather than a better one.
+        lo, hi = _register(_known_register_name(register_instrument) or instrument, lvl)
     else:
         lo, hi = int(low), int(high)
     per_bar = NOTES_PER_BAR[lvl]
-    plan = pattern_plan(lvl, len(chords), seed=seed, focus=focus)
+    plan = pattern_plan(lvl, len(chords), seed=seed, focus=focus, mode=mode)
     out: list[list[int]] = []
     cursor: int | None = None
     for chord, pattern in zip(chords, plan):
@@ -237,6 +472,19 @@ def build_exercise_midis(
         out.append(bar)
         cursor = bar[-1] if bar else cursor
     return out, plan
+
+
+def _known_register_name(name: str) -> str:
+    """``name`` if the transposition table knows it, else "" so the caller falls back."""
+    text = str(name or "").strip()
+    if not text:
+        return ""
+    try:
+        from instrument_transposition import TRANSPOSING_SEMITONE_STEPS
+
+        return text if text in TRANSPOSING_SEMITONE_STEPS else ""
+    except Exception:
+        return ""
 
 
 def _register(instrument: str, level: str) -> tuple[int, int]:
@@ -291,6 +539,8 @@ def build_exercise_events(
     beats_per_measure: int = 4,
     seed: int | None = None,
     focus: str = "",
+    mode: str = "auto",
+    register_instrument: str = "",
 ):
     """``(ArpeggioEvent list, pattern per bar)`` - the exercise as the notation renderer consumes it.
 
@@ -301,7 +551,8 @@ def build_exercise_events(
     from music_theory import spell_note_in_key
 
     bars, plan = build_exercise_midis(
-        chords, level=level, instrument=instrument, key_center=key_center, seed=seed, focus=focus
+        chords, level=level, instrument=instrument, key_center=key_center, seed=seed,
+        focus=focus, mode=mode, register_instrument=register_instrument,
     )
     lvl = _level(level)
     events = []
@@ -334,8 +585,12 @@ def build_exercise_events(
 
 
 __all__ = [
+    "EXERCISE_MODES",
+    "MODE_LABELS",
+    "normalize_exercise_mode",
     "EXERCISE_PATTERNS",
     "NOTES_PER_BAR",
+    "mode_plan_for_focus",
     "build_exercise_events",
     "build_exercise_midis",
     "chord_tone_pcs",

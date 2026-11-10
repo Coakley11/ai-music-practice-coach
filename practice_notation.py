@@ -646,6 +646,8 @@ def _build_guitar_tab(
     section: str,
     song_title: str,
     bpm: int,
+    display_key: str = "C",
+    exercise_mode: str = "auto",
 ) -> NotationResult:
     """Level-aware guitar TAB: real voicing differentiation (open/compact
     shell -> movable barre shapes -> jazz shell/drop-2 voicings) from
@@ -655,7 +657,14 @@ def _build_guitar_tab(
     unique section once, in first-appearance order)."""
     from guitar_voicing_engine import build_level_guitar_voicings
 
+    from notation_exercise_patterns import normalize_exercise_mode
+
     fk = _focus_kind(focus)
+    # An explicitly chosen Scales or Arpeggios exercise is authoritative over whatever the
+    # Practice Focus would otherwise have produced: the selector is the user saying which
+    # study they want, and a focus of Pentatonics must not quietly override it.
+    ex_mode = normalize_exercise_mode(exercise_mode)
+    is_exercise = ex_mode in ("scales", "arpeggios")
     groove_info = _groove_pattern(groove, fk)
     level = _DIFFICULTY_TO_LEVEL.get(difficulty, "Intermediate")
     canonical_groove = groove_resolve_style(groove)
@@ -683,7 +692,30 @@ def _build_guitar_tab(
 
         measures_html: list[str] = []
 
-        if fk == "pentatonic":
+        if is_exercise:
+            # Scales/arpeggios: the notes come from the shared notation_exercise_patterns
+            # engine - the same one the wind instruments and the piano use - and
+            # guitar_exercise_tab only puts them on the fretboard.
+            from guitar_exercise_tab import build_guitar_exercise_measures
+
+            measures = build_guitar_exercise_measures(
+                use,
+                level=level,
+                mode=ex_mode,
+                focus=focus,
+                key_center=display_key or "C",
+            )
+            for i, (ch, events) in enumerate(zip(use, measures), start=1):
+                pentatonic_shift_count += sum(1 for ev in events if ev.position_shift)
+                block, plain = _render_pentatonic_measure_html(
+                    chord=ch,
+                    events=events,
+                    bar_index=i,
+                    groove_info=groove_info,
+                )
+                measures_html.append(block)
+                all_plain_parts.append(plain)
+        elif fk == "pentatonic":
             from guitar_pentatonic_engine import build_guitar_pentatonic_measures
 
             measures = build_guitar_pentatonic_measures(
@@ -767,7 +799,17 @@ def _build_guitar_tab(
         difficulty=difficulty,
         groove_info=groove_info,
     )
-    if fk == "pentatonic":
+    if is_exercise:
+        label = "scale" if ex_mode == "scales" else "arpeggio"
+        cues.append(
+            f"{level} {label} study: "
+            + (
+                f"{pentatonic_shift_count} position shift(s) across the neck"
+                if pentatonic_shift_count
+                else "stays in one position"
+            )
+        )
+    elif fk == "pentatonic":
         cues.append(
             f"{level} pentatonic phrasing: "
             + ("position shifts across the neck" if pentatonic_shift_count else "one connected position")
@@ -814,6 +856,7 @@ def _build_piano_voicings(
     bpm: int,
     focus: str = "",
     groove_style: str = "",
+    exercise_mode: str = "auto",
 ) -> NotationResult:
     """Connected close-position chord voicings -- each chosen to minimize
     movement from the previous one (voice leading), not independent
@@ -823,30 +866,119 @@ def _build_piano_voicings(
     resets at each section's own start, matching how a lead sheet presents
     distinct sections rather than treating the whole form as one unbroken
     phrase) -- the UI renders each under its own heading."""
-    from chord_navigation_notation import build_connected_piano_voicings, build_piano_voicing_abc
+    from chord_navigation_notation import build_connected_piano_voicings
+    from piano_grand_staff import (
+        grand_staff_abc,
+        hands_for_scale,
+        hands_for_voicing,
+        scale_motion_for,
+    )
 
     level = _DIFFICULTY_TO_LEVEL.get(difficulty, "Intermediate")
+    mode = str(exercise_mode or "auto").strip().lower()
     sections_out: list[dict[str, Any]] = []
     all_chords: list[str] = []
     all_staff_lines: list[str] = []
+    plans: list[str] = []
     for sec_name, sec_chords in section_chord_pairs:
         use = list(sec_chords) or ["C"]
-        voicings = build_connected_piano_voicings(use, level=level, focus=focus, groove_style=groove_style)
-        abc = build_piano_voicing_abc(
-            voicings, key=display_key, meter=NOTATION_METER, bpm=bpm, title=sec_name
+        bars: list[list[list[int]]] = []
+
+        if mode in ("scales", "arpeggios"):
+            # Both read their pitches from the shared exercise engine, so the harmony is
+            # the same one the wind instruments get - only the two-hand realization here
+            # is piano-specific.
+            from notation_exercise_patterns import build_exercise_midis
+
+            # instrument_register("Piano") is a low left-hand range, which would put the
+            # whole exercise below middle C and leave the treble staff a bar of rests.
+            # A two-handed study is written for the RIGHT hand, with the left derived
+            # below it, so the generated line belongs in the right hand's register - one
+            # octave of it for a beginner, two for the levels whose patterns need the room.
+            from piano_grand_staff import left_hand_octaves, piano_exercise_register
+
+            _low, _high = piano_exercise_register(level)
+            per_bar, plan = build_exercise_midis(
+                use, level=level, instrument="Piano", key_center=display_key,
+                focus=focus, mode=mode, low=_low, high=_high,
+            )
+            plans.extend(plan)
+            # Decided once for the whole section: the left hand must not change octave
+            # between bars of one study.
+            apart = left_hand_octaves([m for bar in per_bar for m in bar])
+            motion = scale_motion_for(level, focus) if mode == "scales" else "parallel"
+            for bar_i, line in enumerate(per_bar):
+                if mode == "scales":
+                    # Contrary motion walks the left hand down the same scale the right
+                    # hand is climbing, so it needs to know which scale that is. The answer
+                    # comes from the shared selector, not from inverting the line.
+                    from notation_exercise_patterns import scale_pcs as _scale_pcs
+
+                    _chord = use[bar_i] if bar_i < len(use) else use[-1]
+                    bars.append(
+                        hands_for_scale(
+                            line, motion=motion, octaves_apart=apart,
+                            scale_pcs=_scale_pcs(_chord, display_key or "C"),
+                        )
+                    )
+                else:
+                    # Arpeggios: the right hand breaks the chord and the left answers
+                    # below it, at the same distance the scales use so a two-octave
+                    # arpeggio does not write the left hand above the bass staff.
+                    # How much it answers is the left hand's job for this
+                    # focus - the same roles the Auto voicings use, so one focus means one
+                    # thing across the piano's three modes rather than two unrelated ideas.
+                    from piano_grand_staff import (
+                        LH_OCTAVE,
+                        LH_ROOT,
+                        left_hand_role,
+                    )
+
+                    role = left_hand_role(level, focus)
+                    if role == LH_ROOT:
+                        # Keep the left hand out of the way: the foundation on the downbeat
+                        # only, so the right hand's line is the exercise.
+                        answers = lambda i: i == 0
+                    elif role == LH_OCTAVE:
+                        answers = lambda i: True       # both hands all the way down
+                    else:
+                        answers = lambda i: i % 2 == 0  # alternate notes
+                    bars.append([
+                        ([m - 12 * apart, m] if answers(i) else [m])
+                        for i, m in enumerate(line)
+                    ])
+        else:
+            voicings = build_connected_piano_voicings(
+                use, level=level, focus=focus, groove_style=groove_style
+            )
+            by_measure: dict[int, list[list[int]]] = {}
+            for v in voicings:
+                # Keep the hands as assigned; merging them would hand the re-split at
+                # middle C back the decision the roles just made.
+                hands = hands_for_voicing(list(v.midis), v.chord, level=level, focus=focus)
+                by_measure.setdefault(v.measure, []).append(hands)
+            bars = [by_measure.get(i, [[]]) for i in range(len(use))]
+            all_staff_lines.extend(
+                f"Bar {v.measure + 1}  {v.chord}:  {' '.join(v.pitches)}" for v in voicings
+            )
+
+        abc = grand_staff_abc(
+            bars, key=display_key, meter=NOTATION_METER, bpm=bpm,
+            title=sec_name, chords=use,
         )
         sections_out.append({"name": sec_name, "abc": abc.strip(), "chord_labels": " | ".join(use)})
         all_chords.extend(use)
-        all_staff_lines.extend(
-            f"Bar {v.measure + 1}  {v.chord}:  {' '.join(v.pitches)}" for v in voicings
-        )
 
     combined_abc = (sections_out[0]["abc"] if len(sections_out) == 1 else "\n\n".join(s["abc"] for s in sections_out))
     return NotationResult(
         format="abc",
         title=f"{song_title} — {section} — Piano",
         chord_labels=" | ".join(all_chords),
-        rhythm_counts=f"{level} connected voicings with comping rhythm",
+        rhythm_counts=(
+            _exercise_rhythm_counts(level, plans)
+            if plans
+            else f"{level} connected voicings with comping rhythm"
+        ),
         body="\n".join(all_staff_lines),
         html="",
         abc=combined_abc,
@@ -884,6 +1016,8 @@ def _build_arpeggio_line(
     bpm: int,
     focus: str = "",
     groove_style: str = "",
+    exercise_mode: str = "auto",
+    register_instrument: str = "",
 ) -> NotationResult:
     """A single connected chord-tone line through *chords* for wind/vocal/
     generic instruments -- each chord's tones realized nearest the previous
@@ -916,13 +1050,16 @@ def _build_arpeggio_line(
             from notation_exercise_patterns import build_exercise_events
 
             events, exercise_plan = build_exercise_events(
-                use, level=level, instrument=instrument, key_center=display_key, focus=focus
+                use, level=level, instrument=instrument, key_center=display_key,
+                focus=focus, mode=exercise_mode,
+                register_instrument=register_instrument,
             )
         except Exception:
             events = []
         if not events:
             events = build_connected_arpeggio_line(
-                use, level=level, instrument=instrument, focus=focus, groove_style=groove_style
+                use, level=level, instrument=register_instrument or instrument,
+                focus=focus, groove_style=groove_style,
             )
         exercise_plans.extend(exercise_plan)
         dicts = arpeggio_events_to_melody_dicts(events)
@@ -1025,6 +1162,55 @@ def _build_bass_line(
     )
 
 
+# Which instruments the Scales / Arpeggios choice actually reaches. Guitar renders TAB,
+# Piano renders connected voicings and Bass renders a walking line - three builders that
+# predate the exercise modes and have their own musical logic. Offering a mode that
+# silently does nothing is worse than saying so, which is what this answers.
+def notation_builder_kind(instrument: str) -> str:
+    """Which builder an instrument's notation comes from: guitar, piano, bass or line.
+
+    This is the single statement of that precedence. ``generate_practice_notation`` used to
+    decide it inline while ``exercise_mode_supported`` decided it again separately, and the
+    two could disagree - they did: an instrument matching both "bass" and "guitar" routed to
+    the guitar builder but was declared a bass, so the selector claimed to do nothing while
+    actually changing the output. One function cannot contradict itself.
+    """
+    inst = str(instrument or "").lower()
+    if "guitar" in inst:
+        return "guitar"
+    if "piano" in inst or "keyboard" in inst:
+        return "piano"
+    if "bass" in inst:
+        return "bass"
+    return "line"
+
+
+# Builders that do not yet answer to the Scales / Arpeggios choice, and what they render
+# instead. Guitar and piano were here until each grew a real exercise path: guitar via
+# guitar_exercise_tab (absolute pitches on the fretboard) and piano via piano_grand_staff
+# (two staves, hands with roles). Bass still comps a walking line, so it is declared
+# honestly rather than offered a selector that does nothing.
+EXERCISE_MODE_BUILDERS: dict[str, str] = {
+    "bass": "a walking bass line",
+}
+
+
+def exercise_mode_supported(instrument: str) -> bool:
+    """True when Scales / Arpeggios changes what this instrument is given."""
+    return notation_builder_kind(instrument) not in EXERCISE_MODE_BUILDERS
+
+
+def exercise_mode_unsupported_reason(instrument: str) -> str:
+    """Why the choice does nothing here, in the musician's terms. "" when it does work."""
+    what = EXERCISE_MODE_BUILDERS.get(notation_builder_kind(instrument))
+    if not what:
+        return ""
+    return (
+        f"Scales and Arpeggios do not apply to {str(instrument).strip()} yet - "
+        f"its notation is {what}."
+    )
+
+
 def generate_practice_notation(
     *,
     song_title: str,
@@ -1039,6 +1225,8 @@ def generate_practice_notation(
     sections: dict[str, list[str]],
     guitar_tabs: dict[str, str] | None = None,
     difficulty: str = "medium",
+    exercise_mode: str = "auto",
+    register_instrument: str = "",
 ) -> NotationResult:
     diff = (difficulty or "medium").lower()
     if diff not in ("easy", "medium", "advanced"):
@@ -1084,9 +1272,9 @@ def generate_practice_notation(
     ]
 
     tabs = song_guitar_tabs_for_key(guitar_tabs, original_key, display_key)
-    inst = (instrument or "").lower()
+    kind = notation_builder_kind(instrument)
 
-    if "guitar" in inst:
+    if kind == "guitar":
         return _build_guitar_tab(
             section_chord_pairs=section_chord_pairs,
             guitar_tabs=tabs,
@@ -1096,8 +1284,10 @@ def generate_practice_notation(
             section=section_label,
             song_title=song_title,
             bpm=bpm,
+            display_key=display_key,
+            exercise_mode=exercise_mode,
         )
-    if "piano" in inst or "keyboard" in inst:
+    if kind == "piano":
         return _build_piano_voicings(
             section_chord_pairs=section_chord_pairs,
             display_key=display_key,
@@ -1107,8 +1297,9 @@ def generate_practice_notation(
             bpm=bpm,
             focus=focus,
             groove_style=groove_style,
+            exercise_mode=exercise_mode,
         )
-    if "bass" in inst:
+    if kind == "bass":
         return _build_bass_line(
             section_chord_pairs=section_chord_pairs,
             display_key=display_key,
@@ -1129,6 +1320,8 @@ def generate_practice_notation(
         bpm=bpm,
         focus=focus,
         groove_style=groove_style,
+        exercise_mode=exercise_mode,
+        register_instrument=register_instrument,
     )
 
 

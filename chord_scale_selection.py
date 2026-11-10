@@ -29,6 +29,8 @@ SCALES: dict[str, tuple[int, ...]] = {
     "lydian_dominant": (0, 2, 4, 6, 7, 9, 10),
     "altered": (0, 1, 3, 4, 6, 8, 10),
     "phrygian_dominant": (0, 1, 4, 5, 7, 8, 10),
+    # Natural fifth with a b13 - the dominant that borrows only its sixth degree.
+    "mixolydian_b13": (0, 2, 4, 5, 7, 8, 10),
     "whole_tone": (0, 2, 4, 6, 8, 10),
     "diminished_half_whole": (0, 1, 3, 4, 6, 7, 9, 10),
     "diminished_whole_half": (0, 2, 3, 5, 6, 8, 9, 11),
@@ -104,9 +106,20 @@ def chord_scale_name(chord: str, key_center: str = "C", *, style: str = "") -> s
         if "alt" in alts or ("b9" in alts and "#9" in alts):
             return "altered"
         if "b9" in alts or "b13" in alts:
+            # The altered scale has no natural fifth. A plain 7b9 or 7b13 still sounds
+            # one - only b5/#5/alt take it away - so answering "altered" here contradicted
+            # the chord. Pick the established parent that keeps the fifth and supplies the
+            # alteration the symbol actually asked for.
             tonic, mode = split_key_center(key_center or "C")
             minor_target = mode == "minor"
-            return "phrygian_dominant" if minor_target and "b9" in alts and "#9" not in alts else "altered"
+            if "#9" in alts:
+                return "altered"          # b9 and #9 together: the fifth is gone too
+            if "b9" in alts and "b13" in alts:
+                return "phrygian_dominant"  # both alterations, fifth intact
+            if "b13" in alts:
+                return "mixolydian_b13"
+            # b9 alone: phrygian dominant leans to a minor target, half-whole otherwise.
+            return "phrygian_dominant" if minor_target else "diminished_half_whole"
         if "#11" in alts or "b5" in alts:
             return "lydian_dominant" if "b5" not in alts else "whole_tone" if "#5" in alts else "altered"
         if "#5" in alts:

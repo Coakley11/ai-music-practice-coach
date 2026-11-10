@@ -19122,6 +19122,12 @@ elif _studio_page == "practice":
         _capo_ctx.enabled,
         _capo_ctx.shape_key if _capo_ctx.enabled else "",
         _capo_ctx.capo_fret if _capo_ctx.enabled else 0,
+        # The exercise the musician asked for, and how hard. Without these two the
+        # cached result survived a change to either control, so switching Arpeggios to
+        # Scales (or medium to advanced) left the previous exercise on screen until
+        # Generate was pressed again - stale notation describing a choice no longer made.
+        st.session_state.get("practice_notation_exercise_mode", "auto"),
+        st.session_state.get("practice_notation_difficulty", "medium"),
     )
     if st.session_state.get("practice_notation_sig") != _notation_sig:
         st.session_state.pop(_NOTATION_KEY, None)
@@ -19630,6 +19636,48 @@ elif _studio_page == "practice":
                             key="practice_notation_difficulty",
                             on_change=_on_practice_filter_change,
                         )
+                        # Scales vs Arpeggios is the musician asking directly, so it
+                        # outranks the Practice Focus guess. "Auto" keeps the existing
+                        # behaviour where Focus and level choose the drills.
+                        try:
+                            from notation_exercise_patterns import (
+                                EXERCISE_MODES,
+                                MODE_LABELS,
+                            )
+
+                            from practice_notation import (
+                                exercise_mode_supported,
+                                exercise_mode_unsupported_reason,
+                            )
+
+                            _mode_ok = exercise_mode_supported(instrument)
+                            _mode_opts = list(EXERCISE_MODES)
+                            _mode_default = st.session_state.get(
+                                "practice_notation_exercise_mode", "auto"
+                            )
+                            _notation_exercise_mode = st.selectbox(
+                                "Exercise",
+                                options=_mode_opts,
+                                index=(
+                                    _mode_opts.index(_mode_default)
+                                    if _mode_default in _mode_opts
+                                    else 0
+                                ),
+                                format_func=lambda m: MODE_LABELS.get(m, m),
+                                key="practice_notation_exercise_mode",
+                                on_change=_on_practice_filter_change,
+                                disabled=not _mode_ok,
+                                help=(
+                                    "Arpeggios drill the chord tones; Scales drill the "
+                                    "chord scale in runs, thirds, fourths and sequences."
+                                ),
+                            )
+                            if not _mode_ok:
+                                # Never let a control imply it does something it does not.
+                                st.caption(exercise_mode_unsupported_reason(instrument))
+                                _notation_exercise_mode = "auto"
+                        except Exception:
+                            _notation_exercise_mode = "auto"
                     with _n_col3:
                         st.write("")
                         _gen_notation = st.button(
@@ -19662,6 +19710,15 @@ elif _studio_page == "practice":
                             sections=sections_for_practice,
                             guitar_tabs=song_data.get("guitar_tabs") or {},
                             difficulty=_notation_difficulty,
+                            exercise_mode=_notation_exercise_mode,
+                            # Written pitch already comes from _practice_chart_key; this
+                            # only picks the register, so a baritone player does not read
+                            # an alto's range.
+                            register_instrument=(
+                                selected_saxophone_type(st.session_state)
+                                if is_transposing_instrument(instrument)
+                                else ""
+                            ),
                         )
                         st.rerun()
 
