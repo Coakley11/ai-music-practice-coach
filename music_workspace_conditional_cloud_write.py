@@ -127,24 +127,12 @@ def prepare_music_conditional_write(
     create_path_selected = expected <= 0 and create_path_allowed and not row_exists
 
     if row_exists and expected <= 0:
-        if stored_row_rev > 0:
-            try:
-                from music_device_applied_revision import (
-                    set_device_applied_revision_from_authoritative_hydrate,
-                )
-
-                set_device_applied_revision_from_authoritative_hydrate(
-                    ss,
-                    stored_row_rev,
-                    stage="cas_preflight_authoritative_row_lookup",
-                    source="authoritative_network_lookup",
-                )
-                applied = stored_row_rev
-                expected = stored_row_rev
-                create_path_selected = False
-            except ImportError:
-                violations.append(VIOLATION_EXISTING_ROW_CREATE)
-        else:
+        # Observing a row revision is not applying its complete workspace. Using
+        # that number as our CAS expectation could bless an incomplete/default
+        # local payload and overwrite saved projects on an existing workspace.
+        create_path_selected = False
+        violations.append(VIOLATION_DEVICE_APPLIED_NOT_INITIALIZED)
+        if stored_row_rev <= 0:
             violations.append(VIOLATION_CAS_EXPECTED_ZERO)
     elif row_exists and create_path_allowed:
         violations.append(VIOLATION_EXISTING_ROW_CREATE)
@@ -152,7 +140,7 @@ def prepare_music_conditional_write(
     if expected <= 0 and row_exists:
         create_path_selected = False
 
-    blocked = False
+    blocked = bool(row_exists and expected <= 0)
     if candidate <= applied:
         violations.append(VIOLATION_REVISION_REUSED)
         blocked = True

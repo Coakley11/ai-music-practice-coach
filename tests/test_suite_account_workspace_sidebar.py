@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import unittest
+from html.parser import HTMLParser
 from unittest.mock import MagicMock, patch
 
 from suite_account_settings import (
@@ -12,6 +13,53 @@ from suite_account_settings import (
 from suite_app_shell import render_suite_sidebar_account_shell
 from suite_command_center_link import command_center_url, render_command_center_sidebar_link
 from suite_user_persistence import render_reset_controls
+
+
+def test_icon_only_music_home_keeps_command_center_and_workspace():
+    from copy import deepcopy
+    from music_feature_icons import FEATURE_ICONS
+    from suite_account_settings import _render_nested_account_utilities
+
+    st = _FakeSt()
+    saved = {
+        "instrument": "Tenor Saxophone", "display_key": "Ab",
+        "cpl_library": [{"name": "Trial Song", "chords": ["Abmaj7", "Db7"]}],
+        "composer_library": [{"name": "Composition project"}],
+        "multitrack_layers": [{"recording_id": "test-recording"}],
+    }
+    st.session_state.update(deepcopy(saved), studio_page="backing")
+    with patch("suite_command_center_link.render_command_center_sidebar_link") as cc:
+        _render_nested_account_utilities(
+            st, include_command_center=True, saved_session_on_reset=None,
+            saved_session_app_id="music", saved_session_label="Reset to default",
+            saved_session_help="Reset",
+        )
+    cc.assert_called_once()
+    home, = [b for b in st.buttons if b["kwargs"].get("key") == "account_music_home"]
+    assert home["label"] == FEATURE_ICONS["home"]
+    assert "Home" not in home["label"]
+    assert home["kwargs"]["help"] == "Go to Music Practice Coach homepage"
+    home["kwargs"]["on_click"]()
+    assert st.session_state["studio_page"] == "home"
+    assert {k: st.session_state[k] for k in saved} == saved
+
+
+class _Anchors(HTMLParser):
+    """Capture actual branded HTML navigation as well as native link buttons."""
+    def __init__(self, target, where):
+        super().__init__()
+        self.target, self.where, self.link = target, where, None
+    def handle_starttag(self, tag, attrs):
+        if tag == 'a':
+            self.link = {'label':'', 'url':dict(attrs).get('href',''), 'where':self.where}
+    def handle_data(self, data):
+        if self.link is not None:
+            self.link['label'] += data
+    def handle_endtag(self, tag):
+        if tag == 'a' and self.link is not None:
+            self.link['label'] = self.link['label'].strip()
+            self.target.append(self.link)
+            self.link = None
 
 
 class _FakeExpander:
@@ -46,6 +94,7 @@ class _FakeSidebar:
 
     def markdown(self, *args, **kwargs):
         self.parent.markdowns.append(args[0] if args else "")
+        _Anchors(self.parent.link_buttons, 'sidebar').feed(str(args[0] if args else ''))
 
     def button(self, *args, **kwargs):
         self.parent.buttons.append({"args": args, "kwargs": kwargs, "where": "sidebar"})
@@ -84,6 +133,7 @@ class _FakeSt:
 
     def markdown(self, *args, **kwargs):
         self.markdowns.append(args[0] if args else "")
+        _Anchors(self.link_buttons, 'nested').feed(str(args[0] if args else ''))
 
     def caption(self, *args, **kwargs):
         self.captions.append(args[0] if args else "")

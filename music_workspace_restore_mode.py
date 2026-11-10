@@ -66,15 +66,15 @@ def prepare_music_cold_start_restore(session: dict[str, Any], app_id: str) -> No
     """Clear startup/bootstrap dirty so authoritative cloud/disk can apply."""
     if str(app_id or "").strip().lower() != "music":
         return
-    begin_workspace_restore(session)
     try:
-        from music_workspace_hydration import can_finalize_music_restore
+        from music_workspace_hydration import workspace_blob_hydrated, workspace_empty_confirmed
 
-        if can_finalize_music_restore(session) and user_edit_tracking_enabled(session):
+        if (workspace_blob_hydrated(session) or workspace_empty_confirmed(session)) and user_edit_tracking_enabled(session):
             return
     except ImportError:
         if session.get("_music_workspace_blob_hydrated") and user_edit_tracking_enabled(session):
             return
+    begin_workspace_restore(session)
     try:
         from suite_user_persistence import _local_dirty_key
 
