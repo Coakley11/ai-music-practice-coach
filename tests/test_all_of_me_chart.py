@@ -45,7 +45,7 @@ class AllOfMeJazzChartTests(unittest.TestCase):
 
     def test_pop_entry_untouched(self) -> None:
         pop = next(r for r in curated_song_records() if r["title"] == "All of Me" and r["artist"] == "John Legend")
-        self.assertEqual(pop["key"], "Em")
+        self.assertEqual(pop["key"], "Ab")  # concert key Ab major (was the Em capo shapes)
 
     def test_beginner_keeps_secondary_dominants_not_doubled_roots(self) -> None:
         _, sections = resolve_level_chart(self.rec, "Beginner")

@@ -64,6 +64,7 @@ PRIOR_REVISIONS: dict[str, tuple[tuple[str, str], ...]] = {
     ),
     "pop|i'm yours|jason mraz": (
         ('fbf88d46397bf058', 'c8a99bcee48f4821'),
+        ('fbf88d46397bf058', '5b2c107794694ba9'),
     ),
     'pop|just the way you are|billy joel': (
         ('6a74c7baa018cc61', 'e9f9bb46a5b8386e'),
@@ -74,6 +75,9 @@ PRIOR_REVISIONS: dict[str, tuple[tuple[str, str], ...]] = {
     'pop|photograph|ed sheeran': (
         ('6ce7dc1b3040166a', '7fcc1c9d4ad33003'),
     ),
+    'pop|the scientist|coldplay': (
+        ('f06aff48dbf6149c', 'be05644c1a4a9efd'),
+    ),
     'pop|thinking out loud|ed sheeran': (
         ('5cddf828d4de7080', 'f956456290b898d9'),
     ),
@@ -82,6 +86,9 @@ PRIOR_REVISIONS: dict[str, tuple[tuple[str, str], ...]] = {
     ),
     'pop|vienna|billy joel': (
         ('6d039a0d4089d973', '65e20ddc34872dcd'),
+    ),
+    'pop|viva la vida|coldplay': (
+        ('6557772283d9eed5', '89cf6c2cede3b45d'),
     ),
     'pop|you belong with me|taylor swift': (
         ('47ad993c1e040fbb', '0a1e5cf18eff60c1'),
@@ -115,6 +122,9 @@ PRIOR_REVISIONS: dict[str, tuple[tuple[str, str], ...]] = {
     ),
     'rock|while my guitar gently weeps|the beatles': (
         ('0ae5c50ae7efe427', ''),
+    ),
+    'rock|wonderwall|oasis': (
+        ('b4aee3b7e51a4b1b', 'c017be1847a6b645'),
     ),
     'rock|yesterday|the beatles': (
         ('c16e5e4cbfbf6a0b', 'd643a7520ab58e69'),

@@ -247,7 +247,8 @@ def _champions_chart_pack() -> dict[str, Any]:
 
 
 def _thinking_out_loud_chart_pack() -> dict[str, Any]:
-    """Thinking Out Loud — Ed Sheeran (C guitar chart · D concert, 4/4)."""
+    """Thinking Out Loud — Ed Sheeran (stored in the recording's concert key, D major; guitarists play it as C shapes with a capo on fret 2; 4/4)."""
+    from music_theory import transpose_sections_dict
     verse = ["C", "C/E", "F", "G"] * 4
     turnaround = ["C", "C/E", "F", "G", "C", "C/E", "F", "G"]
     pre_chorus = (
@@ -258,6 +259,15 @@ def _thinking_out_loud_chart_pack() -> dict[str, Any]:
         + ["C", "C/E"]
     )
     chorus = ["F", "G", "C", "C/E"] * 3 + ["F", "G"]
+    # The seven-chord tag is deliberately BOTH a mid-song turnaround and the
+    # ending. Guitarcoachmag's lesson on the recording describes these seven
+    # chords (Bm, A, G, D/F#, Em, A7, D in concert D) played quickly with a dead
+    # hit "before the song returns to the verse", and says the figure repeats
+    # three times at the very end. So "Ending Tag" sitting before Verse 2 is
+    # correct, not a misplaced ending - do not move or delete it.
+    # Two details from that source are NOT applied here, each resting on that
+    # single secondary source: it gives A7 where this chart has a plain A in the
+    # sixth cell, and three repeats at the end where "Outro" has two.
     ending_tag = ["Am", "G", "F", "C/E", "Dm", "G", "C"]
 
     intermediate = {
@@ -282,17 +292,20 @@ def _thinking_out_loud_chart_pack() -> dict[str, Any]:
         for name, chords in intermediate.items()
     }
     advanced = dict(intermediate)
+    intermediate = transpose_sections_dict(intermediate, "C", "D")
+    beginner = transpose_sections_dict(beginner, "C", "D")
+    advanced = transpose_sections_dict(advanced, "C", "D")
     section_order = list(intermediate.keys())
     scale_hints = {
-        "C": ["C Major", "C Pentatonic"],
-        "C/E": ["C Major"],
-        "F": ["F Lydian", "F Major Pentatonic"],
-        "G": ["G Mixolydian"],
-        "Dm": ["D Dorian"],
-        "Am": ["A Aeolian", "A Minor Pentatonic"],
+        "D": ["D Major", "D Pentatonic"],
+        "D/F#": ["D Major"],
+        "G": ["G Lydian", "G Major Pentatonic"],
+        "A": ["A Mixolydian"],
+        "Em": ["E Dorian"],
+        "Bm": ["B Aeolian", "B Minor Pentatonic"],
     }
     return {
-        "key": "C",
+        "key": "D",
         "sections": intermediate,
         "chart_versions": _levels(
             beginner=beginner,
@@ -303,11 +316,11 @@ def _thinking_out_loud_chart_pack() -> dict[str, Any]:
         "section_order": section_order,
         "composer": "Ed Sheeran",
         "lyric_cues": {
-            "Verse 1": ["Intimate acoustic — C · C/E · F · G"],
-            "Turnaround": ["Turnaround — hold the C/E bass line"],
+            "Verse 1": ["Intimate acoustic — D · D/F# · G · A"],
+            "Turnaround": ["Turnaround — hold the D/F# bass line"],
             "Pre-Chorus 1": ["Gradual build into chorus"],
-            "Chorus 1": ["Romantic lift — F · G · C · C/E"],
-            "Ending Tag": ["Tag — Am · G · F · C/E · Dm · G · C"],
+            "Chorus 1": ["Romantic lift — G · A · D · D/F#"],
+            "Ending Tag": ["Tag — Bm · A · G · D/F# · Em · A · D"],
             "Verse 2": ["Second verse — same loop"],
             "Pre-Chorus 2": ["Pre-chorus 2 — fuller feel"],
             "Chorus 2": ["Chorus return"],
@@ -317,9 +330,9 @@ def _thinking_out_loud_chart_pack() -> dict[str, Any]:
         },
         "extensions": _ext(
             arrangement_notes=(
-                "**C-shape guitar chart** (concert/recording **D major**, "
-                "capo-friendly). **4/4**, ~79 BPM soul-pop ballad. Preserve "
-                "**C/E** for smooth bass movement — do not drop the slash. "
+                "**D major** concert (the recording's key); guitarists play **C shapes** "
+                "with a capo on fret **2**. **4/4**, ~79 BPM soul-pop ballad. Preserve "
+                "**D/F#** for smooth bass movement — do not drop the slash. "
                 "Verse: intimate acoustic; pre-chorus: gradual build; chorus: "
                 "fuller rhythm. Backing: acoustic guitar, light percussion, "
                 "bass, subtle electric piano, warm pads — no heavy rock or "
@@ -328,6 +341,9 @@ def _thinking_out_loud_chart_pack() -> dict[str, Any]:
             default_bpm=79,
             default_groove="Ballad",
             time_signature="4/4",
+            capo_note="Capo 2 (C shapes) · concert key D major",
+            concert_key="D",
+            guitar_friendly_key="C",
             vocal_showcase=True,
             ed_sheeran_acoustic=True,
             repertoire_tags=[
@@ -339,7 +355,7 @@ def _thinking_out_loud_chart_pack() -> dict[str, Any]:
                 "Guitar/Vocal Performance",
             ],
             harmonic_analysis={
-                "progression_summary": "I–I/3–IV–V verse; Dm–G–C pre-chorus; F–G–I chorus",
+                "progression_summary": "I–I/3–IV–V verse (D · D/F# · G · A); Em–A–D pre-chorus; G–A–I chorus (C shapes with capo 2)",
                 "scale_suggestions": scale_hints,
                 "concert_key": "D",
             },
@@ -348,7 +364,7 @@ def _thinking_out_loud_chart_pack() -> dict[str, Any]:
 
 
 def _piano_man_chart_pack() -> dict[str, Any]:
-    """Piano Man — Billy Joel (C major, 3/4 waltz feel).
+    """Piano Man — Billy Joel (C major, 3/4 waltz feel, ~178 BPM quarter note).
 
     Section-by-section chart. One list item = one bar.
 
@@ -642,7 +658,8 @@ def _piano_man_chart_pack() -> dict[str, Any]:
     }
 
     arrangement_notes = (
-        "**C major, 3/4 waltz (~88 BPM).** Piano-ballad with rolling left-hand "
+        "**C major, 3/4 waltz (~178 BPM, quarter note; about 59 bars a minute).** "
+        "Piano-ballad with rolling left-hand "
         "arpeggios and a descending bass walk: **C → C/B → Am → C/G → F → C/E "
         "→ D7 → G**. Form (21 sections): Harmonica Intro → Verse 1 → Harmonica "
         "Turnaround → Verse 2 → Bridge 1 → Chorus 1 → Harmonica Section 2 → "
@@ -680,7 +697,7 @@ def _piano_man_chart_pack() -> dict[str, Any]:
         "lyric_cues": lyric_cues,
         "extensions": _ext(
             arrangement_notes=arrangement_notes,
-            default_bpm=88,
+            default_bpm=178,
             default_groove="Ballad",
             time_signature="3/4",
         ),
@@ -1888,12 +1905,20 @@ def _say_chart_pack() -> dict[str, Any]:
 
 
 def _scientist_chart_pack() -> dict[str, Any]:
-    """The Scientist — Coldplay (D minor concert, piano ballad, 4/4).
+    """The Scientist — Coldplay (F major concert, piano ballad, 4/4).
+
+    The chart is built in the capo-3 guitar shapes (Bm7 · G · D · Dsus2) that
+    most tab sites print, then transposed up a minor third to the key the
+    record actually sounds in, **F major**: Dm7 · Bb · F · Fsus2 (vi–IV–I).
+    Dm7 opens the loop, which is why the song is often mislabelled D minor,
+    but the tonic is F and the only V chord, C, arrives at the end.
 
     One list item = one bar unless token uses ``|`` for an in-bar split
-    (e.g. ``D|Dmaj7`` = two beats each). **N.C.** bars are true tacet.
-    Preserve slash colors: **A/D · D6/9 · A/E · Asus4 · Dsus2/C#**.
+    (e.g. ``F|Fmaj7`` = two beats each). **N.C.** bars are true tacet.
+    Preserve slash colors: **C/F · F6/9 · C/G · Csus4 · Fsus2/E**.
     """
+    from music_theory import transpose_sections_dict
+
     verse_loop = ["Bm7", "G", "D", "Dsus2"]
     chorus = [
         "G",
@@ -1946,22 +1971,25 @@ def _scientist_chart_pack() -> dict[str, Any]:
         name: [_beg(c) for c in chords]
         for name, chords in intermediate.items()
     }
+    # Capo-3 shapes -> sounding key. Guitar reading stays in the capo note.
+    intermediate = transpose_sections_dict(intermediate, "D", "F")
+    beginner = transpose_sections_dict(beginner, "D", "F")
     section_order = list(intermediate.keys())
     scale_hints = {
-        "Bm7": ["B Dorian", "B Minor Pentatonic"],
-        "G": ["G Major"],
-        "D": ["D Major"],
-        "Dsus2": ["D Major"],
-        "Dsus2/C#": ["D Major"],
-        "A/D": ["A Mixolydian"],
-        "D6/9": ["D Major"],
-        "A/E": ["A Mixolydian"],
-        "Asus4": ["A Mixolydian"],
-        "A": ["A Mixolydian"],
-        "Dmaj7": ["D Ionian", "D Lydian"],
+        "Dm7": ["D Aeolian", "D Minor Pentatonic"],
+        "Bb": ["Bb Major", "Bb Lydian"],
+        "F": ["F Major"],
+        "Fsus2": ["F Major"],
+        "Fsus2/E": ["F Major"],
+        "C/F": ["C Mixolydian"],
+        "F6/9": ["F Major"],
+        "C/G": ["C Mixolydian"],
+        "Csus4": ["C Mixolydian"],
+        "C": ["C Mixolydian"],
+        "Fmaj7": ["F Ionian", "F Lydian"],
     }
     return {
-        "key": "Dm",
+        "key": "F",
         "sections": intermediate,
         "chart_versions": _levels(
             beginner=beginner,
@@ -1972,26 +2000,28 @@ def _scientist_chart_pack() -> dict[str, Any]:
         "section_order": section_order,
         "composer": "Coldplay",
         "lyric_cues": {
-            "Intro": ["Piano intro — Bm7 · G · D · Dsus2"],
+            "Intro": ["Piano intro — Dm7 · Bb · F · Fsus2"],
             "Verse 1": ["Come up to meet you, tell you I'm sorry…"],
             "Chorus 1": ["Nobody said it was easy…"],
             "N.C. 1": ['N.C. — "Take me back to the start"'],
-            "Instrumental 1": ["Instrumental — D · G · D · D/Dmaj7"],
-            "Verse 2": ["Second verse — walk down to Dsus2/C#"],
+            "Instrumental 1": ["Instrumental — F · Bb · F · F/Fmaj7"],
+            "Verse 2": ["Second verse — walk down to Fsus2/E"],
             "Chorus 2": ["Chorus lift — wider strings, gentle drums"],
             "N.C. 2": ['N.C. — "I\'m going back to the start"'],
             "Instrumental 2": ["Short instrumental — emotional piano focus"],
             "Ending": ["Outro loop — gradually thin instrumentation"],
-            "Final Tag": ["Final Bm7 · G · D — let the chord ring"],
+            "Final Tag": ["Final Dm7 · Bb · F — let the chord ring"],
         },
         "extensions": _ext(
             arrangement_notes=(
-                "**D minor** (concert) piano ballad (**4/4**, ~73 BPM). "
-                "Common guitar reading uses capo + open-position shapes; "
-                "preserve **Bm7 · G · D · Dsus2 · A/D · D6/9 · A/E · Asus4 · "
-                "A · Dmaj7 · Dsus2/C#** — do not simplify slash colors. "
+                "**F major** (concert, the recording's key) piano ballad "
+                "(**4/4**, ~73 BPM). Guitarists read it as **Bm7 · G · D · "
+                "Dsus2** shapes with a **capo on fret 3**; the chart stores the "
+                "sounding chords. Preserve **Dm7 · Bb · F · Fsus2 · C/F · F6/9 · "
+                "C/G · Csus4 · C · Fmaj7 · Fsus2/E** — do not simplify slash "
+                "colors. The loop starts on **Dm7** (vi), not the tonic. "
                 "Verse: sparse piano; chorus: gentle lift with soft strings; "
-                "ending fades to **Bm7–G–D** tag. Backing: piano primary, "
+                "ending fades to a **Dm7–Bb–F** tag. Backing: piano primary, "
                 "soft strings, bass, light brushes, ambient pads — avoid "
                 "heavy rock guitars. Karaoke- and lyric-focused practice "
                 "friendly; emotional dynamic shaping for performance mode."
@@ -1999,6 +2029,9 @@ def _scientist_chart_pack() -> dict[str, Any]:
             default_bpm=73,
             default_groove="Ballad",
             time_signature="4/4",
+            concert_key="F",
+            guitar_friendly_key="D",
+            capo_note="Capo 3 (Bm7-G-D-Dsus2 shapes) · concert key F major",
             vocal_showcase=True,
             coldplay_piano_ballad=True,
             repertoire_tags=[
@@ -2011,8 +2044,9 @@ def _scientist_chart_pack() -> dict[str, Any]:
             ],
             harmonic_analysis={
                 "progression_summary": (
-                    "Bm7–G–D–Dsus2 verse loop; chorus slash walk "
-                    "A/D → D6/9 → A/E → Asus4 → A"
+                    "F major: Dm7–Bb–F–Fsus2 verse loop (vi–IV–I); chorus "
+                    "slash walk C/F → F6/9 → C/G → Csus4 → C (V arrives last). "
+                    "Guitar reads it as Bm7–G–D–Dsus2 with capo 3"
                 ),
                 "scale_suggestions": scale_hints,
             },
@@ -3165,11 +3199,17 @@ def _dance_monkey_chart_pack() -> dict[str, Any]:
 
 
 def _im_yours_chart_pack() -> dict[str, Any]:
-    """I'm Yours — Jason Mraz (G shapes / capo 4, concert B major, reggae-pop, 4/4).
+    """I'm Yours — Jason Mraz (stored in the recording's concert key, B major; guitarists play it as G shapes with a capo on fret 4; reggae-pop, 4/4).
 
-    Chart in **G–D–Em–C** with **Dsus4**, **D/F#**, **A7**, half-bar splits, and
-    **N.C.** outro pickup. Acoustic island groove — not rock or piano ballad.
+    The loop is written in concert **B–F#–G#m–E** with **F#sus4**, **F#/A#**, **C#7**,
+    half-bar splits, and **N.C.** outro pickup (the same progression as the G–D–Em–C capo-4
+    shapes, up four semitones). Acoustic island groove — not rock or piano ballad.
     """
+    from music_theory import transpose_sections_dict
+
+    def concert(levels: dict[str, list[str]]) -> dict[str, list[str]]:
+        return transpose_sections_dict(levels, "G", "B")
+
     loop = ["G", "D", "Em", "C"]
     verse = list(loop) * 2
 
@@ -3230,16 +3270,17 @@ def _im_yours_chart_pack() -> dict[str, Any]:
         for name, chords in intermediate.items()
     }
 
+    intermediate, beginner, advanced = concert(intermediate), concert(beginner), concert(advanced)
     section_order = list(intermediate.keys())
     scale_hints = {
-        "G": ["G major", "G major pentatonic"],
-        "D": ["D major"],
-        "Em": ["E natural minor / relative minor"],
-        "C": ["C major"],
-        "A7": ["A mixolydian / blues pentatonic over V"],
+        "B": ["B major", "B major pentatonic"],
+        "F#": ["F# major"],
+        "G#m": ["G# natural minor / relative minor"],
+        "E": ["E major"],
+        "C#7": ["C# mixolydian / blues pentatonic over V"],
     }
     return {
-        "key": "G",
+        "key": "B",
         "sections": intermediate,
         "chart_versions": _levels(
             beginner=beginner,
@@ -3249,32 +3290,32 @@ def _im_yours_chart_pack() -> dict[str, Any]:
         "chart_status": "practice_level_verified",
         "section_order": section_order,
         "composer": "Jason Mraz",
+        # Concert-key (sounding) barre/open voicings; the G-shape / capo-4 view comes from the capo mode.
         "guitar_tabs": {
-            "G": "320003",
-            "D": "xx0232",
-            "Dsus4": "xx0233",
-            "D/F#": "2x0232",
-            "Em": "022000",
-            "C": "x32010",
-            "A7": "x02020",
+            "B": "x24442",
+            "F#": "244322",
+            "G#m": "466444",
+            "E": "022100",
+            "C#7": "x46464",
         },
         "lyric_cues": {
-            "Intro": ["Acoustic island vamp — G · D · Em · C"],
+            "Intro": ["Acoustic island vamp — B · F# · G#m · E"],
             "Verse 1": ["Well you done done me and you bet I felt it…"],
             "Chorus 1": ["But I won't hesitate no more, no more…"],
-            "Verse 2": ["Come on and open up your plans…", "A7 lift into chorus 2"],
-            "Chorus 2": ["Open up your plans and damn you're free…", "D|Dsus4 color"],
-            "Bridge": ["And it's our God-forsaken right to be loved…", "G|D/F# walkdown"],
+            "Verse 2": ["Come on and open up your plans…", "C#7 lift into chorus 2"],
+            "Chorus 2": ["Open up your plans and damn you're free…", "F#|F#sus4 color"],
+            "Bridge": ["And it's our God-forsaken right to be loved…", "B|F#/A# walkdown"],
             "Verse 3": ["Third verse — same relaxed groove"],
-            "Final Chorus / Outro Build": ["I've been spendin' way too long…", "A7 turn"],
-            "Outro": ["N.C. pickup — fade on G · D · Em · C"],
+            "Final Chorus / Outro Build": ["I've been spendin' way too long…", "C#7 turn"],
+            "Outro": ["N.C. pickup — fade on B · F# · G#m · E"],
         },
         "extensions": _ext(
             arrangement_notes=(
-                "**B major** concert; chart in **G shapes** (capo **4**). **4/4**, ~75 BPM. "
+                "**B major** concert (the recording's key); guitarists play **G shapes** with a "
+                "capo on fret **4**. **4/4**, ~75 BPM. "
                 "Reggae-pop / island groove — acoustic guitar, light hand percussion, soft "
-                "bass, relaxed drums. **Not** rock kit or piano ballad. Preserve **Dsus4**, "
-                "**D/F#**, **A7**, half-bar splits (**D|Dsus4**, **G|D/F#**, **Em|D**), "
+                "bass, relaxed drums. **Not** rock kit or piano ballad. Preserve **F#sus4**, "
+                "**F#/A#**, **C#7**, half-bar splits (**F#|F#sus4**, **B|F#/A#**, **G#m|F#**), "
                 "and **N.C.** outro pickup."
             ),
             default_bpm=75,
@@ -3283,7 +3324,7 @@ def _im_yours_chart_pack() -> dict[str, Any]:
             full_form_levels=["Beginner"],
             default_groove="Pop groove",
             time_signature="4/4",
-            capo_note="Capo 4 (G-shape chart) · concert key B major",
+            capo_note="Capo 4 (G shapes) · concert key B major",
             repertoire_tags=[
                 "Reggae Pop",
                 "Acoustic Pop",
@@ -3293,7 +3334,7 @@ def _im_yours_chart_pack() -> dict[str, Any]:
                 "Jason Mraz",
             ],
             harmonic_analysis={
-                "progression_summary": "G–D–Em–C (I–V–vi–IV); A7 dominant color; bridge walkdown",
+                "progression_summary": "B–F#–G#m–E (I–V–vi–IV; G–D–Em–C shapes with capo 4); C#7 dominant color; bridge walkdown",
                 "scale_suggestions": scale_hints,
             },
             acoustic_unplugged=True,
@@ -4217,12 +4258,14 @@ def _how_far_ill_go_chart_pack() -> dict[str, Any]:
 
 
 def _viva_la_vida_chart_pack() -> dict[str, Any]:
-    """Viva La Vida — Coldplay (C guitar-friendly chart · Ab concert, 4/4, ~138 BPM).
+    """Viva La Vida — Coldplay (stored in the recording's concert key, Ab major; guitarists play C-D-G-Em shapes, tonic G, with a capo on fret 1; 4/4, ~138 BPM).
 
-    Main loop **C · Dadd11 · G · Em** — preserve **Dadd11** (do not simplify to D
-    except beginner charts). Orchestral arena-pop backing — strings ostinato,
+    Main loop **Db · Ebadd11 · Ab · Fm** (the C · Dadd11 · G · Em capo-1 shapes, up a semitone) —
+    preserve **Ebadd11** (do not simplify to Eb except beginner charts). Orchestral arena-pop backing — strings ostinato,
     cinematic percussion, not acoustic strumming.
     """
+
+    from music_theory import transpose_sections_dict
 
     def _four() -> list[str]:
         return ["C", "Dadd11", "G", "Em"]
@@ -4255,10 +4298,13 @@ def _viva_la_vida_chart_pack() -> dict[str, Any]:
 
     beginner = {name: _beg_line(chords) for name, chords in intermediate.items()}
     advanced = {name: list(chords) for name, chords in intermediate.items()}
+    intermediate = transpose_sections_dict(intermediate, "G", "Ab")
+    beginner = transpose_sections_dict(beginner, "G", "Ab")
+    advanced = transpose_sections_dict(advanced, "G", "Ab")
 
     section_order = list(intermediate.keys())
     return {
-        "key": "C",
+        "key": "Ab",
         "sections": intermediate,
         "chart_versions": _levels(
             beginner=beginner,
@@ -4279,11 +4325,11 @@ def _viva_la_vida_chart_pack() -> dict[str, Any]:
             ],
             "Chorus 1": [
                 "Arena lift — fuller percussion and bigger strings",
-                "Bm → Em tag at the end — don't rush the handoff",
+                "Cm → Fm tag at the end — don't rush the handoff",
             ],
             "Bridge / Oh Section": [
                 "Dynamic contrast — expansive 'oh' moment",
-                "Dadd11 hold bars — let the harmony ring",
+                "Ebadd11 hold bars — let the harmony ring",
             ],
             "Final Chorus": [
                 "Biggest arrangement — anthem climax",
@@ -4295,9 +4341,10 @@ def _viva_la_vida_chart_pack() -> dict[str, Any]:
         },
         "extensions": _ext(
             arrangement_notes=(
-                "**Viva La Vida** — Coldplay (**Ab major** concert · **C** guitar-friendly "
-                "shapes, **4/4**, ~**138 BPM**). Core loop: **C · Dadd11 · G · Em** "
-                "(preserve **Dadd11** on intermediate/advanced). **Bm** appears at "
+                "**Viva La Vida** — Coldplay (**Ab major** concert, the recording's key; "
+                "guitarists play **C-D-G-Em** shapes with a capo on fret **1**; **4/4**, ~**138 BPM**). "
+                "Core loop: **Db · Ebadd11 · Ab · Fm** "
+                "(preserve **Ebadd11** on intermediate/advanced). **Cm** appears at "
                 "chorus/outro tags. Backing: orchestral strings, pizzicato/driving "
                 "ostinato, cinematic percussion, bass, light piano, arena drums — "
                 "not plain acoustic strumming or jazz reharm. Intro sets pulse; "
@@ -4319,21 +4366,25 @@ def _viva_la_vida_chart_pack() -> dict[str, Any]:
             ],
             vocal_showcase=True,
             concert_key="Ab",
-            guitar_friendly_key="C",
+            guitar_friendly_key="G",
+            capo_note="Capo 1 (G shapes: C-D-G-Em) · concert key Ab major",
             vocal_harmony_hints={
                 "Verse 1": "Storytelling tone — let strings carry momentum; stay inside the pulse.",
                 "Chorus 1": "Brighter, declarative — save peak energy for Final Chorus.",
                 "Bridge / Oh Section": "Widest dynamic — long vowels on the 'oh' lifts.",
-                "Final Chorus": "Full arena delivery — commit to the Bm → Em cadence.",
+                "Final Chorus": "Full arena delivery — commit to the Cm → Fm cadence.",
             },
             harmonic_analysis={
-                "progression_summary": "C major loop C–Dadd11–G–Em with Bm color in chorus tags",
+                "progression_summary": (
+                    "Ab major loop Db–Ebadd11–Ab–Fm (IV–V–I–vi) with Cm color in "
+                    "chorus/outro tags; guitarists read it as C–Dadd11–G–Em shapes with capo 1"
+                ),
                 "scale_suggestions": {
-                    "C": ["C major", "C major pentatonic"],
-                    "Dadd11": ["D mixolydian", "G major"],
-                    "G": ["G major"],
-                    "Em": ["E natural minor", "G major"],
-                    "Bm": ["B natural minor"],
+                    "Db": ["Db major", "Db major pentatonic"],
+                    "Ebadd11": ["Eb mixolydian", "Ab major"],
+                    "Ab": ["Ab major"],
+                    "Fm": ["F natural minor", "Ab major"],
+                    "Cm": ["C natural minor"],
                 },
             },
             backing_character="disney_cinematic",
@@ -5373,11 +5424,14 @@ def _shalom_aleichem_chart_pack() -> dict[str, Any]:
 
 
 def _all_of_me_chart_pack() -> dict[str, Any]:
-    """All of Me — John Legend (Em capo chart, piano ballad, 4/4).
+    """All of Me — John Legend (stored in the recording's key, A-flat major; the verse loop starts on vi, Fm, but the chorus, cadences and published key are Ab; piano ballad, 4/4).
 
-    Contemporary wedding/love ballad. Preserve **C/D** (do not replace with plain D);
-  one list item = one bar.
+    Contemporary wedding/love ballad. The chart is the common Em-C-G-D capo shapes
+    moved up one semitone to the recording's key (Fm-Db-Ab-Eb; capo 1 gives the shapes).
+    Preserve **Db/Eb** (do not replace with plain Eb); one list item = one bar.
     """
+    from music_theory import transpose_sections_dict
+
     intro = ["Em", "C", "G", "D"] * 2
 
     def _verse() -> list[str]:
@@ -5438,17 +5492,20 @@ def _all_of_me_chart_pack() -> dict[str, Any]:
         }.get(ch, ch)
 
     advanced = {name: [_adv(c) for c in chords] for name, chords in intermediate.items()}
+    intermediate = transpose_sections_dict(intermediate, "G", "Ab")
+    beginner = transpose_sections_dict(beginner, "G", "Ab")
+    advanced = transpose_sections_dict(advanced, "G", "Ab")
     section_order = list(intermediate.keys())
     scale_hints = {
-        "Em": ["E natural minor", "E minor pentatonic"],
-        "C": ["C major"],
-        "G": ["G major"],
-        "D": ["D major"],
-        "Am": ["A natural minor"],
+        "Fm": ["F natural minor", "F minor pentatonic"],
+        "Db": ["Db major"],
+        "Ab": ["Ab major"],
+        "Eb": ["Eb major"],
+        "Bbm": ["Bb natural minor"],
     }
 
     return {
-        "key": "Em",
+        "key": "Ab",
         "sections": intermediate,
         "chart_versions": _levels(
             beginner=beginner,
@@ -5458,20 +5515,20 @@ def _all_of_me_chart_pack() -> dict[str, Any]:
         "chart_status": "practice_level_verified",
         "section_order": section_order,
         "composer": "John Legend & Toby Gad",
+        # Concert-key (sounding) voicings; the Em-shape / capo-1 view comes from the capo mode.
         "guitar_tabs": {
-            "Em": "022000",
-            "C": "x32010",
-            "G": "320003",
-            "D": "xx0232",
-            "Am": "x02210",
-            "C/D": "x3023x",
+            "Fm": "133111",
+            "Db": "x46664",
+            "Ab": "466544",
+            "Eb": "x68886",
+            "Bbm": "x13321",
         },
         "lyric_cues": {
             "Intro": ["Piano vamp — (breath) before 'What would I do without your smart mouth'"],
             "Verse 1": [
                 "Intimate verse — (breath) conversational tone",
                 "Smart mouth / crazy — light, playful delivery",
-                "Land Am color on last line before pre-chorus",
+                "Land Bbm color on last line before pre-chorus",
             ],
             "Pre-Chorus": [
                 "Gentle build — (breath) before chorus lift",
@@ -5479,7 +5536,7 @@ def _all_of_me_chart_pack() -> dict[str, Any]:
             ],
             "Chorus 1": [
                 "'Cause all of me loves all of you — (breath) title hook",
-                "Preserve **C/D** → D resolution — don't rush the dominant",
+                "Preserve **Db/Eb** → Eb resolution — don't rush the dominant",
                 "Fuller piano + bass — wedding-song declaration",
             ],
             "Verse 2": ["Second verse — same breath map; deepen intimacy"],
@@ -5491,19 +5548,19 @@ def _all_of_me_chart_pack() -> dict[str, Any]:
             ],
             "Final Chorus": [
                 "Biggest dynamic peak — fullest piano and vocal support",
-                "Extra Em–C–G–D passes — sustain through the climax",
+                "Extra Fm–Db–Ab–Eb passes — sustain through the climax",
             ],
             "Outro": [
-                "Vamp Em–C–G–D — gradually release; let final Em ring",
+                "Vamp Fm–Db–Ab–Eb — gradually release; let final Fm ring",
                 "(breath) between passes as instrumentation thins",
             ],
         },
         "extensions": _ext(
             arrangement_notes=(
-                "**E minor** capo guitar chart (**4/4**, ~126 BPM). Original "
-                "recordings vary in sounding key — this chart follows the common "
-                "**Em-shape** arrangement. **Piano-led** love ballad: preserve "
-                "**C/D** (suspended dominant — do not simplify to plain D). "
+                "**A-flat major** concert (the published key; the loop starts on **Fm**), "
+                "**4/4**, ~126 BPM. Guitarists play the common **Em-C-G-D** shapes with a "
+                "capo on fret **1**. **Piano-led** love ballad: preserve "
+                "**Db/Eb** (suspended dominant — do not simplify to plain Eb). "
                 "Verse intimate; pre-chorus gentle build; chorus fuller piano/"
                 "bass; bridge emotional lift; final chorus = peak; outro fades. "
                 "**Not** rock drums or distorted guitar. Core vocal-showcase "
@@ -5512,10 +5569,7 @@ def _all_of_me_chart_pack() -> dict[str, Any]:
             default_bpm=126,
             default_groove="Ballad",
             time_signature="4/4",
-            capo_note=(
-                "Em-shape capo chart · sounding key varies by vocalist; "
-                "studio take often sits higher than this shape"
-            ),
+            capo_note="Capo 1 (Em shapes) · concert key Ab major",
             repertoire_tags=[
                 "Wedding Song",
                 "Love Song",
@@ -5538,7 +5592,7 @@ def _all_of_me_chart_pack() -> dict[str, Any]:
                 "punctuation — don't clip the dominant."
             ),
             harmonic_analysis={
-                "progression_summary": "Em-centric pop ballad with Am pre-chorus and C/D dominant color",
+                "progression_summary": "Ab major pop ballad on vi-IV-I-V (Fm-Db-Ab-Eb) with Bbm pre-chorus and Db/Eb dominant color",
                 "scale_suggestions": scale_hints,
             },
             backing_character="piano_vocal_ballad_wedding",
@@ -6164,11 +6218,13 @@ def _imagine_chart_pack() -> dict[str, Any]:
 
 
 def _wonderwall_chart_pack() -> dict[str, Any]:
-    """Wonderwall — Oasis (Em shapes / capo 2, F# minor concert, 4/4).
+    """Wonderwall — Oasis (stored in the recording's concert key, F# minor; guitarists play Em shapes with a capo on fret 2; 4/4).
 
-    Britpop acoustic anthem on **Em7 · G · Dsus4 · A7sus4** with **Cadd9**
-    and **G/F#** in bridge/chorus. Preserve all sus/add9 voicings exactly.
+    Britpop acoustic anthem on **F#m7 · A · Esus4 · B7sus4** with **Dadd9**
+    and **A/G#** in bridge/chorus (the Em7 · G · Dsus4 · A7sus4 capo-2 shapes,
+    up a whole step). Preserve all sus/add9 voicings exactly.
     """
+    from music_theory import transpose_sections_dict
     loop = ["Em7", "G", "Dsus4", "A7sus4"]
     intro = list(loop) * 4
 
@@ -6219,18 +6275,21 @@ def _wonderwall_chart_pack() -> dict[str, Any]:
     beginner = {name: list(chords) for name, chords in intermediate.items()}
     advanced = {name: list(chords) for name, chords in intermediate.items()}
 
+    intermediate = transpose_sections_dict(intermediate, "E", "F#")
+    beginner = transpose_sections_dict(beginner, "E", "F#")
+    advanced = transpose_sections_dict(advanced, "E", "F#")
     section_order = list(intermediate.keys())
     scale_hints = {
-        "Em7": ["E Minor Pentatonic", "E Natural Minor"],
-        "G": ["G Major"],
-        "Dsus4": ["D Major"],
-        "A7sus4": ["A Mixolydian"],
-        "Cadd9": ["C Major"],
-        "G/F#": ["G Major"],
+        "F#m7": ["F# Minor Pentatonic", "F# Natural Minor"],
+        "A": ["A Major"],
+        "Esus4": ["E Major"],
+        "B7sus4": ["B Mixolydian"],
+        "Dadd9": ["D Major"],
+        "A/G#": ["A Major"],
     }
 
     return {
-        "key": "Em",
+        "key": "F#m",
         "sections": intermediate,
         "chart_versions": _levels(
             beginner=beginner,
@@ -6240,50 +6299,51 @@ def _wonderwall_chart_pack() -> dict[str, Any]:
         "chart_status": "practice_level_verified",
         "section_order": section_order,
         "composer": "Noel Gallagher",
+        # Concert-key (sounding) voicings; the Em-shape / capo-2 view comes from the capo mode.
         "guitar_tabs": {
-            "Em7": "022030",
-            "G": "320003",
-            "Dsus4": "xx0233",
-            "A7sus4": "x02030",
-            "Cadd9": "x32030",
-            "G/F#": "2x0033",
+            "F#m7": "242222",
+            "A": "x02220",
+            "Esus4": "002200",
+            "B7sus4": "x24252",
+            "Dadd9": "xx0230",
         },
         "lyric_cues": {
             "Intro": [
-                "Iconic Em7 · G · Dsus4 · A7sus4 vamp — let chords ring",
+                "Iconic F#m7 · A · Esus4 · B7sus4 vamp — let chords ring",
                 "(breath) before 'Today is gonna be the day…'",
             ],
             "Verse 1": [
                 "Steady acoustic strumming — intimate, singalong delivery",
-                "Land Cadd9 · Dsus4 · A7sus4 tag at end of verse",
+                "Land Dadd9 · Esus4 · B7sus4 tag at end of verse",
             ],
             "Verse 2": ["Second verse — same groove, slightly fuller feel"],
             "Chorus Prep / Bridge": [
-                "Gradual build — Cadd9 · Dsus4 · Em7 lifts",
-                "G · G/F# · Em7 walkdown is the signature Oasis moment",
+                "Gradual build — Dadd9 · Esus4 · F#m7 lifts",
+                "A · A/G# · F#m7 walkdown is the signature Oasis moment",
             ],
             "Chorus": [
                 "'Maybe you're gonna be the one…' — open vowels, full strum",
                 "(breath) before title hook 'Wonderwall'",
                 "Fuller drums and wider guitars",
             ],
-            "Verse 3": ["Third verse — four full loops, no Cadd9 tag"],
+            "Verse 3": ["Third verse — four full loops, no Dadd9 tag"],
             "Bridge 2": ["Second bridge — stronger bass, build to final chorus"],
             "Final Chorus": [
                 "Biggest energy — strongest singalong pass",
                 "Repeat feel; belt the title hook with ringing open chords",
             ],
             "Outro": [
-                "Cadd9 · Em7 · G · Em7 repeat and fade",
+                "Dadd9 · F#m7 · A · F#m7 repeat and fade",
                 "Gradually release strumming intensity",
             ],
         },
         "extensions": _ext(
             arrangement_notes=(
-                "**F# minor** concert; chart in **Em shapes** (capo **2**). "
+                "**F# minor** concert (the recording's key); guitarists play **Em shapes** "
+                "with a capo on fret **2**. "
                 "**4/4**, ~88 BPM britpop / acoustic rock. Core vamp "
-                "**Em7 · G · Dsus4 · A7sus4** — preserve **Em7**, **Dsus4**, "
-                "**A7sus4**, **Cadd9**, and **G/F#** exactly (no plain D or A7 "
+                "**F#m7 · A · Esus4 · B7sus4** — preserve **F#m7**, **Esus4**, "
+                "**B7sus4**, **Dadd9**, and **A/G#** exactly (no plain E or B7 "
                 "substitutions). Verse: steady acoustic strum; bridge: gradual "
                 "build with G/F# bass; chorus: fuller drums and guitars; outro "
                 "repeats and fades. **Not** piano ballad or jazz reharm. "
@@ -6292,7 +6352,7 @@ def _wonderwall_chart_pack() -> dict[str, Any]:
             default_bpm=88,
             default_groove="Pop groove",
             time_signature="4/4",
-            capo_note="Capo 2 (Em-shape chart) · concert key F# minor",
+            capo_note="Capo 2 (Em shapes) · concert key F# minor",
             strumming_pattern=(
                 "Typical feel: down-strokes on beats 1–3, lighter ups on 2 & 4; "
                 "or D · DU · UDU per bar — keep open strings ringing."
@@ -6309,20 +6369,20 @@ def _wonderwall_chart_pack() -> dict[str, Any]:
             vocal_range_notes=(
                 "Verse sits in comfortable chest/mix; chorus opens slightly on "
                 "the title hook. Plan breaths before each chorus and the bridge "
-                "G/F# walk — don't rush the suspended chords."
+                "A/G# walk — don't rush the suspended chords."
             ),
             vocal_harmony_hints=(
                 "Britpop singalong: conversational verses, open vowels on "
-                "'Wonderwall', and let Dsus4 · A7sus4 ring between phrases."
+                "'Wonderwall', and let Esus4 · B7sus4 ring between phrases."
             ),
             harmonic_analysis={
                 "progression_summary": (
-                    "Em-centric britpop loop with sus/add9 colors; bridge "
-                    "Cadd9–Dsus4–Em7 and G/F# bass walk"
+                    "F#m-centric britpop loop with sus/add9 colors (Em-shape chart with capo 2); bridge "
+                    "Dadd9–Esus4–F#m7 and A/G# bass walk"
                 ),
                 "improvisation_notes": (
-                    "E minor pentatonic over the main loop; C major over "
-                    "Cadd9 bridge figures; keep fills sparse and ringing."
+                    "F# minor pentatonic over the main loop; D major over "
+                    "Dadd9 bridge figures; keep fills sparse and ringing."
                 ),
                 "scale_suggestions": scale_hints,
             },
@@ -7904,23 +7964,23 @@ def _requested_verified_song_records() -> list[dict[str, Any]]:
             "All of Me",
             "John Legend",
             "Pop",
-            "Em",
+            "Ab",
             {
-                "Intro": ["Em", "C", "G", "D"] * 2,
-                "Verse": ["Em", "C", "G", "D"] * 4,
-                "Chorus": ["G", "Em", "Am", "C/D", "D", "Em", "C", "G", "D"],
+                "Intro": ["Fm", "Db", "Ab", "Eb"] * 2,
+                "Verse": ["Fm", "Db", "Ab", "Eb"] * 4,
+                "Chorus": ["Ab", "Fm", "Bbm", "Db/Eb", "Eb", "Fm", "Db", "Ab", "Eb"],
             },
             {
-                "Intro": ["Em7", "Cmaj7", "G", "D"] * 2,
-                "Verse": ["Em7", "Cmaj7", "G", "D"] * 4,
-                "Chorus": ["G", "Em7", "Am7", "C/D", "D", "Em7", "Cmaj7", "G", "D"],
+                "Intro": ["Fm7", "Dbmaj7", "Ab", "Eb"] * 2,
+                "Verse": ["Fm7", "Dbmaj7", "Ab", "Eb"] * 4,
+                "Chorus": ["Ab", "Fm7", "Bbm7", "Db/Eb", "Eb", "Fm7", "Dbmaj7", "Ab", "Eb"],
             },
             composer="John Legend & Toby Gad",
             lyric_cues={
                 "Intro": ["piano vamp — full chart in override"],
-                "Chorus": ["title hook — preserve C/D color"],
+                "Chorus": ["title hook — preserve Db/Eb color"],
             },
-            notes="Em capo chart (~126 BPM); full form with C/D in chart override.",
+            notes="Ab major concert (Em shapes with capo 1, ~126 BPM); full form with Db/Eb in chart override.",
             default_bpm=126,
             default_groove="Ballad",
         ),
@@ -7966,18 +8026,18 @@ def _requested_verified_song_records() -> list[dict[str, Any]]:
             "I'm Yours",
             "Jason Mraz",
             "Pop",
-            "G",
+            "B",
             {
-                "Intro": ["G", "D", "Em", "C"],
-                "Verse 1": ["G", "D", "Em", "C"],
+                "Intro": ["B", "F#", "G#m", "E"],
+                "Verse 1": ["B", "F#", "G#m", "E"],
             },
             {
-                "Intro": ["G", "D", "Em", "C"],
-                "Verse 1": ["G", "D", "Em", "C"],
+                "Intro": ["B", "F#", "G#m", "E"],
+                "Verse 1": ["B", "F#", "G#m", "E"],
             },
             composer="Jason Mraz",
-            lyric_cues={"Intro": ["G · D · Em · C island groove"]},
-            notes="G-shape chart (capo 4 = B concert); full form in chart override.",
+            lyric_cues={"Intro": ["B · F# · G#m · E island groove"]},
+            notes="B concert (G shapes with capo 4); full form in chart override.",
             default_bpm=75,
             default_groove="Pop groove",
         ),
@@ -8650,8 +8710,14 @@ def _requested_verified_song_records() -> list[dict[str, Any]]:
             notes=(
                 "Key F#m; 4/4 groove — one chord = one bar. F#m→G#m→A→G#m vamp is the "
                 "core feel. Verse uses phased Bm bars; chorus adds B5. Advanced uses "
-                "F#m9/G#m7/Amaj7/Bm9 colors without changing the tight loop. Not AI-verified."
+                "F#m9/G#m7/Amaj7/Bm9 colors without changing the tight loop. Not AI-verified. "
+                "Tempo ~117 BPM: that is the figure the tempo listings agree on (118 and 125 "
+                "are outliers), and Musicnotes prints the original published key as F# minor. "
+                "The chart is a rehearsal skeleton — Advanced is 86 bars, about 2:56 at 117, "
+                "against a 4:54 recording — so the form is shorter than the record and is "
+                "left as it stands, because the chords are user-corrected."
             ),
+            default_bpm=117,
             chart_status="user_corrected_reference",
         ),
         v(
@@ -8860,18 +8926,18 @@ def _requested_verified_song_records() -> list[dict[str, Any]]:
             "Wonderwall",
             "Oasis",
             "Rock",
-            "Em",
+            "F#m",
             {
-                "Intro": ["Em7", "G", "Dsus4", "A7sus4"],
-                "Verse 1": ["Em7", "G", "Dsus4", "A7sus4"],
+                "Intro": ["F#m7", "A", "Esus4", "B7sus4"],
+                "Verse 1": ["F#m7", "A", "Esus4", "B7sus4"],
             },
             {
-                "Intro": ["Em7", "G", "Dsus4", "A7sus4"],
-                "Verse 1": ["Em7", "G", "Dsus4", "A7sus4"],
+                "Intro": ["F#m7", "A", "Esus4", "B7sus4"],
+                "Verse 1": ["F#m7", "A", "Esus4", "B7sus4"],
             },
             composer="Noel Gallagher",
-            lyric_cues={"Intro": ["Em7 · G · Dsus4 · A7sus4 britpop vamp"]},
-            notes="Em-shape chart (capo 2 = F#m concert); full form in override.",
+            lyric_cues={"Intro": ["F#m7 · A · Esus4 · B7sus4 britpop vamp"]},
+            notes="F#m concert (Em shapes with capo 2); full form in override.",
             chart_status=status,
             default_bpm=88,
             default_groove="Pop groove",
@@ -9507,15 +9573,15 @@ def curated_song_records() -> list[dict[str, Any]]:
             "Thinking Out Loud",
             "Ed Sheeran",
             "Pop",
-            "C",
+            "D",
             {
-                "Verse 1": ["C", "C/E", "F", "G"] * 4,
-                "Turnaround": ["C", "C/E", "F", "G", "C", "C/E", "F", "G"],
-                "Pre-Chorus 1": ["Dm", "G", "C", "Dm", "G", "Dm", "G", "Am", "Dm", "G", "C", "C/E"],
-                "Chorus 1": ["F", "G", "C", "C/E"] * 3 + ["F", "G"],
-                "Verse 2": ["C", "C/E", "F", "G"] * 4,
-                "Chorus 2": ["F", "G", "C", "C/E"] * 3 + ["F", "G"],
-                "Outro": ["Am", "G", "F", "C/E", "Dm", "G", "C"],
+                "Verse 1": ["D", "D/F#", "G", "A"] * 4,
+                "Turnaround": ["D", "D/F#", "G", "A", "D", "D/F#", "G", "A"],
+                "Pre-Chorus 1": ["Em", "A", "D", "Em", "A", "Em", "A", "Bm", "Em", "A", "D", "D/F#"],
+                "Chorus 1": ["G", "A", "D", "D/F#"] * 3 + ["G", "A"],
+                "Verse 2": ["D", "D/F#", "G", "A"] * 4,
+                "Chorus 2": ["G", "A", "D", "D/F#"] * 3 + ["G", "A"],
+                "Outro": ["Bm", "A", "G", "D/F#", "Em", "A", "D"],
             },
             extensions=_ext(
                 default_bpm=75,
@@ -9580,8 +9646,8 @@ def curated_song_records() -> list[dict[str, Any]]:
         }),
 
         # --- Coldplay (guitar-friendly, rehearsal-level form) ---
-        _s("Viva La Vida", "Coldplay", "Pop", "C", {
-            "Placeholder": ["C"],
+        _s("Viva La Vida", "Coldplay", "Pop", "Ab", {
+            "Placeholder": ["Ab"],
         }),
         _s("Yellow", "Coldplay", "Pop", "B", {
             "Intro": ["B", "B", "F#", "E"],
@@ -9615,82 +9681,14 @@ def curated_song_records() -> list[dict[str, Any]]:
                 "verified, so the form is intentionally unchanged."
             ),
         )),
-        _s(
-            "The Scientist",
-            "Coldplay",
-            "Pop",
-            "Dm",
-            {
-                "Intro": ["Bm7", "G", "D", "Dsus2"] * 2,
-                "Verse 1": ["Bm7", "G", "D", "Dsus2"] * 4,
-                "Chorus 1": [
-                    "G",
-                    "D",
-                    "Dsus2",
-                    "A/D",
-                    "D6/9",
-                    "A/E",
-                    "Asus4",
-                    "A",
-                ],
-                "N.C. 1": ["N.C."],
-                "Instrumental 1": [
-                    "D",
-                    "G",
-                    "D",
-                    "D|Dmaj7",
-                    "Bm7",
-                    "G",
-                    "D",
-                    "Dsus2",
-                ],
-                "Verse 2": ["Bm7", "G", "D", "Dsus2"] * 3
-                + ["Bm7", "G", "D", "Dsus2/C#"],
-                "Chorus 2": [
-                    "G",
-                    "D",
-                    "Dsus2",
-                    "A/D",
-                    "D6/9",
-                    "A/E",
-                    "Asus4",
-                    "A",
-                ],
-                "N.C. 2": ["N.C."],
-                "Instrumental 2": ["D", "G", "D", "D"],
-                "Ending": ["Bm7", "G", "D", "D"] * 4,
-                "Final Tag": ["Bm7", "G", "D"],
-            },
-            chart_status="practice_level_verified",
-            section_order=[
-                "Intro",
-                "Verse 1",
-                "Chorus 1",
-                "N.C. 1",
-                "Instrumental 1",
-                "Verse 2",
-                "Chorus 2",
-                "N.C. 2",
-                "Instrumental 2",
-                "Ending",
-                "Final Tag",
-            ],
-            extensions=_ext(
-                default_bpm=73,
-                default_groove="Ballad",
-                time_signature="4/4",
-                vocal_showcase=True,
-                coldplay_piano_ballad=True,
-                repertoire_tags=[
-                    "Coldplay",
-                    "Piano Ballad",
-                    "Alternative Rock",
-                    "Emotional Ballad",
-                    "Karaoke Friendly",
-                    "Vocal Showcase",
-                ],
-            ),
-        ),
+        # Every chart field below is replaced by _scientist_chart_pack() via
+        # _core_chart_overrides(); this placeholder only exists so the override
+        # has a (title, artist) row to patch. It used to carry a second, full
+        # copy of the chart in the capo-3 D shapes, which would now contradict
+        # the F-major pack, so it is reduced to a stub like the other packs.
+        _s("The Scientist", "Coldplay", "Pop", "F", {
+            "Placeholder": ["F"],
+        }),
         _s("Clocks", "Coldplay", "Pop", "Eb", {
             "Intro / Piano Riff": ["Eb", "Bbm", "Fm", "Fm"],
             "Verse (Riff)": ["Eb", "Bbm", "Fm", "Fm"],
@@ -10644,6 +10642,102 @@ def curated_song_records() -> list[dict[str, Any]]:
             "A Section": ["Dbmaj7", "Ebm7", "E7", "Amaj7", "Abm7", "Db7", "Gbmaj7", "Gbmaj7"],
             "B Section": ["Fm7", "Bb7", "Ebmaj7", "Gm7b5", "C7", "Fm7", "Bb7", "Eb7"],
         }, composer="Johnny Green"),
+        _s("Confirmation", "Charlie Parker", "Jazz", "F", {
+            # AABA, 32 bars, F major, bebop.  The first four bars of each A walk down ii-V pairs (Em7b5|A7 a half step
+            # under the tonic, Dm7|G7, Cm7|F7); bars 5-6 repeat the idea from the IV (Fm7|Bb7, Am7b5|D7); bar 7 is G7
+            # (II7) in the FIRST A and Gm7|C7 in the second and last A; bar 8 is C7 (first A, turnaround) or Fmaj7.  The bridge
+            # moves by ii-V-I to Bb (Cm7, F7, Bbmaj7 x2) and to Db (Ebm7, Ab7, Dbmaj7), then Gm7|C7 back to F.
+            "A": ["Fmaj7", "Em7b5|A7", "Dm7|G7", "Cm7|F7", "Fm7|Bb7", "Am7b5|D7", "G7", "C7"],
+            "A2": ["Fmaj7", "Em7b5|A7", "Dm7|G7", "Cm7|F7", "Fm7|Bb7", "Am7b5|D7", "Gm7|C7", "Fmaj7"],
+            "Bridge": ["Cm7", "F7", "Bbmaj7", "Bbmaj7", "Ebm7", "Ab7", "Dbmaj7", "Gm7|C7"],
+            "A3": ["Fmaj7", "Em7b5|A7", "Dm7|G7", "Cm7|F7", "Fm7|Bb7", "Am7b5|D7", "Gm7|C7", "Fmaj7"],
+        }, composer="Charlie Parker",
+          section_order=["A", "A2", "Bridge", "A3"],
+          chart_versions={
+              # Beginner: one complete chorus with triads/dominant sevenths (half-diminished -> minor triad, maj7 -> major).
+              "Beginner": {
+                  "A": ["F", "Em|A7", "Dm|G7", "Cm|F7", "Fm|Bb7", "Am|D7", "G7", "C7"],
+                  "A2": ["F", "Em|A7", "Dm|G7", "Cm|F7", "Fm|Bb7", "Am|D7", "Gm|C7", "F"],
+                  "Bridge": ["Cm", "F7", "Bb", "Bb", "Ebm", "Ab7", "Db", "Gm|C7"],
+                  "A3": ["F", "Em|A7", "Dm|G7", "Cm|F7", "Fm|Bb7", "Am|D7", "Gm|C7", "F"],
+              },
+              # Intermediate keeps the full harmonic structure (the chart carries no stacked alterations to reduce).
+              "Intermediate": {
+                  "A": ["Fmaj7", "Em7b5|A7", "Dm7|G7", "Cm7|F7", "Fm7|Bb7", "Am7b5|D7", "G7", "C7"],
+                  "A2": ["Fmaj7", "Em7b5|A7", "Dm7|G7", "Cm7|F7", "Fm7|Bb7", "Am7b5|D7", "Gm7|C7", "Fmaj7"],
+                  "Bridge": ["Cm7", "F7", "Bbmaj7", "Bbmaj7", "Ebm7", "Ab7", "Dbmaj7", "Gm7|C7"],
+                  "A3": ["Fmaj7", "Em7b5|A7", "Dm7|G7", "Cm7|F7", "Fm7|Bb7", "Am7b5|D7", "Gm7|C7", "Fmaj7"],
+              },
+              "Advanced": {
+                  "A": ["Fmaj7", "Em7b5|A7", "Dm7|G7", "Cm7|F7", "Fm7|Bb7", "Am7b5|D7", "G7", "C7"],
+                  "A2": ["Fmaj7", "Em7b5|A7", "Dm7|G7", "Cm7|F7", "Fm7|Bb7", "Am7b5|D7", "Gm7|C7", "Fmaj7"],
+                  "Bridge": ["Cm7", "F7", "Bbmaj7", "Bbmaj7", "Ebm7", "Ab7", "Dbmaj7", "Gm7|C7"],
+                  "A3": ["Fmaj7", "Em7b5|A7", "Dm7|G7", "Cm7|F7", "Fm7|Bb7", "Am7b5|D7", "Gm7|C7", "Fmaj7"],
+              },
+          },
+          extensions=_ext(
+              arrangement_notes=(
+                  "**AABA**, 32 bars, **4/4**, **F major**, bebop (recordings run about 209 bpm and up; the default tempo "
+                  "here is a practice tempo). A: **Fmaj7 - Em7b5|A7 - Dm7|G7 - Cm7|F7 - Fm7|Bb7 - Am7b5|D7** then **G7 - C7** "
+                  "(first A) or **Gm7|C7 - Fmaj7** (second and last A). Bridge: ii-V-I to **Bb** (Cm7 F7 Bbmaj7) and to **Db** "
+                  "(Ebm7 Ab7 Dbmaj7), then **Gm7|C7**. Sources agree on the structure; published sheets differ in A bars 5, 6 "
+                  "and 8 and some versions add C7b9 / Gm7 C7alt turnarounds, which are not used here. Chart is one complete "
+                  "chorus; playback repeats it for practice."
+              ),
+              default_bpm=176,
+              default_groove="Jazz swing",
+              time_signature="4/4",
+              form="AABA (32 bars)",
+              full_form_levels=["Beginner"],
+              jazz_standard_flagship=True,
+              repertoire_tags=["Jazz Standard", "Bebop", "Charlie Parker", "ii-V-I Progressions", "Essential Repertoire", "Improvisation"],
+              chart_confidence={"chords": "medium-high", "timing": "medium", "form": "high", "groove": "low"},
+              chart_sources=(
+                  "jazzchanges.app (changes taken from Michael Brecker's solo on Chick Corea's Three Quartets); a guitar "
+                  "transcription of the head; Jazzadvice's measure-by-measure analysis (ii-V walk-down, IV7 at bar 5, II7 "
+                  "at bar 7 of the first A, bridge ii-V-Is to Bb and Db). No score was used or copied; not checked by ear."
+              ),
+          )),
+        _s("I'll Remember April", "Gene de Paul", "Jazz", "G", {
+            # ABA, 48 bars (three 16-bar sections), G major.  Each A: Gmaj7 x4, Gm7 x4 (major to parallel minor), then
+            # Am7 D7 Bm7b5 E7b9 Am7 D7 Gmaj7 Gmaj7.  The bridge starts a false key change to Bb major (Cm7 F7 Bbmaj7 x2, twice),
+            # returns to G (Am7 D7 Gmaj7 x2) and touches E major (F#m7 B7 Emaj7) before Am7|D7 leads back to the last A.
+            "A": ["Gmaj7", "Gmaj7", "Gmaj7", "Gmaj7", "Gm7", "Gm7", "Gm7", "Gm7", "Am7", "D7", "Bm7b5", "E7b9", "Am7", "D7", "Gmaj7", "Gmaj7"],
+            "Bridge": ["Cm7", "F7", "Bbmaj7", "Bbmaj7", "Cm7", "F7", "Bbmaj7", "Bbmaj7", "Am7", "D7", "Gmaj7", "Gmaj7", "F#m7", "B7", "Emaj7", "Am7|D7"],
+            "A2": ["Gmaj7", "Gmaj7", "Gmaj7", "Gmaj7", "Gm7", "Gm7", "Gm7", "Gm7", "Am7", "D7", "Bm7b5", "E7b9", "Am7", "D7", "Gmaj7", "Gmaj7"],
+        }, composer="Gene de Paul · Patricia Johnston · Don Raye",
+          section_order=["A", "Bridge", "A2"],
+          chart_versions={
+              # Beginner: ONE complete 48-bar chorus (all three sections) with triads and dominant sevenths.
+              "Beginner": {"A": ["G", "G", "G", "G", "Gm", "Gm", "Gm", "Gm", "Am", "D7", "Bm", "E7", "Am", "D7", "G", "G"], "Bridge": ["Cm", "F7", "Bb", "Bb", "Cm", "F7", "Bb", "Bb", "Am", "D7", "G", "G", "F#m", "B7", "E", "Am|D7"], "A2": ["G", "G", "G", "G", "Gm", "Gm", "Gm", "Gm", "Am", "D7", "Bm", "E7", "Am", "D7", "G", "G"]},
+              # Intermediate: full structure, E7b9 reduced to E7.
+              "Intermediate": {"A": ["Gmaj7", "Gmaj7", "Gmaj7", "Gmaj7", "Gm7", "Gm7", "Gm7", "Gm7", "Am7", "D7", "Bm7b5", "E7", "Am7", "D7", "Gmaj7", "Gmaj7"], "Bridge": ["Cm7", "F7", "Bbmaj7", "Bbmaj7", "Cm7", "F7", "Bbmaj7", "Bbmaj7", "Am7", "D7", "Gmaj7", "Gmaj7", "F#m7", "B7", "Emaj7", "Am7|D7"], "A2": ["Gmaj7", "Gmaj7", "Gmaj7", "Gmaj7", "Gm7", "Gm7", "Gm7", "Gm7", "Am7", "D7", "Bm7b5", "E7", "Am7", "D7", "Gmaj7", "Gmaj7"]},
+              "Advanced": {"A": ["Gmaj7", "Gmaj7", "Gmaj7", "Gmaj7", "Gm7", "Gm7", "Gm7", "Gm7", "Am7", "D7", "Bm7b5", "E7b9", "Am7", "D7", "Gmaj7", "Gmaj7"], "Bridge": ["Cm7", "F7", "Bbmaj7", "Bbmaj7", "Cm7", "F7", "Bbmaj7", "Bbmaj7", "Am7", "D7", "Gmaj7", "Gmaj7", "F#m7", "B7", "Emaj7", "Am7|D7"], "A2": ["Gmaj7", "Gmaj7", "Gmaj7", "Gmaj7", "Gm7", "Gm7", "Gm7", "Gm7", "Am7", "D7", "Bm7b5", "E7b9", "Am7", "D7", "Gmaj7", "Gmaj7"]},
+          },
+          extensions=_ext(
+              arrangement_notes=(
+                  "**ABA**, **48 bars** (16 + 16 + 16), **4/4**, **G major**. Some online charts show only 32 bars; this chart "
+                  "is the complete form. A: **Gmaj7** x4, **Gm7** x4, **Am7 - D7 - Bm7b5 - E7b9 - Am7 - D7 - Gmaj7 - Gmaj7**. "
+                  "Bridge: **Cm7 - F7 - Bbmaj7** x2 (false key change to Bb), **Am7 - D7 - Gmaj7**, **F#m7 - B7 - Emaj7** "
+                  "(a visit to E major), then **Am7|D7**. Variants not used: G6 in place of some Gmaj7 bars, Gm6 in the "
+                  "Gm7 bars, Am7b5 at bar 9. Modern performances often play a Latin-feel vamp as an introduction and ending and "
+                  "for the first eight bars of each A, then swing; that feel change is arrangement-dependent and is NOT "
+                  "charted or switched here (the backing is straight swing; no intro or ending is invented)."
+              ),
+              default_bpm=160,
+              default_groove="Jazz swing",
+              time_signature="4/4",
+              form="ABA (48 bars)",
+              full_form_levels=["Beginner"],
+              jazz_standard_flagship=True,
+              repertoire_tags=["Jazz Standard", "Swing", "Great American Songbook", "ii-V-I Progressions", "Essential Repertoire", "Improvisation"],
+              chart_confidence={"chords": "medium-high", "timing": "medium", "form": "high", "groove": "low"},
+              chart_sources=(
+                  "Jazzomat Weimar transcriptions of Clifford Brown's and Sonny Rollins's solos (chord changes per bar, 48-bar "
+                  "A-B-A); jazzstandards.com harmonic analysis (false key change to Bb, apparent E major, return via Am7-D7); "
+                  "Jazzadvice (ABA, 48 bars, four bars of Gmaj7 opening). No score was used or copied; not checked by ear."
+              ),
+          )),
         _s("Misty", "Erroll Garner", "Jazz", "Eb", {
             # AABA, 32 bars. The A section has the signature Abmaj7 and the
             # Abm7|Db7 backdoor ii-V; first ending (Gm7|C7, Fm7|Bb7) leads back

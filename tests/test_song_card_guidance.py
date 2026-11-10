@@ -211,12 +211,12 @@ class TestHarmonyMatchesTheChart(unittest.TestCase):
     def test_all_of_me_is_a_minor_loop_not_a_jazz_standard(self) -> None:
         f = analyze_song_harmony(song("All of Me"))
         self.assertEqual(f.character, "loop")
-        self.assertEqual(f.loop, ("Em", "C", "G", "D"))
-        self.assertEqual(f.loop_numerals, ("i", "VI", "III", "VII"))
+        self.assertEqual(f.loop, ("Fm", "Db", "Ab", "Eb"))  # concert Ab major (was the Em capo shapes)
+        self.assertEqual(f.loop_numerals, ("vi", "IV", "I", "V"))  # Ab major: the loop starts on vi
         for level in LEVELS:
             c = card("All of Me", level, "Piano", "Pentatonics")
             low = c["harmony"].lower()
-            self.assertIn("e minor", low) if level != "Beginner" else self.assertIn("em", low)
+            self.assertIn("a♭ major", low) if level != "Beginner" else self.assertIn("fm", low)
             self.assertNotRegex(text_of(c).lower(), r"ii–v|turnaround|swing|bridge modulation")
 
     def test_all_of_me_jazz_standard_is_a_secondary_dominant_chain(self) -> None:
@@ -297,7 +297,9 @@ class TestKeysAndTransposition(unittest.TestCase):
         self.assertEqual(key_token("Ebm", "C"), "Ebm")
         self.assertEqual(key_label("Gm"), "G minor")
         d = active_song_card_details(song("All of Me"), level="Beginner", instrument="Piano", practice_key="G", chart_key="G")
-        self.assertEqual(d["key_display"], "G minor")
+        self.assertEqual(d["key_display"], "G major")  # All of Me (John Legend) is an Ab MAJOR song
+        d = active_song_card_details(song("Wonderwall"), level="Beginner", instrument="Piano", practice_key="G", chart_key="G")
+        self.assertEqual(d["key_display"], "G minor")  # F# minor song: the mode still comes from the song
 
     def test_written_key_spelling_for_transposing_instruments(self) -> None:
         d = active_song_card_details(

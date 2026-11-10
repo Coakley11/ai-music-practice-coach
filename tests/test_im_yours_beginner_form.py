@@ -21,7 +21,7 @@ ORDER = ["Intro", "Verse 1", "Chorus 1", "Verse 2", "Chorus 2", "Bridge", "Verse
          "Final Chorus / Outro Build", "Outro"]
 BEGINNER_BARS = [4, 4, 4, 5, 4, 9, 4, 5, 5]
 FULL_BARS = [4, 8, 8, 9, 8, 10, 8, 9, 9]
-LOOP = ["G", "D", "Em", "C"]
+LOOP = ["B", "F#", "G#m", "E"]  # concert key B (G shapes with capo 4)
 
 
 class ImYoursBeginnerFormTests(unittest.TestCase):
@@ -39,8 +39,8 @@ class ImYoursBeginnerFormTests(unittest.TestCase):
         self.assertEqual(list(beg), ORDER)
         self.assertEqual(view["section_order"], ORDER)
         self.assertEqual([len(beg[n]) for n in ORDER], BEGINNER_BARS)
-        self.assertEqual(beg["Bridge"], ["G", "D", "Em", "C", "A7", "G|D/F#", "Em|D", "C", "A7"])
-        self.assertEqual(beg["Final Chorus / Outro Build"], ["G", "D|Dsus4", "Em", "C", "A7"])
+        self.assertEqual(beg["Bridge"], ["B", "F#", "G#m", "E", "C#7", "B|F#/A#", "G#m|F#", "E", "C#7"])
+        self.assertEqual(beg["Final Chorus / Outro Build"], ["B", "F#|F#sus4", "G#m", "E", "C#7"])
         self.assertEqual(beg["Verse 3"], LOOP)
         self.assertEqual(beg["Outro"], ["N.C."] + LOOP)
         self.assertEqual(sum(BEGINNER_BARS), 44)
