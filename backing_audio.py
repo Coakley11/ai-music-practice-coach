@@ -77,20 +77,35 @@ __all__ = [
 ]
 
 
+def _is_slash_bass(text: str) -> bool:
+    """Is the text after a "/" a bass note, or part of the chord quality?
+
+    "C/E" names a bass note. "C6/9" does not: the 9 belongs to the quality, and
+    reading it as a bass both dropped the ninth and sent the bass to a fallback
+    pitch regardless of the root.
+    """
+    return bool(text) and text[0] in "ABCDEFGabcdefg"
+
+
 def _chord_head(chord: str) -> str:
     """First usable chord token (strip bars, slash bass, light annotations)."""
     if not chord:
         return ""
     token = str(chord).strip()
     token = token.replace("|", " ").split()[0] if token else ""
-    token = token.split("/")[0]
+    head, sep, tail = token.partition("/")
+    if sep and not _is_slash_bass(tail):
+        head = token
+    token = head
     return token.replace("(", "").replace(")", "")
 
 
 def _chord_bass(chord):
     primary = _sub_primary_chord(chord) or str(chord).strip()
     parts = primary.split("/", 1)
-    return parts[1] if len(parts) == 2 and parts[1] else parts[0]
+    if len(parts) == 2 and _is_slash_bass(parts[1]):
+        return parts[1]
+    return parts[0]
 
 
 def _midi_for_root_symbol(symbol, fallback=60):
@@ -160,6 +175,21 @@ def chord_notes(chord):
 
     elif "maj7" in low:
         intervals = [0,4,7,11]
+
+    elif "add11" in low:
+        # triad plus the eleventh, no seventh or ninth (Ebadd11 in Viva La Vida)
+        intervals = [0,4,7,17]
+
+    elif "m11" in low:
+        # a minor eleventh keeps its minor third: no clash with the eleventh
+        intervals = [0,3,7,10,14,17]
+
+    elif "11" in low and "sus" not in low and "#11" not in low and "b11" not in low:
+        # a dominant eleventh drops the third, which would clash with the eleventh.
+        # "11sus" is excluded (already read as a suspension) and so is an ALTERED
+        # eleventh: C7#11 is a dominant seventh with a raised eleventh, handled
+        # below, not an eleventh chord.
+        intervals = [0,7,10,14,17]
 
     elif "m9" in low:
         intervals = [0,3,7,10,14]
