@@ -5,11 +5,15 @@ C♯7: E♯ G♯ B; Aaug: C♯ E♯).
 
 - **Beginner:** every non-root chord tone the symbol states, lowest first, names only
   ("C♯ E G"). No invented 7th, and never hidden: the line wraps instead.
-- **Intermediate:** up to three tones with degrees. Alterations, then the 7th or 6th, then
-  the 3rd, then the highest extension (A7: C♯ (3), G (♭7)). Plain triads get none.
+- **Intermediate:** up to three tones with degrees, guide tones first: the 3rd (or the
+  suspension), the 7th or 6th, then alterations, then the highest extension (A7: C♯ (3),
+  G (♭7); A: C♯ (3); Aaug: C♯ (3), E♯ (♯5)).
 - **Advanced:** up to four tones with degrees. Alterations, then extensions, then the 7th
   or 6th (A13: G (♭7), B (9), F♯ (13)). The 3rd only where the chord's other notes suggest
-  the opposite quality: a 7♯9 and a minor-major 7th, which Intermediate keeps too.
+  the opposite quality: a 7♯9 and a minor-major 7th. Plain triads get none. Where the 7th
+  steps down to the next chord's 3rd (the guide-tone line of ii–V–I), the 7th's hint says
+  where it goes: Dm7 → G7 shows "C (♭7)↘B" (see :func:`voice_leading`), on the bar right
+  before the change.
 
 A suspension takes the 3rd's place and is named at every level, because it defines the
 chord. A split bar has room for one tone per chord at Intermediate and Advanced (its most
@@ -160,6 +164,16 @@ def _high_first(tones: list[_Tone]) -> list[_Tone]:
     return sorted(tones, key=lambda t: (-_DEGREE[t.role], _LABEL[t.role]))
 
 
+# Which alteration says most about the chord (user, 2026-11-10): altered 9ths, then altered
+# 5ths, then #11 / b13. Decides which survive a level's limit (A7(b9#11) at Intermediate keeps
+# the b9); the line itself is always shown lowest first.
+_ALTERATION_RANK = {"♭9": 0, "♯9": 1, "♭5": 2, "♯5": 3, "♯11": 4, "♭13": 5, "♭6": 5}
+
+
+def _characteristic_first(tones: list[_Tone]) -> list[_Tone]:
+    return sorted(tones, key=lambda t: (_ALTERATION_RANK.get(t.role, 9), -_DEGREE[t.role]))
+
+
 def _defining_rank(role: str, roles: set[str]) -> int | None:
     """The one tone a split bar has room for (lower first), or None when the tone is not a hint."""
     if role == "♭5" and "°7th" in roles:
@@ -190,19 +204,21 @@ def _level_choice(tones: list[_Tone], level: str) -> list[_Tone]:
     """Intermediate's and Advanced's tones, in the approved order, up to the level's limit."""
     roles = {t.role for t in tones}
     of = lambda names: [t for t in tones if t.role in names]  # noqa: E731
-    altered = _high_first(of(_ALTERED))
+    altered = _characteristic_first(of(_ALTERED))
     sus = of(_SUS) if not (_THIRDS & roles) else []
     seventh = of(_SEVENTH_OR_SIXTH)
     extensions = _high_first(of(_EXTENSION))
     thirds = of(_THIRDS)
     sharp_nine = "♯9" in roles and "3rd" in roles
     settles_quality = sharp_nine or ("minor 3rd" in roles and "major 7th" in roles)
-    # 7#9: the 3rd stays beside the #9 that hides it, however many other alterations there are.
-    order = of({"♯9"}) + of({"3rd"}) + altered if sharp_nine else list(altered)
     if level == "Intermediate":
-        # Guide tones: the 3rd goes with a 7th or 6th. A triad with an alteration names only that (Aaug).
-        order += seventh + sus + (thirds if seventh else []) + extensions[:1]
+        # Guide tones first (user, 2026-11-10): the 3rd (or the suspension in its place) and the 7th or
+        # 6th are how a player finds the harmony, so they come before any alteration. A triad names its
+        # 3rd; then alterations, highest first, then the highest extension.
+        order = thirds + sus + seventh + altered + extensions[:1]
     else:
+        # 7#9: the 3rd stays beside the #9 that hides it, however many other alterations there are.
+        order = of({"♯9"}) + of({"3rd"}) + altered if sharp_nine else list(altered)
         order += sus + extensions + seventh + (thirds if settles_quality else [])
     chosen: list[_Tone] = []
     for t in order:
@@ -230,6 +246,44 @@ def tone_hints(symbol: Any, *, level: str = DEFAULT_LEVEL, single: bool = False)
         chosen = _level_choice(tones, level)
     chosen = sorted(chosen, key=lambda t: (_DEGREE[t.role], _LABEL[t.role]))
     return tuple(ToneHint(pretty_note(t.name), _LABEL[t.role], _sounds(t.name, t.pc), _DEGREE[t.role]) for t in chosen)
+
+
+@dataclass(frozen=True)
+class VoiceLeading:
+    """The 7th of one chord stepping down to the 3rd of the next (ii–V–I's guide-tone line)."""
+    from_name: str  # the 7th, spelled by its own chord: "C"
+    to_name: str    # the next chord's 3rd, spelled by that chord: "B"
+    to_label: str   # its degree in the next chord: "3" or "♭3"
+    next_symbol: str
+
+    def tip(self, label: str) -> str:
+        third = "minor 3rd" if self.to_label == "♭3" else "3rd"
+        return f"Voice leading: {self.from_name} ({label}) moves down to {self.to_name}, the {third} of {self.next_symbol}"
+
+
+def _same_chord(a: Any, b: Any) -> bool:
+    return _clean_text(a).replace(" ", "") == _clean_text(b).replace(" ", "")
+
+
+def voice_leading(symbol: Any, next_symbol: Any) -> VoiceLeading | None:
+    """Where the 7th of ``symbol`` goes when ``next_symbol`` follows: down a half or whole step to its 3rd.
+
+    That is the strongest line through a progression (Dm7 → G7: C → B; G7 → Cmaj7: F → E;
+    A7 → D: G → F♯), so it is the one an Advanced hint names. None when either is not a chord,
+    when the chord has no 7th, when the next chord is the same one, or when the 7th does not step
+    down to the next 3rd (a common tone or a leap is not named).
+    """
+    if not next_symbol or _same_chord(symbol, next_symbol):
+        return None
+    here, there = _facts(symbol), _facts(next_symbol)
+    if here is None or there is None:
+        return None
+    seventh = next((t for t in _chord_tones(here) if t.role in ("7th", "major 7th", "°7th")), None)
+    third = next((t for t in _chord_tones(there) if t.role in _THIRDS), None)
+    if seventh is None or third is None or (seventh.pc - third.pc) % 12 not in (1, 2):
+        return None
+    return VoiceLeading(pretty_note(seventh.name), pretty_note(third.name), _LABEL[third.role],
+                        str(next_symbol).strip())
 
 
 def hints_enabled(session: Mapping[str, Any] | None) -> bool:
@@ -273,10 +327,30 @@ _SEP_RE = re.compile(r"<span class='sub-sep'>(.*?)</span>", re.S)
 _TAG_RE = re.compile(r"<[^>]+>")
 
 
-def _hint_span(h: ToneHint, level: str) -> str:
-    shown = h.name if level == "Beginner" else h.text()
-    tip = f" title='{html.escape(shown + ' — sounds ' + h.sounds, quote=True)}'" if h.sounds else ""
-    return f"<span class='cth'{tip}>{html.escape(shown)}</span>"
+_SEVENTH_LABELS = frozenset({"♭7", "7", "𝄫7"})
+VL_MARK = "↘"
+
+
+def _shown(h: ToneHint, level: str, vl: VoiceLeading | None = None) -> str:
+    if level == "Beginner":
+        return h.name
+    if vl is not None and h.label in _SEVENTH_LABELS:
+        # "↘" (moves down to), not "→": the chart already draws "→" between a split bar's chords.
+        return f"{h.text()}{VL_MARK}{vl.to_name}"
+    return h.text()
+
+
+def _hint_span(h: ToneHint, level: str, vl: VoiceLeading | None = None) -> str:
+    shown = _shown(h, level, vl)
+    tips = []
+    if h.sounds:
+        tips.append(f"{shown} — sounds {h.sounds}")
+    leads = vl is not None and level != "Beginner" and h.label in _SEVENTH_LABELS
+    if leads:
+        tips.append(vl.tip(h.label))
+    tip = f" title='{html.escape(' · '.join(tips), quote=True)}'" if tips else ""
+    cls = "cth cth-vl" if leads else "cth"
+    return f"<span class='{cls}'{tip}>{html.escape(shown)}</span>"
 
 
 def _sounding_chord(chord: str, steps: int, reference_key: str | None) -> str:
@@ -291,11 +365,13 @@ def _sounding_chord(chord: str, steps: int, reference_key: str | None) -> str:
         return chord
 
 
-def _line_parts(chord: str, level: str, single: bool) -> tuple[list[str], str]:
-    """(the line's spans, its plain text) for one chord."""
+def _line_parts(chord: str, level: str, single: bool, next_chord: str | None = None) -> tuple[list[str], str]:
+    """(the line's spans, its plain text) for one chord; ``next_chord`` follows it (Advanced voice leading)."""
     hints = tone_hints(chord, level=level, single=single)
-    spans = [_hint_span(h, level) for h in hints]
-    words = [h.name if level == "Beginner" else h.text() for h in hints]
+    # A split bar's cell has room for one tone: no voice-leading arrow there.
+    vl = voice_leading(chord, next_chord) if level == "Advanced" and not single and next_chord else None
+    spans = [_hint_span(h, level, vl) for h in hints]
+    words = [_shown(h, level, vl) for h in hints]
     if is_altered_dominant(chord):
         spans.append(f"<span class='cth cth-alt' title='{html.escape(_ALT_TIP, quote=True)}'>{ALT_MARKER}</span>")
         words.append(ALT_MARKER)
@@ -308,8 +384,13 @@ def hint_row_html(
     level: str = DEFAULT_LEVEL,
     sounding_steps: int = 0,
     reference_key: str | None = None,
+    next_chord: str | None = None,
 ) -> str:
-    """The hint line for one ``chord-symbol`` div's inner HTML (an empty line keeps the row height)."""
+    """The hint line for one ``chord-symbol`` div's inner HTML (an empty line keeps the row height).
+
+    ``next_chord``: the next different chord of the chart, as it sounds (already moved by
+    ``sounding_steps``); Advanced names where this chord's 7th leads into it.
+    """
     level = normalize_level(level)
     sep = " " if level == "Beginner" else ", "
     subs = _SUB_RE.findall(symbol_inner_html)
@@ -326,9 +407,48 @@ def hint_row_html(
         cls = "chord-tone-hints split full" if level == "Beginner" else "chord-tone-hints split"
         return f"<div class='{cls}'>{''.join(parts)}</div>"
     chord = _sounding_chord(html.unescape(_TAG_RE.sub("", symbol_inner_html)).strip(), sounding_steps, reference_key)
-    spans, text = _line_parts(chord, level, False)
+    spans, text = _line_parts(chord, level, False, next_chord)
     title = f" title='{html.escape(text, quote=True)}'" if text else ""
     return f"<div class='chord-tone-hints'{title}>{sep.join(spans) or '&nbsp;'}</div>"
+
+
+def _cell_chords(symbol_inner_html: str) -> list[str]:
+    """The chords one ``chord-symbol`` cell shows, in order (a split bar has several)."""
+    subs = _SUB_RE.findall(symbol_inner_html)
+    inners = [inner for _style, inner in subs] if subs else [symbol_inner_html]
+    return [html.unescape(_TAG_RE.sub("", inner)).strip() for inner in inners]
+
+
+def _next_chords(cells: list[list[str]]) -> list[str | None]:
+    """For each cell, the chord its last chord moves into, or None while the chord is held.
+
+    ``%`` and N.C. cells are skipped (a "%" bar repeats the written chord before it, so that
+    written chord is the bar before the change). A chord written out again in the next bar is
+    held, so only the bar right before the change leads into it.
+    """
+    flat = [(i, c) for i, chords in enumerate(cells) for c in chords if _facts(c) is not None]
+    out: list[str | None] = [None] * len(cells)
+    for p, (i, c) in enumerate(flat):
+        nxt = flat[p + 1][1] if p + 1 < len(flat) else None
+        out[i] = None if nxt is None or _same_chord(nxt, c) else nxt  # the cell's last chord decides
+    return out
+
+
+def _with_hint_lines(text: str, level: str, *, sounding_steps: int = 0, reference_key: str | None = None) -> str:
+    """``text`` with a hint line after every chord symbol; Advanced lines know the chord that follows."""
+    matches = list(_SYMBOL_RE.finditer(text))
+    nexts: list[str | None] = [None] * len(matches)
+    if normalize_level(level) == "Advanced" and matches:
+        cells = [[_sounding_chord(c, sounding_steps, reference_key) for c in _cell_chords(m.group(2))] for m in matches]
+        nexts = _next_chords(cells)
+    out, pos = [], 0
+    for m, nxt in zip(matches, nexts):
+        out.append(text[pos:m.end()])
+        out.append(hint_row_html(m.group(2), level=level, sounding_steps=sounding_steps,
+                                 reference_key=reference_key, next_chord=nxt))
+        pos = m.end()
+    out.append(text[pos:])
+    return "".join(out)
 
 
 def strip_chord_tone_hints(chart_html: str) -> str:
@@ -351,11 +471,7 @@ def apply_chord_tone_hints(
     text = strip_chord_tone_hints(chart_html)
     if not enabled or "chord-symbol" not in text:
         return text
-    rows = _SYMBOL_RE.sub(
-        lambda m: m.group(0)
-        + hint_row_html(m.group(2), level=level, sounding_steps=sounding_steps, reference_key=reference_key),
-        text,
-    )
+    rows = _with_hint_lines(text, level, sounding_steps=sounding_steps, reference_key=reference_key)
     return f"<style data-cth='page'>{HINTS_STYLE}</style>" + rows
 
 
@@ -368,7 +484,7 @@ def sheet_with_chord_tone_hints(chart_html: str, available: bool = True, *, leve
     text = strip_chord_tone_hints(chart_html)
     if not available or "chord-symbol" not in text:
         return text
-    rows = _SYMBOL_RE.sub(lambda m: m.group(0) + hint_row_html(m.group(2), level=level), text)
+    rows = _with_hint_lines(text, level)
     return f"<style data-cth='sheet'>{_SHEET_STYLE}</style>{_SHEET_INIT}" + rows
 
 

@@ -1,10 +1,12 @@
 """Chord Tone Hints by level: the notes under a chord name, spelled from the chord's structure.
 
 Rules (agreed with the user): Beginner names every non-root chord tone, lowest first, names
-only. Intermediate names up to three with degrees: alterations, 7th or 6th, 3rd, highest
-extension. Advanced names up to four: alterations, extensions, 7th or 6th; the 3rd only on 7#9
-and m(maj7). Plain triads get none above Beginner. A split bar has one tone per chord above
-Beginner. Also pins the shared-parser fixes behind them (music_theory / chord_facts): 7(#11)
+only. Intermediate names up to three with degrees, guide tones first (user, 2026-11-10,
+superseding the 2026-11-05 Intermediate order): the 3rd or the suspension, the 7th or 6th, then
+alterations (altered 9ths, altered 5ths, then #11 / b13), then the highest extension; a triad
+names its 3rd. Advanced names up to four: alterations, extensions, 7th or 6th; the 3rd only on
+7#9 and m(maj7); plain triads get none; the 7th names where it steps down to the next chord's
+3rd. A split bar has one tone per chord above Beginner. Also pins the shared-parser fixes behind them (music_theory / chord_facts): 7(#11)
 and 7#9 no longer gain a natural 9th / 11th, diminished tones keep their letters (Cdim7: Bbb),
 and Cb / Fb / E# / B# roots spell.
 """
@@ -39,20 +41,22 @@ def _names(symbol, **kw):
 
 
 # The table the user approved on 2026-11-05: (symbol, Beginner, Intermediate, Advanced).
+# Its Intermediate column for A, Am, Aaug and A7b9#11 was superseded on 2026-11-10 (guide tones
+# first; the most characteristic alteration fills the third place). Every other cell is as approved.
 APPROVED = [
-    ("A", "C♯ E", "", ""),
-    ("Am", "C E", "", ""),
+    ("A", "C♯ E", "C♯ (3)", ""),
+    ("Am", "C E", "C (♭3)", ""),
     ("A7", "C♯ E G", "C♯ (3), G (♭7)", "G (♭7)"),
     ("Am7", "C E G", "C (♭3), G (♭7)", "G (♭7)"),
     ("Amaj7", "C♯ E G♯", "C♯ (3), G♯ (7)", "G♯ (7)"),
     ("Am7b5", "C E♭ G", "C (♭3), E♭ (♭5), G (♭7)", "E♭ (♭5), G (♭7)"),
     ("Adim7", "C E♭ G♭", "C (♭3), E♭ (♭5), G♭ (𝄫7)", "E♭ (♭5), G♭ (𝄫7)"),
-    ("Aaug", "C♯ E♯", "E♯ (♯5)", "E♯ (♯5)"),
+    ("Aaug", "C♯ E♯", "C♯ (3), E♯ (♯5)", "E♯ (♯5)"),
     ("A9", "C♯ E G B", "C♯ (3), G (♭7), B (9)", "G (♭7), B (9)"),
     ("A13", "C♯ E G B F♯", "C♯ (3), G (♭7), F♯ (13)", "G (♭7), B (9), F♯ (13)"),
     ("A7b9", "C♯ E G B♭", "C♯ (3), G (♭7), B♭ (♭9)", "G (♭7), B♭ (♭9)"),
     ("A7#9", "C♯ E G B♯", "C♯ (3), G (♭7), B♯ (♯9)", "C♯ (3), G (♭7), B♯ (♯9)"),
-    ("A7b9#11", "C♯ E G B♭ D♯", "G (♭7), B♭ (♭9), D♯ (♯11)", "G (♭7), B♭ (♭9), D♯ (♯11)"),
+    ("A7b9#11", "C♯ E G B♭ D♯", "C♯ (3), G (♭7), B♭ (♭9)", "G (♭7), B♭ (♭9), D♯ (♯11)"),
 ]
 
 
@@ -138,8 +142,9 @@ def test_order_and_limits() -> None:
     assert _t("A6/9", level="Intermediate") == "C♯ (3), F♯ (6), B (9)"
     assert _t("Am(maj7)", level="Intermediate") == _t("Am(maj7)", level="Advanced") == "C (♭3), G♯ (7)"
     assert _t("Cm(maj7)", level="Advanced") == _t("CmMaj7", level="Advanced") == "E♭ (♭3), B (7)"
-    assert _t("Adim", level="Intermediate") == _t("Adim", level="Advanced") == "E♭ (♭5)"
-    assert _t("Aadd9", level="Intermediate") == "B (9)"     # no 7th or 6th: no guide-tone 3rd
+    assert _t("Adim", level="Intermediate") == "C (♭3), E♭ (♭5)"   # the 3rd, then what defines it
+    assert _t("Adim", level="Advanced") == "E♭ (♭5)"
+    assert _t("Aadd9", level="Intermediate") == "C♯ (3), B (9)"   # no 7th: the 3rd and the added tone
     assert _t("Adim(maj7)", level="Beginner") == "C (♭3), E♭ (♭5), G♯ (7)"   # a major 7th, not bb7
     # Highest extension at Intermediate; all of them, up to four, at Advanced.
     assert _t("Am13", level="Intermediate") == "C (♭3), G (♭7), F♯ (13)"
@@ -155,8 +160,8 @@ def test_order_and_limits() -> None:
 @pytest.mark.parametrize(
     "symbol, beginner, intermediate",
     [
-        ("A/C#", "C♯ E", ""), ("D/F#", "F♯ A", ""),            # a chord tone in the bass, once
-        ("A/D", "C♯ E", ""), ("C/D", "E G", ""),               # a bass outside the chord is not added
+        ("A/C#", "C♯ E", "C♯ (3)"), ("D/F#", "F♯ A", "F♯ (3)"),   # a chord tone in the bass, once
+        ("A/D", "C♯ E", "C♯ (3)"), ("C/D", "E G", "E (3)"),        # a bass outside the chord is not added
         ("Fm7/Bb", "A♭ C E♭", "A♭ (♭3), E♭ (♭7)"),
         ("G7/F", "B D F", "B (3), F (♭7)"),                     # the 7th in the bass is still the 7th
     ],
@@ -166,11 +171,20 @@ def test_slash_chords(symbol, beginner, intermediate) -> None:
     assert _t(symbol, level="Intermediate") == intermediate
 
 
-@pytest.mark.parametrize("symbol", ["C", "Cm", "F#", "Bbm", "C5", "C/E", "D/F#", "Bm.hit"])
-def test_plain_triads_get_none_above_beginner(symbol) -> None:
-    assert tone_hints(symbol, level="Intermediate") == ()
+@pytest.mark.parametrize(
+    "symbol, third",
+    [("C", "E (3)"), ("Cm", "E♭ (♭3)"), ("F#", "A♯ (3)"), ("Bbm", "D♭ (♭3)"), ("C/E", "E (3)"),
+     ("D/F#", "F♯ (3)"), ("Bm.hit", "D (♭3)")],
+)
+def test_plain_triads_name_their_third_at_intermediate_and_nothing_at_advanced(symbol, third) -> None:
+    assert _t(symbol, level="Intermediate") == third   # major or minor: the 3rd says which
     assert tone_hints(symbol, level="Advanced") == ()
     assert tone_hints(symbol, level="Beginner")
+
+
+def test_a_power_chord_has_no_third_to_name() -> None:
+    assert tone_hints("C5", level="Intermediate") == tone_hints("C5", level="Advanced") == ()
+    assert _names("C5") == "G"
 
 
 @pytest.mark.parametrize("symbol", ["N.C.", "%", "", "…"])
