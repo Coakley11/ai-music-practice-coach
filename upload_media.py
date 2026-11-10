@@ -30,6 +30,35 @@ UPLOAD_ACCEPT_TYPES = list(UPLOAD_AUDIO_FILE_TYPES)
 UPLOAD_MAX_SIZE_MB = 500
 UPLOAD_MAX_SIZE_BYTES = UPLOAD_MAX_SIZE_MB * 1024 * 1024
 
+# Practice reference documents (My Uploaded Melodies) - sheet music, licks, exercises and
+# notes a musician keeps beside a song. A separate list from the recording types above:
+# these go to a different store and are never fed to the analysis pipeline.
+UPLOAD_DOCUMENT_FILE_TYPES: list[str] = ["pdf"]
+UPLOAD_DOCUMENT_FILE_TYPES_SET = frozenset(UPLOAD_DOCUMENT_FILE_TYPES)
+
+# A page of sheet music is a fraction of a recording, and the limit is what a musician is
+# told, so it is stated here with the rest rather than at a call site. It must stay at or
+# below ``server.maxUploadSize`` (currently 500 MB) - Streamlit rejects anything larger
+# before this code ever runs, and a limit above it could never be enforced.
+# Override with MUSIC_DOCUMENT_MAX_SIZE_MB.
+_DOCUMENT_MAX_SIZE_MB_DEFAULT = 25
+
+
+def _document_max_size_mb() -> int:
+    import os
+
+    try:
+        value = int(str(os.environ.get("MUSIC_DOCUMENT_MAX_SIZE_MB") or "").strip() or 0)
+    except ValueError:
+        value = 0
+    if value <= 0:
+        value = _DOCUMENT_MAX_SIZE_MB_DEFAULT
+    return min(value, UPLOAD_MAX_SIZE_MB)
+
+
+DOCUMENT_MAX_SIZE_MB = _document_max_size_mb()
+DOCUMENT_MAX_SIZE_BYTES = DOCUMENT_MAX_SIZE_MB * 1024 * 1024
+
 VIDEO_EXTENSIONS = frozenset({".mp4", ".mov", ".m4v", ".avi"})
 AUDIO_EXTENSIONS = frozenset({".wav", ".mp3", ".m4a", ".ogg", ".flac", ".aac", ".webm"})
 

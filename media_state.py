@@ -62,6 +62,10 @@ def new_track_id() -> str:
     return str(uuid.uuid4())
 
 
+def new_song_document_id() -> str:
+    return str(uuid.uuid4())
+
+
 def _legacy_recording_fingerprint(entry: dict[str, Any]) -> str:
     parts = [
         str(entry.get("saved_at") or entry.get("created_at") or ""),
@@ -95,6 +99,10 @@ def is_tone_take_tombstone(entry: dict[str, Any]) -> bool:
 
 def is_multitrack_export_tombstone(entry: dict[str, Any]) -> bool:
     return bool(entry.get("deleted")) and bool(str(entry.get("export_id") or "").strip())
+
+
+def is_song_document_tombstone(entry: dict[str, Any]) -> bool:
+    return bool(entry.get("deleted")) and bool(str(entry.get("document_id") or "").strip())
 
 
 def _recording_id(entry: dict[str, Any]) -> str:
@@ -282,6 +290,99 @@ def _multitrack_activity_source(value: Any) -> dict[str, str]:
         return {}
     limits = {"source_type": 20, "source_id": 500, "song": 160, "instrument": 80, "practice_key": 16}
     return {key: str(value.get(key) or "")[:limit] for key, limit in limits.items()}
+
+
+# How a saved document says where its bytes are. A document is only "cloud" once the
+# upload has been confirmed; anything else has to say so rather than look saved.
+DOCUMENT_STORAGE_CLOUD = "cloud"
+DOCUMENT_STORAGE_LOCAL_ONLY = "local_only"
+DOCUMENT_STORAGE_MISSING = "missing_file"
+DOCUMENT_STORAGE_FAILED = "save_failed"
+
+SONG_DOCUMENT_SOURCE_TYPES = frozenset({"catalog", "custom", "composition"})
+
+
+def migrate_song_document(entry: dict[str, Any]) -> dict[str, Any]:
+    """Normalize one saved practice-reference document (a PDF kept alongside a song).
+
+    The identity fields are the point of this row. ``source_type`` + ``source_id`` come
+    from ``song_coach_context.global_song_identity``, so a Catalog song and a Custom song
+    that happen to share a title do not share documents - the title is a label here and
+    never an identifier.
+
+    ``key_tag`` is the musician's own note about the document ("written for E flat"). It
+    is deliberately *not* a practice key: nothing reads it back into the session, and
+    selecting a document must never change what the song is played in.
+    """
+    if not isinstance(entry, dict):
+        return {}
+
+    if is_song_document_tombstone(entry):
+        deleted_at = str(entry.get("deleted_at") or entry.get("updated_at") or _utc_now_iso())
+        return {
+            "document_id": str(entry.get("document_id") or "").strip(),
+            "deleted": True,
+            "deleted_at": deleted_at,
+            "updated_at": deleted_at,
+        }
+
+    out = dict(entry)
+    did = str(out.get("document_id") or "").strip() or new_song_document_id()
+    now = _utc_now_iso()
+    created = str(out.get("created_at") or now)
+    updated = str(out.get("updated_at") or created)
+
+    source_type = str(out.get("source_type") or "").strip()
+    if source_type not in SONG_DOCUMENT_SOURCE_TYPES:
+        source_type = ""
+    source_id = str(out.get("source_id") or "").strip()[:500]
+    if not source_type:
+        # An unowned document would show up under every song. Keep the row (so the blob
+        # is never orphaned silently) but let the catalog treat it as belonging to none.
+        source_id = ""
+
+    status = str(out.get("storage_status") or "").strip()
+    if status not in {
+        DOCUMENT_STORAGE_CLOUD,
+        DOCUMENT_STORAGE_LOCAL_ONLY,
+        DOCUMENT_STORAGE_MISSING,
+        DOCUMENT_STORAGE_FAILED,
+    }:
+        status = DOCUMENT_STORAGE_CLOUD if out.get("storage_ref") else (
+            DOCUMENT_STORAGE_LOCAL_ONLY if out.get("local_path") else DOCUMENT_STORAGE_FAILED
+        )
+
+    title = str(out.get("title") or out.get("name") or "").strip()[:160]
+    if not title:
+        title = str(out.get("filename") or "Untitled reference").strip()[:160]
+
+    return {
+        "document_id": did,
+        "created_at": created,
+        "updated_at": updated,
+        "workspace_id": str(out.get("workspace_id") or "daniel").strip(),
+        "source_type": source_type,
+        "source_id": source_id,
+        "song_title": str(out.get("song_title") or out.get("song") or "").strip()[:160],
+        "title": title,
+        "notes": str(out.get("notes") or "").strip()[:2000],
+        # Tags, not settings. Free text the musician chose, shown next to the name.
+        "instrument_tag": str(out.get("instrument_tag") or "").strip()[:80],
+        "key_tag": str(out.get("key_tag") or "").strip()[:16],
+        "filename": str(out.get("filename") or "").strip()[:255],
+        "mime_type": str(out.get("mime_type") or "application/pdf").strip(),
+        "byte_size": _coerce_int(out.get("byte_size")),
+        "page_count": _coerce_int(out.get("page_count")),
+        # The content hash is what lets a second upload of the same file reuse the blob
+        # that is already stored rather than writing it again.
+        "sha256": str(out.get("sha256") or "").strip()[:64],
+        "local_path": out.get("local_path"),
+        "storage_ref": out.get("storage_ref"),
+        "storage_status": status,
+        "storage_error": str(out.get("storage_error") or "").strip()[:300],
+        "deleted": False,
+        "deleted_at": None,
+    }
 
 
 def migrate_multitrack_session(entry: dict[str, Any]) -> dict[str, Any]:
@@ -662,6 +763,16 @@ def normalize_multitrack_exports(entries: list[dict[str, Any]]) -> list[dict[str
     )
 
 
+def normalize_song_documents(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Apply tombstones; return visible song documents newest-first."""
+    return _apply_tombstones(
+        entries,
+        id_key="document_id",
+        is_tombstone=is_song_document_tombstone,
+        migrate=migrate_song_document,
+    )
+
+
 def merge_catalog(local: dict[str, Any] | None, cloud: dict[str, Any] | None) -> dict[str, Any]:
     """Merge local and cloud catalog payloads."""
     loc = dict(local or {})
@@ -692,6 +803,14 @@ def merge_catalog(local: dict[str, Any] | None, cloud: dict[str, Any] | None) ->
         migrate=migrate_multitrack_export,
         id_key="export_id",
     )
+    # A kind missing from this merge is a kind that disappears on the next save: the
+    # result is rebuilt from these keys alone, so every list has to be named here.
+    song_documents = merge_media_records(
+        loc.get("song_documents") if isinstance(loc.get("song_documents"), list) else [],
+        cld.get("song_documents") if isinstance(cld.get("song_documents"), list) else [],
+        migrate=migrate_song_document,
+        id_key="document_id",
+    )
     updated = max(
         (_parse_updated_at(loc), _parse_updated_at(cld)),
         default="",
@@ -704,6 +823,7 @@ def merge_catalog(local: dict[str, Any] | None, cloud: dict[str, Any] | None) ->
         "multitrack_sessions": multitracks,
         "tone_takes": tone_takes,
         "multitrack_exports": multitrack_exports,
+        "song_documents": song_documents,
     }
 
 
