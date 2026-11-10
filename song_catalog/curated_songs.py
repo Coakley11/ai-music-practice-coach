@@ -247,7 +247,8 @@ def _champions_chart_pack() -> dict[str, Any]:
 
 
 def _thinking_out_loud_chart_pack() -> dict[str, Any]:
-    """Thinking Out Loud — Ed Sheeran (C guitar chart · D concert, 4/4)."""
+    """Thinking Out Loud — Ed Sheeran (stored in the recording's concert key, D major; guitarists play it as C shapes with a capo on fret 2; 4/4)."""
+    from music_theory import transpose_sections_dict
     verse = ["C", "C/E", "F", "G"] * 4
     turnaround = ["C", "C/E", "F", "G", "C", "C/E", "F", "G"]
     pre_chorus = (
@@ -282,17 +283,20 @@ def _thinking_out_loud_chart_pack() -> dict[str, Any]:
         for name, chords in intermediate.items()
     }
     advanced = dict(intermediate)
+    intermediate = transpose_sections_dict(intermediate, "C", "D")
+    beginner = transpose_sections_dict(beginner, "C", "D")
+    advanced = transpose_sections_dict(advanced, "C", "D")
     section_order = list(intermediate.keys())
     scale_hints = {
-        "C": ["C Major", "C Pentatonic"],
-        "C/E": ["C Major"],
-        "F": ["F Lydian", "F Major Pentatonic"],
-        "G": ["G Mixolydian"],
-        "Dm": ["D Dorian"],
-        "Am": ["A Aeolian", "A Minor Pentatonic"],
+        "D": ["D Major", "D Pentatonic"],
+        "D/F#": ["D Major"],
+        "G": ["G Lydian", "G Major Pentatonic"],
+        "A": ["A Mixolydian"],
+        "Em": ["E Dorian"],
+        "Bm": ["B Aeolian", "B Minor Pentatonic"],
     }
     return {
-        "key": "C",
+        "key": "D",
         "sections": intermediate,
         "chart_versions": _levels(
             beginner=beginner,
@@ -303,11 +307,11 @@ def _thinking_out_loud_chart_pack() -> dict[str, Any]:
         "section_order": section_order,
         "composer": "Ed Sheeran",
         "lyric_cues": {
-            "Verse 1": ["Intimate acoustic — C · C/E · F · G"],
-            "Turnaround": ["Turnaround — hold the C/E bass line"],
+            "Verse 1": ["Intimate acoustic — D · D/F# · G · A"],
+            "Turnaround": ["Turnaround — hold the D/F# bass line"],
             "Pre-Chorus 1": ["Gradual build into chorus"],
-            "Chorus 1": ["Romantic lift — F · G · C · C/E"],
-            "Ending Tag": ["Tag — Am · G · F · C/E · Dm · G · C"],
+            "Chorus 1": ["Romantic lift — G · A · D · D/F#"],
+            "Ending Tag": ["Tag — Bm · A · G · D/F# · Em · A · D"],
             "Verse 2": ["Second verse — same loop"],
             "Pre-Chorus 2": ["Pre-chorus 2 — fuller feel"],
             "Chorus 2": ["Chorus return"],
@@ -317,9 +321,9 @@ def _thinking_out_loud_chart_pack() -> dict[str, Any]:
         },
         "extensions": _ext(
             arrangement_notes=(
-                "**C-shape guitar chart** (concert/recording **D major**, "
-                "capo-friendly). **4/4**, ~79 BPM soul-pop ballad. Preserve "
-                "**C/E** for smooth bass movement — do not drop the slash. "
+                "**D major** concert (the recording's key); guitarists play **C shapes** "
+                "with a capo on fret **2**. **4/4**, ~79 BPM soul-pop ballad. Preserve "
+                "**D/F#** for smooth bass movement — do not drop the slash. "
                 "Verse: intimate acoustic; pre-chorus: gradual build; chorus: "
                 "fuller rhythm. Backing: acoustic guitar, light percussion, "
                 "bass, subtle electric piano, warm pads — no heavy rock or "
@@ -328,6 +332,7 @@ def _thinking_out_loud_chart_pack() -> dict[str, Any]:
             default_bpm=79,
             default_groove="Ballad",
             time_signature="4/4",
+            capo_note="Capo 2 (C shapes) · concert key D major",
             vocal_showcase=True,
             ed_sheeran_acoustic=True,
             repertoire_tags=[
@@ -339,7 +344,7 @@ def _thinking_out_loud_chart_pack() -> dict[str, Any]:
                 "Guitar/Vocal Performance",
             ],
             harmonic_analysis={
-                "progression_summary": "I–I/3–IV–V verse; Dm–G–C pre-chorus; F–G–I chorus",
+                "progression_summary": "I–I/3–IV–V verse (D · D/F# · G · A); Em–A–D pre-chorus; G–A–I chorus (C shapes with capo 2)",
                 "scale_suggestions": scale_hints,
                 "concert_key": "D",
             },
@@ -9507,15 +9512,15 @@ def curated_song_records() -> list[dict[str, Any]]:
             "Thinking Out Loud",
             "Ed Sheeran",
             "Pop",
-            "C",
+            "D",
             {
-                "Verse 1": ["C", "C/E", "F", "G"] * 4,
-                "Turnaround": ["C", "C/E", "F", "G", "C", "C/E", "F", "G"],
-                "Pre-Chorus 1": ["Dm", "G", "C", "Dm", "G", "Dm", "G", "Am", "Dm", "G", "C", "C/E"],
-                "Chorus 1": ["F", "G", "C", "C/E"] * 3 + ["F", "G"],
-                "Verse 2": ["C", "C/E", "F", "G"] * 4,
-                "Chorus 2": ["F", "G", "C", "C/E"] * 3 + ["F", "G"],
-                "Outro": ["Am", "G", "F", "C/E", "Dm", "G", "C"],
+                "Verse 1": ["D", "D/F#", "G", "A"] * 4,
+                "Turnaround": ["D", "D/F#", "G", "A", "D", "D/F#", "G", "A"],
+                "Pre-Chorus 1": ["Em", "A", "D", "Em", "A", "Em", "A", "Bm", "Em", "A", "D", "D/F#"],
+                "Chorus 1": ["G", "A", "D", "D/F#"] * 3 + ["G", "A"],
+                "Verse 2": ["D", "D/F#", "G", "A"] * 4,
+                "Chorus 2": ["G", "A", "D", "D/F#"] * 3 + ["G", "A"],
+                "Outro": ["Bm", "A", "G", "D/F#", "Em", "A", "D"],
             },
             extensions=_ext(
                 default_bpm=75,
