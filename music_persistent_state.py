@@ -2634,6 +2634,8 @@ def _backing_filters_for_envelope(st: Any, state: dict[str, Any], *, save_reason
 
 
 def build_music_disk_state(st: Any) -> dict[str, Any]:
+    if st.session_state.get("_composition_legacy_recovery"):
+        raise RuntimeError("Composition recovery choice pending; persistence deferred")
     ss = st.session_state
     from music_entry_workspace import assert_entry_workspace_ready
 

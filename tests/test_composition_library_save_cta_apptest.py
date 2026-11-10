@@ -68,8 +68,14 @@ class TestCompositionLibrarySaveCta(unittest.TestCase):
         set_active_document(ss, doc, checkpoint=False)
         save_document_to_library(ss, doc)  # silent (Begin / _save_doc path)
         save_document_to_library(ss, doc, explicit=True)
+        self.assertEqual(library_save_success_message(ss), "")
+        from composition_save_verification import content_fingerprint
+        ss["_composition_persistence_result"] = {"cloud_verified": True, "document_id": doc["id"], "fingerprint": content_fingerprint(ss["composition_workspace_state"])}
         self.assertEqual(library_save_success_message(ss), "Saved to Composition Library.")
         save_document_to_library(ss, doc, explicit=True)
+        self.assertEqual(library_save_success_message(ss), "")
+        from composition_save_verification import content_fingerprint
+        ss["_composition_persistence_result"] = {"cloud_verified": True, "document_id": doc["id"], "fingerprint": content_fingerprint(ss["composition_workspace_state"])}
         self.assertEqual(library_save_success_message(ss), "Composition Library updated.")
 
 

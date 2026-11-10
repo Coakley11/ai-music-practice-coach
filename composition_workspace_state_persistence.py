@@ -37,7 +37,10 @@ COMPOSITION_WORKSPACE_MIGRATED_KEY = "_composition_workspace_legacy_migrated"
 COMPOSITION_WORKSPACE_LAST_SAVE_REASON_KEY = "_composition_workspace_last_save_reason"
 COMPOSITION_WORKSPACE_LAST_SKIP_KEY = "_composition_workspace_last_apply_skipped"
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
+COMPOSITION_DELETED_IDS_KEY = "composer_deleted_document_ids"
+COMPOSITION_LIBRARY_INITIALIZED_KEY = "composer_library_initialized"
+COMPOSITION_RECOVERY_KEY = "_composition_legacy_recovery"
 
 VALID_FOCUS_LANES: frozenset[str] = frozenset(
     {"chords", "melody", "lyrics", "review", "structure", "vision"}
@@ -58,15 +61,20 @@ def default_composition_workspace_state() -> dict[str, Any]:
         "focus_lane": "chords",
         "workflow_phase": "vision",
         "updated_at": _utc_now_iso(),
+        "deleted_document_ids": [],
+        "library_initialized": False,
     }
 
 
 def upgrade_composition_workspace_blob(blob: dict[str, Any]) -> dict[str, Any]:
     out = copy.deepcopy(default_composition_workspace_state())
     raw = blob if isinstance(blob, dict) else {}
+    deleted = {str(x) for x in (raw.get("deleted_document_ids") or []) if isinstance(x, str) and x}
+    out["deleted_document_ids"] = sorted(deleted)
+    out["library_initialized"] = bool(raw.get("library_initialized"))
     out["schema_version"] = max(int(raw.get("schema_version") or 0), SCHEMA_VERSION)
     doc = raw.get("active_document")
-    if isinstance(doc, dict):
+    if isinstance(doc, dict) and str(doc.get("id") or "") not in deleted:
         prepared = deep_copy_document(doc)
         ensure_workflow(prepared)
         out["active_document"] = prepared
@@ -78,9 +86,12 @@ def upgrade_composition_workspace_blob(blob: dict[str, Any]) -> dict[str, Any]:
     if isinstance(lib, dict):
         cleaned: dict[str, Any] = {}
         for sid, item in lib.items():
-            if isinstance(item, dict) and str(sid or "").strip():
+            if (isinstance(item, dict) and str(sid or "").strip() and str(sid) not in deleted
+                    and str(item.get("id") or "") not in deleted):
                 cleaned[str(sid)] = deep_copy_document(item)
         out["library"] = cleaned
+        if cleaned:
+            out["library_initialized"] = True
     lane = str(raw.get("focus_lane") or "chords").strip().lower()
     out["focus_lane"] = lane if lane in VALID_FOCUS_LANES else "chords"
     phase = str(raw.get("workflow_phase") or "").strip().lower()
@@ -168,7 +179,11 @@ def gather_composition_workspace_from_session(session: dict[str, Any]) -> dict[s
     )
     base["updated_at"] = _utc_now_iso()
     base["schema_version"] = SCHEMA_VERSION
-    return base
+    base["deleted_document_ids"] = sorted(set(base.get("deleted_document_ids", [])) |
+        set(session.get(COMPOSITION_DELETED_IDS_KEY) or []))
+    base["library_initialized"] = bool(base.get("library_initialized") or
+        session.get(COMPOSITION_LIBRARY_INITIALIZED_KEY) or base.get("library"))
+    return upgrade_composition_workspace_blob(base)
 
 
 def write_canonical_composition_workspace(
@@ -180,7 +195,6 @@ def write_canonical_composition_workspace(
     canonical = upgrade_composition_workspace_blob(blob)
     session[COMPOSITION_WORKSPACE_STATE_KEY] = copy.deepcopy(canonical)
     session[COMPOSITION_WORKSPACE_LAST_SAVE_REASON_KEY] = reason
-    session.pop(COMPOSITION_WORKSPACE_DIRTY_KEY, None)
     return canonical
 
 
@@ -211,6 +225,9 @@ def project_composition_workspace_to_session(session: dict[str, Any], *, overwri
     meta = session.get(COMPOSITION_WORKSPACE_STATE_KEY)
     if not isinstance(meta, dict):
         return
+    meta = copy.deepcopy(meta)
+    meta["deleted_document_ids"] = sorted(set(meta.get("deleted_document_ids") or []) |
+        set(session.get(COMPOSITION_DELETED_IDS_KEY) or []))
     canonical = upgrade_composition_workspace_blob(meta)
     session[COMPOSITION_WORKSPACE_STATE_KEY] = canonical
 
@@ -250,6 +267,8 @@ def project_composition_workspace_to_session(session: dict[str, Any], *, overwri
         session[COMPOSER_NEEDS_SEED_KEY] = bool(canonical.get("needs_seed", True))
 
     lib = canonical.get("library")
+    session[COMPOSITION_DELETED_IDS_KEY] = list(canonical["deleted_document_ids"])
+    session[COMPOSITION_LIBRARY_INITIALIZED_KEY] = bool(canonical["library_initialized"])
     if isinstance(lib, dict):
         session[COMPOSER_LIBRARY_KEY] = copy.deepcopy(lib)
     elif overwrite:
@@ -269,6 +288,7 @@ def apply_composition_workspace_to_session(
     write_canonical_composition_workspace(session, blob, reason=source)
     project_composition_workspace_to_session(session, overwrite=True)
     session[COMPOSITION_WORKSPACE_RESTORED_KEY] = True
+    session.pop(COMPOSITION_WORKSPACE_DIRTY_KEY, None)
     session.pop(COMPOSITION_WORKSPACE_LAST_SKIP_KEY, None)
 
 
@@ -343,9 +363,37 @@ def apply_composition_workspace_from_payload(
         session[COMPOSITION_WORKSPACE_LAST_SKIP_KEY] = "local_dirty"
         return False
     blob = _composition_workspace_from_payload(payload)
+    if blob:
+        # An old empty schema-v1 block cannot distinguish a deletion from a
+        # bootstrap default. Preserve the legacy candidate and ask, never revive
+        # a possibly deleted project silently or hide it behind a blank editor.
+        probe: dict[str, Any] = {}
+        legacy = migrate_legacy_composition_workspace_once(probe, payload)
+        nested = payload.get("music_workspace_state")
+        nested = nested.get(COMPOSITION_WORKSPACE_STATE_KEY) if isinstance(nested, dict) else None
+        if not (legacy and (legacy.get("active_document") or legacy.get("library"))) and isinstance(nested, dict):
+            legacy = copy.deepcopy(nested)
+        has_docs = bool(blob.get("active_document") or blob.get("library"))
+        initialized = bool(blob.get("library_initialized"))
+        deleted = set(blob.get("deleted_document_ids") or []) | set(session.get(COMPOSITION_DELETED_IDS_KEY) or [])
+        if legacy:
+            legacy = copy.deepcopy(legacy)
+            legacy["deleted_document_ids"] = sorted(deleted | set(legacy.get("deleted_document_ids") or []))
+            legacy = upgrade_composition_workspace_blob(legacy)
+        legacy_has_docs = bool(legacy and (legacy.get("active_document") or legacy.get("library")))
+        if not has_docs and legacy_has_docs and not initialized:
+            if "library_initialized" not in blob:
+                session[COMPOSITION_RECOVERY_KEY] = copy.deepcopy(legacy)
+                session[COMPOSITION_WORKSPACE_LAST_SKIP_KEY] = "ambiguous_empty_legacy_preserved"
+                return False
+            blob = legacy
+        blob = copy.deepcopy(blob)
+        blob["deleted_document_ids"] = sorted(deleted)
     if not blob:
         migrated = migrate_legacy_composition_workspace_once(session, payload)
         if migrated:
+            migrated["deleted_document_ids"] = sorted(set(migrated.get("deleted_document_ids") or []) |
+                set(session.get(COMPOSITION_DELETED_IDS_KEY) or []))
             apply_composition_workspace_to_session(session, migrated, source="legacy_migration")
             return True
         session[COMPOSITION_WORKSPACE_LAST_SKIP_KEY] = "missing_in_envelope"
@@ -356,7 +404,44 @@ def apply_composition_workspace_from_payload(
         source="cloud_restore" if authoritative else "disk_restore",
     )
     session[COMPOSITION_WORKSPACE_MIGRATED_KEY] = True
+    session.pop(COMPOSITION_RECOVERY_KEY, None)
     return True
+
+
+def resolve_legacy_recovery(session: dict[str, Any], *, recover: bool) -> None:
+    """Explicit choice for an ambiguous v1 empty block; never overwrite live IDs."""
+    candidate = session.pop(COMPOSITION_RECOVERY_KEY, None)
+    if not isinstance(candidate, dict):
+        return
+    deleted = set(session.get(COMPOSITION_DELETED_IDS_KEY) or [])
+    library = session.setdefault(COMPOSER_LIBRARY_KEY, {})
+    candidate_library = dict(candidate.get("library") or {})
+    active = candidate.get("active_document")
+    if isinstance(active, dict) and active.get("id"):
+        candidate_library.setdefault(str(active["id"]), active)
+    if recover:
+        live_ids = {str(doc.get("id") or sid) for sid, doc in library.items() if isinstance(doc, dict)}
+        for sid, doc in candidate_library.items():
+            if (sid not in deleted and isinstance(doc, dict) and str(doc.get("id") or "") not in deleted
+                    and str(doc.get("id") or sid) not in live_ids):
+                library.setdefault(sid, copy.deepcopy(doc))
+        if not session.get(COMPOSER_ACTIVE_KEY) and isinstance(active, dict):
+            chosen = library.get(str(active.get("id") or ""))
+            if isinstance(chosen, dict):
+                session[COMPOSER_ACTIVE_KEY] = copy.deepcopy(chosen)
+                session[COMPOSER_NEEDS_SEED_KEY] = False
+    else:
+        # Declining a legacy recovery is explicit deletion provenance. Do not
+        # mark any currently live project as deleted.
+        live_ids = {str(doc.get("id") or sid) for sid, doc in library.items() if isinstance(doc, dict)}
+        for sid, doc in candidate_library.items():
+            identity = str(doc.get("id") or sid) if isinstance(doc, dict) else sid
+            if identity not in live_ids:
+                deleted.update((sid, identity))
+    session[COMPOSITION_DELETED_IDS_KEY] = sorted(deleted)
+    session[COMPOSITION_LIBRARY_INITIALIZED_KEY] = True
+    mark_composition_workspace_dirty(session, reason="legacy_recovery_choice")
+    sync_composition_workspace_before_persist(session, reason="legacy_recovery_choice")
 
 
 def prepare_composition_workspace_for_render(session: dict[str, Any]) -> None:
@@ -364,6 +449,7 @@ def prepare_composition_workspace_for_render(session: dict[str, Any]) -> None:
     meta = session.get(COMPOSITION_WORKSPACE_STATE_KEY)
     if isinstance(meta, dict) and (
         composition_workspace_restored(session) or isinstance(meta.get("active_document"), dict)
+        or meta.get("library_initialized") or meta.get("deleted_document_ids")
     ):
         project_composition_workspace_to_session(session, overwrite=True)
         return
@@ -379,7 +465,7 @@ def checkpoint_composition_workspace(
     reason: str = "composer_edit",
     force_disk: bool = False,
     st: Any | None = None,
-) -> None:
+) -> dict[str, Any] | None:
     """Mark dirty + sync canonical blob. Optionally force durable save."""
     mark_composition_workspace_dirty(session, reason=reason)
     sync_composition_workspace_before_persist(session, reason=reason)
@@ -391,6 +477,10 @@ def checkpoint_composition_workspace(
     except ImportError:
         pass
     if not force_disk:
+        from composition_save_verification import RESULT_KEY, content_fingerprint
+        session[RESULT_KEY] = {"status": "memory_only", "disk_verified": False,
+                              "cloud_verified": False, "fingerprint": content_fingerprint(
+                                  session[COMPOSITION_WORKSPACE_STATE_KEY])}
         return
     target = st
     if target is None:
@@ -399,9 +489,24 @@ def checkpoint_composition_workspace(
             session_state = session
 
         target = _Proxy()
+    from composition_save_verification import RESULT_KEY, verify_checkpoint
+    expected = copy.deepcopy(session[COMPOSITION_WORKSPACE_STATE_KEY])
+    # Reset per-attempt flags; previous page saves must not acknowledge this one.
+    session.pop(RESULT_KEY, None)
+    session.pop("_composition_workspace_force_save_error", None)
+    session["_suite_persist_last_save_disk"] = False
+    session["_suite_persist_last_save_cloud"] = False
+    session["_music_force_save_ok"] = False
+    force_ok = False
     try:
         from music_persistent_state import force_save_music_state
 
-        force_save_music_state(target, reason=reason)
+        force_ok = bool(force_save_music_state(target, reason=reason))
     except Exception:
         session["_composition_workspace_force_save_error"] = True
+    result = verify_checkpoint(session, expected, force_ok=force_ok)
+    if result["cloud_verified"] or (result["disk_verified"] and not result["cloud_required"]):
+        session.pop(COMPOSITION_WORKSPACE_DIRTY_KEY, None)
+    else:
+        session[COMPOSITION_WORKSPACE_DIRTY_KEY] = True
+    return result

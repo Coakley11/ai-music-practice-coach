@@ -1100,15 +1100,15 @@ if not _APP_UI_LOADED:
             (f"Key {kwargs.get('display_key', '')}", "green"),
         ]
 
-    def sidebar_section(title: str, *, icon: str = "", tone: str = "") -> None:
+    def sidebar_section(title: str, *, icon: str = "", tone: str = "", target: Any = None) -> None:
         label = f"{icon} {title}".strip() if icon else title
-        st.sidebar.markdown(f"**{label}**")
+        (target if target is not None else st.sidebar).markdown(f"**{label}**")
 
-    def sidebar_source_banner(source_kind: str, detail: str) -> None:
-        st.sidebar.markdown(f"**{source_kind}**  \n{detail}")
+    def sidebar_source_banner(source_kind: str, detail: str, *, target: Any = None) -> None:
+        (target if target is not None else st.sidebar).markdown(f"**{source_kind}**  \n{detail}")
 
-    def sidebar_goto_song_selection(*, on_navigate) -> None:
-        st.sidebar.button(
+    def sidebar_goto_song_selection(*, on_navigate, target: Any = None) -> None:
+        (target if target is not None else st.sidebar).button(
             page_feature_label("picker", "Song Selection"),
             key="sidebar_goto_song_selection",
             use_container_width=True,
@@ -15401,7 +15401,12 @@ try:
 except Exception:
     pass
 
-sidebar_section("Active Song", icon=FEATURE_ICONS["songs"], tone="source")
+from music_sidebar_policy import home_sidebar_css, SidebarTarget
+st.markdown(home_sidebar_css(_studio_page), unsafe_allow_html=True)
+_working_sidebar = st.sidebar.container(key="music_working_sidebar")
+_working_st = SidebarTarget(st, _working_sidebar)
+
+sidebar_section("Active Song", icon=FEATURE_ICONS["songs"], tone="source", target=_working_sidebar)
 _cpl_for_banner = ensure_original_structure(st.session_state.get(CPL_ACTIVE_KEY) or {})
 _custom_banner_name = str(_cpl_for_banner.get("name") or "Custom Progression")
 try:
@@ -15429,7 +15434,7 @@ _src_kind, _src_detail = unpack_active_source_banner(
         custom_name=_custom_banner_name,
     )
 )
-sidebar_source_banner(_src_kind, _src_detail)
+sidebar_source_banner(_src_kind, _src_detail, target=_working_sidebar)
 
 
 def _sidebar_open_song_selection() -> None:
@@ -15437,7 +15442,7 @@ def _sidebar_open_song_selection() -> None:
     navigate_studio_page(st.session_state, "picker")
 
 
-sidebar_goto_song_selection(on_navigate=_sidebar_open_song_selection)
+sidebar_goto_song_selection(on_navigate=_sidebar_open_song_selection, target=_working_sidebar)
 # Source-aware caption — never show Custom Lab copy or Custom genre under Composition.
 # Committed Catalog/Custom leave outranks a leftover Composition radio remount
 # (sidebar renders before Songs force-sync realigns the widget).
@@ -15477,7 +15482,7 @@ try:
 except Exception:
     _nested_sbi_custom_caption = False
 if _comp_caption:
-    st.sidebar.caption(f"**{_src_detail or 'My Composition'}** · Composition")
+    _working_sidebar.caption(f"**{_src_detail or 'My Composition'}** · Composition")
 elif _nested_sbi_custom_caption:
     # SBI Custom / Custom-bound song_improv Backing — never Perfect · Pop under ACTIVE SONG.
     # Live CPL may still be a generic My Progression shell; LAST_CUSTOM title wins.
@@ -15490,18 +15495,18 @@ elif _nested_sbi_custom_caption:
         _cap_title = ""
     if not _cap_title or _cap_title in {"My Progression", "My progression", "Custom progression", "Custom"}:
         _cap_title = str(_src_detail or "").strip() or "Custom"
-    st.sidebar.caption(f"**{_cap_title}** · Custom")
+    _working_sidebar.caption(f"**{_cap_title}** · Custom")
 elif str(_explicit_cap or "") == "custom_progression" or (
     not _explicit_cap and custom_progression_is_active(st.session_state)
 ):
-    st.sidebar.caption("Edit chords in **Custom Progression Lab**.")
+    _working_sidebar.caption("Edit chords in **Custom Progression Lab**.")
 else:
     # Read the pre-override global identity. _catalog_song / _catalog_genre are
     # repointed at the Now Singing entry for chart resolution, so using them
     # here made the sidebar follow karaoke playback.
     _sb_song = globals().get("_global_catalog_song") or _catalog_song
     _sb_genre = globals().get("_global_catalog_genre") or _catalog_genre
-    st.sidebar.caption(f"**{_sb_song}** · {_sb_genre}")
+    _working_sidebar.caption(f"**{_sb_song}** · {_sb_genre}")
     _karaoke_identity_trace(
         st.session_state,
         "sidebar_identity_rendered",
@@ -16487,7 +16492,7 @@ _custom_preview_only = (
     and not _custom_workspace_may_project_global_key(st.session_state)
 )
 _sidebar_original_key_label = "Custom Original Key" if _custom_preview_only else "Song Original Key"
-st.sidebar.markdown(
+_working_sidebar.markdown(
     f'<p class="ui-sidebar-key-caption">{FEATURE_ICONS["original_key"]} {_sidebar_original_key_label}: '
     f"<strong>{original_key}</strong></p>",
     unsafe_allow_html=True,
@@ -16504,7 +16509,7 @@ if is_fixed_practice_key_mode(st.session_state):
             )
 
     st.session_state["sidebar_fixed_key_quick_toggle"] = True
-    st.sidebar.checkbox(
+    _working_sidebar.checkbox(
         f"{_fixed_family_label} fixed",
         key="sidebar_fixed_key_quick_toggle",
         on_change=_on_sidebar_fixed_key_quick_toggle,
@@ -16693,11 +16698,11 @@ else:
                 "on_change": _on_custom_workspace_practice_key_change,
                 "options": list(_display_key_options or []),
                 "label": "Practice / Concert Key",
-                "slot": st.sidebar.empty(),
+                "slot": _working_sidebar.empty(),
                 "rendered": False,
             }
         else:
-            st.sidebar.selectbox(
+            _working_sidebar.selectbox(
                 "Custom workspace Practice / Concert Key" if _custom_preview_only else "Practice / Concert Key",
                 _display_key_options,
                 key=CUSTOM_WORKSPACE_PRACTICE_KEY_WIDGET,
@@ -17055,11 +17060,11 @@ else:
                 "on_change": _on_mission_or_global_pk_change,
                 "options": list(_display_key_options or []),
                 "label": feature_label("practice_concert_key", "Practice / Concert Key"),
-                "slot": st.sidebar.empty(),
+                "slot": _working_sidebar.empty(),
                 "rendered": False,
             }
         else:
-            st.sidebar.selectbox(
+            _working_sidebar.selectbox(
                 feature_label("practice_concert_key", "Practice / Concert Key"),
                 _display_key_options,
                 key=_pk_widget_key,
@@ -17393,7 +17398,7 @@ def _render_sidebar_transposing_controls_compat(
     import inspect
 
     kwargs: dict[str, Any] = {
-        "st": st,
+        "st": _working_st,
         "concert_key": concert_key,
         "instrument": instrument,
         "on_written_key_change": _on_written_key_checkbox_change,
@@ -17545,16 +17550,16 @@ def _on_global_level_change() -> None:
         pass
 
 
-sidebar_section("Your practice setup", icon=FEATURE_ICONS["practice_setup"], tone="session")
-st.sidebar.selectbox(
+sidebar_section("Your practice setup", icon=FEATURE_ICONS["practice_setup"], tone="session", target=_working_sidebar)
+_working_sidebar.selectbox(
     "Instrument",
     _instrument_options,
     key="instrument",
     on_change=_on_global_instrument_change,
     help="Applies on every page — Practice, Backing Track, Song Selection.",
 )
-st.sidebar.selectbox(
-    "Level",
+_working_sidebar.selectbox(
+    feature_label("level", "Level"),
     ["Beginner", "Intermediate", "Advanced"],
     key="level",
     format_func=level_label,
@@ -17562,7 +17567,7 @@ st.sidebar.selectbox(
     help="Applies on every page — controls arrangement length and harmonic detail.",
 )
 _focus_options = _sync_focus_options_before_widget(st.session_state.get("instrument", "Piano"))
-st.sidebar.selectbox(
+_working_sidebar.selectbox(
     feature_label("practice_focus", "Practice focus"),
     _focus_options,
     key="focus",
@@ -17570,7 +17575,7 @@ st.sidebar.selectbox(
     help="Applies on every page — drives practice goals, suggestions, and video matching.",
 )
 
-sidebar_section("Music Coach", icon=FEATURE_ICONS["music_coach"], tone="session")
+sidebar_section("Music Coach", icon=FEATURE_ICONS["music_coach"], tone="session", target=_working_sidebar)
 try:
     from music_coach_context import (
         build_music_coach_context,
@@ -17582,7 +17587,7 @@ try:
 
     _coach_page = resolve_coach_source_page(st.session_state)
     render_music_coach_sidebar_entry(
-        st,
+        _working_st,
         source_page=_coach_page,
         session_state=st.session_state,
         developer_mode=_developer_mode_enabled(),
@@ -17593,7 +17598,7 @@ try:
 except Exception as exc:
     st.session_state["_music_coach_sidebar_error"] = str(exc)
     if _developer_mode_enabled():
-        st.sidebar.warning(f"Music Coach sidebar unavailable: {type(exc).__name__}: {exc}")
+        _working_sidebar.warning(f"Music Coach sidebar unavailable: {type(exc).__name__}: {exc}")
 
 try:
     render_sidebar_studio_nav(
@@ -17615,7 +17620,7 @@ try:
 except Exception:
     pass
 
-sidebar_section("Session", icon="⏱️", tone="session")
+sidebar_section("Session", icon="⏱️", tone="session", target=_working_sidebar)
 try:
     from practice_state import PRACTICE_MINUTES_DEFAULT, canonical_practice_filters, normalize_practice_minutes
 
@@ -17629,7 +17634,7 @@ _display_minutes = normalize_practice_minutes(
     st.session_state.get("practice_minutes"),
     default=PRACTICE_MINUTES_DEFAULT,
 )
-st.sidebar.caption(
+_working_sidebar.caption(
     f"**{feature_label('session', 'Session')}:** {_display_minutes} min "
     "(adjust on the **Practice** page)"
 )
@@ -17921,9 +17926,9 @@ except ImportError:
     pass
 
 if instrument == "Guitar":
-    sidebar_section("Guitar Capo / Chord Shapes", icon="🎸", tone="session")
+    sidebar_section("Guitar Capo / Chord Shapes", icon="🎸", tone="session", target=_working_sidebar)
     render_guitar_capo_sidebar(
-        st.sidebar,
+        _working_sidebar,
         st.session_state,
         practice_display_key=str(practice_concert_key or display_key or "C"),
         persist_st=st,
@@ -28493,49 +28498,8 @@ elif _studio_page == "openai":
         "AI-powered practice tools for your active song and session history.",
     )
 
-    st.markdown(
-        '<div class="ui-card soft" style="margin:0 0 1rem 0;">'
-        "<strong>Your AI coach is ready.</strong> "
-        "Use the tools below for insights, analysis, and creative guidance. "
-        "More features will land here over time."
-        "</div>",
-        unsafe_allow_html=True,
-    )
-
-    _ai_c1, _ai_c2 = st.columns(2)
-    with _ai_c1:
-        st.markdown("#### Available now")
-        if st.button(
-            "Practice log insights",
-            key="openai_hub_log",
-            use_container_width=True,
-            help="AI review of your practice history and session patterns.",
-        ):
-            navigate_studio_page(st.session_state, "log")
-            st.rerun()
-        if st.button(
-            "Upload analysis",
-            key="openai_hub_analysis",
-            use_container_width=True,
-            help="Analyze a recording with AI-assisted feedback.",
-        ):
-            navigate_studio_page(st.session_state, "analysis")
-            st.rerun()
-        if st.button(
-            "Creative Lab",
-            key="openai_hub_creative",
-            use_container_width=True,
-            help="Harmony, improvisation, and growth tools.",
-        ):
-            navigate_studio_page(st.session_state, "creative")
-            st.rerun()
-    with _ai_c2:
-        st.markdown("#### Coming soon")
-        st.caption("Practice coaching on the active song")
-        st.caption("Personalized song recommendations")
-        st.caption("Recording comparisons")
-        st.caption("Practice summaries")
-        st.caption("AI-generated next-session plans")
+    from music_coaching_hub import render_coaching_hub
+    render_coaching_hub(st, st.session_state, navigate_studio_page, st.rerun)
 
 # -------------------------------------------------
 # PRACTICE LOG

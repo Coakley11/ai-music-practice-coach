@@ -13,7 +13,7 @@ def event(**changes):
 
 
 def test_recent_compares_log_and_activity_and_never_borrows_live_metadata():
-    state={'selected_song':{'title':'Live song','artist':'Live artist'},'display_key':'A','original_key':'C'}
+    state={'_suite_active_workspace_id':'guest','selected_song':{'title':'Live song','artist':'Live artist'},'display_key':'A','original_key':'C'}
     before=deepcopy(state)
     old={'session_id':'log1','date':'2026-11-03','active_song':'Old song'}
     result=verified_recent_session(state,entries=[old],activities=[event()])

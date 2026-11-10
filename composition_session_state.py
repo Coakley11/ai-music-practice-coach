@@ -30,6 +30,8 @@ COMPOSER_WIDGET_SCALAR_KEYS: frozenset[str] = frozenset(
         COMPOSER_PREVIEW_WAV_KEY,
         COMPOSER_PREVIEW_SIG_KEY,
         COMPOSER_SNAPSHOT_STAMP_KEY,
+        "composer_deleted_document_ids",
+        "composer_library_initialized",
     }
 )
 
@@ -109,6 +111,10 @@ def save_document_to_library(
     if not sid:
         session_state[COMPOSER_LAST_LIBRARY_SAVE_KEY] = {"ok": False, "reason": "missing_id"}
         return active
+    if sid in (session_state.get("composer_deleted_document_ids") or []):
+        session_state[COMPOSER_LAST_LIBRARY_SAVE_KEY] = {"ok": False, "reason": "document_deleted"}
+        return {}
+    session_state["composer_library_initialized"] = True
 
     prior = lib.get(sid) if isinstance(lib.get(sid), dict) else None
     raw_explicit = session_state.get(COMPOSER_EXPLICIT_LIBRARY_SAVE_IDS_KEY) or []
@@ -157,6 +163,8 @@ def save_document_to_library(
     mirrored = isinstance(ws_lib, dict) and sid in ws_lib
     session_state[COMPOSER_LAST_LIBRARY_SAVE_KEY] = {
         "ok": True,
+        "session_updated": True,
+        "persistence": copy.deepcopy(session_state.get("_composition_persistence_result") or {}),
         "is_update": is_update,
         "id": sid,
         "explicit": bool(explicit),
@@ -175,7 +183,11 @@ def last_library_save_meta(session_state: dict) -> dict[str, Any]:
 def library_save_success_message(session_state: dict) -> str:
     """User-facing confirmation after a successful library upsert."""
     meta = last_library_save_meta(session_state)
-    if not meta.get("ok"):
+    result = session_state.get("_composition_persistence_result") or {}
+    if not meta.get("ok") or not result.get("cloud_verified") or result.get("document_id") != meta.get("id"):
+        return ""
+    from composition_save_verification import content_fingerprint
+    if result.get("fingerprint") != content_fingerprint(session_state.get("composition_workspace_state") or {}):
         return ""
     if meta.get("is_update"):
         return "Composition Library updated."
@@ -212,6 +224,10 @@ def load_library_document(session_state: dict, doc_id: str) -> dict[str, Any] | 
 
 
 def delete_library_document(session_state: dict, doc_id: str) -> None:
+    deleted = set(session_state.get("composer_deleted_document_ids") or [])
+    deleted.add(str(doc_id))
+    session_state["composer_deleted_document_ids"] = sorted(deleted)
+    session_state["composer_library_initialized"] = True
     lib = session_state.get(COMPOSER_LIBRARY_KEY) or {}
     if isinstance(lib, dict):
         lib.pop(doc_id, None)
@@ -219,6 +235,16 @@ def delete_library_document(session_state: dict, doc_id: str) -> None:
     if active and str(active.get("id") or "") == doc_id:
         session_state.pop(COMPOSER_ACTIVE_KEY, None)
         session_state[COMPOSER_NEEDS_SEED_KEY] = True
+    canonical = session_state.get("composition_workspace_state")
+    if isinstance(canonical, dict):
+        canonical = copy.deepcopy(canonical)
+        canonical["deleted_document_ids"] = sorted(deleted)
+        canonical["library_initialized"] = True
+        canonical.setdefault("library", {}).pop(doc_id, None)
+        if str((canonical.get("active_document") or {}).get("id") or "") == doc_id:
+            canonical["active_document"] = None
+            canonical["needs_seed"] = True
+        session_state["composition_workspace_state"] = canonical
     try:
         from composition_workspace_state_persistence import checkpoint_composition_workspace
 
@@ -245,5 +271,16 @@ def export_composer_widget_state(session_state: dict) -> dict[str, Any]:
 def import_composer_widget_state(session_state: dict, blob: dict[str, Any]) -> None:
     if not isinstance(blob, dict):
         return
+    deleted = set(session_state.get("composer_deleted_document_ids") or []) | set(blob.get("composer_deleted_document_ids") or [])
     for key, val in blob.items():
         session_state[str(key)] = copy.deepcopy(val)
+    session_state["composer_deleted_document_ids"] = sorted(deleted)
+    library = session_state.get(COMPOSER_LIBRARY_KEY)
+    if isinstance(library, dict):
+        for sid, doc in list(library.items()):
+            if sid in deleted or (isinstance(doc, dict) and str(doc.get("id") or "") in deleted):
+                library.pop(sid, None)
+    active = session_state.get(COMPOSER_ACTIVE_KEY)
+    if isinstance(active, dict) and str(active.get("id") or "") in deleted:
+        session_state.pop(COMPOSER_ACTIVE_KEY, None)
+        session_state[COMPOSER_NEEDS_SEED_KEY] = True
