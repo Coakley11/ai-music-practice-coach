@@ -5380,11 +5380,14 @@ def _shalom_aleichem_chart_pack() -> dict[str, Any]:
 
 
 def _all_of_me_chart_pack() -> dict[str, Any]:
-    """All of Me — John Legend (Em capo chart, piano ballad, 4/4).
+    """All of Me — John Legend (stored in the recording's key, A-flat major; the verse loop starts on vi, Fm, but the chorus, cadences and published key are Ab; piano ballad, 4/4).
 
-    Contemporary wedding/love ballad. Preserve **C/D** (do not replace with plain D);
-  one list item = one bar.
+    Contemporary wedding/love ballad. The chart is the common Em-C-G-D capo shapes
+    moved up one semitone to the recording's key (Fm-Db-Ab-Eb; capo 1 gives the shapes).
+    Preserve **Db/Eb** (do not replace with plain Eb); one list item = one bar.
     """
+    from music_theory import transpose_sections_dict
+
     intro = ["Em", "C", "G", "D"] * 2
 
     def _verse() -> list[str]:
@@ -5445,17 +5448,20 @@ def _all_of_me_chart_pack() -> dict[str, Any]:
         }.get(ch, ch)
 
     advanced = {name: [_adv(c) for c in chords] for name, chords in intermediate.items()}
+    intermediate = transpose_sections_dict(intermediate, "G", "Ab")
+    beginner = transpose_sections_dict(beginner, "G", "Ab")
+    advanced = transpose_sections_dict(advanced, "G", "Ab")
     section_order = list(intermediate.keys())
     scale_hints = {
-        "Em": ["E natural minor", "E minor pentatonic"],
-        "C": ["C major"],
-        "G": ["G major"],
-        "D": ["D major"],
-        "Am": ["A natural minor"],
+        "Fm": ["F natural minor", "F minor pentatonic"],
+        "Db": ["Db major"],
+        "Ab": ["Ab major"],
+        "Eb": ["Eb major"],
+        "Bbm": ["Bb natural minor"],
     }
 
     return {
-        "key": "Em",
+        "key": "Ab",
         "sections": intermediate,
         "chart_versions": _levels(
             beginner=beginner,
@@ -5465,20 +5471,20 @@ def _all_of_me_chart_pack() -> dict[str, Any]:
         "chart_status": "practice_level_verified",
         "section_order": section_order,
         "composer": "John Legend & Toby Gad",
+        # Concert-key (sounding) voicings; the Em-shape / capo-1 view comes from the capo mode.
         "guitar_tabs": {
-            "Em": "022000",
-            "C": "x32010",
-            "G": "320003",
-            "D": "xx0232",
-            "Am": "x02210",
-            "C/D": "x3023x",
+            "Fm": "133111",
+            "Db": "x46664",
+            "Ab": "466544",
+            "Eb": "x68886",
+            "Bbm": "x13321",
         },
         "lyric_cues": {
             "Intro": ["Piano vamp — (breath) before 'What would I do without your smart mouth'"],
             "Verse 1": [
                 "Intimate verse — (breath) conversational tone",
                 "Smart mouth / crazy — light, playful delivery",
-                "Land Am color on last line before pre-chorus",
+                "Land Bbm color on last line before pre-chorus",
             ],
             "Pre-Chorus": [
                 "Gentle build — (breath) before chorus lift",
@@ -5486,7 +5492,7 @@ def _all_of_me_chart_pack() -> dict[str, Any]:
             ],
             "Chorus 1": [
                 "'Cause all of me loves all of you — (breath) title hook",
-                "Preserve **C/D** → D resolution — don't rush the dominant",
+                "Preserve **Db/Eb** → Eb resolution — don't rush the dominant",
                 "Fuller piano + bass — wedding-song declaration",
             ],
             "Verse 2": ["Second verse — same breath map; deepen intimacy"],
@@ -5498,19 +5504,19 @@ def _all_of_me_chart_pack() -> dict[str, Any]:
             ],
             "Final Chorus": [
                 "Biggest dynamic peak — fullest piano and vocal support",
-                "Extra Em–C–G–D passes — sustain through the climax",
+                "Extra Fm–Db–Ab–Eb passes — sustain through the climax",
             ],
             "Outro": [
-                "Vamp Em–C–G–D — gradually release; let final Em ring",
+                "Vamp Fm–Db–Ab–Eb — gradually release; let final Fm ring",
                 "(breath) between passes as instrumentation thins",
             ],
         },
         "extensions": _ext(
             arrangement_notes=(
-                "**E minor** capo guitar chart (**4/4**, ~126 BPM). Original "
-                "recordings vary in sounding key — this chart follows the common "
-                "**Em-shape** arrangement. **Piano-led** love ballad: preserve "
-                "**C/D** (suspended dominant — do not simplify to plain D). "
+                "**A-flat major** concert (the published key; the loop starts on **Fm**), "
+                "**4/4**, ~126 BPM. Guitarists play the common **Em-C-G-D** shapes with a "
+                "capo on fret **1**. **Piano-led** love ballad: preserve "
+                "**Db/Eb** (suspended dominant — do not simplify to plain Eb). "
                 "Verse intimate; pre-chorus gentle build; chorus fuller piano/"
                 "bass; bridge emotional lift; final chorus = peak; outro fades. "
                 "**Not** rock drums or distorted guitar. Core vocal-showcase "
@@ -5519,10 +5525,7 @@ def _all_of_me_chart_pack() -> dict[str, Any]:
             default_bpm=126,
             default_groove="Ballad",
             time_signature="4/4",
-            capo_note=(
-                "Em-shape capo chart · sounding key varies by vocalist; "
-                "studio take often sits higher than this shape"
-            ),
+            capo_note="Capo 1 (Em shapes) · concert key Ab major",
             repertoire_tags=[
                 "Wedding Song",
                 "Love Song",
@@ -5545,7 +5548,7 @@ def _all_of_me_chart_pack() -> dict[str, Any]:
                 "punctuation — don't clip the dominant."
             ),
             harmonic_analysis={
-                "progression_summary": "Em-centric pop ballad with Am pre-chorus and C/D dominant color",
+                "progression_summary": "Ab major pop ballad on vi-IV-I-V (Fm-Db-Ab-Eb) with Bbm pre-chorus and Db/Eb dominant color",
                 "scale_suggestions": scale_hints,
             },
             backing_character="piano_vocal_ballad_wedding",
@@ -7917,23 +7920,23 @@ def _requested_verified_song_records() -> list[dict[str, Any]]:
             "All of Me",
             "John Legend",
             "Pop",
-            "Em",
+            "Ab",
             {
-                "Intro": ["Em", "C", "G", "D"] * 2,
-                "Verse": ["Em", "C", "G", "D"] * 4,
-                "Chorus": ["G", "Em", "Am", "C/D", "D", "Em", "C", "G", "D"],
+                "Intro": ["Fm", "Db", "Ab", "Eb"] * 2,
+                "Verse": ["Fm", "Db", "Ab", "Eb"] * 4,
+                "Chorus": ["Ab", "Fm", "Bbm", "Db/Eb", "Eb", "Fm", "Db", "Ab", "Eb"],
             },
             {
-                "Intro": ["Em7", "Cmaj7", "G", "D"] * 2,
-                "Verse": ["Em7", "Cmaj7", "G", "D"] * 4,
-                "Chorus": ["G", "Em7", "Am7", "C/D", "D", "Em7", "Cmaj7", "G", "D"],
+                "Intro": ["Fm7", "Dbmaj7", "Ab", "Eb"] * 2,
+                "Verse": ["Fm7", "Dbmaj7", "Ab", "Eb"] * 4,
+                "Chorus": ["Ab", "Fm7", "Bbm7", "Db/Eb", "Eb", "Fm7", "Dbmaj7", "Ab", "Eb"],
             },
             composer="John Legend & Toby Gad",
             lyric_cues={
                 "Intro": ["piano vamp — full chart in override"],
-                "Chorus": ["title hook — preserve C/D color"],
+                "Chorus": ["title hook — preserve Db/Eb color"],
             },
-            notes="Em capo chart (~126 BPM); full form with C/D in chart override.",
+            notes="Ab major concert (Em shapes with capo 1, ~126 BPM); full form with Db/Eb in chart override.",
             default_bpm=126,
             default_groove="Ballad",
         ),
