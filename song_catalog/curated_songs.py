@@ -333,6 +333,8 @@ def _thinking_out_loud_chart_pack() -> dict[str, Any]:
             default_groove="Ballad",
             time_signature="4/4",
             capo_note="Capo 2 (C shapes) · concert key D major",
+            concert_key="D",
+            guitar_friendly_key="C",
             vocal_showcase=True,
             ed_sheeran_acoustic=True,
             repertoire_tags=[
