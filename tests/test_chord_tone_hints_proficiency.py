@@ -153,6 +153,11 @@ def test_spelling_follows_the_chord(symbol, beginner, intermediate) -> None:
         ("Db7", "Gbmaj7", "C♭", "B♭", "3"),
         ("Cmaj7", "Fmaj7", "B", "A", "3"),   # a whole step down
         ("Bm7b5", "E7", "A", "G♯", "3"),
+        # The diatonic cycle keeps its guide-tone line through the major 7ths and IV -> viiø
+        # (Autumn Leaves / Fly Me to the Moon).
+        ("Bbmaj7", "Ebmaj7", "A", "G", "3"),
+        ("Fmaj7", "Bm7b5", "E", "D", "♭3"),
+        ("Ebmaj7", "Am7b5", "D", "C", "♭3"),
     ],
 )
 def test_the_seventh_steps_down_to_the_next_third(here, there, frm, to, label) -> None:
@@ -162,7 +167,9 @@ def test_the_seventh_steps_down_to_the_next_third(here, there, frm, to, label) -
 
 @pytest.mark.parametrize(
     "here, there",
-    [("A7", "A7"), ("C", "G7"), ("Cmaj7", "Am7"), ("G7", "N.C."), ("G7", "%"), ("G7", ""), ("Dm7", "Gsus4")],
+    [("A7", "A7"), ("C", "G7"), ("Cmaj7", "Am7"), ("G7", "N.C."), ("G7", "%"), ("G7", ""), ("Dm7", "Gsus4"),
+     # Near in pitch but not a written step (found in the catalog): a chromatic slide or a diminished 3rd.
+     ("Gmaj7", "Dm7"), ("Ebmaj7", "Bbm7"), ("G7", "Dbm7"), ("C7", "E")],
 )
 def test_no_voice_leading_without_a_step_down_to_a_third(here, there) -> None:
     assert voice_leading(here, there) is None

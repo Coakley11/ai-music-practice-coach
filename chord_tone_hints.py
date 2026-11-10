@@ -261,6 +261,9 @@ class VoiceLeading:
         return f"Voice leading: {self.from_name} ({label}) moves down to {self.to_name}, the {third} of {self.next_symbol}"
 
 
+_LETTERS = "CDEFGAB"
+
+
 def _same_chord(a: Any, b: Any) -> bool:
     return _clean_text(a).replace(" ", "") == _clean_text(b).replace(" ", "")
 
@@ -271,7 +274,9 @@ def voice_leading(symbol: Any, next_symbol: Any) -> VoiceLeading | None:
     That is the strongest line through a progression (Dm7 → G7: C → B; G7 → Cmaj7: F → E;
     A7 → D: G → F♯), so it is the one an Advanced hint names. None when either is not a chord,
     when the chord has no 7th, when the next chord is the same one, or when the 7th does not step
-    down to the next 3rd (a common tone or a leap is not named).
+    down to the next 3rd (a common tone or a leap is not named). A step is a step on paper too:
+    the 3rd is one letter below the 7th, so a chromatic slide (Gmaj7 → Dm7: F♯ → F) or a
+    diminished third (C7 → E: B♭ → G♯) is not shown as one.
     """
     if not next_symbol or _same_chord(symbol, next_symbol):
         return None
@@ -281,6 +286,8 @@ def voice_leading(symbol: Any, next_symbol: Any) -> VoiceLeading | None:
     seventh = next((t for t in _chord_tones(here) if t.role in ("7th", "major 7th", "°7th")), None)
     third = next((t for t in _chord_tones(there) if t.role in _THIRDS), None)
     if seventh is None or third is None or (seventh.pc - third.pc) % 12 not in (1, 2):
+        return None
+    if _LETTERS.index(third.name[0].upper()) != (_LETTERS.index(seventh.name[0].upper()) - 1) % 7:
         return None
     return VoiceLeading(pretty_note(seventh.name), pretty_note(third.name), _LABEL[third.role],
                         str(next_symbol).strip())
