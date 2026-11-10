@@ -2166,7 +2166,7 @@ class TestRealRenderPathFourEntry(unittest.TestCase):
             km.is_karaoke_session_active = real
         sd = bundle.get("song_data") or {}
         blended = (
-            str(bundle.get("original_key") or "") == "Dm"
+            str(bundle.get("original_key") or "") == "F"
             or str(sd.get("title") or "").startswith("The Scientist")
         )
         self.assertTrue(
@@ -2231,7 +2231,7 @@ class TestKaraokeOwnershipModel(unittest.TestCase):
 
     FP = {
         "Perfect": ("G", 9, 102),
-        "The Scientist": ("Dm", 11, 89),
+        "The Scientist": ("F", 11, 89),
         "Gravity": ("G", 5, 32),
     }
 
@@ -2904,9 +2904,9 @@ class TestKaraokeOwnershipModel(unittest.TestCase):
 
         # The Scientist: only that it is transposed away from the stored chart.
         sci_first, sci_orig = by_key["Cm"][1], by_key["Cm"][2]
-        self.assertEqual(sci_orig, "Dm")
+        self.assertEqual(sci_orig, "F")
         self.assertNotEqual(
-            sci_first, "Bm7",
+            sci_first, "Dm7",
             "The Scientist is showing its stored chart untransposed",
         )
 
@@ -3148,7 +3148,7 @@ class TestKaraokeOwnershipModel(unittest.TestCase):
         """
         expected = [
             (self.T_PERF, "G", "G"),
-            (self.T_SCI, "Dm", "Cm"),
+            (self.T_SCI, "F", "Cm"),
             (self.T_GRAV, "G", "Eb"),
             (self.T_PERF, "G", "A"),
         ]
@@ -3195,7 +3195,7 @@ class TestKaraokeOwnershipModel(unittest.TestCase):
         km.start_session(ss)
         for title, home, prac in (
             (self.T_PERF, "G", "G"),
-            (self.T_SCI, "Dm", "Cm"),
+            (self.T_SCI, "F", "Cm"),
             (self.T_GRAV, "G", "Eb"),
             (self.T_PERF, "G", "A"),
         ):
@@ -3379,7 +3379,7 @@ class TestKaraokeOwnershipModel(unittest.TestCase):
             "the assertion below guards nothing",
         )
         self.assertEqual(
-            str(fixed.get("original_key") or ""), "Dm",
+            str(fixed.get("original_key") or ""), "F",
             "the karaoke entry's own original key must win over the previous "
             "entry's catalog_session blob",
         )
