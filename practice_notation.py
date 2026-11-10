@@ -903,9 +903,20 @@ def _build_piano_voicings(
             )
             plans.extend(plan)
             motion = scale_motion_for(level, focus) if mode == "scales" else "parallel"
-            for line in per_bar:
+            for bar_i, line in enumerate(per_bar):
                 if mode == "scales":
-                    bars.append(hands_for_scale(line, motion=motion))
+                    # Contrary motion walks the left hand down the same scale the right
+                    # hand is climbing, so it needs to know which scale that is. The answer
+                    # comes from the shared selector, not from inverting the line.
+                    from notation_exercise_patterns import scale_pcs as _scale_pcs
+
+                    _chord = use[bar_i] if bar_i < len(use) else use[-1]
+                    bars.append(
+                        hands_for_scale(
+                            line, motion=motion,
+                            scale_pcs=_scale_pcs(_chord, display_key or "C"),
+                        )
+                    )
                 else:
                     # Arpeggios: the right hand breaks the chord and the left answers an
                     # octave below. How much it answers is the left hand's job for this

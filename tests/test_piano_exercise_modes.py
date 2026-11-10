@@ -164,9 +164,21 @@ class ArpeggiosAreTwoHanded(unittest.TestCase):
 
 class TheHarmonyStillComesFromTheSharedEngine(unittest.TestCase):
     def test_am6_keeps_its_f_sharp_on_the_piano_staff(self):
-        """A Dorian, not aeolian - the same answer the wind instruments get."""
-        abc = _render("scales", "advanced", chords=["Am6"]).abc
-        self.assertIn("^f", abc.lower())
+        """A Dorian, not aeolian - the same answer the wind instruments get.
+
+        Over several bars rather than one: the exercise register is a single octave, so
+        eight notes of one bar need not touch every degree of the scale. A bar that happens
+        to run C E G B is still A Dorian; what would be wrong is an F natural.
+        """
+        abc = _render("scales", "advanced", chords=["Am6"] * 4).abc.lower()
+        self.assertIn("^f", abc)
+
+    def test_am6_never_sounds_the_natural_sixth_that_would_make_it_aeolian(self):
+        import re
+
+        abc = _render("scales", "advanced", chords=["Am6"] * 4).abc.lower()
+        body = abc.split("v:1\n", 1)[1]
+        self.assertFalse(re.search(r"(?<![\^_=])f", body), "a natural F would be aeolian")
 
     def test_the_piano_builder_takes_no_harmony_decisions_of_its_own(self):
         import inspect
@@ -180,3 +192,121 @@ class TheHarmonyStillComesFromTheSharedEngine(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class BothHandsObeyTheHarmony(unittest.TestCase):
+    """The invariant the whole feature rests on, asserted for the hand the tests forgot.
+
+    Every earlier harmony test read the treble staff. The left hand was generated separately
+    and nobody checked it, so contrary motion spent four commits mirroring the line in
+    semitones and sounding G#, C# and F natural against an A Dorian right hand. A browser
+    capture found it, not a test. This is that test.
+    """
+
+    import re as _re
+
+    def _notes(self, abc_voice: str) -> list[str]:
+        """Pitch tokens only.
+
+        Chord symbols are quoted annotations - "Dm7b5", "C7alt" - and are full of letters
+        that look exactly like ABC pitches. Reading them as notes made this test fail on
+        chords whose notation was perfectly correct, so they are stripped first.
+        """
+        bare = self._re.sub(r'"[^"]*"', " ", abc_voice).replace("z", "")
+        return self._re.findall(r"[\^_=]?[a-gA-G],*'*", bare)
+
+    def _pcs(self, abc_voice: str) -> set[int]:
+        base = {"c": 0, "d": 2, "e": 4, "f": 5, "g": 7, "a": 9, "b": 11}
+        out = set()
+        for tok in self._notes(abc_voice):
+            acc = 0
+            if tok[0] == "^":
+                acc, tok = 1, tok[1:]
+            elif tok[0] == "_":
+                acc, tok = -1, tok[1:]
+            elif tok[0] == "=":
+                tok = tok[1:]
+            letter = tok[0].lower()
+            if letter in base:
+                out.add((base[letter] + acc) % 12)
+        return out
+
+    def test_every_note_in_both_staves_belongs_to_the_chord_scale(self):
+        from notation_exercise_patterns import scale_pcs
+
+        for chord in ("Am6", "C7", "Cmaj7", "Dm7b5", "C7alt", "Em6"):
+            for difficulty in ("easy", "medium", "advanced"):
+                abc = _render("scales", difficulty, chords=[chord] * 4).abc
+                treble, bass = _staves(abc)
+                allowed = set(scale_pcs(chord, "Am"))
+                for name, voice in (("treble", treble), ("bass", bass)):
+                    with self.subTest(chord=chord, difficulty=difficulty, staff=name):
+                        extra = self._pcs(voice) - allowed
+                        self.assertFalse(
+                            extra, f"{chord} {name}: {sorted(extra)} outside the scale"
+                        )
+
+    def test_the_bass_staff_carries_the_line_wherever_both_hands_play(self):
+        """Beginner is excluded on purpose: that level practises hands separately.
+
+        scale_motion_for("Beginner") is "separate", so the line stays in one hand and the
+        other staff is rests - which is the exercise, not an omission.
+        """
+        for difficulty in ("medium", "advanced"):
+            _, bass = _staves(_render("scales", difficulty).abc)
+            with self.subTest(difficulty=difficulty):
+                self.assertTrue(self._notes(bass), "bass staff had no notes at all")
+
+    def test_a_beginner_practises_one_hand_at_a_time(self):
+        from piano_grand_staff import scale_motion_for
+
+        self.assertEqual(scale_motion_for("Beginner"), "separate")
+        treble, bass = _staves(_render("scales", "easy").abc)
+        self.assertTrue(self._notes(treble))
+        self.assertIn("z", bass)
+
+
+class TheExerciseRegisterStaysReadable(unittest.TestCase):
+    """Both staves, not just the treble.
+
+    The register was first chosen only so the treble would not be a bar of rests. It was
+    G3-C6, and because build_exercise_midis fills toward the top of its range the line sat
+    at G4-C6 - putting the left hand four and five ledger lines above the bass staff on
+    nearly every note.
+    """
+
+    BASS_TOP = 57   # A3, top line of the bass staff
+    BASS_BOTTOM = 43  # G2, bottom line
+
+    def test_the_two_handed_register_centres_on_middle_c(self):
+        from piano_grand_staff import PIANO_EXERCISE_HIGH, PIANO_EXERCISE_LOW
+
+        self.assertEqual(PIANO_EXERCISE_LOW, 60)    # C4
+        self.assertEqual(PIANO_EXERCISE_HIGH, 72)   # C5
+
+    def test_the_left_hand_mostly_sits_on_its_own_staff(self):
+        from chord_navigation_notation import instrument_register  # noqa: F401
+        from notation_exercise_patterns import build_exercise_midis, scale_pcs
+        from piano_grand_staff import (
+            PIANO_EXERCISE_HIGH,
+            PIANO_EXERCISE_LOW,
+            hands_for_scale,
+            scale_motion_for,
+        )
+
+        far = total = 0
+        for level in ("Intermediate", "Advanced"):
+            bars, _ = build_exercise_midis(
+                CHORDS, level=level, instrument="Piano", key_center="Am", mode="scales",
+                low=PIANO_EXERCISE_LOW, high=PIANO_EXERCISE_HIGH,
+            )
+            motion = scale_motion_for(level)
+            for i, bar in enumerate(bars):
+                pcs = scale_pcs(CHORDS[i % len(CHORDS)], "Am")
+                for v in hands_for_scale(bar, motion=motion, scale_pcs=pcs):
+                    if len(v) < 2:
+                        continue
+                    total += 1
+                    if min(v) > self.BASS_TOP + 4 or min(v) < self.BASS_BOTTOM - 4:
+                        far += 1
+        self.assertLess(far / max(1, total), 0.15, f"{far}/{total} left-hand notes stranded")

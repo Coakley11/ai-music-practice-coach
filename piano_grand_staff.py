@@ -30,10 +30,21 @@ PIANO_LOW = 21   # A0
 PIANO_HIGH = 108  # C8
 
 # The register a two-handed exercise is written in. The generated line is the RIGHT hand's
-# and the left is derived an octave below it, so this sits above middle C: G3 to C6 gives
-# the right hand a comfortable two octaves and leaves the left hand G2-C5.
-PIANO_EXERCISE_LOW = 55   # G3
-PIANO_EXERCISE_HIGH = 84  # C6
+# and the left is derived an octave below it, so the window has to leave *both* staves
+# readable, not just the treble.
+#
+# This was G3-C6 (55-84), chosen so the treble staff would not be a bar of rests. It is not
+# enough: build_exercise_midis fills toward the top of whatever range it is given, so the
+# line landed at G4-C6, which put the left hand at G3-C5 and 79% of its notes above the bass
+# staff - four and five ledger lines deep on nearly every note. Unit tests could not see
+# that; the browser capture could.
+#
+# C4-C5 is the register a two-handed scale study is actually written in: the right hand
+# between middle C and the C above, the left hand an octave below it in the bass staff where
+# it belongs. Measured over parallel and contrary motion at every level, this leaves 2% of
+# notes more than two ledger lines off a staff, against 25% before.
+PIANO_EXERCISE_LOW = 60   # C4, middle C
+PIANO_EXERCISE_HIGH = 72  # C5
 
 __all__ = [
     "LH_OCTAVE",
@@ -258,12 +269,26 @@ def hands_for_voicing(
 
 
 def _abc_token(midi: int, key: str) -> str:
-    """One ABC pitch token for *midi*, spelled for *key* by the app's own speller."""
+    """One ABC pitch token for *midi*, spelled for *key* by the app's own speller.
+
+    Two things this has to get right, and got wrong.
+
+    ``abc_pitch_for_spelled_note`` takes the octave as a keyword argument; it does not read
+    one off the end of the note name. Passing "E3" spelled E at the default octave 4, so
+    every note of every piano exercise came out in the same octave - the two staves printed
+    identical tokens and the left hand appeared four ledger lines above the bass staff,
+    which is what a browser capture showed.
+
+    And ``k_field`` has to be the real key. Left at "C" the token is spelled as if there
+    were no key signature, so a natural F in G major would emit a bare "f" that abcjs reads
+    as F# - the key signature sharpening a note the harmony wanted natural.
+    """
     from music_theory import abc_pitch_for_spelled_note, spell_note_in_key
 
-    name = spell_note_in_key(int(midi) % 12, key or "C")
+    k = key or "C"
+    name = spell_note_in_key(int(midi) % 12, k)
     octave = int(midi) // 12 - 1
-    return abc_pitch_for_spelled_note(f"{name}{octave}")
+    return abc_pitch_for_spelled_note(name, octave=octave, k_field=k)
 
 
 def _chord_token(midis: Sequence[int], key: str, length: str) -> str:
@@ -382,33 +407,58 @@ def scale_motion_for(level: str = "Intermediate", focus: str = "") -> str:
     return "parallel"
 
 
+def _descending_from(start: int, pcs: Sequence[int], count: int) -> list[int]:
+    """``count`` pitches walking *down* from ``start`` through the scale ``pcs``."""
+    allowed = sorted({int(p) % 12 for p in pcs})
+    if not allowed:
+        return [int(start)] * int(count)
+    out = [_clamp_to_piano(int(start))]
+    cur = int(start)
+    for _ in range(max(0, int(count) - 1)):
+        nxt = cur - 1
+        while nxt % 12 not in allowed and cur - nxt < 13:
+            nxt -= 1
+        cur = nxt
+        out.append(_clamp_to_piano(cur))
+    return out
+
+
 def hands_for_scale(
     midis: Sequence[int],
     *,
     motion: str = "parallel",
     octaves_apart: int = 1,
+    scale_pcs: Sequence[int] = (),
 ) -> list[list[int]]:
     """A scale line turned into two hands, one voicing per note.
 
     ``parallel`` is the pair of hands moving together an octave apart - the first scale
-    exercise anyone is given. ``contrary`` mirrors the left hand around its starting note,
-    which is the standard next step and is why it is generated rather than hand-written.
-    ``separate`` keeps the line in one hand so a beginner can learn it before combining.
+    exercise anyone is given. ``contrary`` sends the left hand down the same scale while the
+    right goes up, which is the standard next step. ``separate`` keeps the line in one hand
+    so a beginner can learn it before combining.
+
+    Contrary motion needs ``scale_pcs``, and falls back to parallel without it. It used to
+    mirror the line arithmetically - ``start - (m - start)`` - which is a reflection in
+    semitones, not in scale degrees, and reflecting a scale that way does not give the scale
+    back. Over Am6 it had the left hand playing G#, C# and F natural against an A Dorian
+    right hand: the exercise contradicting its own harmony. The left hand now walks the very
+    pitches the shared engine chose, downward.
     """
     line = [int(m) for m in midis if m is not None]
     if not line:
         return []
     motion = str(motion or "parallel").strip().lower()
+    if motion == "contrary" and not scale_pcs:
+        motion = "parallel"
     out: list[list[int]] = []
-    start = line[0]
+    if motion == "contrary":
+        lefts = _descending_from(line[0] - 12 * octaves_apart, scale_pcs, len(line))
+        return [sorted({lefts[i], _clamp_to_piano(m)}) for i, m in enumerate(line)]
     for m in line:
         right = _clamp_to_piano(m)
         if motion == "separate":
             out.append([right])
             continue
-        if motion == "contrary":
-            left = _clamp_to_piano(start - (m - start) - 12 * octaves_apart)
-        else:
-            left = _clamp_to_piano(m - 12 * octaves_apart)
+        left = _clamp_to_piano(m - 12 * octaves_apart)
         out.append(sorted({left, right}))
     return out

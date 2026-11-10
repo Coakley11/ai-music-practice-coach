@@ -113,12 +113,36 @@ class ScaleMotions(unittest.TestCase):
             self.assertEqual(len(v), 2)
             self.assertEqual(max(v) - min(v), 12)
 
+    A_DORIAN = (9, 11, 0, 2, 4, 6, 7)   # A B C D E F# G
+
     def test_contrary_hands_move_in_opposite_directions(self):
-        voicings = hands_for_scale(self.LINE, motion="contrary")
+        voicings = hands_for_scale(
+            self.LINE, motion="contrary", scale_pcs=self.A_DORIAN)
         lefts = [min(v) for v in voicings]
         rights = [max(v) for v in voicings]
         self.assertGreater(rights[-1], rights[0])
         self.assertLess(lefts[-1], lefts[0])
+
+    def test_the_descending_hand_stays_inside_the_scale(self):
+        """It walks the scale by degree. Mirroring the line in semitones does not: over
+        A Dorian that produced G#, C# and F natural - the exercise contradicting itself."""
+        for v in hands_for_scale(self.LINE, motion="contrary", scale_pcs=self.A_DORIAN):
+            for m in v:
+                with self.subTest(midi=m):
+                    self.assertIn(m % 12, self.A_DORIAN)
+
+    def test_the_descending_hand_really_descends_stepwise(self):
+        lefts = [min(v) for v in
+                 hands_for_scale(self.LINE, motion="contrary", scale_pcs=self.A_DORIAN)]
+        for a, b in zip(lefts, lefts[1:]):
+            self.assertTrue(1 <= a - b <= 2, f"{a} -> {b} is not a scale step")
+
+    def test_contrary_without_a_scale_falls_back_rather_than_guessing(self):
+        """No scale, no invention: it plays parallel instead of inventing notes."""
+        self.assertEqual(
+            hands_for_scale(self.LINE, motion="contrary"),
+            hands_for_scale(self.LINE, motion="parallel"),
+        )
 
     def test_separate_keeps_one_hand(self):
         for v in hands_for_scale(self.LINE, motion="separate"):
@@ -167,3 +191,58 @@ class ItDoesNotReinventHarmony(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class OctavesSurviveIntoTheAbc(unittest.TestCase):
+    """The bug this class exists for.
+
+    ``abc_pitch_for_spelled_note`` takes the octave as a keyword argument and does not read
+    one off the end of the note name, so passing "E3" spelled E at the default octave 4.
+    Every note of every piano exercise came out in one octave: the two staves printed
+    identical tokens and the left hand sat four ledger lines above the bass staff. Every
+    test here read pitch *classes*, so none of them noticed. These read octaves.
+    """
+
+    def test_the_same_pitch_class_an_octave_apart_is_not_the_same_token(self):
+        abc = grand_staff_abc([[[52, 64]]], key="G")
+        treble = abc.split("V:1\n", 1)[1].split("\nV:2", 1)[0]
+        bass = abc.split("V:2\n", 1)[1]
+        self.assertNotEqual(treble.strip(), bass.strip())
+
+    def test_the_two_staves_of_a_parallel_scale_differ(self):
+        line = [64, 66, 67, 69, 71, 72]
+        abc = grand_staff_abc([hands_for_scale(line, motion="parallel")], key="G")
+        treble = abc.split("V:1\n", 1)[1].split("\nV:2", 1)[0]
+        bass = abc.split("V:2\n", 1)[1]
+        self.assertNotEqual(treble.strip(), bass.strip())
+
+    def test_abc_octave_marks_follow_the_midi_octave(self):
+        """ABC: C3 is "C", C4 is "c", C5 is "c'"."""
+        self.assertIn("C", grand_staff_abc([[[48]]], key="C").split("V:2\n")[1])
+        self.assertIn("c", grand_staff_abc([[[60]]], key="C").split("V:1\n")[1])
+        self.assertIn("c'", grand_staff_abc([[[72]]], key="C").split("V:1\n")[1])
+
+    def test_a_low_note_gets_a_comma(self):
+        self.assertIn("C,", grand_staff_abc([[[36]]], key="C").split("V:2\n")[1])
+
+    def test_the_left_hand_really_lands_on_the_bass_staff(self):
+        """Within two ledger lines of it, rather than floating above the treble."""
+        line = [60, 62, 64, 65, 67, 69, 71, 72]
+        for v in hands_for_scale(line, motion="parallel"):
+            with self.subTest(voicing=v):
+                self.assertLessEqual(min(v), 62)   # at or below D4
+
+
+class SpellingFollowsTheKeySignature(unittest.TestCase):
+    def test_a_sharp_the_key_already_carries_needs_no_accidental(self):
+        """K:G carries F#, so the token is a bare f - not ^f repeated on every note."""
+        bass = grand_staff_abc([[[54]]], key="G").split("V:2\n", 1)[1]
+        self.assertNotIn("^", bass)
+
+    def test_a_sharp_the_key_does_not_carry_is_written_out(self):
+        self.assertIn("^f", grand_staff_abc([[[66]]], key="Am"))
+
+    def test_a_note_the_key_would_sharpen_is_naturalled(self):
+        """In G major a bare "f" reads as F#; an F natural has to say so."""
+        tok = grand_staff_abc([[[65]]], key="G")   # F4 natural
+        self.assertIn("=", tok)
