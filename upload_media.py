@@ -59,6 +59,16 @@ def _document_max_size_mb() -> int:
 DOCUMENT_MAX_SIZE_MB = _document_max_size_mb()
 DOCUMENT_MAX_SIZE_BYTES = DOCUMENT_MAX_SIZE_MB * 1024 * 1024
 
+# A byte limit is not a work limit. A small PDF can declare thousands of pages, or one
+# page metres across, and rendering either will exhaust memory on the server rather than
+# in the browser that asked for it. These bound the work, not the file.
+#
+# 500 pages is far more than any practice reference and still cheap to page through;
+# 4 megapixels is roughly A4 at 170 dpi, which reads comfortably on a laptop and is
+# about 12 MB of uncompressed pixels before PNG encoding.
+DOCUMENT_MAX_PAGES = 500
+DOCUMENT_MAX_RENDER_PIXELS = 4_000_000
+
 VIDEO_EXTENSIONS = frozenset({".mp4", ".mov", ".m4v", ".avi"})
 AUDIO_EXTENSIONS = frozenset({".wav", ".mp3", ".m4a", ".ogg", ".flac", ".aac", ".webm"})
 

@@ -300,7 +300,7 @@ def validate_pdf_bytes(data: Any) -> tuple[bytes | None, str]:
     opens with, and an ``%%EOF`` marker near the end, which a truncated or interrupted
     upload will not have. Both are cheap and neither needs a PDF library.
     """
-    from upload_media import DOCUMENT_MAX_SIZE_BYTES
+    from upload_media import DOCUMENT_MAX_PAGES, DOCUMENT_MAX_SIZE_BYTES
 
     if data is None or data == b"":
         return None, "missing_document"
@@ -316,6 +316,11 @@ def validate_pdf_bytes(data: Any) -> tuple[bytes | None, str]:
         return None, "document_too_large"
     if not raw.startswith(b"%PDF-"):
         return None, "not_a_pdf"
+    # A byte limit does not bound the work: a small file can declare thousands of pages,
+    # and every one of them is something the server may later be asked to render.
+    pages = pdf_page_count(raw)
+    if pages and pages > DOCUMENT_MAX_PAGES:
+        return None, "too_many_pages"
     # The trailer is the last thing a writer emits, so its absence is the signature of a
     # file that never finished arriving. Some writers pad after it, hence the window.
     if b"%%EOF" not in raw[-2048:]:

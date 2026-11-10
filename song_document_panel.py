@@ -82,14 +82,26 @@ def _page_count(data: bytes, fallback: Any) -> int:
 
 
 def _render_page_png(data: bytes, page_index: int, width: int) -> bytes | None:
-    """One page as a PNG, or ``None`` when PyMuPDF cannot be used."""
+    """One page as a PNG, or ``None`` when PyMuPDF cannot or should not render it.
+
+    The zoom is capped by a pixel budget as well as by the requested width. A PDF may
+    declare a page metres across, and rendering that at the width a laptop asked for
+    would allocate gigabytes on the server - the one machine here that cannot simply
+    refuse. A malformed page raises, and raising is handled: the caller falls back.
+    """
+    from upload_media import DOCUMENT_MAX_RENDER_PIXELS
+
     try:
         import pymupdf
 
         with pymupdf.open(stream=data, filetype="pdf") as doc:
             index = max(0, min(int(page_index), doc.page_count - 1))
             page = doc.load_page(index)
-            zoom = max(0.5, float(width) / max(1.0, page.rect.width))
+            page_w = max(1.0, float(page.rect.width))
+            page_h = max(1.0, float(page.rect.height))
+            zoom = max(0.2, float(width) / page_w)
+            budget = (DOCUMENT_MAX_RENDER_PIXELS / (page_w * page_h)) ** 0.5
+            zoom = min(zoom, max(0.1, budget))
             pix = page.get_pixmap(matrix=pymupdf.Matrix(zoom, zoom), alpha=False)
             return pix.tobytes("png")
     except Exception:
@@ -193,6 +205,7 @@ def _explain(error: Any) -> str:
         "not_a_pdf": "that file is not a PDF.",
         "pdf_truncated": "that PDF looks incomplete - try uploading it again.",
         "document_too_large": "that file is too large.",
+        "too_many_pages": "that PDF has too many pages to keep as a reference.",
         "missing_document": "the file was empty.",
         "empty_document": "the file was empty.",
         "invalid_document_type": "that file could not be read.",

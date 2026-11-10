@@ -251,3 +251,72 @@ class ASessionIsNotNecessarilyADict(unittest.TestCase):
         self.assertEqual(owner.get("source_type"), "catalog")
         self.assertEqual(owner.get("source_id"), "catalog::abc")
         self.assertIs(seen.get("session"), proxy)
+
+
+class LargeAndMalformedDocumentsAreBounded(unittest.TestCase):
+    """A byte limit bounds the upload; it does not bound the work afterwards.
+
+    A small PDF can declare thousands of pages, or one page metres across. Rendering
+    either would allocate on the server - the one machine in this exchange that cannot
+    simply refuse - so the page count is checked at validation and the render is capped
+    by a pixel budget as well as by the width the browser asked for.
+    """
+
+    def _pdf(self, pages=1, width=595, height=842):
+        import pymupdf
+
+        doc = pymupdf.open()
+        for _ in range(pages):
+            doc.new_page(width=width, height=height)
+        data = doc.tobytes()
+        doc.close()
+        return data
+
+    def test_a_document_with_too_many_pages_is_refused(self):
+        from media_storage import validate_pdf_bytes
+        from upload_media import DOCUMENT_MAX_PAGES
+
+        data = self._pdf(pages=DOCUMENT_MAX_PAGES + 5)
+        self.assertLess(len(data), 5 * 1024 * 1024, "the point is it is a small file")
+        raw, err = validate_pdf_bytes(data)
+        self.assertIsNone(raw)
+        self.assertEqual(err, "too_many_pages")
+
+    def test_a_document_at_the_page_limit_is_accepted(self):
+        from media_storage import validate_pdf_bytes
+        from upload_media import DOCUMENT_MAX_PAGES
+
+        raw, err = validate_pdf_bytes(self._pdf(pages=DOCUMENT_MAX_PAGES))
+        self.assertEqual(err, "")
+        self.assertIsNotNone(raw)
+
+    def test_an_enormous_page_is_rendered_within_the_pixel_budget(self):
+        from upload_media import DOCUMENT_MAX_RENDER_PIXELS
+
+        png = panel._render_page_png(self._pdf(width=14000, height=14000), 0, 1100)
+        self.assertTrue(png and png.startswith(b"\x89PNG"))
+        try:
+            import pymupdf
+
+            pix = pymupdf.Pixmap(png)
+            self.assertLessEqual(pix.width * pix.height,
+                                 DOCUMENT_MAX_RENDER_PIXELS * 1.05)
+        except ImportError:
+            self.skipTest("PyMuPDF unavailable")
+
+    def test_an_ordinary_page_is_not_shrunk_by_the_budget(self):
+        png = panel._render_page_png(self._pdf(), 0, 1100)
+        import pymupdf
+
+        pix = pymupdf.Pixmap(png)
+        self.assertGreaterEqual(pix.width, 1000)
+
+    def test_a_malformed_document_renders_nothing_rather_than_raising(self):
+        self.assertIsNone(panel._render_page_png(b"%PDF-1.4 truncated", 0, 800))
+        self.assertIsNone(panel._render_page_png(b"", 0, 800))
+
+    def test_the_render_limits_live_with_the_other_upload_limits(self):
+        import upload_media
+
+        self.assertTrue(hasattr(upload_media, "DOCUMENT_MAX_PAGES"))
+        self.assertTrue(hasattr(upload_media, "DOCUMENT_MAX_RENDER_PIXELS"))
