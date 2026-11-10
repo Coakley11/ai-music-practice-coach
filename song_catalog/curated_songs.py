@@ -4217,12 +4217,14 @@ def _how_far_ill_go_chart_pack() -> dict[str, Any]:
 
 
 def _viva_la_vida_chart_pack() -> dict[str, Any]:
-    """Viva La Vida — Coldplay (C guitar-friendly chart · Ab concert, 4/4, ~138 BPM).
+    """Viva La Vida — Coldplay (stored in the recording's concert key, Ab major; guitarists play C-D-G-Em shapes, tonic G, with a capo on fret 1; 4/4, ~138 BPM).
 
-    Main loop **C · Dadd11 · G · Em** — preserve **Dadd11** (do not simplify to D
-    except beginner charts). Orchestral arena-pop backing — strings ostinato,
+    Main loop **Db · Ebadd11 · Ab · Fm** (the C · Dadd11 · G · Em capo-1 shapes, up a semitone) —
+    preserve **Ebadd11** (do not simplify to Eb except beginner charts). Orchestral arena-pop backing — strings ostinato,
     cinematic percussion, not acoustic strumming.
     """
+
+    from music_theory import transpose_sections_dict
 
     def _four() -> list[str]:
         return ["C", "Dadd11", "G", "Em"]
@@ -4255,10 +4257,13 @@ def _viva_la_vida_chart_pack() -> dict[str, Any]:
 
     beginner = {name: _beg_line(chords) for name, chords in intermediate.items()}
     advanced = {name: list(chords) for name, chords in intermediate.items()}
+    intermediate = transpose_sections_dict(intermediate, "G", "Ab")
+    beginner = transpose_sections_dict(beginner, "G", "Ab")
+    advanced = transpose_sections_dict(advanced, "G", "Ab")
 
     section_order = list(intermediate.keys())
     return {
-        "key": "C",
+        "key": "Ab",
         "sections": intermediate,
         "chart_versions": _levels(
             beginner=beginner,
@@ -4279,11 +4284,11 @@ def _viva_la_vida_chart_pack() -> dict[str, Any]:
             ],
             "Chorus 1": [
                 "Arena lift — fuller percussion and bigger strings",
-                "Bm → Em tag at the end — don't rush the handoff",
+                "Cm → Fm tag at the end — don't rush the handoff",
             ],
             "Bridge / Oh Section": [
                 "Dynamic contrast — expansive 'oh' moment",
-                "Dadd11 hold bars — let the harmony ring",
+                "Ebadd11 hold bars — let the harmony ring",
             ],
             "Final Chorus": [
                 "Biggest arrangement — anthem climax",
@@ -4295,9 +4300,10 @@ def _viva_la_vida_chart_pack() -> dict[str, Any]:
         },
         "extensions": _ext(
             arrangement_notes=(
-                "**Viva La Vida** — Coldplay (**Ab major** concert · **C** guitar-friendly "
-                "shapes, **4/4**, ~**138 BPM**). Core loop: **C · Dadd11 · G · Em** "
-                "(preserve **Dadd11** on intermediate/advanced). **Bm** appears at "
+                "**Viva La Vida** — Coldplay (**Ab major** concert, the recording's key; "
+                "guitarists play **C-D-G-Em** shapes with a capo on fret **1**; **4/4**, ~**138 BPM**). "
+                "Core loop: **Db · Ebadd11 · Ab · Fm** "
+                "(preserve **Ebadd11** on intermediate/advanced). **Cm** appears at "
                 "chorus/outro tags. Backing: orchestral strings, pizzicato/driving "
                 "ostinato, cinematic percussion, bass, light piano, arena drums — "
                 "not plain acoustic strumming or jazz reharm. Intro sets pulse; "
@@ -4319,12 +4325,13 @@ def _viva_la_vida_chart_pack() -> dict[str, Any]:
             ],
             vocal_showcase=True,
             concert_key="Ab",
-            guitar_friendly_key="C",
+            guitar_friendly_key="G",
+            capo_note="Capo 1 (G shapes: C-D-G-Em) · concert key Ab major",
             vocal_harmony_hints={
                 "Verse 1": "Storytelling tone — let strings carry momentum; stay inside the pulse.",
                 "Chorus 1": "Brighter, declarative — save peak energy for Final Chorus.",
                 "Bridge / Oh Section": "Widest dynamic — long vowels on the 'oh' lifts.",
-                "Final Chorus": "Full arena delivery — commit to the Bm → Em cadence.",
+                "Final Chorus": "Full arena delivery — commit to the Cm → Fm cadence.",
             },
             harmonic_analysis={
                 "progression_summary": "C major loop C–Dadd11–G–Em with Bm color in chorus tags",
@@ -9580,8 +9587,8 @@ def curated_song_records() -> list[dict[str, Any]]:
         }),
 
         # --- Coldplay (guitar-friendly, rehearsal-level form) ---
-        _s("Viva La Vida", "Coldplay", "Pop", "C", {
-            "Placeholder": ["C"],
+        _s("Viva La Vida", "Coldplay", "Pop", "Ab", {
+            "Placeholder": ["Ab"],
         }),
         _s("Yellow", "Coldplay", "Pop", "B", {
             "Intro": ["B", "B", "F#", "E"],
