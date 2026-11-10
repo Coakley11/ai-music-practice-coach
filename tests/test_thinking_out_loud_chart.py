@@ -56,5 +56,32 @@ class ThinkingOutLoudTempoTests(unittest.TestCase):
                 self.assertNotIn(stale, flat, f"{level}: stale capo spelling {stale}")
 
 
+class ThinkingOutLoudFormIntentTests(unittest.TestCase):
+    """The mid-form "Ending Tag" is intentional; pin it so it is not "fixed".
+
+    A section named for an ending, sitting between Chorus 1 and Verse 2, reads
+    like a defect. It is not. Guitarcoachmag's lesson on the recording describes
+    the seven-chord figure (Bm, A, G, D/F#, Em, A7, D in concert D) played
+    quickly with a dead hit "before the song returns to the verse", and says it
+    repeats three times at the very end. The tag is both a turnaround and the
+    ending, so the position is right.
+    """
+
+    def test_the_tag_sits_before_verse_2_and_is_also_the_outro(self) -> None:
+        rec = copy.deepcopy(
+            next(r for r in curated_song_records() if r["title"] == "Thinking Out Loud")
+        )
+        _v, adv = resolve_level_chart(rec, "Advanced")
+        order = list(adv)
+        self.assertIn("Ending Tag", order)
+        self.assertEqual(order[order.index("Ending Tag") + 1], "Verse 2")
+        tag = adv["Ending Tag"]
+        self.assertEqual(len(tag), 7, "the figure is seven chords")
+        self.assertEqual(tag, ["Bm", "A", "G", "D/F#", "Em", "A", "D"])
+        # the Outro is the same figure repeated; the source says three times,
+        # this chart has two. Pinned as-is so a change is a deliberate decision.
+        self.assertEqual(adv["Outro"], tag * 2)
+
+
 if __name__ == "__main__":
     unittest.main()

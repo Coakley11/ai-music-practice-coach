@@ -259,6 +259,15 @@ def _thinking_out_loud_chart_pack() -> dict[str, Any]:
         + ["C", "C/E"]
     )
     chorus = ["F", "G", "C", "C/E"] * 3 + ["F", "G"]
+    # The seven-chord tag is deliberately BOTH a mid-song turnaround and the
+    # ending. Guitarcoachmag's lesson on the recording describes these seven
+    # chords (Bm, A, G, D/F#, Em, A7, D in concert D) played quickly with a dead
+    # hit "before the song returns to the verse", and says the figure repeats
+    # three times at the very end. So "Ending Tag" sitting before Verse 2 is
+    # correct, not a misplaced ending - do not move or delete it.
+    # Two details from that source are NOT applied here, each resting on that
+    # single secondary source: it gives A7 where this chart has a plain A in the
+    # sixth cell, and three repeats at the end where "Outro" has two.
     ending_tag = ["Am", "G", "F", "C/E", "Dm", "G", "C"]
 
     intermediate = {
