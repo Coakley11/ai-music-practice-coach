@@ -244,3 +244,54 @@ def apply_register_override(profile: NotationProfile, register: str) -> Notation
         written_octave=int(octave),
         register_hint=hint,
     )
+
+
+# The lowest and highest note each instrument can actually play, as *written* pitch.
+#
+# The profiles above are comfortable middle registers - where a line should normally sit.
+# These are the hard edges: the note below which the instrument produces nothing, and the
+# note above which it stops being ordinary repertoire. Standard horns only - no altissimo,
+# no low-A baritone, no five-string bass, no drop tuning - because an exercise generator
+# should not assume equipment the player may not own.
+#
+# Needed because a comfortable register is not a limit, and widening one by level was
+# producing notes that do not exist on the instrument: a bari sax exercise sixteen
+# semitones below its lowest note, a guitar exercise below the open low E.
+PLAYABLE_WRITTEN_RANGE: dict[str, tuple[int, int]] = {
+    "flute": (60, 96),        # C4-C7
+    "clarinet": (50, 91),     # written E3-G6
+    "alto sax": (58, 89),     # written Bb3-F6 - the same written range for every
+    "tenor sax": (58, 89),    # saxophone, which is the point of the family: one
+    "soprano sax": (58, 89),  # fingering system, one written range, different
+    "bari sax": (58, 89),     # sounding pitch
+    "sax": (58, 89),
+    "trumpet": (54, 89),      # written F#3-F6
+    "flugel": (54, 89),
+    "trombone": (40, 77),     # E2-F5
+    "tuba": (28, 65),
+    "bass": (40, 67),         # written E2-G4, sounding E1-G3
+    "guitar": (52, 88),       # written E3-E6, open low E upward
+    "piano": (21, 108),
+    "keyboard": (21, 108),
+    "voice": (48, 79),        # an untrained adult range, C3-G5
+}
+
+
+def playable_written_range(instrument: str) -> tuple[int, int]:
+    """Hard written limits for *instrument*, or the piano's if it is not a known one.
+
+    Matched on the same substrings the profile table uses, longest first so that
+    "tenor sax" wins over "sax".
+    """
+    low = str(instrument or "").strip().lower()
+    for needle in sorted(PLAYABLE_WRITTEN_RANGE, key=len, reverse=True):
+        if needle in low:
+            return PLAYABLE_WRITTEN_RANGE[needle]
+    fam = instrument_family(instrument)
+    if fam == "bass":
+        return PLAYABLE_WRITTEN_RANGE["bass"]
+    if fam == "fretted":
+        return PLAYABLE_WRITTEN_RANGE["guitar"]
+    if fam == "keyboard":
+        return PLAYABLE_WRITTEN_RANGE["piano"]
+    return (21, 108)

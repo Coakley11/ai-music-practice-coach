@@ -319,16 +319,55 @@ def instrument_register(instrument: str, level: str = "Intermediate") -> tuple[i
     Soprano/Bari Sax, Trumpet, Trombone, Tuba, Clarinet, Flute, Piano roles,
     Bass and Guitar) instead of inventing a second range table. Beginner
     uses that profile's own comfortable middle register unchanged; higher
-    levels symmetrically widen it, still bounded by real instrument limits.
+    levels symmetrically widen it, bounded by the instrument's real written
+    limits.
+
+    That last clause used to be a claim rather than a mechanism. The profile
+    is a *comfortable middle*, not a limit, and widening it by three semitones
+    a level ran off the bottom of the instrument: measured across nine
+    instruments, seventeen instrument/level combinations generated notes below
+    the lowest note the instrument has - a bari sax exercise sixteen semitones
+    below its low Bb, a guitar exercise below the open low E, and tenor and
+    bari already out of range at Beginner, where the profile itself starts
+    below the horn.
+
+    Every failure was at the bottom, never the top, because these registers sit
+    low in the instrument's compass. So width the floor cannot absorb is given
+    to the ceiling instead: Advanced still practises over a wider span than
+    Beginner - which is what the level is for - and every note of it exists on
+    the instrument.
     """
-    from music_coach_ami.notation_profile import notation_profile_for_instrument
+    from music_coach_ami.notation_profile import (
+        notation_profile_for_instrument,
+        playable_written_range,
+    )
 
     profile = notation_profile_for_instrument(instrument or "")
     expand = _LEVEL_REGISTER_EXPANSION.get(_normalize_level(level), 0)
-    lo = max(21, int(profile.midi_low) - expand)
-    hi = min(108, int(profile.midi_high) + expand)
-    if hi <= lo:
-        hi = lo + 12
+    floor, ceiling = playable_written_range(instrument or "")
+    # The profile is the starting point, but it may itself sit outside the
+    # instrument (tenor and bari sax do), so clamp it before widening.
+    base_lo = min(max(int(profile.midi_low), floor), ceiling)
+    base_hi = max(min(int(profile.midi_high), ceiling), floor)
+    lo = max(floor, base_lo - expand)
+    hi = min(ceiling, base_hi + expand)
+    # Hand the unusable half of the expansion to the other end rather than
+    # dropping it, so a level still means a wider register than the one below.
+    spare_low = expand - (base_lo - lo)
+    if spare_low > 0:
+        hi = min(ceiling, hi + spare_low)
+    spare_high = expand - (hi - base_hi)
+    if spare_high > 0:
+        lo = max(floor, lo - spare_high)
+    # Every register this module resolves must span at least an octave, or
+    # ``_nearest_octave_in_range`` has no representative of some pitch class to
+    # return and the generators emit a note outside their own bounds. Raising
+    # the baritone saxophone's floor to its real low Bb left it nine semitones
+    # wide and did exactly that.
+    if hi - lo < 12:
+        hi = min(ceiling, lo + 12)
+    if hi - lo < 12:
+        lo = max(21, hi - 12)
     start = (lo + hi) // 2
     return lo, hi, start
 
