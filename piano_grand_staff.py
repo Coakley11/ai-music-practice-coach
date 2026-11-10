@@ -36,6 +36,13 @@ PIANO_EXERCISE_LOW = 55   # G3
 PIANO_EXERCISE_HIGH = 84  # C6
 
 __all__ = [
+    "LH_OCTAVE",
+    "LH_ROLE_FOR_FOCUS",
+    "LH_ROOT",
+    "LH_ROOT_FIFTH",
+    "LH_ROOT_SEVENTH",
+    "LH_SHELL_3_7",
+    "LH_THIRD_ROOT",
     "MIDDLE_C",
     "PIANO_HIGH",
     "PIANO_EXERCISE_HIGH",
@@ -47,6 +54,7 @@ __all__ = [
     "hands_for_scale",
     "hands_for_voicing",
     "in_piano_range",
+    "left_hand_role",
     "scale_motion_for",
     "split_hands",
 ]
@@ -104,6 +112,80 @@ def _nearest_octave_of(pc: int, near: int) -> int:
     return _clamp_to_piano(best)
 
 
+# What the left hand is doing, as roles rather than note lists, so the names say why.
+# Each is read against the chord's own tones: root, 3rd, 5th, 7th.
+LH_ROOT = "root"                 # the root alone - the plainest foundation
+LH_ROOT_FIFTH = "root_fifth"     # root and fifth - the common two-note foundation
+LH_ROOT_SEVENTH = "root_seventh"  # the jazz left hand: root and seventh, 7 falling to 3
+LH_SHELL_3_7 = "shell_3_7"       # the guide tones themselves, no root at all
+LH_THIRD_ROOT = "third_root"     # the third underneath - a first-inversion bass
+LH_OCTAVE = "octave"             # root doubled an octave up - a stride foundation
+
+# Which role each Practice Focus asks the left hand for. Matched as a substring of the focus
+# label, so the canonical focus list in practice_setup_controls stays the only list of foci:
+# this names no new ones and invents no vocabulary of its own.
+#
+# Only foci that name a *left-hand* job are here. Improvisation, Soloing, Melody and the like
+# are about the line the right hand plays and say nothing about the left, so forcing a role
+# from them would be this module inventing an opinion the focus never expressed - and it
+# would hide the level progression behind whichever focus happened to be selected. Those, and
+# a focus with no opinion at all like Tone or Timing, leave the level's own progression
+# alone. "Guide Tones" is kept because the upstream voicing engine already special-cases it.
+LH_ROLE_FOR_FOCUS: dict[str, str] = {
+    "guide tones": LH_SHELL_3_7,
+    "reharmonization": LH_SHELL_3_7,
+    "voice leading": LH_ROOT_SEVENTH,
+    "left-hand": LH_OCTAVE,
+    "inversions": LH_THIRD_ROOT,
+    "comping": LH_ROOT_FIFTH,
+}
+
+
+def left_hand_role(level: str = "Intermediate", focus: str = "") -> str:
+    """Which role the left hand takes, from the Practice Focus if it asks and the level if not.
+
+    The level progression is the one a pianist actually follows - the root alone, then root
+    and fifth, then the root-and-seventh shell - and a focus that names a left-hand job
+    outranks it, because that is the exercise the musician chose.
+    """
+    text = str(focus or "").strip().lower()
+    for needle, role in LH_ROLE_FOR_FOCUS.items():
+        if needle in text:
+            return role
+    lvl = str(level or "Intermediate").strip().title()
+    if lvl == "Advanced":
+        return LH_ROOT_SEVENTH
+    if lvl == "Intermediate":
+        return LH_ROOT_FIFTH
+    return LH_ROOT
+
+
+def _pcs_for_role(role: str, tones: Sequence[int]) -> tuple[list[int], bool]:
+    """``(pitch classes, double_an_octave)`` for a left-hand role, given the chord's tones.
+
+    A role that needs a tone the chord does not have - a seventh on a triad - falls back to
+    the nearest role the chord can actually supply rather than borrowing a note from
+    somewhere else and changing the harmony.
+    """
+    root = tones[0]
+    has_third = len(tones) >= 2
+    has_fifth = len(tones) >= 3
+    has_seventh = len(tones) >= 4
+    if role == LH_SHELL_3_7 and has_seventh:
+        return [tones[1], tones[3]], False
+    if role == LH_ROOT_SEVENTH and has_seventh:
+        return [root, tones[3]], False
+    if role == LH_THIRD_ROOT and has_third:
+        return [tones[1], root], False
+    if role == LH_OCTAVE:
+        return [root], True
+    if role == LH_ROOT_FIFTH and has_fifth:
+        return [root, tones[2]], False
+    if role in (LH_SHELL_3_7, LH_ROOT_SEVENTH) and has_fifth:
+        return [root, tones[2]], False      # no seventh to shell: the plain foundation
+    return [root], False
+
+
 def hands_for_voicing(
     voicing_midis: Sequence[int],
     chord: str = "",
@@ -143,17 +225,8 @@ def hands_for_voicing(
     if not tones:
         tones = sorted({m % 12 for m in right})
 
-    root_pc = tones[0]
-    lvl = str(level or "Intermediate").strip().title()
-    focus_text = str(focus or "").lower()
-
-    wanted: list[int] = [root_pc]
-    if "guide" in focus_text and len(tones) >= 4:
-        wanted = [tones[1], tones[3]]          # 3rd and 7th
-    elif lvl == "Advanced" and len(tones) >= 4:
-        wanted = [root_pc, tones[3]]           # root and seventh shell
-    elif lvl == "Intermediate" and len(tones) >= 3:
-        wanted = [root_pc, tones[2]]           # root and fifth
+    role = left_hand_role(level, focus)
+    wanted, double_octave = _pcs_for_role(role, tones)
 
     left: list[int] = []
     anchor = LEFT_HAND_CENTRE
@@ -162,6 +235,14 @@ def hands_for_voicing(
         if midi not in left:
             left.append(midi)
         anchor = midi + 4
+    if double_octave and left:
+        # The octave goes *below* the root, not above it. Doubling upwards puts the top note
+        # at or past middle C for most roots, where it stops being a left hand and starts
+        # crowding the right; downwards is where a stride foundation actually lives, and it
+        # is always clear of the voicing above.
+        lower = _clamp_to_piano(left[0] - 12)
+        if lower not in left:
+            left.append(lower)
     left.sort()
 
     # The hands must not collide or cross: lift the right hand clear if the voicing sits

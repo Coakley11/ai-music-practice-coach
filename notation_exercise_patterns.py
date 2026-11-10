@@ -61,6 +61,96 @@ _MODE_PLANS: dict[str, dict[str, tuple[str, ...]]] = {
 }
 
 
+# Which patterns belong to each mode. An explicit mode is the musician saying which study
+# they want, so the Practice Focus may shape *how* that study is practised but may never
+# reach outside these sets - a Guide Tones focus must not turn a scale study into an
+# arpeggio study.
+_MODE_FAMILIES: dict[str, frozenset[str]] = {
+    "arpeggios": frozenset(
+        {"arpeggio_up", "arpeggio_down", "arpeggio_up_down", "arpeggio_inversions",
+         "voice_leading"}
+    ),
+    "scales": frozenset(
+        {"scale_up", "scale_down", "scale_up_down", "thirds", "fourths",
+         "triplet_sequence", "four_note_sequence"}
+    ),
+}
+
+# What each Practice Focus emphasises, in preference order, as patterns. Matched as a
+# substring of the focus label, the way _FOCUS_PLANS already matches, so the one canonical
+# focus list in practice_setup_controls stays the only list of foci - this names no new ones.
+# Unlisted foci simply leave the mode's level plan alone, which is the honest answer for a
+# focus like Tone or Timing that does not change *which notes* to play.
+_FOCUS_EMPHASIS: dict[str, tuple[str, ...]] = {
+    "guide tones": ("voice_leading", "thirds", "arpeggio_up_down"),
+    "voice leading": ("voice_leading", "thirds", "arpeggio_up_down"),
+    "inversions": ("arpeggio_inversions", "arpeggio_up_down", "thirds"),
+    "bebop": ("four_note_sequence", "thirds", "voice_leading", "arpeggio_up_down"),
+    "technique": ("triplet_sequence", "four_note_sequence", "fourths",
+                  "arpeggio_inversions"),
+    "phrasing": ("scale_up_down", "arpeggio_up_down", "thirds"),
+    "ear training": ("scale_up", "arpeggio_up", "scale_down", "arpeggio_down"),
+    "melody": ("scale_up_down", "thirds", "arpeggio_up_down"),
+    "harmony": ("arpeggio_up_down", "voice_leading", "thirds"),
+    "improvisation": ("thirds", "scale_up_down", "arpeggio_up_down", "four_note_sequence"),
+    "soloing": ("thirds", "fourths", "scale_up_down", "arpeggio_up_down"),
+    "lead": ("thirds", "scale_up_down", "arpeggio_up_down"),
+    "triads": ("arpeggio_up", "arpeggio_down", "arpeggio_inversions"),
+    "double stops": ("thirds", "fourths"),
+    "root motion": ("arpeggio_up", "arpeggio_down"),
+    "walking": ("scale_up", "arpeggio_up", "scale_down", "arpeggio_down"),
+    "left-hand": ("arpeggio_up", "arpeggio_down", "voice_leading"),
+    "comping": ("voice_leading", "arpeggio_up_down"),
+    "voicings": ("arpeggio_up_down", "voice_leading", "arpeggio_inversions"),
+    "reharmonization": ("voice_leading", "arpeggio_inversions", "thirds"),
+}
+
+
+def _focus_emphasis(focus: str) -> tuple[str, ...]:
+    text = str(focus or "").strip().lower()
+    if not text:
+        return ()
+    for needle, patterns in _FOCUS_EMPHASIS.items():
+        if needle in text:
+            return patterns
+    return ()
+
+
+def _level_appropriate(mode: str, level: str) -> list[str]:
+    """Patterns this mode drills at this level or any easier one.
+
+    The ceiling matters: without it a Technique focus would hand a Beginner the Advanced
+    four-note sequences, which is the focus overruling the level rather than colouring it.
+    """
+    plans = _MODE_PLANS[mode]
+    order = ("Beginner", "Intermediate", "Advanced")
+    allowed: list[str] = []
+    for name in order[: order.index(level) + 1]:
+        for pattern in plans[name]:
+            if pattern not in allowed:
+                allowed.append(pattern)
+    return allowed
+
+
+def mode_plan_for_focus(mode: str, level: str, focus: str = "") -> tuple[str, ...]:
+    """The pattern cycle for an explicit mode, ordered by what the focus emphasises.
+
+    The mode stays authoritative - every pattern returned is one this mode drills at this
+    level - and the focus decides which of them lead. A focus the exercise patterns have no
+    opinion about returns the mode's plain level plan unchanged.
+    """
+    base = _MODE_PLANS[mode][level]
+    emphasis = _focus_emphasis(focus)
+    if not emphasis:
+        return base
+    family = _MODE_FAMILIES[mode]
+    allowed = _level_appropriate(mode, level)
+    lead = [p for p in emphasis if p in family and p in allowed]
+    if not lead:
+        return base
+    return tuple(lead) + tuple(p for p in base if p not in lead)
+
+
 def normalize_exercise_mode(mode: str) -> str:
     text = str(mode or "auto").strip().lower()
     return text if text in EXERCISE_MODES else "auto"
@@ -119,7 +209,8 @@ def pattern_plan(
     lvl = _level(level)
     chosen = normalize_exercise_mode(mode)
     if chosen != "auto":
-        plan = _MODE_PLANS[chosen][lvl]
+        # The mode decides which study; the focus decides how it is practised within it.
+        plan = mode_plan_for_focus(chosen, lvl, focus)
     else:
         plan = _focus_plan(focus) or _LEVEL_PLANS[lvl]
     if n_measures <= 0:
@@ -499,6 +590,7 @@ __all__ = [
     "normalize_exercise_mode",
     "EXERCISE_PATTERNS",
     "NOTES_PER_BAR",
+    "mode_plan_for_focus",
     "build_exercise_events",
     "build_exercise_midis",
     "chord_tone_pcs",

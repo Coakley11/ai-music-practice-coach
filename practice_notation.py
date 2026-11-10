@@ -907,11 +907,27 @@ def _build_piano_voicings(
                 if mode == "scales":
                     bars.append(hands_for_scale(line, motion=motion))
                 else:
-                    # Arpeggios: the right hand breaks the chord, the left answers with
-                    # the same shape an octave down on alternate notes, which is how a
-                    # two-handed broken-chord study is actually practised.
+                    # Arpeggios: the right hand breaks the chord and the left answers an
+                    # octave below. How much it answers is the left hand's job for this
+                    # focus - the same roles the Auto voicings use, so one focus means one
+                    # thing across the piano's three modes rather than two unrelated ideas.
+                    from piano_grand_staff import (
+                        LH_OCTAVE,
+                        LH_ROOT,
+                        left_hand_role,
+                    )
+
+                    role = left_hand_role(level, focus)
+                    if role == LH_ROOT:
+                        # Keep the left hand out of the way: the foundation on the downbeat
+                        # only, so the right hand's line is the exercise.
+                        answers = lambda i: i == 0
+                    elif role == LH_OCTAVE:
+                        answers = lambda i: True       # both hands all the way down
+                    else:
+                        answers = lambda i: i % 2 == 0  # alternate notes
                     bars.append([
-                        ([m - 12, m] if i % 2 == 0 else [m])
+                        ([m - 12, m] if answers(i) else [m])
                         for i, m in enumerate(line)
                     ])
         else:

@@ -69,8 +69,14 @@ class EveryModeIsAGrandStaff(unittest.TestCase):
 class TheHandsHaveRoles(unittest.TestCase):
     """Beginner roots, Intermediate root-and-fifth, Advanced a root-and-seventh shell."""
 
-    def _bass_first_chord(self, difficulty):
-        _, bass = _staves(_render("auto", difficulty).abc)
+    def _bass_first_chord(self, difficulty, focus="Tone"):
+        """Read the level progression under a focus that names no left-hand job.
+
+        A focus that does name one - Left-Hand Patterns, Voice Leading, Inversions -
+        outranks the level by design, so asserting the progression under one of those would
+        be asserting the override instead.
+        """
+        _, bass = _staves(_render("auto", difficulty, focus=focus).abc)
         return bass.split("|", 1)[0].strip()
 
     def test_beginner_left_hand_plays_a_single_root(self):
@@ -91,10 +97,12 @@ class TheHandsHaveRoles(unittest.TestCase):
         treble, _ = _staves(_render("auto", "medium").abc)
         self.assertIn("[", treble.split("|", 1)[0])
 
-    def test_guide_tones_focus_changes_the_left_hand(self):
-        plain = _staves(_render("auto", "medium", focus="Improvisation").abc)[1]
-        guide = _staves(_render("auto", "medium", focus="Guide Tones").abc)[1]
-        self.assertNotEqual(plain, guide)
+    def test_a_focus_that_names_a_left_hand_job_outranks_the_level(self):
+        plain = _staves(_render("auto", "medium", focus="Tone").abc)[1]
+        for focus in ("Left-Hand Patterns", "Voice Leading", "Inversions", "Guide Tones"):
+            with self.subTest(focus=focus):
+                claimed = _staves(_render("auto", "medium", focus=focus).abc)[1]
+                self.assertNotEqual(plain, claimed)
 
     def test_the_hands_do_not_collide(self):
         from chord_navigation_notation import build_connected_piano_voicings
