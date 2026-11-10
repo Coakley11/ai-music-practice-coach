@@ -12,18 +12,22 @@ from media_state import (
     is_multitrack_export_tombstone,
     is_multitrack_tombstone,
     is_recording_tombstone,
+    is_song_document_tombstone,
     is_tone_take_tombstone,
     merge_catalog,
     migrate_multitrack_export,
     migrate_multitrack_session,
+    migrate_song_document,
     migrate_tone_take,
     migrate_uploaded_recording,
     new_multitrack_export_id,
     new_multitrack_id,
     new_recording_id,
+    new_song_document_id,
     new_tone_take_id,
     normalize_multitrack_exports,
     normalize_multitrack_sessions,
+    normalize_song_documents,
     normalize_tone_takes,
     normalize_uploaded_recordings,
     _utc_now_iso,
@@ -71,6 +75,7 @@ def _empty_catalog(*, workspace_id: str) -> dict[str, Any]:
         "multitrack_sessions": [],
         "tone_takes": [],
         "multitrack_exports": [],
+        "song_documents": [],
     }
 
 
@@ -300,6 +305,88 @@ def _catalog_from_st(st: Any | None, catalog: dict[str, Any] | None) -> dict[str
         except Exception:
             pass
     return load_media_catalog(st=st)
+
+
+def _replace_song_document(catalog: dict[str, Any], row: dict[str, Any]) -> dict[str, Any]:
+    out = dict(catalog)
+    rows = list(out.get("song_documents") or [])
+    did = str(row.get("document_id") or "")
+    rows = [r for r in rows if str(r.get("document_id") or "") != did]
+    rows.append(row)
+    out["song_documents"] = rows
+    return out
+
+
+def add_song_document(st: Any | None, fields: dict[str, Any]) -> dict[str, Any]:
+    """Insert one document row and persist. Returns ``(row, result)`` via ``_saved``."""
+    catalog = _catalog_from_st(st, None)
+    now = _utc_now_iso()
+    ws = _resolve_workspace_id(st=st)
+    row = migrate_song_document(
+        {
+            **dict(fields or {}),
+            "document_id": str((fields or {}).get("document_id") or "").strip()
+            or new_song_document_id(),
+            "created_at": now,
+            "updated_at": now,
+            "workspace_id": ws,
+            "deleted": False,
+        }
+    )
+    result = save_media_catalog(_replace_song_document(catalog, row), st=st)
+    # The caller has to be able to tell a saved document from one that only looks saved,
+    # so the persistence result travels with the row rather than being discarded.
+    return {"row": row, "ok": bool(result.get("ok")), "error": str(result.get("error") or "")}
+
+
+def update_song_document(
+    st: Any | None,
+    document_id: str,
+    updates: dict[str, Any],
+) -> dict[str, Any]:
+    did = str(document_id or "").strip()
+    if not did:
+        return {"row": {}, "ok": False, "error": "missing_document_id"}
+    catalog = _catalog_from_st(st, None)
+    rows = catalog.get("song_documents") if isinstance(catalog.get("song_documents"), list) else []
+    existing = None
+    for row in rows:
+        if isinstance(row, dict) and str(row.get("document_id") or "") == did:
+            existing = migrate_song_document(row)
+            break
+    if not existing or is_song_document_tombstone(existing):
+        return {"row": {}, "ok": False, "error": "document_not_found"}
+    merged = {
+        **existing,
+        **dict(updates or {}),
+        "document_id": did,
+        "updated_at": _utc_now_iso(),
+    }
+    row = migrate_song_document(merged)
+    result = save_media_catalog(_replace_song_document(catalog, row), st=st)
+    return {"row": row, "ok": bool(result.get("ok")), "error": str(result.get("error") or "")}
+
+
+def delete_song_document(st: Any | None, document_id: str) -> dict[str, Any]:
+    did = str(document_id or "").strip()
+    if not did:
+        return {"ok": False, "error": "missing_document_id"}
+    catalog = _catalog_from_st(st, None)
+    tomb = {
+        "document_id": did,
+        "deleted": True,
+        "updated_at": _utc_now_iso(),
+        "workspace_id": _resolve_workspace_id(st=st),
+    }
+    result = save_media_catalog(_replace_song_document(catalog, tomb), st=st)
+    return {"ok": bool(result.get("ok")), "error": str(result.get("error") or "")}
+
+
+def list_song_documents(*, st: Any | None = None) -> list[dict[str, Any]]:
+    """Every visible document in this workspace, newest first."""
+    catalog = load_media_catalog(st=st)
+    rows = catalog.get("song_documents") if isinstance(catalog.get("song_documents"), list) else []
+    return normalize_song_documents(rows)
 
 
 def _replace_recording(catalog: dict[str, Any], row: dict[str, Any]) -> dict[str, Any]:

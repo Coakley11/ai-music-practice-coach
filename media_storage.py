@@ -156,12 +156,127 @@ def build_mix_export_object_key(
     return f"{uid}/{ws}/multitrack_exports/{eid}{ext}"
 
 
-def recording_local_abs_path(workspace_id: str, rel_path: str) -> Path:
+def song_document_relpath(document_id: str) -> str:
+    """Where a document's bytes live inside the workspace folder.
+
+    Always ``.pdf``: the extension comes from the validated content, never from the name
+    the browser sent, so an uploaded "lick.pdf.exe" cannot choose its own path.
+    """
+    return f"media/song_documents/{str(document_id or '').strip()}.pdf"
+
+
+def song_document_local_path(workspace_id: str, rel_path: str) -> Path | None:
+    """The document's file, or ``None`` if the row points outside the workspace.
+
+    ``recording_local_abs_path`` only strips a leading slash, so a relative path holding
+    ``..`` resolves outside the workspace folder entirely. Nothing the app writes ever
+    contains one - the name is built from a generated id - but a catalog row is data,
+    and data that has been edited, synced from elsewhere or corrupted must not be able
+    to name an arbitrary file on disk. Resolved and checked, every read.
+    """
+    return workspace_contained_path(workspace_id, rel_path)
+
+
+def build_song_document_object_key(user_id: str, workspace_id: str, document_id: str) -> str:
+    """The private object key, scoped by user and workspace exactly like recordings."""
+    uid = str(user_id or "local").strip() or "local"
+    ws = str(workspace_id or "daniel").strip() or "daniel"
+    did = str(document_id or "").strip()
+    return f"{uid}/{ws}/song_documents/{did}.pdf"
+
+
+def song_document_key_belongs_to(storage_ref: str, user_id: str, workspace_id: str) -> bool:
+    """Does this reference live under *this* user's and workspace's prefix?
+
+    Checked before any download. The bucket is private and reached through a service
+    client, so a row is the only way to name an object - and a row from another
+    workspace, or a hand-edited one, must not be able to point this session at someone
+    else's bytes.
+    """
+    _bucket, object_key = parse_storage_ref(storage_ref)
+    if not object_key:
+        return False
+    uid = str(user_id or "local").strip() or "local"
+    ws = str(workspace_id or "daniel").strip() or "daniel"
+    return object_key.startswith(f"{uid}/{ws}/song_documents/")
+
+
+def workspace_root(workspace_id: str) -> Path:
     from suite_workspace import workspace_dir
 
     ws = str(workspace_id or "daniel").strip() or "daniel"
-    rel = str(rel_path or "").strip().lstrip("/\\")
-    return workspace_dir(ws) / rel
+    return workspace_dir(ws)
+
+
+def _contained_parts(rel_path: str) -> list[str]:
+    """The components of *rel_path* that can only ever go downwards.
+
+    Drops "", ".", ".." and anything carrying a drive letter, so the result cannot
+    climb out of the directory it is joined to however the input was spelled:
+    "../x", "..\\x", "/etc/x", "C:/x" and "a/../../x" all collapse to something inside.
+    """
+    text = str(rel_path or "").strip().replace("\\", "/")
+    parts: list[str] = []
+    for part in text.split("/"):
+        part = part.strip()
+        if not part or part in (".", "..") or ":" in part:
+            continue
+        parts.append(part)
+    return parts
+
+
+def recording_local_abs_path(workspace_id: str, rel_path: str) -> Path:
+    """A path inside the workspace folder, whatever ``rel_path`` tried to say.
+
+    This used only to strip a leading slash, so a stored path containing ".." resolved
+    outside the workspace entirely - and the catalog rows that supply it are *data*:
+    synced from the cloud, editable on disk, and not necessarily written by this
+    version of the app. Among the callers is ``delete_recording_local``, which unlinks
+    what it is given, so a traversal path there meant arbitrary file deletion rather
+    than merely reading the wrong file.
+
+    Containment is by construction - traversal components are dropped rather than
+    resolved - so every existing caller becomes safe without being changed. Code that
+    needs to *know* a path pointed outside, rather than quietly be handed a safe one,
+    should use ``workspace_contained_path``.
+    """
+    return workspace_root(workspace_id).joinpath(*_contained_parts(rel_path))
+
+
+def workspace_contained_path(workspace_id: str, rel_path: str) -> Path | None:
+    """The real file for *rel_path*, or ``None`` if it is not inside the workspace.
+
+    Stricter than ``recording_local_abs_path`` in three ways. It judges the value as
+    given, so a path that *tried* to climb out is refused rather than quietly corrected
+    into a different file inside the workspace - which for a delete would mean removing
+    something real instead of nothing. It refuses absolute and drive-qualified paths for
+    the same reason. And it compares *canonical* paths, so a symlink planted inside the
+    workspace and pointing elsewhere is refused too; lexical cleaning cannot see through
+    a link.
+    """
+    raw = str(rel_path or "").strip().replace("\\", "/")
+    if not raw:
+        return None
+    if raw.startswith("/") or ":" in raw.split("/")[0]:
+        return None
+    if any(part.strip() == ".." for part in raw.split("/")):
+        return None
+    if not _contained_parts(raw):
+        return None
+    # Built through ``recording_local_abs_path`` rather than from the root directly, so
+    # the one place the rest of the app (and its tests) substitutes to redirect storage
+    # stays the single seam for both. Doing the join here instead would silently bypass
+    # every caller that relies on that.
+    root = recording_local_abs_path(workspace_id, "")
+    candidate = recording_local_abs_path(workspace_id, raw)
+    try:
+        resolved = candidate.resolve()
+        resolved_root = root.resolve()
+    except Exception:
+        return None
+    if resolved != resolved_root and resolved_root not in resolved.parents:
+        return None
+    return resolved
 
 
 def build_supabase_object_key(
@@ -233,6 +348,211 @@ def _validate_audio_bytes(audio: Any) -> tuple[bytes | None, str]:
     if len(data) > MAX_RECORDING_BYTES:
         return None, "audio_too_large"
     return data, ""
+
+
+def validate_pdf_bytes(data: Any) -> tuple[bytes | None, str]:
+    """Is this really a PDF, and is it a sane size?
+
+    The filename is not evidence - a browser will happily send "exercise.pdf" for
+    anything - so the content is checked instead: the ``%PDF-`` signature every PDF
+    opens with, and an ``%%EOF`` marker near the end, which a truncated or interrupted
+    upload will not have. Both are cheap and neither needs a PDF library.
+    """
+    from upload_media import DOCUMENT_MAX_PAGES, DOCUMENT_MAX_SIZE_BYTES
+
+    if data is None or data == b"":
+        return None, "missing_document"
+    if isinstance(data, bytearray):
+        raw = bytes(data)
+    elif isinstance(data, bytes):
+        raw = data
+    else:
+        return None, "invalid_document_type"
+    if not raw:
+        return None, "empty_document"
+    if len(raw) > DOCUMENT_MAX_SIZE_BYTES:
+        return None, "document_too_large"
+    if not raw.startswith(b"%PDF-"):
+        return None, "not_a_pdf"
+    # A byte limit does not bound the work: a small file can declare thousands of pages,
+    # and every one of them is something the server may later be asked to render.
+    pages = pdf_page_count(raw)
+    if pages and pages > DOCUMENT_MAX_PAGES:
+        return None, "too_many_pages"
+    # The trailer is the last thing a writer emits, so its absence is the signature of a
+    # file that never finished arriving. Some writers pad after it, hence the window.
+    if b"%%EOF" not in raw[-2048:]:
+        return None, "pdf_truncated"
+    return raw, ""
+
+
+def pdf_page_count(data: bytes) -> int | None:
+    """A best-effort page count for the list, never a reason to reject a file.
+
+    PyMuPDF when it is installed, because it reads the page tree rather than guessing;
+    a ``/Type /Page`` scan otherwise, which is close enough for a caption and wrong for
+    a document that stores its pages in an object stream.
+    """
+    try:
+        import pymupdf
+
+        with pymupdf.open(stream=data, filetype="pdf") as doc:
+            count = int(doc.page_count)
+            if count > 0:
+                return count
+    except Exception:
+        pass
+    try:
+        import re
+
+        hits = len(re.findall(rb"/Type\s*/Page[^s]", data or b""))
+        return hits or None
+    except Exception:
+        return None
+
+
+def save_song_document_local(
+    workspace_id: str,
+    document_id: str,
+    data: bytes,
+) -> tuple[str, str]:
+    """Write the PDF into the workspace folder. ``(relpath, error)``."""
+    rel = song_document_relpath(document_id)
+    path = recording_local_abs_path(workspace_id, rel)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(data)
+        try:
+            with path.open("r+b") as handle:
+                handle.flush()
+                os.fsync(handle.fileno())
+        except Exception:
+            pass
+        if not path.is_file() or path.stat().st_size <= 0:
+            return "", "local_write_empty"
+        if path.stat().st_size != len(data):
+            return "", "local_write_short"
+        return rel, ""
+    except Exception as exc:
+        return "", str(exc)
+
+
+def upload_song_document_cloud(
+    workspace_id: str,
+    document_id: str,
+    data: bytes,
+    *,
+    user_id: str | None = None,
+) -> tuple[str, str]:
+    """Upload to the private media bucket. ``(storage_ref, error)``."""
+    if not _cloud_storage_enabled():
+        return "", "cloud_disabled"
+    client = _service_storage_client()
+    if client is None:
+        return "", "cloud_client_unavailable"
+    bucket = _media_bucket()
+    uid = user_id or _resolve_user_id()
+    object_key = build_song_document_object_key(uid, workspace_id, document_id)
+    try:
+        storage = client.storage.from_(bucket)
+        storage.upload(
+            object_key,
+            data,
+            file_options={"content-type": "application/pdf", "upsert": "true"},
+        )
+        return build_storage_ref(bucket, object_key), ""
+    except Exception as exc:
+        return "", str(exc)
+
+
+def download_song_document_cloud(
+    storage_ref: str,
+    *,
+    workspace_id: str,
+    user_id: str | None = None,
+    st: Any | None = None,
+) -> tuple[bytes | None, str]:
+    """Fetch a document's bytes, but only from this user's own prefix."""
+    uid = user_id or _resolve_user_id()
+    if not song_document_key_belongs_to(storage_ref, uid, workspace_id):
+        return None, "storage_ref_not_owned"
+    return download_recording_cloud(storage_ref, st=st)
+
+
+def delete_song_document_files(
+    workspace_id: str,
+    *,
+    local_path: str = "",
+    storage_ref: str = "",
+    user_id: str | None = None,
+) -> dict[str, str]:
+    """Remove both copies. Errors are reported, never raised."""
+    out: dict[str, str] = {}
+    if local_path:
+        out["local"] = delete_recording_local(workspace_id, local_path)
+    if storage_ref:
+        uid = user_id or _resolve_user_id()
+        if not song_document_key_belongs_to(storage_ref, uid, workspace_id):
+            out["cloud"] = "storage_ref_not_owned"
+        else:
+            out["cloud"] = delete_recording_cloud(storage_ref)
+    return out
+
+
+def persist_song_document(
+    workspace_id: str,
+    document_id: str,
+    data: bytes,
+    *,
+    user_id: str | None = None,
+    reuse_storage_ref: str = "",
+    reuse_local_path: str = "",
+) -> dict[str, Any]:
+    """Store one document and say honestly where it ended up.
+
+    ``storage_status`` is the answer to "is this really saved": ``cloud`` only once the
+    upload returned, ``local_only`` when the workspace file is written but the cloud is
+    off or refused, ``save_failed`` when not even that worked. The caller shows what this
+    says rather than assuming success.
+
+    ``reuse_*`` short-circuits the whole thing when an identical file (same SHA-256) is
+    already stored for this workspace, so uploading the same exercise sheet to a second
+    song does not write a second blob.
+    """
+    from media_state import (
+        DOCUMENT_STORAGE_CLOUD,
+        DOCUMENT_STORAGE_FAILED,
+        DOCUMENT_STORAGE_LOCAL_ONLY,
+    )
+
+    if reuse_storage_ref or reuse_local_path:
+        return {
+            "local_path": reuse_local_path or None,
+            "storage_ref": reuse_storage_ref or None,
+            "storage_status": (
+                DOCUMENT_STORAGE_CLOUD if reuse_storage_ref else DOCUMENT_STORAGE_LOCAL_ONLY
+            ),
+            "storage_error": "",
+            "reused": True,
+        }
+
+    rel, local_err = save_song_document_local(workspace_id, document_id, data)
+    ref, cloud_err = upload_song_document_cloud(
+        workspace_id, document_id, data, user_id=user_id
+    )
+    if ref:
+        status, error = DOCUMENT_STORAGE_CLOUD, ""
+    elif rel:
+        status, error = DOCUMENT_STORAGE_LOCAL_ONLY, cloud_err
+    else:
+        status, error = DOCUMENT_STORAGE_FAILED, local_err or cloud_err or "save_failed"
+    return {
+        "local_path": rel or None,
+        "storage_ref": ref or None,
+        "storage_status": status,
+        "storage_error": error,
+        "reused": False,
+    }
 
 
 def save_recording_local(
@@ -327,7 +647,11 @@ def delete_recording_local(workspace_id: str, rel_path: str) -> str:
     rel = str(rel_path or "").strip()
     if not rel:
         return ""
-    path = recording_local_abs_path(workspace_id, rel)
+    # Deletion is the one operation that cannot be taken back, so it refuses a path it
+    # cannot prove is inside the workspace instead of being handed a corrected one.
+    path = workspace_contained_path(workspace_id, rel)
+    if path is None:
+        return "path_outside_workspace"
     try:
         if path.is_file():
             path.unlink()
