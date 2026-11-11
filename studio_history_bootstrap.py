@@ -49,6 +49,27 @@ def apply_pending_studio_history(session_state: dict[str, Any], *, page: str, st
 
             if session_state.get(PENDING_CATALOG_LOAD_ID_KEY):
                 apply_pending_multitrack_catalog_load(session_state, st=st)
+                # Issue 64 G26: the load above restores the key the project's layers
+                # were recorded in and leaves it as a one-shot handoff. It cannot be
+                # applied *here*: this bootstrap runs after the sidebar has already
+                # drawn its Practice Key widget for this run, and Streamlit refuses to
+                # change a widget's value once it exists - measured, as
+                # ``display_key:StreamlitAPIException``. Consuming it here also threw the
+                # handoff away before the one place that can apply it ever saw it.
+                #
+                # So ask for one more run instead. At the top of that run no widget
+                # exists yet, the handoff applies cleanly, and the sidebar draws the
+                # restored key straight away rather than on the musician's next click.
+                # The handoff is one-shot, so this cannot loop.
+                try:
+                    from multitrack_project_key_restore import RESTORED_DISPLAY_KEY
+
+                    if st is not None and str(
+                        session_state.get(RESTORED_DISPLAY_KEY) or ""
+                    ).strip():
+                        st.rerun()
+                except ImportError:
+                    pass
                 return
         except Exception:
             pass

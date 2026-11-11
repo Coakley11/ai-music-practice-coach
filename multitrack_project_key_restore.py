@@ -260,17 +260,25 @@ def consume_restored_display_key(
             session_state.pop(key, None)
         except Exception:
             pass
-    _set(session_state, "display_key", token)
-    _set(session_state, "concert_key", token)
-    if widget_key:
-        _set(session_state, widget_key, token)
+    errors: list[str] = []
+    for key in ("display_key", "concert_key"):
+        try:
+            session_state[key] = token
+        except Exception as exc:
+            errors.append(f"{key}:{exc.__class__.__name__}")
+    if widget_key and widget_key not in ("display_key", "concert_key"):
+        try:
+            session_state[widget_key] = token
+        except Exception as exc:
+            errors.append(f"{widget_key}:{exc.__class__.__name__}")
     try:
         from songs.key_state import PENDING_DISPLAY_KEY
 
         session_state.pop(PENDING_DISPLAY_KEY, None)
     except Exception:
         pass
-    _trace(session_state, "handoff_applied", token=token, widget_key=widget_key)
+    _trace(session_state, "handoff_applied", token=token, widget_key=widget_key,
+           write_errors=",".join(errors), dk_now=_text(session_state.get("display_key")))
     return token
 
 
