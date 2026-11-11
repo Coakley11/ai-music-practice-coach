@@ -82,13 +82,28 @@ def format_key_for_musicians(practice_key: str) -> str:
     return f"{k} major"
 
 
-_CHORD_IN_PROSE = re.compile(
-    r"(?<![A-Za-z0-9#])"
-    r"([A-G](?:#|b)?"
+#: A chord symbol sitting in ordinary prose, e.g. the "Instrumental - Bb . Eb . Gm . F"
+#: cue lines in the curated catalog.
+#:
+#: The accidentals have to include the typographic forms. Curated cue text is written
+#: with U+266D / U+266F, and with an ASCII-only alternation the pattern matched the bare
+#: letter and left the sign behind: Say's "Instrumental - B(flat) . E(flat) . Gm . F"
+#: transposed from B-flat to D came out as "D#(flat) . G#(flat) . Bm . A" - the two plain
+#: letters moved correctly while the flat-rooted chords were read as B and E, moved to
+#: D# and G#, and had the original flat glued back on. A root carrying a sharp *and* a
+#: flat is not a chord, and it was on screen.
+#:
+#: Both lookarounds carry the signs too, so a bare letter is never matched when an
+#: accidental follows it, and a chord is never matched starting part-way through one.
+_ACCIDENTAL = r"(?:#|b|♯|♭)"
+_CHORD_BODY = (
+    r"(?<![A-Za-z0-9#♯♭])"
+    rf"(?P<chord>[A-G]{_ACCIDENTAL}?"
     r"(?:maj7|maj9|m7b5|m7|m9|sus4|sus2|7sus4|7|dim|aug|add9|11|13|m)?"
-    r"(?:/[A-G](?:#|b)?)?)"
-    r"(?![A-Za-z0-9])"
+    rf"(?:/[A-G]{_ACCIDENTAL}?)?)"
+    r"(?![A-Za-z0-9#♯♭])"
 )
+_CHORD_IN_PROSE = re.compile(_CHORD_BODY)
 
 
 def adapt_text_to_practice_key(
@@ -114,27 +129,44 @@ def adapt_text_to_practice_key(
     if steps == 0:
         return raw
 
+    # Key names and chord symbols are rewritten in **one** pass.
+    #
+    # They used to be two: every chord was transposed, and then the catalog key's name
+    # was replaced throughout the result as a plain substring. The second pass could not
+    # tell prose from the first pass's own output, so it edited chords that were already
+    # correct. Moving a D-major cue to F# major transposed B to D#, and the trailing
+    # "D" -> "F#" replacement then turned that into F##; G to B-flat turned a correct Gb
+    # into Bbb. Both reached the screen as roots with two accidentals.
+    #
+    # The bare key name needs no replacement of its own: transposing it as a chord moves
+    # the catalog key to the practice key by definition, which is the same answer. Only
+    # the *worded* forms ("B-flat major", "Bb minor") need naming, and consuming them in
+    # the same pass keeps their replacements out of reach of the chord rule.
+    phrases: list[tuple[str, str]] = []
+    practice_fmt = format_key_for_musicians(practice)
+    for old in (format_key_for_musicians(cat), f"{cat} major", f"{cat} minor"):
+        if old and old != practice_fmt and (old, practice_fmt) not in phrases:
+            phrases.append((old, practice_fmt))
+    # Longest first, so "B-flat minor" is never matched as "B-flat" plus stray text.
+    phrases.sort(key=lambda pair: len(pair[0]), reverse=True)
+    replacements = {old: new for old, new in phrases}
+
+    pattern = _CHORD_IN_PROSE
+    if phrases:
+        alternation = "|".join(re.escape(old) for old, _ in phrases)
+        pattern = re.compile(f"(?P<phrase>{alternation})|{_CHORD_BODY}")
+
     def _repl(match: re.Match[str]) -> str:
-        token = match.group(1)
+        phrase = match.groupdict().get("phrase")
+        if phrase:
+            return replacements.get(phrase, phrase)
+        token = match.group("chord")
         try:
             return transpose_chord(token, steps, reference_key=practice)
         except Exception:
             return token
 
-    out = _CHORD_IN_PROSE.sub(_repl, raw)
-
-    cat_fmt = format_key_for_musicians(cat)
-    practice_fmt = format_key_for_musicians(practice)
-    for old, new in (
-        (cat_fmt, practice_fmt),
-        (f"{cat} major", practice_fmt),
-        (f"{cat} minor", practice_fmt),
-        (cat, practice),
-    ):
-        if old and old != new and old in out:
-            out = out.replace(old, new)
-
-    return out
+    return pattern.sub(_repl, raw)
 
 
 def transpose_lyric_cue(
