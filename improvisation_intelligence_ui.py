@@ -708,6 +708,7 @@ def _touch_creative_workspace(session_state: dict) -> None:
     except ImportError:
         pass
 
+from creative_mode_nav import render_creative_mode_nav
 from studio_page_state import (
     CREATIVE_TOOL_ICONS,
     IMPROV_ENTRY_MODES,
@@ -1179,13 +1180,12 @@ def render_improvisation_intelligence_lab(
         except ImportError:
             pass
 
-        active_tab = st.radio(
-            "Improvisation section",
-            list(IMPROV_TAB_NAMES),
-            horizontal=True,
+        active_tab = render_creative_mode_nav(
+            st,
+            session_state,
+            options=list(IMPROV_TAB_NAMES),
             key="improv_intelligence_tab",
             format_func=creative_tool_display_label,
-            label_visibility="collapsed",
             on_change=_on_improv_tab_change,
         )
         _wf_tab_status = "skipped"
