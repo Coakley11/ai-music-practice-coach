@@ -92,6 +92,32 @@ class ThePlanOnlyRestoresAKeyTheLayersAttestTo(unittest.TestCase):
             project(tracks=[track(SAX, "Bb")], source=None))
         self.assertEqual(plan["action"], RESTORE_NONE)
 
+    def test_a_real_catalog_pick_is_passed_through_untouched(self):
+        """The format an actual saved project carries, read from a real catalog file.
+
+        A catalog pick key legitimately contains a unit separator. An earlier version
+        rewrote every one to "::", turning this into "Jazz::All the Things You Are -
+        Jerome Kern" - a pick no store knows - so the key was committed nowhere and the
+        project still reopened in the wrong key. The browser gate stayed red and the unit
+        tests stayed green, because the tests used a pick key shape the app never
+        produces.
+        """
+        real = "JazzAll the Things You Are — Jerome Kern"
+        plan = project_key_restore_plan(project(
+            tracks=[track(SAX, "Bb")], source=("catalog", real)))
+        self.assertEqual(plan["pick_key"], real)
+        self.assertEqual(plan["action"], RESTORE_RESTORE)
+        self.assertEqual(plan["key"], "Bb")
+
+    def test_a_catalog_pick_keeps_its_separator_through_a_commit(self):
+        from songs.practice_key_state import get_practice_concert_key
+
+        real = "JazzAll the Things You Are — Jerome Kern"
+        state = {}
+        commit_project_practice_key(state, pick_key=real, key="Bb")
+        self.assertEqual(get_practice_concert_key(state, pick_key=real), "Bb")
+        self.assertEqual(state["_pk_user_commit_pick"], real)
+
     def test_a_composition_pick_is_normalised(self):
         plan = project_key_restore_plan(project(
             tracks=[track(SAX, "Bb")],

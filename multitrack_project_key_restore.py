@@ -102,15 +102,25 @@ def project_key_restore_plan(row: Mapping[str, Any]) -> dict[str, Any]:
 def _pick_key_for(source_type: str, source_id: str) -> str:
     """The pick key the Practice Key store is scoped by, or "" when it cannot be named.
 
-    For a Catalog project ``source_id`` *is* the pick key: ``global_song_identity``
-    builds ``catalog|<pick>`` straight from ``active_catalog_pick_key``. Custom and
-    Composition picks can arrive with the unit separator in place of ``::``.
+    A **Catalog** ``source_id`` is already the pick key, verbatim - and it legitimately
+    contains a unit separator, as in ``JazzAll the Things You Are - Jerome Kern``.
+    An earlier version of this rewrote every ```` to ``::`` and so turned a valid
+    catalog pick into one that matched nothing: the key was "committed" to a store
+    nobody reads and the project reopened in the wrong key anyway.
+
+    **Custom** and **Composition** are the ones that need mapping. ``_context`` stores
+    their picks with ``<type>`` where the pick key has ``<type>::`` - it does that
+    same substitution itself when it validates them.
     """
     source_type, source_id = _text(source_type), _text(source_id)
     if not source_type or not source_id:
         return ""
-    pick = source_id.replace("\x1f", "::")
-    if source_type in ("custom", "composition") and not pick.startswith(f"{source_type}::"):
+    if source_type == "catalog":
+        return source_id
+    pick = source_id
+    if pick.startswith(f"{source_type}"):
+        pick = f"{source_type}::" + pick[len(source_type) + 1:]
+    elif not pick.startswith(f"{source_type}::"):
         pick = f"{source_type}::{pick}"
     try:
         from songs.practice_key_state import is_song_source_pick

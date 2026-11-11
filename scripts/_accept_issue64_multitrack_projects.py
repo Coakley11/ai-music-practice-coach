@@ -378,6 +378,47 @@ def click_exact(page: Page, label: str) -> bool:
     return False
 
 
+def click_load_for_project(page: Page, *, wants: str, avoids: str = "") -> bool:
+    """Load the project row whose own summary says what we are looking for.
+
+    Clicking the first "Load Project" on the page is not the same as loading a chosen
+    project. This run saves two projects for the same song - one recorded in B flat and
+    one genuinely mixed across three keys - and the library, ranking for a song whose
+    live key matches neither, put the mixed one first. The key gate then "failed" by
+    loading a mixed-key project and correctly not restoring a single key from it.
+    """
+    index = page.evaluate(
+        """([wants, avoids]) => {
+          const buttons = [...document.querySelectorAll('button')].filter(
+            (b) => (b.innerText || '').trim().replace(/^[^0-9A-Za-z]+/, '') === 'Load Project');
+          for (let i = 0; i < buttons.length; i++) {
+            let node = buttons[i];
+            for (let up = 0; up < 6 && node; up++) node = node.parentElement;
+            const text = (node ? node.innerText : '') || '';
+            if (!text.includes(wants)) continue;
+            if (avoids && text.includes(avoids)) continue;
+            return i;
+          }
+          return -1;
+        }""",
+        [wants, avoids],
+    )
+    if not isinstance(index, int) or index < 0:
+        log(f"  no Load Project row matching {wants!r} (avoiding {avoids!r})")
+        return False
+    buttons = page.get_by_role("button", name="Load Project", exact=False)
+    if index >= buttons.count():
+        return False
+    try:
+        buttons.nth(index).scroll_into_view_if_needed()
+        buttons.nth(index).click(timeout=8000)
+        settle(page, 6)
+        return True
+    except Exception as exc:
+        log(f"  clicking the matched Load Project failed: {exc}")
+        return False
+
+
 def open_project_library(page: Page) -> bool:
     loc = page.locator("details").filter(has_text="Project Library")
     for i in range(loc.count()):
@@ -584,8 +625,10 @@ def gate_return_and_resume(page: Page) -> bool:
     mark("G24 the project is listed for this song again",
          "Load Project" in body or "Currently loaded" in body)
 
-    if not click_exact(page, "Load Project"):
-        mark("G25 project loads on an explicit click", False, "no Load Project button")
+    # The B flat project specifically, not whichever row the library ranked first.
+    if not click_load_for_project(page, wants="Bb", avoids="Mixed keys"):
+        mark("G25 project loads on an explicit click", False,
+             "no single-key Bb row offered")
         return False
     settle(page, 8)
     if prompt_visible(page):                      # nothing should be at risk now
@@ -603,7 +646,65 @@ def gate_return_and_resume(page: Page) -> bool:
 
     # A restored project is saved, so moving on must not be interrupted.
     mark("G27 a restored project is not reported as unsaved", not prompt_visible(page))
+
+    # The key has to survive more than the render that set it. A store-backed commit
+    # should hold across reruns and navigation; a widget poke would not.
+    if low(pk) == "bb":
+        click_nav(page, "Backing")
+        settle(page, 5)
+        after_nav = sidebar_pk(page)
+        goto_multitrack(page)
+        settle(page, 4)
+        back_again = sidebar_pk(page)
+        shot(page, "12b-key-after-navigation")
+        mark("G29 the restored key survives page navigation",
+             low(after_nav) == "bb" and low(back_again) == "bb",
+             f"backing={after_nav!r} multitrack={back_again!r}")
+
+        page.reload(wait_until="domcontentloaded")
+        settle(page, 10)
+        wait_for_app(page)
+        after_reload = sidebar_pk(page)
+        shot(page, "12c-key-after-reload")
+        mark("G30 the restored key survives a reload",
+             low(after_reload) == "bb", f"key={after_reload!r}")
     return restored
+
+
+def gate_mixed_key_project(page: Page) -> bool:
+    """A project recorded across several keys must not be given one invented key."""
+    goto_multitrack(page)
+    open_project_library(page)
+    body = page.inner_text("body") or ""
+    if "Mixed keys" not in body:
+        mark("G31 a mixed-key project is labelled as mixed", False,
+             "no mixed-key project in the library to check")
+        return False
+    mark("G31 a mixed-key project is labelled as mixed", True)
+
+    # The label must name the keys rather than pick one, and the layers must be listed.
+    import re as _re
+
+    labels = _re.findall(r"Mixed keys \(([^)]*)\)", body)
+    named = labels[0] if labels else ""
+    mark("G32 the mixed label names more than one key",
+         len([k for k in named.split(",") if k.strip()]) > 1, f"label={named!r}")
+
+    before = sidebar_pk(page)
+    if not click_load_for_project(page, wants="Mixed keys"):
+        mark("G33 loading a mixed project invents no key", False, "could not load it")
+        return False
+    settle(page, 8)
+    after = sidebar_pk(page)
+    shot(page, "14-mixed-key-loaded")
+    mark("G33 loading a mixed project invents no key", low(after) == low(before),
+         f"{before!r} -> {after!r} (unchanged is correct)")
+
+    body = page.inner_text("body") or ""
+    mark("G34 the individual recorded keys are shown",
+         body.count(" - ") > 0 and ("Bb" in body or "Em" in body),
+         "per-layer key lines present")
+    return True
 
 
 def gate_equal_length_rerecord(page: Page) -> bool:
@@ -663,6 +764,7 @@ def main() -> int:
                 gate_new_project_is_held(page)
                 gate_load_is_held(page)
                 gate_return_and_resume(page)
+                gate_mixed_key_project(page)
                 gate_equal_length_rerecord(page)
             for width in (390, 360):
                 gate_mobile(page, width)
