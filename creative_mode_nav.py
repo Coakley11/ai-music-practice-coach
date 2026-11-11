@@ -118,14 +118,38 @@ def render_creative_mode_nav(
     except Exception:
         pass
 
-    selected = control(
-        "Improvisation section",
-        choices,
-        key=key,
-        format_func=format_func,
-        label_visibility="collapsed",
-        on_change=on_change,
-    )
+    # Seed the widget's own state *before* it is created, which is how a keyed
+    # Streamlit widget is given its starting value. Two full-app failures came from
+    # not doing this, and neither showed up in an isolated harness:
+    #
+    #   - after a reload no segment appeared selected at all, because a segmented
+    #     control with no stored value starts empty where a radio starts on its first
+    #     option;
+    #   - clicking the active segment reset the page to Entry & Jam, because the
+    #     deselection reached session state before this code ran and the restore
+    #     afterwards was too late for anything that had already read the key.
+    #
+    # Seeding first makes a deselection simply not happen: the frontend clears the
+    # value, this puts the remembered mode back, and the widget renders still on it.
+    if _stored(session_state, key) not in choices:
+        _restore(session_state, key, previous)
+
+    # ``required`` stops the widget deselecting at all, which is the only fix that
+    # works: repairing the value afterwards is too late, because the page's own
+    # on_change callback and its hydration run against the cleared key before this
+    # function sees it. Measured in the full app - with the repair alone, clicking the
+    # active segment still landed the page on Entry & Jam.
+    kwargs = {
+        "key": key,
+        "format_func": format_func,
+        "label_visibility": "collapsed",
+        "on_change": on_change,
+    }
+    try:
+        selected = control("Improvisation section", choices, required=True, **kwargs)
+    except TypeError:
+        # An older Streamlit without ``required``: fall back and rely on the repair.
+        selected = control("Improvisation section", choices, **kwargs)
     active = resolve_mode_selection(selected, previous, choices)
     if not str(selected or "").strip():
         # Put the kept mode back, because the widget has already written None into
@@ -133,6 +157,13 @@ def render_creative_mode_nav(
         _restore(session_state, key, active)
     _restore(session_state, LAST_MODE_KEY, active)
     return active
+
+
+def _stored(session_state: Any, key: str) -> str:
+    try:
+        return str(session_state.get(key) or "").strip()
+    except Exception:
+        return ""
 
 
 def _remembered(session_state: Any, key: str, choices: Sequence[str]) -> str:

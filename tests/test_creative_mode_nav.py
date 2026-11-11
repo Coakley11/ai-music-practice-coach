@@ -305,3 +305,126 @@ class TheDeselectReplaysTheRealRuntimeSequence(unittest.TestCase):
     def test_the_memory_key_is_private_to_this_module(self):
         self.assertTrue(nav.LAST_MODE_KEY.startswith("_"))
         self.assertNotIn(nav.LAST_MODE_KEY, IMPROV_TAB_NAMES)
+
+
+class TheWidgetIsSeededBeforeItIsCreated(unittest.TestCase):
+    """Both full-app failures came from not seeding, and neither showed in isolation.
+
+    A keyed Streamlit widget takes its starting value from session state, and a
+    segmented control with no stored value starts with *nothing* selected where a radio
+    starts on its first option. So after a reload no segment was highlighted, and
+    clicking the active segment reset the page to Entry & Jam because the deselection
+    reached session state before this code ran.
+    """
+
+    class SeedWatchingStreamlit(RecordingStreamlit):
+        """Records what session state held at the moment the widget was created."""
+
+        def __init__(self, returns, state):
+            super().__init__(returns)
+            self._state = state
+            self.seed_at_creation = "unset"
+
+        def segmented_control(self, label, options, **kw):
+            self.seed_at_creation = self._state.get(kw.get("key"))
+            return super().segmented_control(label, options, **kw)
+
+    def _run(self, returns, session):
+        state = FakeSessionState(session)
+        st = self.SeedWatchingStreamlit(returns, state)
+        active = nav.render_creative_mode_nav(
+            st, state, options=list(IMPROV_TAB_NAMES),
+            key="improv_intelligence_tab",
+            format_func=creative_tool_display_label, on_change=lambda: None)
+        return active, st, state
+
+    def test_a_fresh_session_starts_on_a_real_mode_not_on_nothing(self):
+        active, st, _state = self._run(None, {})
+        self.assertEqual(st.seed_at_creation, IMPROV_TAB_NAMES[0])
+        self.assertEqual(active, IMPROV_TAB_NAMES[0])
+
+    def test_a_deselection_is_undone_before_the_widget_renders(self):
+        _active, st, _state = self._run(
+            None,
+            {"improv_intelligence_tab": None, nav.LAST_MODE_KEY: "Harmony Map"},
+        )
+        self.assertEqual(st.seed_at_creation, "Harmony Map",
+                         "the widget must be created already showing the kept mode")
+
+    def test_an_existing_valid_selection_is_not_disturbed(self):
+        _active, st, _state = self._run(
+            "Deep Harmony",
+            {"improv_intelligence_tab": "Deep Harmony", nav.LAST_MODE_KEY: "Missions"},
+        )
+        self.assertEqual(st.seed_at_creation, "Deep Harmony")
+
+    def test_a_retired_stored_mode_is_replaced_before_creation(self):
+        _active, st, _state = self._run(
+            "Missions", {"improv_intelligence_tab": "Retired Mode"})
+        self.assertIn(st.seed_at_creation, IMPROV_TAB_NAMES)
+
+    def test_the_reclick_sequence_end_to_end_keeps_the_mode(self):
+        state = FakeSessionState({"improv_intelligence_tab": "Entry & Jam"})
+        st1 = self.SeedWatchingStreamlit("Harmony Map", state)
+        nav.render_creative_mode_nav(
+            st1, state, options=list(IMPROV_TAB_NAMES),
+            key="improv_intelligence_tab",
+            format_func=creative_tool_display_label, on_change=lambda: None)
+        state["improv_intelligence_tab"] = None          # the deselect click
+        st2 = self.SeedWatchingStreamlit(None, state)
+        active = nav.render_creative_mode_nav(
+            st2, state, options=list(IMPROV_TAB_NAMES),
+            key="improv_intelligence_tab",
+            format_func=creative_tool_display_label, on_change=lambda: None)
+        self.assertEqual(st2.seed_at_creation, "Harmony Map")
+        self.assertEqual(active, "Harmony Map")
+        self.assertNotEqual(active, "Entry & Jam")
+
+
+class DeselectionIsPreventedNotRepaired(unittest.TestCase):
+    """Repairing the value afterwards is too late in the real page.
+
+    The page's own on_change callback and its hydration both run against the cleared
+    key before this module sees it, so with the repair alone clicking the active
+    segment still landed the app on Entry & Jam. ``required=True`` stops the widget
+    deselecting in the first place.
+    """
+
+    def test_the_control_is_asked_not_to_allow_an_empty_selection(self):
+        st = RecordingStreamlit("Missions")
+        nav.render_creative_mode_nav(
+            st, FakeSessionState(), options=list(IMPROV_TAB_NAMES),
+            key="improv_intelligence_tab",
+            format_func=creative_tool_display_label, on_change=lambda: None)
+        self.assertTrue(st.calls[0][3].get("required"))
+
+    def test_an_older_runtime_without_required_still_renders(self):
+        class NoRequired(RecordingStreamlit):
+            def segmented_control(self, label, options, **kw):
+                if "required" in kw:
+                    raise TypeError("unexpected keyword argument 'required'")
+                return super().segmented_control(label, options, **kw)
+
+        st = NoRequired("Harmony Map")
+        active = nav.render_creative_mode_nav(
+            st, FakeSessionState(), options=list(IMPROV_TAB_NAMES),
+            key="improv_intelligence_tab",
+            format_func=creative_tool_display_label, on_change=lambda: None)
+        self.assertEqual(active, "Harmony Map")
+        self.assertNotIn("required", st.calls[-1][3])
+
+    def test_the_repair_is_kept_as_the_fallback_for_that_runtime(self):
+        """Belt and braces: without ``required`` the None path must still hold."""
+        class NoRequired(RecordingStreamlit):
+            def segmented_control(self, label, options, **kw):
+                if "required" in kw:
+                    raise TypeError("no required")
+                return super().segmented_control(label, options, **kw)
+
+        state = FakeSessionState(
+            {"improv_intelligence_tab": None, nav.LAST_MODE_KEY: "Deep Harmony"})
+        active = nav.render_creative_mode_nav(
+            NoRequired(None), state, options=list(IMPROV_TAB_NAMES),
+            key="improv_intelligence_tab",
+            format_func=creative_tool_display_label, on_change=lambda: None)
+        self.assertEqual(active, "Deep Harmony")
