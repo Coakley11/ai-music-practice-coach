@@ -23,6 +23,9 @@ PRIOR_REVISIONS: dict[str, tuple[tuple[str, str], ...]] = {
     'jazz|autumn leaves|jazz standard': (
         ('47d5a4590f12b624', '90082e2143668a59'),
     ),
+    'jazz|body and soul|jazz standard': (
+        ('e2edd7446d5bd520', ''),
+    ),
     'jazz|fly me to the moon|bart howard': (
         ('35ae8777aa0f9e34', 'd2e69cab5ac67c96'),
     ),
