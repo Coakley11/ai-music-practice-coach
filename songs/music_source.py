@@ -2886,6 +2886,32 @@ def commit_catalog_active_song(
         except ImportError:
             pass
         return
+    # Issue 64: a deliberate move to a different song must not step over an unsaved
+    # Multitrack take. The guard only fires for a real user selection of a different
+    # pick with work at risk; restores, remounts and a clean workspace pass straight
+    # through. Placed before the first mutation below - once ownership is stamped the
+    # page has already changed identity, which is exactly what must not happen first.
+    try:
+        from multitrack_navigation_guard import hold_song_commit_if_needed
+
+        if hold_song_commit_if_needed(
+            session,
+            pick_key=pick_key,
+            reason=reason,
+            song_title=str(selected_song.get("title") or "") if isinstance(selected_song, dict) else "",
+            replay={
+                "st": st,
+                "pick_key": pick_key,
+                "selected_song": dict(selected_song) if isinstance(selected_song, dict) else selected_song,
+                "original_key": original_key,
+                "display_key": display_key,
+                "invalidate_backing": invalidate_backing,
+                "reason": reason,
+            },
+        ):
+            return
+    except ImportError:
+        pass
     session[USER_CATALOG_SOURCE_CHOICE_KEY] = True
     # Explicit Catalog song selection must stamp ownership — otherwise a prior
     # Composition/Custom explicit stamp survives and Upload→Songs remount steals.

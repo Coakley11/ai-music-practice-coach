@@ -149,6 +149,11 @@ def _compact_analysis_summary(raw: Any) -> dict[str, Any]:
     return out
 
 
+# The song sources a recording can belong to. Same three the activity contract uses;
+# anything else is not an identity we can resolve later, so it is stored as blank.
+MULTITRACK_SOURCE_TYPES = frozenset({"catalog", "custom", "composition"})
+
+
 def migrate_track_entry(track: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(track, dict):
         return {}
@@ -172,6 +177,23 @@ def migrate_track_entry(track: dict[str, Any]) -> dict[str, Any]:
         "slot": str(track.get("slot") or "").strip(),
         "name": str(track.get("name") or track.get("layer_name") or track.get("filename") or "Take").strip()[:120],
         "instrument": str(track.get("instrument") or "").strip(),
+        # What this layer was actually played in, frozen when it was recorded.
+        #
+        # The project already carries one ``practice_concert_key``, which is the key the
+        # *project* is in - not necessarily the key each take was played against. A
+        # musician who records flute in Bb and later moves the sidebar to Ab has two
+        # facts and only one of them was being kept. These stay blank on a row that
+        # pre-dates the contract, and blank means "not recorded", never "assume the
+        # current key".
+        "recording_concert_key": str(track.get("recording_concert_key") or "").strip()[:16],
+        "recording_written_key": str(track.get("recording_written_key") or "").strip()[:16],
+        "recording_source_type": (
+            str(track.get("recording_source_type") or "").strip()
+            if str(track.get("recording_source_type") or "").strip()
+            in MULTITRACK_SOURCE_TYPES
+            else ""
+        ),
+        "recording_source_id": str(track.get("recording_source_id") or "").strip()[:500],
         "role": str(track.get("role") or track.get("slot") or "").strip()[:80],
         "storage_ref": track.get("storage_ref"),
         "local_path": track.get("local_path"),
@@ -417,6 +439,17 @@ def migrate_multitrack_session(entry: dict[str, Any]) -> dict[str, Any]:
     return {
         "multitrack_id": mid,
         "activity_source_context": _multitrack_activity_source(out.get("activity_source_context")),
+        # The same frozen facts the export row already keeps - the key, level, song
+        # source and focus as they were when the first layer was recorded, plus the
+        # per-layer instruments and keys. A finished mix could prove what it was; a
+        # saved project could not, so reopening one lost the identity of every take.
+        # Built by multitrack_recording_identity.recording_identity_for_export, so
+        # there is one shape for both rows rather than two that drift.
+        "recording_identity": (
+            dict(out.get("recording_identity"))
+            if isinstance(out.get("recording_identity"), dict)
+            else {}
+        ),
         "created_at": created,
         "updated_at": updated,
         "workspace_id": str(out.get("workspace_id") or "daniel").strip(),
