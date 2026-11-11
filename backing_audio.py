@@ -176,19 +176,17 @@ def chord_notes(chord):
     elif "maj7" in low:
         intervals = [0,4,7,11]
 
-    elif "add11" in low:
-        # triad plus the eleventh, no seventh or ninth (Ebadd11 in Viva La Vida)
-        intervals = [0,4,7,17]
-
     elif "m11" in low:
         # a minor eleventh keeps its minor third: no clash with the eleventh
         intervals = [0,3,7,10,14,17]
 
-    elif "11" in low and "sus" not in low and "#11" not in low and "b11" not in low:
-        # a dominant eleventh drops the third, which would clash with the eleventh.
-        # "11sus" is excluded (already read as a suspension) and so is an ALTERED
-        # eleventh: C7#11 is a dominant seventh with a raised eleventh, handled
-        # below, not an eleventh chord.
+    elif ("11" in low and "sus" not in low and "add" not in low
+          and "#11" not in low and "b11" not in low):
+        # A dominant eleventh drops the third, which would clash with the eleventh.
+        # Excluded: "11sus", already read as a suspension; an ALTERED eleventh,
+        # since C7#11 is a dominant seventh with a raised eleventh and is handled
+        # further down; and "add11", which ADDS the eleventh to whatever quality
+        # the rest of the symbol names (see the append below).
         intervals = [0,7,10,14,17]
 
     elif "m9" in low:
@@ -253,6 +251,14 @@ def chord_notes(chord):
         intervals.append(13)
     elif "#9" in low:
         intervals.append(15)
+    # "add4" and "add11" name the same added note, and they ADD it to whatever
+    # quality the rest of the symbol gave rather than replacing the chord. The
+    # third therefore survives, which is exactly what separates an added fourth
+    # from a suspended one: Dadd4 is D-F#-A-G, while Dsus4 replaces the F# with
+    # the G. Appending also keeps the base quality, so Cm7add4 keeps its seventh
+    # (C-Eb-G-Bb-F) and a minor chord keeps its minor third.
+    if "add11" in low or "add4" in low:
+        intervals.append(17)
     if "#11" in low:
         intervals.append(18)
     if "b13" in low:

@@ -26,6 +26,21 @@ Altered elevenths are deliberately excluded. ``C7#11`` is a dominant seventh
 with a raised eleventh and is still handled further down the chain, and
 ``B11sus`` keeps being read as a suspension.
 
+**3. add4 / add11 are added notes, not replacements.**
+
+``add4`` had no branch at all, so Why Georgia's ``Dadd4`` sounded a plain D
+triad. ``add11`` had one, but it rebuilt the whole chord as ``[0,4,7,17]``,
+which hardcoded a MAJOR third (so ``Cmadd11`` came out major) and would have
+dropped the seventh from ``Cm7add4``. Both now append the fourth/eleventh to
+whatever quality the rest of the symbol gives.
+
+That keeps the third, which is the whole difference between an added fourth and
+a suspended one: ``Dadd4`` is D-F#-A-G, while ``Dsus4`` replaces the F# with the
+G. Worth stating, because Why Georgia's printed fingering for ``Dadd4`` is
+``xx0233``, which sounds D-A-D-G with **no F#** - a Dsus4 voicing, not a
+complete Dadd4. The chart symbol and the fingering therefore still disagree.
+Neither is changed here; it is recorded as a separate audit item.
+
 Affected chart cells at the time of the fix, across all levels:
 Viva La Vida (Ebadd11 x64), Photograph (C#m11 x28), Why Georgia (C6/9 x14),
 Perfect (C6/9 x8), Piano Man (G11 x6), Rocket Man (C11 x5, Gm11 x2),
@@ -169,6 +184,130 @@ class EveryCatalogCellStillVoices(unittest.TestCase):
                             self.assertTrue(notes, f"{rec['title']}: {part!r} -> {notes}")
                             seen += 1
         self.assertGreater(seen, 1000, "catalog walk did not run")
+
+
+class AddedFourthKeepsTheThird(unittest.TestCase):
+    """add4 / add11 add a note; sus4 replaces one. Checked at all twelve roots."""
+
+    ROOTS = ["C", "C#", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"]
+    PCS = {"C": 0, "C#": 1, "D": 2, "Eb": 3, "E": 4, "F": 5,
+           "F#": 6, "G": 7, "Ab": 8, "A": 9, "Bb": 10, "B": 11}
+
+    def pcs(self, sym):
+        return {n % 12 for n in chord_notes(sym)}
+
+    def test_major_add4_is_triad_plus_fourth_every_root(self) -> None:
+        for r in self.ROOTS:
+            b = self.PCS[r]
+            self.assertEqual(self.pcs(f"{r}add4"),
+                             {(b + i) % 12 for i in (0, 4, 7, 5)}, f"{r}add4")
+            self.assertIn((b + 4) % 12, self.pcs(f"{r}add4"), f"{r}add4 lost its third")
+            self.assertIn((b + 5) % 12, self.pcs(f"{r}add4"), f"{r}add4 lost its fourth")
+
+    def test_minor_add4_keeps_the_minor_third_every_root(self) -> None:
+        for r in self.ROOTS:
+            b = self.PCS[r]
+            self.assertEqual(self.pcs(f"{r}madd4"),
+                             {(b + i) % 12 for i in (0, 3, 7, 5)}, f"{r}madd4")
+            self.assertNotIn((b + 4) % 12, self.pcs(f"{r}madd4"),
+                             f"{r}madd4 has a major third")
+
+    def test_add11_names_the_same_added_note_as_add4(self) -> None:
+        for r in self.ROOTS:
+            self.assertEqual(self.pcs(f"{r}add11"), self.pcs(f"{r}add4"), r)
+            self.assertEqual(self.pcs(f"{r}madd11"), self.pcs(f"{r}madd4"), r)
+
+    def test_add4_differs_from_sus4_by_exactly_the_third(self) -> None:
+        for r in self.ROOTS:
+            self.assertNotEqual(self.pcs(f"{r}add4"), self.pcs(f"{r}sus4"),
+                                f"{r}add4 == {r}sus4")
+            self.assertEqual(self.pcs(f"{r}add4") - self.pcs(f"{r}sus4"),
+                             {(self.PCS[r] + 4) % 12}, r)
+
+    def test_an_added_fourth_composes_with_a_seventh(self) -> None:
+        self.assertEqual(names("Cm7add4"), ["C", "Eb", "G", "Bb", "F"])
+        self.assertEqual(names("Cmaj7add4"), ["C", "E", "G", "B", "F"])
+        self.assertEqual(names("C7add4"), ["C", "E", "G", "Bb", "F"])
+
+    def test_dadd4_specifically(self) -> None:
+        self.assertEqual(names("Dadd4"), ["D", "F#", "A", "G"])
+        self.assertEqual(names("Dsus4"), ["D", "G", "A"])
+        self.assertIn("F#", names("Dadd4"))
+        self.assertNotIn("F#", names("Dsus4"))
+
+    def test_why_georgias_dadd4_fingering_is_a_sus4_voicing(self) -> None:
+        """A documented discrepancy, deliberately NOT reconciled here.
+
+        The chart cell says Dadd4, which keeps the F#. The printed fingering
+        xx0233 sounds D-A-D-G, with no F#, so it is a Dsus4 voicing. Neither the
+        symbol nor the fingering is changed; this pins the gap so it stays visible.
+        """
+        import copy
+
+        from song_catalog.catalog import curated_song_records
+
+        rec = copy.deepcopy(
+            next(x for x in curated_song_records() if x["title"] == "Why Georgia")
+        )
+        tabs = rec.get("guitar_tabs") or {}
+        self.assertEqual(tabs.get("Dadd4"), "xx0233")
+        open_pc = {"E": 4, "A": 9, "D": 2, "G": 7, "B": 11, "e": 4}
+        sounded = {PC[(open_pc[st] + int(c)) % 12]
+                   for st, c in zip(["E", "A", "D", "G", "B", "e"], "xx0233") if c != "x"}
+        self.assertEqual(sorted(sounded), ["A", "D", "G"])
+        self.assertNotIn("F#", sounded, "the fingering omits the third the symbol keeps")
+        self.assertIn("F#", names("Dadd4"), "the symbol keeps its third")
+
+
+class RootLossIsPreExistingAndDocumented(unittest.TestCase):
+    """E#11 sounds different under this branch, and both renderings are wrong.
+
+    split_chord("E#11") yields the root "E#", which is absent from NOTE_TO_MIDI
+    and which normalize_root does not fold to F, so the root falls back to C.
+    Before this change E#11 voiced C-E-G; now it voices C-G-Bb-D-F. Neither is an
+    E or an F chord, so this is a behaviour change without being a regression:
+    the old pitch set merely happened to contain an E, which masked the fault.
+
+    The same fallback affects B#, Fb and Cb. No catalog chart uses any of them -
+    they are reachable only by the Composition editor concatenating a root with
+    an alteration. Tracked separately; not fixed here.
+    """
+
+    def test_unresolvable_roots_still_fall_back(self) -> None:
+        from backing_audio import NOTE_TO_MIDI, normalize_root, split_chord
+
+        for sym in ("E#11", "B#11", "Fb9", "Cb9"):
+            root = split_chord(sym)[0]
+            self.assertNotIn(root, NOTE_TO_MIDI, f"{root} unexpectedly resolvable")
+            self.assertNotIn(normalize_root(root), NOTE_TO_MIDI,
+                             f"{root} is folded now - update this test and the note")
+
+    def test_e_sharp_eleven_is_voiced_as_a_c_chord(self) -> None:
+        self.assertEqual(names("E#11"), names("C11"))
+        self.assertNotIn("E", names("E#11"), "not an E chord")
+        self.assertEqual(names("E#11")[0], "C", "the root fell back to C")
+
+    def test_no_catalog_chart_uses_an_unresolvable_root(self) -> None:
+        import copy
+
+        from chart_level_arrangement import resolve_level_chart
+        from song_catalog.catalog import curated_song_records
+
+        bad = {"E#", "B#", "Fb", "Cb"}
+        hits = []
+        for rec in curated_song_records():
+            for lv in ("Beginner", "Intermediate", "Advanced"):
+                try:
+                    _v, secs = resolve_level_chart(copy.deepcopy(rec), lv)
+                except Exception:
+                    continue
+                for chords in (secs or {}).values():
+                    for tok in chords:
+                        for part in str(tok).split("|"):
+                            part = part.strip().split(":")[0]
+                            if part[:2] in bad:
+                                hits.append((rec["title"], part))
+        self.assertEqual(hits, [], f"catalog now uses an unresolvable root: {hits[:5]}")
 
 
 if __name__ == "__main__":
