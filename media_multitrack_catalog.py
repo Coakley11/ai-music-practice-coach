@@ -387,6 +387,44 @@ def build_multitrack_catalog_fields(
     instrument, instrument_family = _gather_instrument(session_state)
     song = str(song_title or payload.get("song_title") or session_state.get("active_song_title") or "").strip()
 
+    # What each layer was actually recorded with, rather than what the sidebar happens
+    # to say now. Issue 62 already captures both of these as the layers arrive; until
+    # now only the exported mix kept them, so a saved project relabelled every take
+    # with the current instrument and lost the key each was played in.
+    try:
+        from multitrack_recording_identity import (
+            layer_recording_keys,
+            recorded_slot_instruments,
+            recording_identity_for_export,
+        )
+
+        recording_identity = recording_identity_for_export(session_state)
+        slot_instruments = recorded_slot_instruments(session_state)
+        slot_keys = layer_recording_keys(session_state, list(slot_instruments.keys()))
+    except Exception:
+        recording_identity, slot_instruments, slot_keys = {}, {}, {}
+
+    # What counts as "this session really recorded that slot".
+    #
+    # Not ``slot in slot_instruments``: layer_instrument_for_slot always answers, falling
+    # back to the slot's default - "Sax / winds" reads as an alto saxophone whether or
+    # not anyone chose it. Treating that as a stamp let a default overwrite a stored
+    # Flute on re-save, which is the bug this whole change exists to stop. Only an
+    # explicit instrument pick or a recorded-key stamp is evidence.
+    try:
+        from multitrack_layer_chords import LAYER_INSTRUMENT_KEY_PREFIX
+
+        chosen_slots = {
+            slot for slot in MULTITRACK_SLOTS
+            if str(session_state.get(f"{LAYER_INSTRUMENT_KEY_PREFIX}{slot}") or "").strip()
+        }
+    except Exception:
+        chosen_slots = set()
+    stamped_slots = chosen_slots | {s for s, k in (slot_keys or {}).items() if str(k or "").strip()}
+
+    source_ctx = session_state.get("mt_activity_source_context")
+    source_ctx = dict(source_ctx) if isinstance(source_ctx, dict) else {}
+
     tracks: list[dict[str, Any]] = []
     controls = payload.get("track_controls") if isinstance(payload.get("track_controls"), dict) else {}
     for row in payload.get("tracks") or []:
@@ -406,7 +444,20 @@ def build_multitrack_catalog_fields(
                 "track_id": str(row.get("track_id") or "").strip() or new_track_id(),
                 "slot": slot,
                 "name": str(row.get("layer_name") or slot)[:120],
-                "instrument": str(session_state.get("instrument") or "").strip(),
+                # The recorded instrument, falling back to the sidebar only when this
+                # layer was never stamped - never overriding a stamp with it.
+                "instrument": str(
+                    slot_instruments.get(slot)
+                    or session_state.get("instrument")
+                    or ""
+                ).strip(),
+                "recording_concert_key": str(slot_keys.get(slot) or "").strip(),
+                "recording_written_key": str(
+                    (key_fields or {}).get("written_key") or ""
+                ).strip(),
+                "recording_source_type": str(source_ctx.get("source_type") or "").strip(),
+                "recording_source_id": str(source_ctx.get("source_id") or "").strip(),
+                _IDENTITY_STAMPED: slot in stamped_slots,
                 "role": slot,
                 "duration_seconds": None,
                 "local_path": None,
@@ -455,6 +506,7 @@ def build_multitrack_catalog_fields(
         "workspace_id": workspace_id,
         "title": str(payload.get("project_name") or project_name or "Multitrack session").strip()[:120],
         "activity_source_context": dict(session_state.get("mt_activity_source_context") or {}),
+        "recording_identity": dict(recording_identity),
         "song": song,
         "instrument": instrument,
         "instrument_family": instrument_family,
@@ -472,6 +524,12 @@ def build_multitrack_catalog_fields(
         "analysis_summary": payload.get("analysis_summary") if isinstance(payload.get("analysis_summary"), dict) else {},
         "notes": str(notes or payload.get("notes") or "").strip()[:2000],
     }
+
+
+#: Marks a track built from a slot the musician really recorded in this session, so the
+#: merge can tell a fresh stamp from a fallback. Never stored: migrate_track_entry
+#: rebuilds the row from known fields and drops anything else.
+_IDENTITY_STAMPED = "_identity_stamped"
 
 
 def _merge_track_ids(fields: dict[str, Any], existing_session: dict[str, Any] | None) -> None:
@@ -498,6 +556,16 @@ def _merge_track_ids(fields: dict[str, Any], existing_session: dict[str, Any] | 
             continue
         for key in ("local_path", "storage_ref", "playback_status"):
             if not track.get(key) and existing.get(key):
+                track[key] = existing.get(key)
+        # Recorded identity belongs to the take, not to the save. Re-saving a resumed
+        # project in a fresh session has no stamps for layers nobody re-recorded, and
+        # the instrument would otherwise fall back to whatever the sidebar says now -
+        # relabelling a flute take as piano. So the stored value wins unless this slot
+        # was actually re-recorded in this session.
+        stamped = bool(track.get(_IDENTITY_STAMPED))
+        for key in ("instrument", "recording_concert_key", "recording_written_key",
+                    "recording_source_type", "recording_source_id"):
+            if existing.get(key) and (not stamped or not track.get(key)):
                 track[key] = existing.get(key)
 
 
@@ -945,6 +1013,25 @@ def catalog_multitrack_row_summary(row: dict[str, Any]) -> str:
     backing_part = _multitrack_backing_summary_part(payload, session_workspace=ws)
     if backing_part:
         bits.append(backing_part)
+    # What the layers were actually recorded in. A project is never labelled with the
+    # key the sidebar happens to show, a project whose layers disagree says so instead
+    # of passing as a single-key one, and a row saved before identity existed says its
+    # key is unknown rather than borrowing the project's Practice Key.
+    try:
+        from multitrack_project_discovery import (
+            KEY_STATUS_MIXED,
+            layer_key_lines,
+            project_key_label,
+            project_key_status,
+        )
+
+        bits.insert(0, project_key_label(payload))
+        if project_key_status(payload)[0] == KEY_STATUS_MIXED:
+            lines = layer_key_lines(payload)
+            if lines:
+                bits.append("; ".join(lines))
+    except Exception:
+        pass
     return " · ".join(bits)
 
 
@@ -1018,6 +1105,31 @@ def apply_multitrack_catalog_ui_state(session_state: dict[str, Any], row: dict[s
         session_state[_LAST_CATALOG_MULTITRACK_KEY] = mid
         session_state["multitrack_catalog_active_id"] = mid
         session_state["mt_hist_active_item"] = mid
+    # Issue 64 G26: bring back the key this project was recorded in, so a B flat take
+    # does not reopen under the E minor the musician happened to be in. Only a key the
+    # project's own layers attest to, committed the way a sidebar key change commits -
+    # never written straight into session state, which the ownership and hydration rules
+    # would either undo or let trample someone else's live key.
+    # The project's own original key decides which key options the confirmation offers,
+    # so a minor song is not offered major keys.
+    _orig = str(migrated.get("original_key") or "").strip()
+    if _orig:
+        session_state["_mt_loaded_project_original_key"] = _orig
+    try:
+        from multitrack_project_key_restore import restore_practice_key_for_project
+
+        restore_practice_key_for_project(session_state, migrated)
+    except ImportError:
+        pass
+    # A freshly loaded project matches what is on disk. Stamping here is what makes a
+    # later overdub register as an unsaved change rather than looking already-saved.
+    # After the key commit, so restoring the key is never itself an "unsaved change".
+    try:
+        from multitrack_work_state import mark_project_saved
+
+        mark_project_saved(session_state)
+    except ImportError:
+        pass
 
 
 def loaded_multitrack_project_banner(session_state: dict[str, Any], *, st: Any | None = None) -> str:

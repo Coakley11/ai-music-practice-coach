@@ -721,6 +721,10 @@ _PERSIST_KEYS: tuple[str, ...] = (
     "mt_track_filenames",
     "mt_tracks",
     "mixed_track_wav",
+    # Issue 64: the fingerprint of the last save/load travels with the layers it
+    # describes. Without it, a refresh leaves a saved project looking changed, and the
+    # musician is asked to save on every song or key change for no reason.
+    "_mt_work_stamp",
     "guitar_capo_enabled",
     "guitar_capo_sounding_key",
     "guitar_capo_shape_key",

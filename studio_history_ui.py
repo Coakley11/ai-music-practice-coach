@@ -133,6 +133,7 @@ def _render_history_list(
     key_prefix: str,
     active_item_key: str = "",
     load_button_label: str = "Load",
+    guard_load: Callable[..., bool] | None = None,
 ) -> None:
     if list_error:
         st_obj.error(f"Could not load history: {list_error}")
@@ -185,6 +186,12 @@ def _render_history_list(
                 key=f"{key_prefix}_load_{suffix}",
                 use_container_width=True,
             ):
+                # Issue 64: loading replaces the working layers, mixer and backing, so
+                # an unsaved take must be answered for first. The guard reruns to show
+                # the question; nothing here runs until it is answered.
+                if guard_load is not None and guard_load(payload, row=row):
+                    st_obj.rerun()
+                    return              # st.rerun() raises, but never rely on that here
                 ok, msg = on_load(payload, list_row=row)
                 if ok:
                     st_obj.session_state[f"{key_prefix}_flash"] = msg
@@ -348,8 +355,104 @@ def render_upload_history_panel(st_obj: Any) -> None:
         )
 
 
+def _render_project_key_question(st_obj: Any, ss: Any) -> bool:
+    """Ask what key a legacy project was recorded in, rather than guessing.
+
+    Only reached for a project whose layers carry no recorded key at all. The current
+    sidebar is not evidence about a take made last month, so nothing is assumed; the
+    musician's answer is, and it is recorded on the layers that had no key.
+    """
+    try:
+        from multitrack_project_key_restore import (
+            clear_key_confirmation,
+            confirm_project_recording_key,
+            pending_key_confirmation,
+        )
+    except ImportError:
+        return False
+    pending = pending_key_confirmation(ss)
+    if not pending:
+        return False
+
+    title = str(pending.get("title") or "this project").strip()
+    with st_obj.container(border=True):
+        st_obj.warning(f"**{title}** does not say which key it was recorded in.")
+        st_obj.caption(
+            "Saved before recording keys were stored. Charts and backing need a key, "
+            "and the key you are in now is not evidence about this take - so please say "
+            "which key you recorded it in, or leave it unknown."
+        )
+        for line in (pending.get("layer_lines") or [])[:6]:
+            st_obj.caption(f"- {line}")
+
+        try:
+            from music_theory import display_key_options
+
+            options = list(display_key_options(
+                str(ss.get("_mt_loaded_project_original_key") or "C")))
+        except Exception:
+            options = ["C", "Db", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"]
+
+        pick_col, confirm_col, skip_col = st_obj.columns([2, 1, 1])
+        with pick_col:
+            chosen = st_obj.selectbox(
+                "Recorded in",
+                options,
+                key="mt_project_key_confirm_pick",
+                label_visibility="collapsed",
+            )
+        with confirm_col:
+            if st_obj.button("Set key", key="mt_project_key_confirm_btn",
+                             type="primary", use_container_width=True):
+                out = confirm_project_recording_key(ss, str(chosen or ""))
+                if out.get("applied"):
+                    ss[MT_FLASH_KEY] = (
+                        f"Recorded key set to {out.get('key')} for "
+                        f"{len(out.get('stamped') or [])} layer(s)."
+                    )
+                else:
+                    st_obj.error("That key could not be applied.")
+                st_obj.rerun()
+        with skip_col:
+            if st_obj.button("Leave unknown", key="mt_project_key_skip_btn",
+                             use_container_width=True):
+                clear_key_confirmation(ss)
+                st_obj.rerun()
+    return True
+
+
+def _guard_mt_switch(ss: Any, *, kind: str, apply: Callable[[], Any],
+                     target: str = "", payload: Any = None) -> bool:
+    """Hold a move that would replace the working recording. True when it was held.
+
+    The caller must stop immediately on True: the question renders on the next rerun,
+    and the move is carried out from the answer, not from here.
+    """
+    try:
+        from multitrack_switch_intent import request_switch, switch_is_pending
+        from multitrack_switch_prompt_ui import register_applier
+    except ImportError:
+        return False
+    if switch_is_pending(ss):
+        return True
+    register_applier(ss, kind, apply)
+    asked = request_switch(ss, kind=kind, target=target, reason=kind, payload=payload)
+    return not asked.get("allowed", True)
+
+
 def render_multitrack_history_panel(st_obj: Any, *, song_title: str = "") -> None:
     ss = st_obj.session_state
+    # Issue 64: a held move is asked about outside the expander, so the question cannot
+    # be missed by the Project Library being collapsed.
+    try:
+        from multitrack_switch_prompt_ui import render_switch_prompt
+
+        render_switch_prompt(st_obj, ss, song_title=song_title, where="library")
+    except ImportError:
+        pass
+    # A legacy project with no recorded key asks here, outside the expander, for the
+    # same reason: a question nobody sees protects nobody.
+    _render_project_key_question(st_obj, ss)
     mt = ss.get("mt_tracks") if isinstance(ss.get("mt_tracks"), dict) else {}
     try:
         from media_multitrack_catalog import session_has_saveable_multitrack_content
@@ -387,8 +490,18 @@ def render_multitrack_history_panel(st_obj: Any, *, song_title: str = "") -> Non
                 try:
                     from multitrack_session_persistence import start_new_multitrack_project
 
-                    start_new_multitrack_project(ss, song_title=song_title)
-                    ss[MT_FLASH_KEY] = "Started a new empty project (saved library rows unchanged)."
+                    def _start_new() -> None:
+                        start_new_multitrack_project(ss, song_title=song_title)
+                        ss[MT_FLASH_KEY] = (
+                            "Started a new empty project (saved library rows unchanged)."
+                        )
+
+                    # Issue 64: starting a new project clears the working layers, so an
+                    # unsaved take is answered for before anything is cleared.
+                    if _guard_mt_switch(ss, kind="new_project", apply=_start_new):
+                        st_obj.rerun()
+                        return          # st.rerun() raises, but never rely on that here
+                    _start_new()
                     st_obj.rerun()
                 except ImportError:
                     st_obj.error("Could not reset workspace.")
@@ -440,6 +553,14 @@ def render_multitrack_history_panel(st_obj: Any, *, song_title: str = "") -> Non
                 ss["multitrack_catalog_active_id"] = item_key
                 ss["_last_catalog_multitrack_id"] = item_key
                 ss.pop("_mt_editing_new_project", None)
+                # The session and the stored project now agree; anything after this
+                # counts as an unsaved change (multitrack_work_state).
+                try:
+                    from multitrack_work_state import mark_project_saved
+
+                    mark_project_saved(ss)
+                except ImportError:
+                    pass
                 st_obj.rerun()
             else:
                 st_obj.error(_format_save_error(err))
@@ -536,6 +657,37 @@ def render_multitrack_history_panel(st_obj: Any, *, song_title: str = "") -> Non
         def _delete_mt(item_key: str) -> tuple[bool, str]:
             return delete_catalog_multitrack_session(item_key, st=st_obj)
 
+        # Matching projects first. Ranked by the saved song identity and the key the
+        # layers were recorded in, never by title - a Catalog song and a Composition of
+        # the same name are different songs and must not offer each other's takes.
+        # Nothing is hidden: other keys and rows with incomplete identity follow.
+        try:
+            from multitrack_project_discovery import rank_library_rows
+
+            rows, match_note = rank_library_rows(rows, ss)
+            if match_note:
+                st_obj.caption(match_note)
+        except Exception:
+            pass
+
+        try:
+            from multitrack_project_discovery import render_all_projects_view
+
+            render_all_projects_view(st_obj, rows)
+        except Exception:
+            pass
+
+        def _guard_mt_load(payload: dict[str, Any], row: dict[str, Any] | None = None) -> bool:
+            info = row if isinstance(row, dict) else {}
+            return _guard_mt_switch(
+                ss,
+                kind="load_project",
+                apply=lambda p=payload, r=row: _load_mt(p, list_row=r),
+                target=str(info.get("title") or "").strip()
+                or str(payload.get("multitrack_id") or payload.get("item_key") or ""),
+                payload={"multitrack_id": str(payload.get("multitrack_id") or "")},
+            )
+
         _render_history_list(
             st_obj,
             item_type="multitrack_session",
@@ -547,6 +699,7 @@ def render_multitrack_history_panel(st_obj: Any, *, song_title: str = "") -> Non
             key_prefix="mt_hist",
             active_item_key=active_key,
             load_button_label="Load Project",
+            guard_load=_guard_mt_load,
         )
 
         try:
