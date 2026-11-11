@@ -1553,6 +1553,22 @@ def _activate_karaoke_entry(entry: dict | None, *, apply_entry_key: bool = True)
     invalidate_backing_cache(st)
 
 
+# === DEFERRED MULTITRACK PROJECT KEY ==========================================
+# Issue 64 G26: opening a saved project restores the key its layers were recorded in.
+# The restore runs while the Multitrack page renders - after the sidebar's Practice Key
+# widget already exists for that run - so the widget-safe writer can only defer it, and
+# the deferred value is drained elsewhere *only* when the active song changes, which
+# opening a project deliberately does not do. So it is applied here instead: module
+# level, before any widget exists, for the same reason the karaoke handoff below is.
+# Two earlier attempts put this beside the Practice Key widget and inside the sidebar
+# block; neither runs on the Multitrack page, which is exactly where projects are opened.
+try:
+    from multitrack_project_key_restore import consume_restored_display_key as _mt_consume_key
+
+    _mt_consume_key(st.session_state, site="top_of_script")
+except ImportError:
+    pass
+
 # === DEFERRED KARAOKE SETLIST ROW ACTIVATION ==================================
 # A setlist row click queues its entry; it is activated here, before any widget
 # exists, then the Lyrics & Cues editor opens for that song.
@@ -17244,6 +17260,23 @@ else:
             and str(st.session_state.get(_pk_widget_key) or "").strip() != _pending_cycle
         ):
             st.session_state[_pk_widget_key] = _pending_cycle
+        # Issue 64 G26: a project load restores the key its layers were recorded in.
+        # It happens while rendering the Multitrack page - after this widget already
+        # exists - so the widget-safe writer can only defer it, and the deferred value
+        # is consumed elsewhere *only* when the active song changes, which opening a
+        # project deliberately does not do. Hence a one-shot handoff, read here, before
+        # the widget is built, the same way the pending key above is.
+        try:
+            from multitrack_project_key_restore import consume_restored_display_key
+
+            consume_restored_display_key(
+                st.session_state,
+                widget_key=_pk_widget_key,
+                options=list(_display_key_options or []),
+                site="pk_widget",
+            )
+        except ImportError:
+            pass
         if str(st.session_state.get("studio_page") or "").strip().lower() == "backing":
             # On Backing this widget renders on the card (see
             # _render_backing_card_practice_key); the sidebar keeps a slot for

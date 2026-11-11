@@ -76,6 +76,21 @@ def low(s: str) -> str:
     return (s or "").lower().replace("♯", "#").replace("♭", "b")
 
 
+def key_token(s: str) -> str:
+    """Normalise a key as the app may word it, so "B♭ major" matches "Bb".
+
+    The sidebar spells the key differently from page to page - the Backing page says
+    "B♭ major" where elsewhere it is "Bb" - and an exact string compare read that
+    as the wrong key. Minor is kept as a suffix so Bb and Bbm stay distinct.
+    """
+    t = low(s).strip()
+    if t.endswith(" minor"):
+        return t[: -len(" minor")].strip().replace(" ", "") + "m"
+    if t.endswith(" major"):
+        return t[: -len(" major")].strip().replace(" ", "")
+    return t.replace(" ", "")
+
+
 # --------------------------------------------------------------------------
 # Disposable audio
 # --------------------------------------------------------------------------
@@ -349,6 +364,44 @@ def sidebar_pk(page: Page) -> str:
     return pk_val(page)
 
 
+def wait_for_sidebar_key(page: Page, expect: str, *, timeout_s: float = 60.0) -> str:
+    """Poll the sidebar key until it reaches `expect`, nudging a rerun between looks.
+
+    A project load commits its key to the durable store and *requests* a display key for
+    the next render - the hydration-safe route, which deliberately does not touch the
+    widget already on screen. So the sidebar catches up a rerun or two later, and reading
+    it straight after the click reads the old key. Three runs scored the key restore as
+    broken on exactly that, and the later mixed-key gate then saw the restored "Bb" and
+    reported it as a key invented out of nowhere.
+
+    The nudges are counted, because "stable across reruns" means something different if
+    the key only appears after a navigation.
+    """
+    want = key_token(expect)
+    waited = 0.0
+    nudges = 0
+    seen = sidebar_pk(page)
+    while waited < timeout_s:
+        if key_token(seen) == want:
+            log(f"  sidebar key reached {seen!r} after {waited:.0f}s, "
+                f"{nudges} navigation nudge(s)")
+            return seen
+        settle(page, 3)
+        waited += 3
+        if waited % 9 == 0:
+            # A real navigation. goto_multitrack returns immediately when already on
+            # the page, so using it here produced no script run at all - which made two
+            # earlier measurements report a key that never arrived when in fact nothing
+            # had asked the app to re-render.
+            click_nav(page, "Backing")
+            settle(page, 3)
+            click_nav(page, "Multitrack")
+            nudges += 1
+        seen = sidebar_pk(page)
+    log(f"  sidebar key still {seen!r} after {waited:.0f}s, {nudges} nudge(s)")
+    return seen
+
+
 _LEADING_GLYPHS = re.compile(r"^[^0-9A-Za-z]+")
 
 
@@ -448,7 +501,7 @@ def gate_setup(page: Page) -> bool:
     set_songs_practice_key(page, "Bb")
     settle(page, 3)
     pk = sidebar_pk(page)
-    mark("G3 practice key Bb", low(pk) == "bb", f"sidebar={pk!r}")
+    mark("G3 practice key Bb", key_token(pk) == "bb", f"sidebar={pk!r}")
     return bool(ok)
 
 
@@ -480,7 +533,7 @@ def gate_key_change_is_held(page: Page) -> bool:
     answer_prompt(page, "Cancel")
     after = sidebar_pk(page)
     shot(page, "04-after-cancel")
-    mark("G8 cancel restores the key", low(after) == low(before),
+    mark("G8 cancel restores the key", key_token(after) == key_token(before),
          f"{before!r} -> {after!r}")
     # Setting the key is done from the Songs page, which is where the prompt appeared -
     # good evidence that the sidebar prompt reaches every page, but it means the layer
@@ -506,7 +559,7 @@ def gate_save_through_prompt(page: Page) -> bool:
     body = shot(page, "05-after-save-and-switch")
     pk = sidebar_pk(page)
     mark("G11 save then switch", ok and not prompt_visible(page), f"key now {pk!r}")
-    mark("G12 key actually changed after saving", "e" in low(pk), f"key={pk!r}")
+    mark("G12 key actually changed after saving", key_token(pk).startswith("e"), f"key={pk!r}")
     # The Project Library lives on the Multitrack page; the key was changed from the
     # Songs page, so go back before looking for it.
     goto_multitrack(page)
@@ -640,8 +693,8 @@ def gate_return_and_resume(page: Page) -> bool:
     restored = slot_state(page, "Sax / winds") == "has_audio"
     mark("G25 project loads on an explicit click", restored,
          f"sax={slot_state(page, 'Sax / winds')}")
-    pk = sidebar_pk(page)
-    mark("G26 the recording key came back, not the live key", low(pk) == "bb",
+    pk = wait_for_sidebar_key(page, "Bb")
+    mark("G26 the recording key came back, not the live key", key_token(pk) == "bb",
          f"key={pk!r}")
 
     # A restored project is saved, so moving on must not be interrupted.
@@ -649,7 +702,7 @@ def gate_return_and_resume(page: Page) -> bool:
 
     # The key has to survive more than the render that set it. A store-backed commit
     # should hold across reruns and navigation; a widget poke would not.
-    if low(pk) == "bb":
+    if key_token(pk) == "bb":
         click_nav(page, "Backing")
         settle(page, 5)
         after_nav = sidebar_pk(page)
@@ -658,7 +711,7 @@ def gate_return_and_resume(page: Page) -> bool:
         back_again = sidebar_pk(page)
         shot(page, "12b-key-after-navigation")
         mark("G29 the restored key survives page navigation",
-             low(after_nav) == "bb" and low(back_again) == "bb",
+             key_token(after_nav) == "bb" and key_token(back_again) == "bb",
              f"backing={after_nav!r} multitrack={back_again!r}")
 
         page.reload(wait_until="domcontentloaded")
@@ -667,7 +720,7 @@ def gate_return_and_resume(page: Page) -> bool:
         after_reload = sidebar_pk(page)
         shot(page, "12c-key-after-reload")
         mark("G30 the restored key survives a reload",
-             low(after_reload) == "bb", f"key={after_reload!r}")
+             key_token(after_reload) == "bb", f"key={after_reload!r}")
     return restored
 
 
@@ -690,20 +743,25 @@ def gate_mixed_key_project(page: Page) -> bool:
     mark("G32 the mixed label names more than one key",
          len([k for k in named.split(",") if k.strip()]) > 1, f"label={named!r}")
 
+    listing = shot(page, "14-library-before-mixed-load")
+    mark("G34 the individual recorded keys are shown in the listing",
+         "Guitar - " in listing or "saxophone (Eb) - " in listing,
+         "per-layer instrument - key lines present")
+
+    # Let whatever the previous gate committed finish landing, or its key gets blamed
+    # on this load.
+    settle(page, 4)
+    goto_multitrack(page)
     before = sidebar_pk(page)
     if not click_load_for_project(page, wants="Mixed keys"):
         mark("G33 loading a mixed project invents no key", False, "could not load it")
         return False
-    settle(page, 8)
+    settle(page, 10)
+    goto_multitrack(page)
     after = sidebar_pk(page)
-    shot(page, "14-mixed-key-loaded")
-    mark("G33 loading a mixed project invents no key", low(after) == low(before),
+    shot(page, "15-mixed-key-loaded")
+    mark("G33 loading a mixed project invents no key", key_token(after) == key_token(before),
          f"{before!r} -> {after!r} (unchanged is correct)")
-
-    body = page.inner_text("body") or ""
-    mark("G34 the individual recorded keys are shown",
-         body.count(" - ") > 0 and ("Bb" in body or "Em" in body),
-         "per-layer key lines present")
     return True
 
 

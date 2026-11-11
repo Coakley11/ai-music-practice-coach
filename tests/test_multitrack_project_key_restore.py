@@ -16,6 +16,9 @@ import unittest
 
 from multitrack_project_key_restore import (
     CONFIRM_KEY,
+    RESTORED_DISPLAY_KEY,
+    RESTORED_DISPLAY_PICK,
+    consume_restored_display_key,
     RESTORE_ASK,
     RESTORE_NONE,
     RESTORE_RESTORE,
@@ -186,6 +189,74 @@ class TheCommitGoesThroughTheOwnershipRules(unittest.TestCase):
         self.assertEqual(locked, "Bb")   # baseline: the setter is the only writer used
 
 
+class TheRestoredKeyReachesTheSidebar(unittest.TestCase):
+    """The half that the durable commit does not do by itself.
+
+    A live probe showed the commit working perfectly - store, override mark and commit
+    token all "Bb" - while the sidebar stayed on "E" through six navigations. The cause
+    is specific and worth naming, because it is not obvious from either side:
+    ``apply_display_key_for_active_song`` honours ``_pk_user_commit_token`` only in its
+    same-song branch, and that branch compares ``_pk_user_commit_pick`` against
+    ``identity_pk`` - which ``render_global_studio_bar`` builds from the song *title*,
+    having called ``song_display_identity`` without ``pick_key``. A real pick key never
+    equals a title, so the commit was skipped every time.
+    """
+
+    def test_the_live_display_key_is_set_when_the_project_song_is_active(self):
+        state = {"active_catalog_pick_key": PICK, "display_key": "E"}
+        commit_project_practice_key(state, pick_key=PICK, key="Bb")
+        self.assertEqual(state["display_key"], "Bb")
+
+    def test_a_project_for_another_song_does_not_touch_the_live_key(self):
+        """Its key is kept in the store for when that song is opened again."""
+        from songs.practice_key_state import get_practice_concert_key
+
+        state = {"active_catalog_pick_key": "catalog::eleanor-rigby", "display_key": "Em"}
+        commit_project_practice_key(state, pick_key=PICK, key="Bb")
+        self.assertEqual(state["display_key"], "Em")
+        self.assertEqual(get_practice_concert_key(state, pick_key=PICK), "Bb")
+
+    def test_with_no_active_song_the_live_key_is_left_alone(self):
+        state = {"display_key": "E"}
+        commit_project_practice_key(state, pick_key=PICK, key="Bb")
+        self.assertEqual(state["display_key"], "E")
+
+    def test_the_real_catalog_pick_shape_reaches_the_sidebar_too(self):
+        real = "JazzAll the Things You Are — Jerome Kern"
+        state = {"active_catalog_pick_key": real, "display_key": "E"}
+        commit_project_practice_key(state, pick_key=real, key="Bb")
+        self.assertEqual(state["display_key"], "Bb")
+
+    def test_the_durable_commit_still_happens_either_way(self):
+        from songs.practice_key_state import get_practice_concert_key
+
+        for active in (PICK, "catalog::something-else", ""):
+            with self.subTest(active=active):
+                state = {"display_key": "E"}
+                if active:
+                    state["active_catalog_pick_key"] = active
+                commit_project_practice_key(state, pick_key=PICK, key="Bb")
+                self.assertEqual(get_practice_concert_key(state, pick_key=PICK), "Bb")
+
+    def test_loading_a_project_sets_the_live_key_end_to_end(self):
+        state = {"active_catalog_pick_key": PICK, "display_key": "E"}
+        out = restore_practice_key_for_project(
+            state, project(tracks=[track(SAX, "Bb")]))
+        self.assertTrue(out["applied"])
+        self.assertEqual(state["display_key"], "Bb")
+
+    def test_a_mixed_project_leaves_the_live_key_where_it_was(self):
+        state = {"active_catalog_pick_key": PICK, "display_key": "E"}
+        restore_practice_key_for_project(state, project(
+            tracks=[track(SAX, "Bb"), track(GUITAR, "Ab", "Guitar")]))
+        self.assertEqual(state["display_key"], "E")
+
+    def test_an_unknown_key_project_leaves_the_live_key_where_it_was(self):
+        state = {"active_catalog_pick_key": PICK, "display_key": "E"}
+        restore_practice_key_for_project(state, project(tracks=[track(SAX, "")]))
+        self.assertEqual(state["display_key"], "E")
+
+
 class RestoringAProjectAppliesThePlan(unittest.TestCase):
     def test_a_single_key_project_restores_and_reports_it(self):
         from songs.key_state import PENDING_DISPLAY_KEY
@@ -223,6 +294,109 @@ class RestoringAProjectAppliesThePlan(unittest.TestCase):
         restore_practice_key_for_project(state, project(tracks=[track(SAX, "Bb")]))
         mark_project_saved(state)          # the load path stamps after the key commit
         self.assertFalse(work_is_at_risk(state))
+
+
+class TheHandoffToTheSidebarIsOneShotAndScoped(unittest.TestCase):
+    """Why a handoff is needed at all, proven by a live session.
+
+    The restore runs while the Multitrack page renders - after the sidebar's Practice Key
+    widget already exists for that script run. ``safe_assign_display_key`` therefore sees
+    widgets instantiated and defers through ``PENDING_DISPLAY_KEY``; and that pending
+    value is consumed by ``apply_display_key_for_active_song`` only in its *song changed*
+    branch, which opening a project deliberately does not trigger. So the key sat in the
+    pending slot and the sidebar showed the old one indefinitely - six navigations and
+    sixty seconds, measured.
+
+    The sidebar reads this one-shot at the one moment a widget-backed value can still be
+    set: just before the widget is built, beside where the pending key is already seeded.
+    """
+
+    def _loaded(self, active=PICK):
+        state = {"active_catalog_pick_key": active, "display_key": "E"}
+        commit_project_practice_key(state, pick_key=PICK, key="Bb")
+        return state
+
+    def test_the_restored_key_is_left_for_the_sidebar(self):
+        state = self._loaded()
+        self.assertEqual(state[RESTORED_DISPLAY_KEY], "Bb")
+        self.assertEqual(state[RESTORED_DISPLAY_PICK], PICK)
+
+    def test_consuming_it_sets_the_widget_and_the_live_key(self):
+        state = self._loaded()
+        out = consume_restored_display_key(
+            state, widget_key="display_key", options=["Bb", "E", "Ab"])
+        self.assertEqual(out, "Bb")
+        self.assertEqual(state["display_key"], "Bb")
+        self.assertEqual(state["concert_key"], "Bb")
+
+    def test_it_is_consumed_once(self):
+        state = self._loaded()
+        consume_restored_display_key(state, widget_key="display_key", options=["Bb", "E"])
+        state["display_key"] = "E"            # as if the musician moved it afterwards
+        again = consume_restored_display_key(
+            state, widget_key="display_key", options=["Bb", "E"])
+        self.assertEqual(again, "")
+        self.assertEqual(state["display_key"], "E")
+
+    def test_it_refuses_when_another_song_became_active(self):
+        """Between the load and the next render the musician may have moved on.
+
+        The widget must not be seeded for a song that is no longer in front of them.
+        (In a plain session the commit's own direct write has already set display_key,
+        because no widgets are instantiated to defer around; what is under test here is
+        that the *handoff* declines and leaves nothing behind.)
+        """
+        state = self._loaded()
+        state["active_catalog_pick_key"] = "catalog::eleanor-rigby"
+        out = consume_restored_display_key(
+            state, widget_key="display_key_widget", options=["Bb", "E"])
+        self.assertEqual(out, "")
+        self.assertNotIn("display_key_widget", state)
+        self.assertNotIn(RESTORED_DISPLAY_KEY, state)
+        self.assertNotIn(RESTORED_DISPLAY_PICK, state)
+
+    def test_it_refuses_a_key_this_song_does_not_offer(self):
+        """Seeding a value outside the options leaves the control unrepresentable."""
+        state = self._loaded()
+        out = consume_restored_display_key(
+            state, widget_key="display_key_widget", options=["Cm", "Dm", "Em"])
+        self.assertEqual(out, "")
+        self.assertNotIn("display_key_widget", state)
+        self.assertNotIn(RESTORED_DISPLAY_KEY, state)
+
+    def test_it_clears_a_stale_pending_key_it_replaces(self):
+        """In the real app the commit leaves a pending key behind; it must not linger."""
+        from songs.key_state import PENDING_DISPLAY_KEY
+
+        state = self._loaded()
+        state[PENDING_DISPLAY_KEY] = "Bb"       # what the deferring writer leaves
+        consume_restored_display_key(state, widget_key="display_key", options=["Bb"])
+        self.assertNotIn(PENDING_DISPLAY_KEY, state)
+
+    def test_nothing_happens_when_no_project_was_restored(self):
+        state = {"display_key": "E", "active_catalog_pick_key": PICK}
+        self.assertEqual(
+            consume_restored_display_key(state, widget_key="display_key",
+                                         options=["Bb", "E"]), "")
+        self.assertEqual(state["display_key"], "E")
+
+    def test_a_mixed_project_leaves_no_handoff_behind(self):
+        state = {"active_catalog_pick_key": PICK, "display_key": "E"}
+        restore_practice_key_for_project(state, project(
+            tracks=[track(SAX, "Bb"), track(GUITAR, "Ab", "Guitar")]))
+        self.assertNotIn(RESTORED_DISPLAY_KEY, state)
+
+    def test_the_app_reads_the_handoff_before_building_the_widget(self):
+        """Source check: after the widget is created it would be too late."""
+        import pathlib
+
+        app = (pathlib.Path(__file__).resolve().parent.parent
+               / "streamlit_music_practice_app.py").read_text(
+                   encoding="utf-8", errors="replace")
+        call = app.index("consume_restored_display_key(")
+        widget = app.index("on_change=_on_mission_or_global_pk_change")
+        self.assertLess(call, widget,
+                        "the handoff must be read before the Practice Key widget exists")
 
 
 class TheMusiciansOwnAnswerMayBeRecorded(unittest.TestCase):
