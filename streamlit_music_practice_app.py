@@ -20105,6 +20105,11 @@ elif _studio_page == "practice":
                                 )
 
                             _pm_melody = _pm_resolve()
+                            if _pm_melody is not None:
+                                # Shown at the tempo being practised: the same notes, re-timed (never regenerated).
+                                from practice_melody_transpose import retime_practice_melody
+
+                                _pm_melody = retime_practice_melody(_pm_melody, bpm=_practice_bpm)
 
                             if _pm_melody is None:
                                 st.info(
@@ -25975,6 +25980,14 @@ elif _studio_page == "backing":
         )
     except Exception:
         _pmb_melody = None
+    if _pmb_melody is not None:
+        # The Backing BPM the musician chose (the same key Practice reads): re-timed, never regenerated.
+        try:
+            from practice_melody_transpose import retime_practice_melody
+
+            _pmb_melody = retime_practice_melody(_pmb_melody, bpm=st.session_state.get("backing_track_bpm"))
+        except Exception:
+            pass
 
     if _pmb_melody is not None:
         with st.expander(
