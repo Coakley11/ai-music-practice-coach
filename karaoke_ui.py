@@ -970,6 +970,43 @@ def render_karaoke_now_singing_banner(st: Any) -> None:
     )
 
 
+#: Set by the sidebar when an explicit key change re-keyed the song being sung.
+KARAOKE_RETUNE_NOTICE_KEY = "_karaoke_retune_notice"
+
+
+def render_karaoke_retune_notice(st: Any) -> bool:
+    """Say that the performance moved key, or that it could not. One shot.
+
+    Issue 69C. A re-key retires the take that was playing, so between the change and the
+    new key's take there is a moment with no audio. Silence under a different key on the
+    sidebar is exactly the state a musician cannot interpret, so it is named.
+
+    A failure is reported as one, and by then the performance is already back in its
+    previous key: the sidebar must never be left claiming D while the performance is
+    quietly still in C.
+    """
+    if not km.is_voice_mode(st.session_state):
+        st.session_state.pop(KARAOKE_RETUNE_NOTICE_KEY, None)
+        return False
+    notice = st.session_state.pop(KARAOKE_RETUNE_NOTICE_KEY, None)
+    if not isinstance(notice, Mapping):
+        return False
+    to_key = str(notice.get("to") or "").strip()
+    from_key = str(notice.get("from") or "").strip()
+    error = str(notice.get("error") or "").strip()
+    if error:
+        back = f" Still performing in {from_key}." if from_key else ""
+        st.error(
+            f"Could not move the performance to {to_key or 'that key'}.{back} {error}".strip()
+        )
+        return True
+    if not to_key:
+        return False
+    moved = f"from {from_key} " if from_key else ""
+    st.info(f"Performance moved {moved}to {to_key}. Rebuilding the backing in {to_key}.")
+    return True
+
+
 def render_karaoke_transition_card(
     st: Any,
     *,

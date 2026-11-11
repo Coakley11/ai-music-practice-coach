@@ -56,8 +56,8 @@ class TheTwoAuthoritiesExist(unittest.TestCase):
         self.assertTrue(km.is_karaoke_session_active(state))
         self.assertEqual(km.current_session_practice_key(state), "C")
 
-    def test_a_global_key_change_does_not_move_the_entry(self):
-        """The reported symptom, reduced to its cause."""
+    def test_the_store_alone_left_the_two_keys_disagreeing(self):
+        """The reported symptom, reduced to its cause - and why a retune exists."""
         from songs.practice_key_state import set_practice_concert_key
 
         state = session_with_now_singing("C")
@@ -73,17 +73,17 @@ class TheTwoAuthoritiesExist(unittest.TestCase):
         # ...and the performance is still in C.
         self.assertEqual(km.current_session_practice_key(state), "C")
 
-    def test_nothing_writes_a_global_key_back_onto_a_queued_entry(self):
-        """A source check: the flow is entry -> session, never the reverse.
+    def test_exactly_one_authorized_writer_moves_a_queued_entry_key(self):
+        """The divergence is resolved, deliberately and in one place.
 
-        Scoped to modules that actually touch the karaoke queue. An unscoped scan for
-        ``["practice_key"] =`` finds six unrelated assignments in Creative, Missions and
-        the workflow modules, none of which is a queue entry - a reminder that "a
-        practice_key being written" and "a karaoke entry being re-keyed" are different
-        things.
+        This test began life asserting that *nothing* wrote a queued entry's
+        practice_key - which was true, and was the defect: a musician changing the key
+        mid-performance had no way to move it. It now names the single authorized
+        writer, so a second one has to justify itself here.
 
-        If a writer appears here, the divergence may have been resolved deliberately and
-        these tests should be revisited rather than patched around.
+        Scoped to modules that touch the karaoke queue. Unscoped, the same scan finds
+        six assignments in Creative, Missions and workflow code, none of which is a
+        queue entry.
         """
         import pathlib
         import re
@@ -99,9 +99,30 @@ class TheTwoAuthoritiesExist(unittest.TestCase):
                 if assign.search(line):
                     writers.append(f"{path.name}:{n}")
         self.assertEqual(
-            writers, [],
-            f"a module that touches the karaoke queue now assigns practice_key: {writers}",
+            [w.split(":")[0] for w in writers], ["karaoke_mode.py", "karaoke_mode.py"],
+            f"the only writers should be the retune and its rollback: {writers}",
         )
+
+    def test_a_direct_store_write_still_does_not_move_the_performance(self):
+        """Only the explicit sidebar gesture re-keys. The store itself must not.
+
+        This is what keeps hydration, reruns, navigation and backing updates away from
+        a live performance: they go through the Practice Key store, and the store has no
+        route into the queue.
+        """
+        from songs.practice_key_state import set_practice_concert_key
+
+        state = session_with_now_singing("C")
+        pick = state[km.KARAOKE_QUEUE_KEY][0]["pick_key"]
+        state["active_catalog_pick_key"] = pick
+        set_practice_concert_key(state, "D", pick_key=pick,
+                                 commit_catalog_practice_key=True)
+        self.assertEqual(km.current_session_practice_key(state), "C")
+
+    def test_the_explicit_retune_is_what_moves_it(self):
+        state = session_with_now_singing("C")
+        km.retune_now_singing_entry(state, "D")
+        self.assertEqual(km.current_session_practice_key(state), "D")
 
     def test_applying_the_entry_key_moves_the_session_not_the_entry(self):
         state = session_with_now_singing("C")

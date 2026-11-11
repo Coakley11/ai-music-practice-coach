@@ -17115,6 +17115,47 @@ else:
                     except Exception:
                         pass
                     if tok:
+                        # Issue 69C: an explicit key change re-keys the song being sung.
+                        # Karaoke runs on the entry's own frozen key - deliberately, so
+                        # that editing the same song in another key elsewhere cannot
+                        # re-key a live performance - and a global change used to move
+                        # the tiles and leave the performance behind: Dsus4 on screen,
+                        # Csus4/D in the chords and in the audio.
+                        #
+                        # This is the one place that is unambiguously the musician's own
+                        # action: an on_change callback fires for nothing else. Reruns,
+                        # hydration, page navigation and backing updates do not reach
+                        # here, so the frozen key keeps protecting the performance from
+                        # everything except the person singing it.
+                        try:
+                            _kr_retune = km.retune_now_singing_entry(st.session_state, tok)
+                            if _kr_retune.get("changed"):
+                                # Old-key audio must not keep playing under new-key
+                                # chord names, and a paused take no longer matches the
+                                # selection, so Resume has to start the new key from its
+                                # first chord. Both through the transport's own intent
+                                # API rather than by poking playback state.
+                                try:
+                                    from backing_transport_intent import (
+                                        PLAYING as _TP_PLAYING,
+                                        note_playback_settings_changed as _tp_changed,
+                                        stop_playback as _tp_stop,
+                                        transport_intent as _tp_intent,
+                                    )
+
+                                    if _tp_intent(st.session_state) == _TP_PLAYING:
+                                        _tp_stop(st.session_state, reason="karaoke_retune")
+                                    _tp_changed(st.session_state, reason="karaoke_retune")
+                                except ImportError:
+                                    pass
+                                st.session_state[
+                                    "_karaoke_retune_notice"
+                                ] = {
+                                    "from": _kr_retune.get("previous", ""),
+                                    "to": _kr_retune.get("to", ""),
+                                }
+                        except Exception:
+                            pass
                         if _pk_widget_key == "display_key_sbi_custom":
                             try:
                                 from source_session_state import persist_sbi_custom_practice_key_edit

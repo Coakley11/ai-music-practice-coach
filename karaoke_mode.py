@@ -24,7 +24,7 @@ from __future__ import annotations
 
 import copy
 import uuid
-from typing import Any, Iterable
+from typing import Any, Iterable, Mapping
 
 # ---------------------------------------------------------------------------
 # Voice instrument aliases
@@ -671,6 +671,140 @@ def record_entry_feel_override(session_state: Any, *, groove: str = "", meter: s
     if changed:
         _write_queue(session_state, queue)
     return changed
+
+
+#: Where a re-key keeps the key it moved away from, so a failed regeneration can put
+#: the performance back exactly as it was.
+KARAOKE_RETUNE_ROLLBACK_KEY = "_karaoke_retune_rollback"
+
+#: Audio state that describes the *old* key and must not survive a re-key. Deliberately
+#: not the song-change set: a key change is a change inside one song, so the tempo,
+#: scope, section selection, play session and Backing context all still apply. Clearing
+#: those as well would silently reset the arrangement the musician had set up.
+_RETUNE_STALE_AUDIO_KEYS = (
+    "_last_backing_wav",
+    "_last_backing_wav_b64",
+    "_last_backing_wav_path",
+    "_last_backing_signature",
+    # A build already in flight was started for the old key; it must not install.
+    "_backing_wav_building_signature",
+    "_kc_current_static_url",
+    "_kc_arrangement_url",
+)
+
+
+def retune_now_singing_entry(session_state: Any, key: str) -> dict[str, Any]:
+    """An explicit Practice Key change re-keys the song being sung. Nothing else.
+
+    The entry's key is frozen on purpose: a global change must not re-key a song that
+    is only being *edited* in another key elsewhere, and reruns, hydration, navigation
+    and backing updates must never move a live performance. So this is not called from
+    any of those - only from the sidebar's own on_change, which fires on a musician's
+    action and nothing else. It is the same arrangement ``record_entry_feel_override``
+    already uses for an explicit Feel change: the Now Singing row only, written back
+    through ``_write_queue``.
+
+    What it does beyond recording the key is retire the outgoing take and drop the audio
+    that describes the old key, so nothing can go on playing in C under chords labelled
+    in D. Tempo, scope, sections, the play session and the Backing context are left
+    alone - a key change happens *inside* one song, and a song-change reset would throw
+    away the arrangement the musician built.
+
+    ``reason`` says why nothing happened, and ``previous`` is kept for
+    :func:`rollback_now_singing_retune` so a failed regeneration can be undone.
+    """
+    token = str(key or "").strip()
+    if not is_voice_mode(session_state) or not is_karaoke_session_active(session_state):
+        return {"changed": False, "reason": "not performing"}
+    if not token:
+        return {"changed": False, "reason": "no key"}
+    current = current_session_entry(session_state)
+    entry_id = str((current or {}).get("entry_id") or "").strip()
+    if not entry_id:
+        return {"changed": False, "reason": "no entry"}
+
+    previous = str((current or {}).get("practice_key") or "").strip()
+    if previous == token:
+        # Already performing in that key. Re-keying again would transpose a second time.
+        return {"changed": False, "reason": "already in key", "previous": previous}
+
+    queue = get_queue(session_state)
+    changed = False
+    for row in queue:
+        if str(row.get("entry_id") or "") == entry_id:
+            row["practice_key"] = token
+            changed = True
+    if not changed:
+        return {"changed": False, "reason": "entry not in queue"}
+    _write_queue(session_state, queue)
+
+    bump_karaoke_playback_generation(session_state)
+    for stale in _RETUNE_STALE_AUDIO_KEYS:
+        try:
+            session_state.pop(stale, None)
+        except Exception:
+            pass
+    try:
+        session_state.pop(KARAOKE_GENERATION_ATTEMPT_KEY, None)
+    except Exception:
+        pass
+    try:
+        session_state[KARAOKE_RETUNE_ROLLBACK_KEY] = {
+            "entry_id": entry_id,
+            "previous_key": previous,
+            "requested_key": token,
+        }
+    except Exception:
+        pass
+    return {"changed": True, "entry_id": entry_id, "previous": previous, "to": token,
+            "reason": "retuned"}
+
+
+def pending_now_singing_retune(session_state: Any) -> dict[str, Any]:
+    """The re-key waiting to be confirmed or undone, or an empty dict."""
+    record = _state(session_state).get(KARAOKE_RETUNE_ROLLBACK_KEY)
+    return dict(record) if isinstance(record, Mapping) else {}
+
+
+def confirm_now_singing_retune(session_state: Any) -> dict[str, Any]:
+    """The new key's take built: the performance is now in that key for good."""
+    record = pending_now_singing_retune(session_state)
+    try:
+        session_state.pop(KARAOKE_RETUNE_ROLLBACK_KEY, None)
+    except Exception:
+        pass
+    return record
+
+
+def rollback_now_singing_retune(session_state: Any) -> dict[str, Any]:
+    """Regeneration failed: put the entry back in the key it was performing in.
+
+    The previous take was retired on the way out, so the performance is silent rather
+    than wrong - which is the safe end of that trade. The caller is expected to say so
+    plainly instead of leaving the sidebar claiming a key nothing is playing.
+    """
+    record = pending_now_singing_retune(session_state)
+    if not record:
+        return {"restored": False, "reason": "nothing pending"}
+    entry_id = str(record.get("entry_id") or "").strip()
+    previous = str(record.get("previous_key") or "").strip()
+    try:
+        session_state.pop(KARAOKE_RETUNE_ROLLBACK_KEY, None)
+    except Exception:
+        pass
+    if not entry_id:
+        return {"restored": False, "reason": "no entry"}
+    queue = get_queue(session_state)
+    restored = False
+    for row in queue:
+        if str(row.get("entry_id") or "") == entry_id:
+            row["practice_key"] = previous
+            restored = True
+    if restored:
+        _write_queue(session_state, queue)
+        bump_karaoke_playback_generation(session_state)
+    return {"restored": restored, "entry_id": entry_id, "previous_key": previous,
+            "reason": "rolled back" if restored else "entry not in queue"}
 
 
 def karaoke_display_lyrics(
