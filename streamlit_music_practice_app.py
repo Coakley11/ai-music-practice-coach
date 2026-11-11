@@ -28114,6 +28114,15 @@ elif _studio_page == "multitrack":
                                     force_save_music_state(st, reason="multitrack_upload")
                                 except Exception:
                                     pass
+                                # This slot's header - the EMPTY / HAS AUDIO badge and
+                                # whether its panel opens - was computed and drawn
+                                # further up *this* run, before the take arrived. Without
+                                # a rerun it keeps saying EMPTY about audio that is
+                                # already in the session: a browser run watched three
+                                # landed takes report themselves empty until the page was
+                                # reloaded. The sibling Save-layer branch below reruns for
+                                # the same reason.
+                                st.rerun()
 
                         _take_line = take_status_line(st.session_state, slot)
                         if _take_line:

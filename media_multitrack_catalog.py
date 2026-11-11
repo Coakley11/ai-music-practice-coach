@@ -1105,8 +1105,25 @@ def apply_multitrack_catalog_ui_state(session_state: dict[str, Any], row: dict[s
         session_state[_LAST_CATALOG_MULTITRACK_KEY] = mid
         session_state["multitrack_catalog_active_id"] = mid
         session_state["mt_hist_active_item"] = mid
+    # Issue 64 G26: bring back the key this project was recorded in, so a B flat take
+    # does not reopen under the E minor the musician happened to be in. Only a key the
+    # project's own layers attest to, committed the way a sidebar key change commits -
+    # never written straight into session state, which the ownership and hydration rules
+    # would either undo or let trample someone else's live key.
+    # The project's own original key decides which key options the confirmation offers,
+    # so a minor song is not offered major keys.
+    _orig = str(migrated.get("original_key") or "").strip()
+    if _orig:
+        session_state["_mt_loaded_project_original_key"] = _orig
+    try:
+        from multitrack_project_key_restore import restore_practice_key_for_project
+
+        restore_practice_key_for_project(session_state, migrated)
+    except ImportError:
+        pass
     # A freshly loaded project matches what is on disk. Stamping here is what makes a
     # later overdub register as an unsaved change rather than looking already-saved.
+    # After the key commit, so restoring the key is never itself an "unsaved change".
     try:
         from multitrack_work_state import mark_project_saved
 

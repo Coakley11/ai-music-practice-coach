@@ -70,6 +70,19 @@ def register_applier(session_state: Any, kind: str, fn: Callable[[], Any]) -> No
         pass
 
 
+def _site_owns_the_prompt(session_state: Any, where: str) -> bool:
+    """Which of the two render sites should draw the question on this page."""
+    try:
+        page = str(session_state.get("studio_page") or "").strip().lower()
+    except Exception:
+        page = ""
+    if where == "library":
+        return page == "multitrack"
+    if where == "sidebar":
+        return page != "multitrack"
+    return True
+
+
 def _applier(session_state: Any, record: dict[str, Any]) -> Callable[[], Any] | None:
     kind = str(record.get("kind") or "")
     if kind == KIND_SONG:
@@ -168,6 +181,12 @@ def render_switch_prompt(
 ) -> bool:
     """Render the held question, if there is one. True when it rendered."""
     if not switch_is_pending(session_state):
+        return False
+    if not _site_owns_the_prompt(session_state, where):
+        # Two render sites, one question. On the Multitrack page the inline copy is the
+        # one that is actually in front of the musician; everywhere else the sidebar is
+        # the only place that is. Rendering both put the question on screen twice and
+        # duplicated every choice.
         return False
     record = describe_pending(session_state)
     if not record:

@@ -355,6 +355,72 @@ def render_upload_history_panel(st_obj: Any) -> None:
         )
 
 
+def _render_project_key_question(st_obj: Any, ss: Any) -> bool:
+    """Ask what key a legacy project was recorded in, rather than guessing.
+
+    Only reached for a project whose layers carry no recorded key at all. The current
+    sidebar is not evidence about a take made last month, so nothing is assumed; the
+    musician's answer is, and it is recorded on the layers that had no key.
+    """
+    try:
+        from multitrack_project_key_restore import (
+            clear_key_confirmation,
+            confirm_project_recording_key,
+            pending_key_confirmation,
+        )
+    except ImportError:
+        return False
+    pending = pending_key_confirmation(ss)
+    if not pending:
+        return False
+
+    title = str(pending.get("title") or "this project").strip()
+    with st_obj.container(border=True):
+        st_obj.warning(f"**{title}** does not say which key it was recorded in.")
+        st_obj.caption(
+            "Saved before recording keys were stored. Charts and backing need a key, "
+            "and the key you are in now is not evidence about this take - so please say "
+            "which key you recorded it in, or leave it unknown."
+        )
+        for line in (pending.get("layer_lines") or [])[:6]:
+            st_obj.caption(f"- {line}")
+
+        try:
+            from music_theory import display_key_options
+
+            options = list(display_key_options(
+                str(ss.get("_mt_loaded_project_original_key") or "C")))
+        except Exception:
+            options = ["C", "Db", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"]
+
+        pick_col, confirm_col, skip_col = st_obj.columns([2, 1, 1])
+        with pick_col:
+            chosen = st_obj.selectbox(
+                "Recorded in",
+                options,
+                key="mt_project_key_confirm_pick",
+                label_visibility="collapsed",
+            )
+        with confirm_col:
+            if st_obj.button("Set key", key="mt_project_key_confirm_btn",
+                             type="primary", use_container_width=True):
+                out = confirm_project_recording_key(ss, str(chosen or ""))
+                if out.get("applied"):
+                    ss[MT_FLASH_KEY] = (
+                        f"Recorded key set to {out.get('key')} for "
+                        f"{len(out.get('stamped') or [])} layer(s)."
+                    )
+                else:
+                    st_obj.error("That key could not be applied.")
+                st_obj.rerun()
+        with skip_col:
+            if st_obj.button("Leave unknown", key="mt_project_key_skip_btn",
+                             use_container_width=True):
+                clear_key_confirmation(ss)
+                st_obj.rerun()
+    return True
+
+
 def _guard_mt_switch(ss: Any, *, kind: str, apply: Callable[[], Any],
                      target: str = "", payload: Any = None) -> bool:
     """Hold a move that would replace the working recording. True when it was held.
@@ -384,6 +450,9 @@ def render_multitrack_history_panel(st_obj: Any, *, song_title: str = "") -> Non
         render_switch_prompt(st_obj, ss, song_title=song_title, where="library")
     except ImportError:
         pass
+    # A legacy project with no recorded key asks here, outside the expander, for the
+    # same reason: a question nobody sees protects nobody.
+    _render_project_key_question(st_obj, ss)
     mt = ss.get("mt_tracks") if isinstance(ss.get("mt_tracks"), dict) else {}
     try:
         from media_multitrack_catalog import session_has_saveable_multitrack_content

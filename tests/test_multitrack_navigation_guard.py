@@ -179,23 +179,76 @@ class APracticeKeyChangeCannotRewriteARecordedKey(unittest.TestCase):
         state["concert_key"] = "E"
         self.assertEqual(state[MT_LAYER_RECORDING_KEYS_KEY][SLOT], "Bb")
 
-    def test_only_storing_audio_stamps_a_layer(self):
-        """Guards the single-caller property the paragraph above relies on."""
+    def test_every_caller_of_the_stamp_is_a_place_the_key_is_actually_known(self):
+        """The property that matters is *who* may stamp, not how many.
+
+        Two callers are legitimate and both are listed here by name, so a third one
+        arriving fails this test and has to justify itself:
+
+        * the app storing audio - the layer is being recorded right now, so the key the
+          musician is playing against is the key;
+        * a musician answering "which key was this recorded in?" for a legacy project -
+          their own account of what they played, which is testimony rather than
+          inference.
+
+        What must never appear is a Practice Key change path. A sidebar key change
+        reaching this function is how a B flat take starts claiming it was played in E.
+        """
         import pathlib
         import re
 
         root = pathlib.Path(__file__).resolve().parent.parent
-        callers = []
+        allowed = {
+            "streamlit_music_practice_app.py": "audio is being stored",
+            "multitrack_project_key_restore.py": "the musician stated the key",
+        }
+        callers: dict[str, list[int]] = {}
         for path in root.glob("*.py"):
             if path.name == "multitrack_recording_identity.py":
                 continue
             for n, line in enumerate(
                     path.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
                 if re.search(r"\bnote_layer_recorded\s*\(", line):
-                    callers.append(f"{path.name}:{n}")
+                    callers.setdefault(path.name, []).append(n)
+
         self.assertEqual(
-            len(callers), 1,
-            f"note_layer_recorded gained a caller - check it is a recording path: {callers}")
+            set(callers), set(allowed),
+            f"note_layer_recorded callers changed: {callers}. A new one must be a place "
+            f"the recording key is genuinely known, never a key-change path.",
+        )
+
+    def test_the_stamp_is_not_reachable_from_a_practice_key_change(self):
+        """A key change must not be able to restamp a take, directly or nearby."""
+        import pathlib
+        import re
+
+        root = pathlib.Path(__file__).resolve().parent.parent
+        text = (root / "multitrack_project_key_restore.py").read_text(
+            encoding="utf-8", errors="replace")
+        # The only function there that stamps is the one driven by the musician's answer.
+        stamping_fns = []
+        current = ""
+        for line in text.splitlines():
+            m = re.match(r"^def (\w+)", line)
+            if m:
+                current = m.group(1)
+            if re.search(r"\bnote_layer_recorded\s*\(", line) and current:
+                stamping_fns.append(current)
+        self.assertEqual(sorted(set(stamping_fns)), ["confirm_project_recording_key"])
+
+    def test_restoring_a_key_does_not_stamp_any_layer(self):
+        """Reopening a project must not write keys onto its layers."""
+        from multitrack_project_key_restore import restore_practice_key_for_project
+        from multitrack_recording_identity import MT_LAYER_RECORDING_KEYS_KEY
+
+        state = {"mt_tracks": {SLOT: WAV}}
+        row = {
+            "multitrack_id": "mt-1",
+            "tracks": [{"slot": SLOT, "recording_concert_key": "Bb"}],
+            "activity_source_context": {"source_type": "catalog", "source_id": PICK_A},
+        }
+        restore_practice_key_for_project(state, row)
+        self.assertFalse(state.get(MT_LAYER_RECORDING_KEYS_KEY))
 
 
 if __name__ == "__main__":

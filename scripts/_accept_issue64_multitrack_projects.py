@@ -99,6 +99,23 @@ def make_wav(name: str, *, freq: float = 440.0, seconds: float = 1.0,
 # --------------------------------------------------------------------------
 # Page helpers
 # --------------------------------------------------------------------------
+def wait_for_app(page: Page, timeout_s: float = 120.0) -> bool:
+    """Wait until the app has actually rendered something.
+
+    A freshly started server takes a while over its first page, and a fixed delay is not
+    a wait: one run opened the page, read an 11-character body and declared the app up,
+    then failed to find the song picker that had not been drawn yet.
+    """
+    waited = 0.0
+    while waited < timeout_s:
+        body = page.inner_text("body") or ""
+        if len(body.strip()) > 400 and "PAGES" in body.upper():
+            return True
+        settle(page, 3)
+        waited += 3
+    return False
+
+
 def on_multitrack(page: Page) -> bool:
     """The page identifies itself by its own title; ``data-studio-page`` is not on body."""
     body = page.inner_text("body") or ""
@@ -189,22 +206,35 @@ def slot_state(page: Page, slot: str) -> str:
 
 
 def slot_uploader(page: Page, slot: str, idx: int):
-    """This slot's own dropzone input.
+    """This slot's own dropzone input, found by where it sits in the DOM.
 
-    Addressed by Streamlit's key class (`st-key-mt_upload_Sax---winds`) rather than by
-    position: a run that indexed into every dropzone on the page put the Guitar take
-    nowhere once a save had added another uploader earlier in the DOM. Position is kept
-    only as a fallback.
+    Three approaches were tried. Indexing every dropzone on the page by slot order
+    worked until a save added an uploader earlier in the DOM, after which the Guitar
+    take went nowhere. Scoping by Streamlit's key class matched an element, but not the
+    input Streamlit actually listens to - the file registered nowhere at all. What is
+    reliable is the structure that was verified by hand: each uploader lives inside its
+    own "Layer controls - <slot>" expander. So the index is computed in the browser from
+    that containment, and used against the same dropzone list that did work.
     """
-    key = slot.replace(" ", "-").replace("/", "-")
-    scoped = page.locator(
-        f'[class*="st-key-mt_upload_{key}"] [data-testid="stFileUploaderDropzoneInput"]'
+    found = page.evaluate(
+        """(slot) => {
+          const want = ('Layer controls — ' + slot).toLowerCase();
+          const details = [...document.querySelectorAll('details')].find((d) => {
+            const sum = d.querySelector('summary');
+            return sum && (sum.innerText || '').toLowerCase().includes(want);
+          });
+          if (!details) return -1;
+          const all = [...document.querySelectorAll(
+            '[data-testid="stFileUploaderDropzoneInput"]')];
+          return all.findIndex((el) => details.contains(el));
+        }""",
+        slot,
     )
-    if scoped.count():
-        return scoped.first
     inputs = page.locator('[data-testid="stFileUploaderDropzoneInput"]')
+    if isinstance(found, int) and found >= 0:
+        return inputs.nth(found)
     if idx < inputs.count():
-        log(f"  {slot}: no key class, falling back to uploader #{idx}")
+        log(f"  {slot}: not found by containment, falling back to uploader #{idx}")
         return inputs.nth(idx)
     return None
 
@@ -241,12 +271,26 @@ def upload_layer(page: Page, slot: str, wav: Path) -> bool:
         except Exception as exc:
             log(f"  upload into {slot} failed: {exc}")
             return False
-        for _ in range(5):
+        for _ in range(4):
             settle(page, 3)
             if slot_state(page, slot) == "has_audio":
                 log(f"  {slot}: take registered (attempt {attempt})")
                 return True
-        log(f"  {slot}: still {slot_state(page, slot)!r} after attempt {attempt}")
+        # The take usually *has* landed by now and the layer header simply has not
+        # caught up: only the first upload of a browser session re-renders the status
+        # line, and a reload reveals the rest. Reload to observe rather than conclude
+        # the upload failed - an earlier run called three landed takes "empty".
+        log(f"  {slot}: status still empty, reloading to check")
+        try:
+            page.reload(wait_until="domcontentloaded")
+            settle(page, 8)
+            goto_multitrack(page)
+        except Exception as exc:
+            log(f"  reload failed: {exc}")
+        if slot_state(page, slot) == "has_audio":
+            log(f"  {slot}: take was registered, the page had not re-rendered")
+            return True
+    log(f"  {slot}: still {slot_state(page, slot)!r} after 3 attempts")
     return False
 
 
@@ -279,7 +323,7 @@ def prompt_choices(page: Page) -> list[str]:
             text = (loc.nth(i).inner_text() or "").strip()
         except Exception:
             continue
-        if text:
+        if text and text not in out:
             out.append(text)
     return out
 
@@ -353,9 +397,10 @@ def open_project_library(page: Page) -> bool:
 # --------------------------------------------------------------------------
 def gate_setup(page: Page) -> bool:
     page.goto(URL, wait_until="domcontentloaded")
-    settle(page, 6)
+    settle(page, 4)
+    ready = wait_for_app(page)
     body = shot(page, "01-home")
-    mark("G1 app renders", bool(body.strip()), f"{len(body)} chars")
+    mark("G1 app renders", ready and len(body.strip()) > 400, f"{len(body)} chars")
     ok = pick_song(page, NOTES, "All the Things You Are", "jazz")
     settle(page, 3)
     mark("G2 song selected", bool(ok))
@@ -447,6 +492,15 @@ def gate_second_song(page: Page) -> bool:
     ok_up = upload_layer(page, "Guitar", wav)
     shot(page, "06-second-song-take")
     mark("G15 second song take uploaded", ok_up)
+    # Save it, so the library holds two projects. Without a second row there is nothing
+    # to Load, and the load-guard gates were failing on their own setup rather than on
+    # the guard: "Load Project" never appears beside the project that is already open.
+    open_project_library(page)
+    if click_exact(page, "Save as New Project") or click_exact(page, "Save New Project"):
+        settle(page, 8)
+        mark("G15b second project saved", True)
+    else:
+        mark("G15b second project saved", False, "no save button found")
     return ok_up
 
 
