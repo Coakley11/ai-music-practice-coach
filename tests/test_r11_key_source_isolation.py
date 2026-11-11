@@ -502,8 +502,15 @@ class TestCompositionSourceOwnership(_SourceSwitchMixin, unittest.TestCase):
         from workflow_musical_authority import sync_song_improv_sections_to_practice_key
 
         sync_song_improv_sections_to_practice_key(session)
+        # Derived from the catalog, not hardcoded: Say's bar count is a chart
+        # fact that corrections legitimately change (it went 156 -> 78 when the
+        # half-bar grid was fixed), and this is only a precondition.
+        from song_catalog.catalog import curated_song_records
+
+        _say = next(r for r in curated_song_records() if r["title"] == "Say")
+        _say_cells = sum(len(v) for v in _say["sections"].values())
         self.assertEqual(
-            self.chord_count(session), 156,
+            self.chord_count(session), _say_cells,
             "precondition: Say's progression is loaded",
         )
         pick, _doc = self.activate_composition(session)
@@ -785,7 +792,13 @@ class TestCompositionSbiAvailabilityReflectsMaterial(
         from workflow_musical_authority import sync_song_improv_sections_to_practice_key
 
         sync_song_improv_sections_to_practice_key(session)
-        self.assertEqual(self.chord_count(session), 156)
+        from song_catalog.catalog import curated_song_records
+
+        _say = next(r for r in curated_song_records() if r["title"] == "Say")
+        self.assertEqual(
+            self.chord_count(session),
+            sum(len(v) for v in _say["sections"].values()),
+        )
 
         self.activate_composition(session, chords=None)
         self.assertEqual(

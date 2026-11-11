@@ -161,20 +161,27 @@ class CatalogTests(unittest.TestCase):
             )
         self.assertGreater(n, 15000)
 
-    def test_lone_weight_cells_are_only_say_and_california_dreamin(self) -> None:
+    def test_lone_weight_cells_are_only_california_dreamin(self) -> None:
+        """Renamed from test_lone_weight_cells_are_only_say_and_california_dreamin.
+
+        Say used to hold lone ":4" cells (a whole-bar weight with no split)
+        because its grid was written at half-bar granularity, so the second half
+        of each loop bar was a bare "Eb:4". W21 regridded it to two chords per
+        bar, so those cells are now either split ("Bb:2|Eb:2p") or plain whole
+        bars ("Cm", "Eb7") - neither of which is a lone weight. California
+        Dreamin' is now the only song exercising this case.
+        """
         lone = [c for c in self.cells if "|" not in c[4] and ":" in c[4]]
-        self.assertEqual({c[0] for c in lone}, {"Say", "California Dreamin'"})
+        self.assertEqual({c[0] for c in lone}, {"California Dreamin'"})
         for song, lv, sec, bar, tok, bpb in lone:
             chord, w = tok.split(":")
             subs = parse_subdivisions(tok, beats_per_bar=bpb)
             self.assertEqual(subs, [Subdivision(chord, bpb, False)], tok)
-            if song == "Say":
-                self.assertEqual(float(w), bpb, tok)  # weight == bar length
-            else:
-                self.assertEqual(float(w), 2.0)  # weight != bar length: data note, meaning not changed
-        say = [c for c in lone if c[0] == "Say"]
+            # weight != bar length: a data note, so the meaning is unchanged
+            self.assertEqual(float(w), 2.0)
+        # Say no longer contributes a lone-weight cell at all.
+        self.assertEqual([c for c in lone if c[0] == "Say"], [])
         cd = [c for c in lone if c[0] != "Say"]
-        self.assertGreater(len(say), 100)
         self.assertEqual(len(cd), 5)
 
     def test_no_catalog_cell_names_a_chord_with_a_colon(self) -> None:

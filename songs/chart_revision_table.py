@@ -84,6 +84,7 @@ PRIOR_REVISIONS: dict[str, tuple[tuple[str, str], ...]] = {
     ),
     'pop|say|john mayer': (
         ('e268b4c248926ef9', '45a2f15297d15892'),
+        ('ad9ef0b0e9690163', 'eb8ed3981e575644'),
     ),
     'pop|the scientist|coldplay': (
         ('f06aff48dbf6149c', 'be05644c1a4a9efd'),

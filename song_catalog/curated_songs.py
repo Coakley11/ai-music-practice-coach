@@ -1789,10 +1789,14 @@ def _photograph_chart_pack() -> dict[str, Any]:
 def _say_chart_pack() -> dict[str, Any]:
     """Say — John Mayer (B♭ major original key, pop ballad, 4/4; the G-shape chart is played with a capo on fret 3).
 
-    One list item = one bar. Intro **B♭ / B♭sus4 / B♭ / B♭sus4/C** (2 bars each,
-    twice). Main loop **B♭–E♭–Gm–F** with **E♭** and **F** pushed early;
-    bridge **Cm–Cm–E♭–F** with pushed **F**; final chorus **Gm–B♭ / E♭7** (×8)
+    One list item = one bar, and the record puts **two chords in a bar**. Intro
+    **B♭ | B♭sus4 | B♭ | B♭sus4/C** (one chord per bar, twice). Main loop is the
+    two bars **B♭ E♭ | Gm F** with **E♭** and **F** pushed an eighth early;
+    bridge **Cm | E♭ F** with pushed **F**; final chorus **Gm B♭ | E♭7** (×8)
     with pushed **B♭**.
+
+    Bar grid corrected in W21 — see the note on SAY_MAIN_LOOP in
+    song_catalog/lyric_chord_charts.py for the source and the arithmetic.
     """
     from song_catalog.lyric_chord_charts import (
         SAY_BRIDGE_BARS,
@@ -1803,39 +1807,48 @@ def _say_chart_pack() -> dict[str, Any]:
         SAY_MAIN_LOOP,
     )
 
-    main4_simple = ["Bb", "Eb", "Gm", "F"]
-    intro = list(SAY_INTRO_BARS)
-    verse16 = list(SAY_MAIN_LOOP) * 4
-    chorus16 = list(SAY_MAIN_LOOP) * 4
-    turnaround = list(SAY_MAIN_LOOP)
-    bridge = list(SAY_BRIDGE_BARS)
-    final_chorus = list(SAY_FINAL_CHORUS_LOOP) * 8
+    # Beginner keeps the record's harmonic rhythm (two chords to a bar) but
+    # drops the pushes and the added colours, so the bar grid still lines up
+    # with the backing and the chord-follow display.
+    main_loop_simple = ["Bb|Eb", "Gm|F"]
+    intro = list(SAY_INTRO_BARS)                  # 8 bars
+    verse8 = list(SAY_MAIN_LOOP) * 4              # 8 bars - the source's "Verse (8 bars), 4x"
+    chorus8 = list(SAY_MAIN_LOOP) * 4             # 8 bars
+    turnaround = list(SAY_MAIN_LOOP)              # 2 bars
+    bridge = list(SAY_BRIDGE_BARS)                # 8 bars
+    final_chorus = list(SAY_FINAL_CHORUS_LOOP) * 8  # 16 bars
 
     intermediate = {
         "Intro": intro,
-        "Verse 1": list(verse16),
-        "Chorus 1": list(chorus16),
+        "Verse 1": list(verse8),
+        "Chorus 1": list(chorus8),
         "Turnaround 1": list(turnaround),
-        "Verse 2": list(verse16),
-        "Chorus 2": list(chorus16),
+        "Verse 2": list(verse8),
+        "Chorus 2": list(chorus8),
         "Turnaround 2": list(turnaround),
         "Bridge": bridge,
         "Turnaround 3": list(turnaround),
-        "Verse 3": list(verse16),
+        "Verse 3": list(verse8),
         "Final Chorus": list(final_chorus),
     }
+    # Beginner carries the SAME bar counts as the other tiers, so switching
+    # level never changes the song's form and the backing, lead sheet and
+    # chord-follow stay in step. Only the chords are made easier: no pushes,
+    # no added colours. (Before W21 the Beginner verse was a single loop pass
+    # against the Intermediate verse's four, which made Beginner a different
+    # song rather than an easier one.)
     beginner = {
-        "Intro": list(SAY_INTRO_PATTERN_BARS),
-        "Verse 1": list(main4_simple),
-        "Chorus 1": list(main4_simple),
-        "Turnaround 1": list(main4_simple),
-        "Verse 2": list(main4_simple),
-        "Chorus 2": list(main4_simple),
-        "Turnaround 2": list(main4_simple),
-        "Bridge": ["Cm", "Cm", "Eb", "F", "Eb", "Eb", "Eb", "F"],
-        "Turnaround 3": list(main4_simple),
-        "Verse 3": list(main4_simple),
-        "Final Chorus": ["Gm", "Bb", "Eb7", "Eb7"] * 2,
+        "Intro": list(SAY_INTRO_BARS),
+        "Verse 1": list(main_loop_simple) * 4,
+        "Chorus 1": list(main_loop_simple) * 4,
+        "Turnaround 1": list(main_loop_simple),
+        "Verse 2": list(main_loop_simple) * 4,
+        "Chorus 2": list(main_loop_simple) * 4,
+        "Turnaround 2": list(main_loop_simple),
+        "Bridge": ["Cm", "Eb|F"] * 3 + ["Eb", "Eb|F"],
+        "Turnaround 3": list(main_loop_simple),
+        "Verse 3": list(main_loop_simple) * 4,
+        "Final Chorus": ["Gm|Bb", "Eb7"] * 8,
     }
     section_order = list(intermediate.keys())
     guitar_tabs = {
@@ -1889,16 +1902,25 @@ def _say_chart_pack() -> dict[str, Any]:
                 "**B♭ major** pop ballad (**4/4**, mid-tempo, straight 8ths); published "
                 "original key B♭ (Hooktheory, Musicnotes) — guitar charts read it in "
                 "**G shapes with a capo on fret 3**. "
-                "Intro **B♭ / B♭sus4 / B♭ / B♭sus4/C** (two bars each, twice). "
-                "Main loop **B♭–E♭–Gm–F** with **E♭** and **F** pushed slightly "
-                "early (`:0.5p`). Form: **Intro** → **Verse 1** → **Chorus 1** "
+                "Intro **B♭ | B♭sus4 | B♭ | B♭sus4/C** (one chord per bar, twice). "
+                "The record puts **two chords in a bar**: the main loop is the two "
+                "bars **B♭ E♭ | Gm F**, with **E♭** and **F** pushed an eighth "
+                "early (`:2|:2p`). Form: **Intro** → **Verse 1** → **Chorus 1** "
                 "→ **Turnaround** → **Verse 2** → **Chorus 2** → **Turnaround** "
                 "→ **Bridge** (**Cm–Cm–E♭–F** ×3 with pushed **F**, then "
                 "**E♭–E♭–E♭–F**) → **Turnaround** → **Verse 3** → **Final Chorus** "
                 "(**Gm–B♭ / E♭7**, eight times, **B♭** pushed early). Backing "
                 "intensity builds on successive choruses; final chorus is the peak. "
-                "Repeat counts and section lengths are not source-verified (chart is "
-                "longer than the recording)."
+                "BAR GRID CORRECTED (W21): the chart was written at half-bar "
+                "granularity, so one pass ran 156 bars = 7:36 at 82 BPM against a "
+                "3:49 single. The lyric-and-chord sheet this song is charted from "
+                "writes the verse as `|Bb Eb | Gm F |` repeated 4x and labels it a "
+                "**8-bar verse** - two chords to a bar. Regridded to that: 78 bars "
+                "= 3:48. Tempo (82, matching the Musicnotes metronome mark; "
+                "Hooktheory reads 89), key, chord identities and the pushes are "
+                "unchanged; the pushes are re-expressed on the halved grid. "
+                "Section repeat counts themselves remain unverified beyond the "
+                "verse and chorus the sheet labels."
             ),
             default_bpm=82,
             default_groove="Ballad",
