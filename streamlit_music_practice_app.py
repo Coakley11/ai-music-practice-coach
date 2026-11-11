@@ -4489,8 +4489,8 @@ def _chord_tone_hints_checkbox(widget_key: str) -> None:
         key=widget_key,
         on_change=_on_chord_tone_hints_change,
         args=(widget_key,),
-        help="Shows the notes that give each chord its colour (7ths, 6ths, 9ths, 11ths, "
-        "13ths, suspensions and altered tones) under the chord name, spelled in the chart's key.",
+        help="Shows chord notes under each chord name, matched to your level: all the notes "
+        "at Beginner, guide tones and alterations at Intermediate, colors at Advanced.",
     )
 
 
@@ -19786,9 +19786,17 @@ elif _studio_page == "practice":
                                 chart_mode="practice",
                             ),
                         )
-                        from chord_tone_hints import apply_chord_tone_hints, hints_enabled
+                        from chord_tone_hints import apply_chord_tone_hints, hints_enabled, hints_level
 
-                        _chart_html = apply_chord_tone_hints(_chart_html, hints_enabled(st.session_state))
+                        # A capo chart's cells show shapes; the hints name what sounds.
+                        _hints_capo = bool(_capo_ctx.enabled and instrument == "Guitar")
+                        _chart_html = apply_chord_tone_hints(
+                            _chart_html,
+                            hints_enabled(st.session_state),
+                            level=hints_level(st.session_state),
+                            sounding_steps=int(_capo_ctx.capo_fret) if _hints_capo else 0,
+                            reference_key=(str(_capo_ctx.sounding_key or "") or None) if _hints_capo else None,
+                        )
                         st.markdown(_chart_html, unsafe_allow_html=True)
 
                         # When the user has picked a *type* (Verse / Chorus / ...) and
@@ -25427,10 +25435,12 @@ elif _studio_page == "backing":
         # chord symbols it displays -- so they follow Practice Key, Written and Shape -- and
         # the "Show Chord Tone Hints" checkbox shows or hides them in the browser.
         # Karaoke's chord display stays as it is (first version: Backing / Key Cycling / Practice).
-        from chord_tone_hints import sheet_with_chord_tone_hints
+        from chord_tone_hints import hints_level, sheet_with_chord_tone_hints
 
         chart_html = sheet_with_chord_tone_hints(
-            chart_html, available=not km.is_karaoke_session_active(st.session_state)
+            chart_html,
+            available=not km.is_karaoke_session_active(st.session_state),
+            level=hints_level(st.session_state),
         )
 
     # The lead-sheet visibility is *purely* driven by ``backing_lead_sheet_open``

@@ -2635,7 +2635,13 @@ def prepared_cycle_chart_html(session: dict[str, Any], sounding_key: str) -> str
     entry = bag.get(key)
     if not isinstance(entry, dict) or not _prepared_entry_current(session, entry):
         return ""
-    return str(entry.get("chart_html") or "").strip()
+    html = str(entry.get("chart_html") or "").strip()
+    if "chord-tone-hints" not in html:
+        return html
+    # A sheet prepared before a Level change still carries that level's hint lines.
+    from chord_tone_hints import hints_level, sheet_with_chord_tone_hints
+
+    return sheet_with_chord_tone_hints(html, level=hints_level(session))
 
 
 def _cycle_step_charts(
