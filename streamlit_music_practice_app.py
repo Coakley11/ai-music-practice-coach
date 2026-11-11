@@ -4444,7 +4444,8 @@ from backing_wav_runtime_cache import (
 # Last element of every backing WAV signature. Bump when the renderer's sound
 # changes so cached / spilled WAVs from the previous renderer are not reused.
 # arr_v4: groove profiles, Bossa nova bass rewrite, approach notes, mid-bar chord changes.
-_BACKING_RENDERER_TAG = "arr_v4"
+# arr_v5: the Blues groove bass plays the chord's own 7th / 6th on beat 3 (it played the 4th).
+_BACKING_RENDERER_TAG = "arr_v5"
 
 
 # Strings layer on/off: an arrangement setting (how the song is played), not
