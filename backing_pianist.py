@@ -666,8 +666,14 @@ class Pianist:
                     h = self._h(chord)
                     voice = "S" if h.seventh is not None else "C"
                     held = min(min(later) - start - 0.05, (end - start) * 0.9)
+                    # The mark is voiced near the hand but never steers it: the comping's own voice leading
+                    # (self.prev) continues exactly as it would have without the mark.
+                    kept_prev = self.prev
                     notes = self._chord_voicing(h, voice, (tag, "change", n))
-                    out.append(Hit(start, max(0.2, held), tuple(notes), 0.66 * self.arc, "chord"))
+                    self.prev = kept_prev
+                    # kind "mark": it establishes the change but does not stand in for the comping's own
+                    # statement of the chord's quality (_state_quality still gives the idea's hits their 3rd).
+                    out.append(Hit(start, max(0.2, held), tuple(notes), 0.66 * self.arc, "mark"))
                     continue
                 # Nothing of this chord in its span: the full chord on its first beat, as before.
             if any(start - 1e-6 <= x.beat < end - 1e-6 and x.kind != "figure" and not x.push for x in out):
@@ -692,7 +698,7 @@ class Pianist:
             if h.third is None:
                 continue
             # A push already belongs to the next chord: it is never bent toward this one.
-            inside = [i for i, x in enumerate(out) if start <= x.beat < end and x.kind != "figure" and not x.push]
+            inside = [i for i, x in enumerate(out) if start <= x.beat < end and x.kind not in ("figure", "mark") and not x.push]
             # The third has to arrive early, not only in a quiet pickup on the way out.
             early = [i for i in inside if out[i].beat < start + 0.75 * (end - start)] or inside
             if not inside or any(h.third in {n % 12 for n in out[i].notes} for i in early):
