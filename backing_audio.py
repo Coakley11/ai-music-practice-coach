@@ -157,6 +157,11 @@ def chord_notes(chord):
     if "mmaj7" in low:
         intervals = [0,3,7,11]
 
+    elif "mmaj13" in low:
+        # minor third, MAJOR seventh, 9, 13. Checked before "maj13", whose
+        # substring it contains.
+        intervals = [0,3,7,11,14,21]
+
     elif "alt" in low:
         # Altered dominant: 3, #5, b7, b9, #9 (slots stay root / 3rd / 5th / 7th / extensions).
         intervals = [0,4,8,10,13,15]
@@ -170,11 +175,24 @@ def chord_notes(chord):
     elif "dim" in low:
         intervals = [0,3,6]
 
+    elif "maj13" in low:
+        # major third, MAJOR seventh, 9, 13. Without this, "maj13" fell through
+        # to the dominant-13 rule below and came out with a minor seventh, so
+        # Dbmaj13 in New York State of Mind sounded a dominant chord.
+        intervals = [0,4,7,11,14,21]
+
     elif "maj9" in low:
         intervals = [0,4,7,11,14]
 
     elif "maj7" in low:
         intervals = [0,4,7,11]
+
+    elif "m13" in low:
+        # minor third, minor seventh, 9, 13. Without this, "m13" reached the
+        # generic `"m" in low` rule further down and came out a bare minor
+        # triad - the dominant-13 rule after it was never reached - so Gm13,
+        # the opening chord of Blue in Green, sounded Gm.
+        intervals = [0,3,7,10,14,21]
 
     elif "m11" in low:
         # a minor eleventh keeps its minor third: no clash with the eleventh

@@ -10648,10 +10648,133 @@ def curated_song_records() -> list[dict[str, Any]]:
         }, composer="Jerome Kern · Oscar Hammerstein II",
           extensions=_ext(default_groove="Jazz swing"),
           chart_status="practice_level_verified"),
+        # Body and Soul - Johnny Green, 1930. Db major, 32-bar AABA, 8+8+8+8.
+        # Reference arrangement: the iReal Pro chart (Jazz 1460 playlist) as
+        # catalogued at jazzchanges.app/body-and-soul, chosen as ONE consistent
+        # source. The same page carries a Coleman Hawkins 1939 transcription
+        # (Weimar Jazz Database) which reharmonises heavily and has one garbled
+        # bar; its substitutions are deliberately NOT mixed in here.
+        #
+        # The A section opens on Ebm7 - ii of Db, not the tonic - with the
+        # ii-V-I landing in bars 2-3 and again in bars 7-8. The bridge modulates
+        # to D major, then through C, and the last bridge bar turns back to Db.
+        # The Library of Congress National Recording Preservation Board essay on
+        # the tune independently describes the same Eb-minor opening in a
+        # Db-major setting with the bridge in D.
+        #
+        # One chord cell = one bar. The source gives chords per bar but NOT beat
+        # positions, so: two-chord bars split the bar equally (2+2) and four-chord
+        # bars take a beat each, both of which are the standard readings; the
+        # three-chord bars use the conventional 2+1+1 and are the only places
+        # where a beat division is inferred rather than given.
+        #
+        # Bar 8 is the first ending, leading back to the second A; bar 16 is the
+        # second ending, which sets up D major for the bridge. Bar 32 is the
+        # tonic resolution - the source does not give a turnaround for the final
+        # bar, so none is added.
         _s("Body and Soul", "Jazz Standard", "Jazz", "Db", {
-            "A Section": ["Dbmaj7", "Ebm7", "E7", "Amaj7", "Abm7", "Db7", "Gbmaj7", "Gbmaj7"],
-            "B Section": ["Fm7", "Bb7", "Ebmaj7", "Gm7b5", "C7", "Fm7", "Bb7", "Eb7"],
-        }, composer="Johnny Green"),
+            "A1": ["Ebm7|Bb7b13", "Ebm7|Ab7", "Dbmaj7|Gb7", "Fm7|Edim7",
+                   "Ebm7|Ebm7/Db", "Cm7b5|F7b9", "Bbm7:2|Ebm7:1|Ab7:1",
+                   "Db6|Gb7|Fm7b5|Bb7"],
+            "A2": ["Ebm7|Bb7b13", "Ebm7|Ab7", "Dbmaj7|Gb7", "Fm7|Edim7",
+                   "Ebm7|Ebm7/Db", "Cm7b5|F7b9", "Bbm7:2|Ebm7:1|Ab7:1",
+                   "Db6:2|Em7:1|A7:1"],
+            "Bridge": ["Dmaj7|Em7", "Dmaj7/F#:2|Gm7:1|C7:1",
+                       "F#m7|Bm7|Em7|A7", "Dmaj7",
+                       "Dm7|G7", "Em7|Ebdim7", "Dm7|G7", "C7:2|B7:1|Bb7:1"],
+            "A3": ["Ebm7|Bb7b13", "Ebm7|Ab7", "Dbmaj7|Gb7", "Fm7|Edim7",
+                   "Ebm7|Ebm7/Db", "Cm7b5|F7b9", "Bbm7:2|Ebm7:1|Ab7:1", "Db6"],
+        }, composer="Johnny Green",
+          section_order=["A1", "A2", "Bridge", "A3"],
+          chart_versions={
+              # Beginner keeps the complete 32-bar chorus - dropping an A section
+              # would misrepresent a tune whose whole shape is AABA - and
+              # simplifies the chord QUALITIES instead: maj7 and 6 to major, m7
+              # to minor, m7b5 to minor, the altered dominants to plain sevenths,
+              # and the slash bass dropped. Every chord change is kept, because
+              # the harmonic rhythm is the tune.
+              "Beginner": {
+                  "A1": ["Ebm|Bb7", "Ebm|Ab7", "Db|Gb7", "Fm|Edim",
+                         "Ebm|Ebm", "Cm|F7", "Bbm:2|Ebm:1|Ab7:1",
+                         "Db|Gb7|Fm|Bb7"],
+                  "A2": ["Ebm|Bb7", "Ebm|Ab7", "Db|Gb7", "Fm|Edim",
+                         "Ebm|Ebm", "Cm|F7", "Bbm:2|Ebm:1|Ab7:1",
+                         "Db:2|Em:1|A7:1"],
+                  "Bridge": ["D|Em", "D:2|Gm:1|C7:1", "F#m|Bm|Em|A7", "D",
+                             "Dm|G7", "Em|Ebdim", "Dm|G7", "C7:2|B7:1|Bb7:1"],
+                  "A3": ["Ebm|Bb7", "Ebm|Ab7", "Db|Gb7", "Fm|Edim",
+                         "Ebm|Ebm", "Cm|F7", "Bbm:2|Ebm:1|Ab7:1", "Db"],
+              },
+              # Intermediate keeps the full structure and the sevenths, and
+              # reduces only the stacked alterations (b13, b9) and the inversion.
+              "Intermediate": {
+                  "A1": ["Ebm7|Bb7", "Ebm7|Ab7", "Dbmaj7|Gb7", "Fm7|Edim7",
+                         "Ebm7|Ebm7", "Cm7b5|F7", "Bbm7:2|Ebm7:1|Ab7:1",
+                         "Db6|Gb7|Fm7b5|Bb7"],
+                  "A2": ["Ebm7|Bb7", "Ebm7|Ab7", "Dbmaj7|Gb7", "Fm7|Edim7",
+                         "Ebm7|Ebm7", "Cm7b5|F7", "Bbm7:2|Ebm7:1|Ab7:1",
+                         "Db6:2|Em7:1|A7:1"],
+                  "Bridge": ["Dmaj7|Em7", "Dmaj7:2|Gm7:1|C7:1",
+                             "F#m7|Bm7|Em7|A7", "Dmaj7",
+                             "Dm7|G7", "Em7|Ebdim7", "Dm7|G7",
+                             "C7:2|B7:1|Bb7:1"],
+                  "A3": ["Ebm7|Bb7", "Ebm7|Ab7", "Dbmaj7|Gb7", "Fm7|Edim7",
+                         "Ebm7|Ebm7", "Cm7b5|F7", "Bbm7:2|Ebm7:1|Ab7:1", "Db6"],
+              },
+              "Advanced": {
+                  "A1": ["Ebm7|Bb7b13", "Ebm7|Ab7", "Dbmaj7|Gb7", "Fm7|Edim7",
+                         "Ebm7|Ebm7/Db", "Cm7b5|F7b9", "Bbm7:2|Ebm7:1|Ab7:1",
+                         "Db6|Gb7|Fm7b5|Bb7"],
+                  "A2": ["Ebm7|Bb7b13", "Ebm7|Ab7", "Dbmaj7|Gb7", "Fm7|Edim7",
+                         "Ebm7|Ebm7/Db", "Cm7b5|F7b9", "Bbm7:2|Ebm7:1|Ab7:1",
+                         "Db6:2|Em7:1|A7:1"],
+                  "Bridge": ["Dmaj7|Em7", "Dmaj7/F#:2|Gm7:1|C7:1",
+                             "F#m7|Bm7|Em7|A7", "Dmaj7",
+                             "Dm7|G7", "Em7|Ebdim7", "Dm7|G7",
+                             "C7:2|B7:1|Bb7:1"],
+                  "A3": ["Ebm7|Bb7b13", "Ebm7|Ab7", "Dbmaj7|Gb7", "Fm7|Edim7",
+                         "Ebm7|Ebm7/Db", "Cm7b5|F7b9", "Bbm7:2|Ebm7:1|Ab7:1",
+                         "Db6"],
+              },
+          },
+          extensions=_ext(
+              default_bpm=76,
+              default_groove="Ballad",
+              time_signature="4/4",
+              # Keep the complete 32-bar chorus at every level. Without this the
+              # level resolver abridges Beginner to 16 bars by dropping two A
+              # sections, which misrepresents a tune whose shape IS AABA; the
+              # Beginner chart simplifies chord qualities instead.
+              full_form_levels=["Beginner"],
+              arrangement_notes=(
+                  "**Body and Soul** - Johnny Green, 1930. **Db major**, "
+                  "**32-bar AABA** (8+8+8+8), ballad. Reference arrangement: the "
+                  "iReal Pro chart catalogued at jazzchanges.app, kept consistent "
+                  "rather than blended with the Coleman Hawkins 1939 "
+                  "reharmonisation on the same page. The A section opens on "
+                  "**Ebm7** (ii), not the tonic, with the ii-V-I in bars 2-3 and "
+                  "7-8; the **bridge modulates to D major**, passes through C, and "
+                  "turns back to Db in its last bar. Most bars carry two chords, "
+                  "bars 8 and 19 carry four, and bars 7, 16, 18 and 24 carry "
+                  "three. The source gives chords per bar but not beat positions: "
+                  "two-chord bars split 2+2 and four-chord bars a beat each (both "
+                  "standard), while the three-chord bars use the conventional "
+                  "2+1+1 and are the only inferred divisions. Tempo is not "
+                  "source-verified. No melody is reproduced; not checked by ear."
+              ),
+              chart_confidence={"chords": "medium-high", "timing": "medium",
+                                "form": "high", "groove": "low"},
+              chart_sources=(
+                  "jazzchanges.app/body-and-soul (iReal Pro chart from the Jazz "
+                  "1460 playlist, bar by bar; the same page's Coleman Hawkins "
+                  "1939 transcription was read but deliberately not merged); "
+                  "Library of Congress National Recording Preservation Board "
+                  "essay on the tune for the Db-major setting, the Eb-minor "
+                  "opening and the D-major bridge; jazzstandards.com for the "
+                  "32-bar AABA form. No score was copied and no melody is "
+                  "reproduced; not checked by ear."
+              ),
+          )),
         _s("Confirmation", "Charlie Parker", "Jazz", "F", {
             # AABA, 32 bars, F major, bebop.  The first four bars of each A walk down ii-V pairs (Em7b5|A7 a half step
             # under the tonic, Dm7|G7, Cm7|F7); bars 5-6 repeat the idea from the IV (Fm7|Bb7, Am7b5|D7); bar 7 is G7
@@ -10806,9 +10929,103 @@ def curated_song_records() -> list[dict[str, Any]]:
               repertoire_tags=["Jazz Standard", "Swing", "Duke Ellington", "Essential Standards"],
           ),
           chart_status="practice_level_verified"),
-        _s("Blue in Green", "Miles Davis", "Jazz", "Gm", {
-            "A Section": ["Gm7", "Gm7", "A7#9", "A7#9", "Gm7", "Gm7", "Gm7", "Gm7"],
-        }, composer="Miles Davis / Bill Evans"),
+        # Blue in Green - Davis / Evans, Kind of Blue, 1959. D minor, and a
+        # single TEN-bar strain that repeats with no break. Bill Evans's own
+        # liner note calls it "a 10-measure circular form"; the chart it
+        # replaced was an eight-bar Gm7 / A7#9 vamp, which is neither the right
+        # length nor the right harmony.
+        #
+        # Reference: Henry Martin's lead sheet, Example 1 in his analysis of the
+        # tune in the Journal of Jazz Studies vol. 11 no. 1 (2016) roundtable
+        # "Circular Thinking", as catalogued at jazzchanges.app/blue-in-green.
+        # Martin uses the published version deliberately, because Davis plays
+        # the tune freely. The iReal Pro chart on the same page is a 14-bar
+        # version with codas and differs at several chords (Dm7 for Dm9, Cm7 for
+        # Cm9, E7b13 for E7b9, Dm6 for Dm(maj7), Am7 for Am(maj7)); it is a
+        # later reharmonisation and is deliberately NOT merged in here.
+        #
+        # Key areas move D minor -> Bb -> D minor -> A minor -> D minor. One
+        # chord cell = one bar. Only bars 3 and 4 carry two chords, and the
+        # source states they share the bar equally, so the division is given
+        # rather than inferred. Bar 10 leads straight back to bar 1 with no
+        # cadence - that is the "circular" part, so no turnaround is added.
+        #
+        # The four-bar piano introduction on Kind of Blue is NOT charted: the
+        # source says only that it follows bars 3-10 of the head in reduced
+        # form, without giving its chords, so writing one would be invention.
+        #
+        # Opening-chord variants, recorded rather than resolved: Martin gives
+        # Gm13; other charts and players use Gm7, Gm6 or Bbmaj7#11, and Evans's
+        # trio versions differ from Davis's on this chord.
+        _s("Blue in Green", "Miles Davis", "Jazz", "Dm", {
+            "Head (10-bar circular form)": [
+                "Gm13", "A7#5#9", "Dm9|Db7#5#9", "Cm9|F7b9", "Bbmaj7",
+                "A7#5#9", "Dmmaj7", "E7b9", "Ammaj7", "Dm7",
+            ],
+        }, composer="Miles Davis / Bill Evans",
+          section_order=["Head (10-bar circular form)"],
+          chart_versions={
+              # Beginner keeps all ten bars and both half-bar changes - the form
+              # is the piece - and reduces the chord qualities to triads and
+              # plain sevenths.
+              "Beginner": {
+                  "Head (10-bar circular form)": [
+                      "Gm", "A7", "Dm|Db7", "Cm|F7", "Bb",
+                      "A7", "Dm", "E7", "Am", "Dm",
+                  ],
+              },
+              # Intermediate keeps Martin's chords and reduces only the stacked
+              # alterations (#5#9, b9). It does not borrow the iReal variants.
+              "Intermediate": {
+                  "Head (10-bar circular form)": [
+                      "Gm9", "A7", "Dm9|Db7", "Cm9|F7", "Bbmaj7",
+                      "A7", "Dmmaj7", "E7", "Ammaj7", "Dm7",
+                  ],
+              },
+              "Advanced": {
+                  "Head (10-bar circular form)": [
+                      "Gm13", "A7#5#9", "Dm9|Db7#5#9", "Cm9|F7b9", "Bbmaj7",
+                      "A7#5#9", "Dmmaj7", "E7b9", "Ammaj7", "Dm7",
+                  ],
+              },
+          },
+          extensions=_ext(
+              default_bpm=66,
+              default_groove="Ballad",
+              time_signature="4/4",
+              # Ten bars at every level: the circular form is the composition.
+              full_form_levels=["Beginner", "Intermediate"],
+              arrangement_notes=(
+                  "**Blue in Green** - Davis / Evans, *Kind of Blue*, 1959. "
+                  "**D minor**, and one **ten-bar circular strain** that repeats "
+                  "with no break - Bill Evans's liner note calls it \"a 10-measure "
+                  "circular form\". Key areas move D minor - Bb - D minor - A "
+                  "minor - D minor. Reference: **Henry Martin's lead sheet** "
+                  "(Journal of Jazz Studies 11/1, 2016), not the 14-bar iReal Pro "
+                  "reharmonisation. Only bars 3 and 4 carry two chords and the "
+                  "source states they split the bar equally. **Bar 10 leads "
+                  "straight back to bar 1 with no cadence** - the loop is the "
+                  "point, so no turnaround is written. The four-bar piano "
+                  "introduction is not charted: the source describes it only as "
+                  "bars 3-10 in reduced form and gives no chords. Opening chord "
+                  "is contested - Martin gives Gm13, others use Gm7, Gm6 or "
+                  "Bbmaj7#11. Tempo is not source-verified. No melody is "
+                  "reproduced; not checked by ear."
+              ),
+              chart_confidence={"chords": "medium-high", "timing": "high",
+                                "form": "high", "groove": "low"},
+              chart_sources=(
+                  "jazzchanges.app/blue-in-green, carrying Henry Martin's lead "
+                  "sheet (Example 1, Journal of Jazz Studies vol. 11 no. 1, 2016, "
+                  "roundtable 'Circular Thinking') bar by bar, which is the "
+                  "reference used here; Bill Evans's Kind of Blue liner note for "
+                  "the ten-measure circular form; Larson for the four-bar piano "
+                  "introduction following bars 3-10 in reduced form. The iReal "
+                  "Pro chart on the same page was read and deliberately not "
+                  "merged. No score was copied and no melody is reproduced; not "
+                  "checked by ear."
+              ),
+          )),
 
         # --- Rock / Funk / Blues anchors ---
         # Minimal shell - the real 10-section arena-rock chart is supplied by
