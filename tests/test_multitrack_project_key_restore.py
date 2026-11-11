@@ -399,6 +399,89 @@ class TheHandoffToTheSidebarIsOneShotAndScoped(unittest.TestCase):
                         "the handoff must be read before the Practice Key widget exists")
 
 
+class RestoringOneSongsKeyLeavesOtherSongsAlone(unittest.TestCase):
+    """A project load must not reach into settings that are not its own.
+
+    The Practice Key store is pick-scoped, so writing one song's key cannot touch
+    another's - but that is a property worth asserting rather than assuming, because the
+    commit also sets session-wide values (``concert_key``, the commit token) that are
+    deliberately global.
+    """
+
+    OTHER_PICK = "catalog::eleanor-rigby"
+
+    def test_another_songs_stored_key_is_untouched(self):
+        from songs.practice_key_state import (
+            get_practice_concert_key,
+            set_practice_concert_key,
+        )
+
+        state = {"active_catalog_pick_key": PICK}
+        set_practice_concert_key(state, "Em", pick_key=self.OTHER_PICK,
+                                 commit_catalog_practice_key=True)
+        self.assertEqual(get_practice_concert_key(state, pick_key=self.OTHER_PICK), "Em")
+
+        commit_project_practice_key(state, pick_key=PICK, key="Bb")
+
+        self.assertEqual(get_practice_concert_key(state, pick_key=PICK), "Bb")
+        self.assertEqual(get_practice_concert_key(state, pick_key=self.OTHER_PICK), "Em")
+
+    def test_another_songs_override_mark_is_untouched(self):
+        from songs.practice_key_state import (
+            catalog_pick_has_user_practice_key_override,
+            mark_practice_key_user_override,
+        )
+
+        state = {"active_catalog_pick_key": PICK}
+        mark_practice_key_user_override(state, self.OTHER_PICK)
+        commit_project_practice_key(state, pick_key=PICK, key="Bb")
+        self.assertTrue(catalog_pick_has_user_practice_key_override(state, PICK))
+        self.assertTrue(
+            catalog_pick_has_user_practice_key_override(state, self.OTHER_PICK))
+
+    def test_unrelated_session_settings_are_left_as_they_were(self):
+        """Instrument, level, focus, BPM and the song itself are not the key's business."""
+        untouched = {
+            "instrument": "Flute",
+            "player_level": "Intermediate",
+            "practice_focus": "Voicings",
+            "multitrack_bpm": 96,
+            "song": "All the Things You Are",
+            "mt_backing_volume": 0.75,
+        }
+        state = {"active_catalog_pick_key": PICK, **untouched}
+        restore_practice_key_for_project(state, project(tracks=[track(SAX, "Bb")]))
+        for key, value in untouched.items():
+            with self.subTest(key=key):
+                self.assertEqual(state[key], value)
+
+    def test_the_recorded_layer_keys_are_left_as_they_were(self):
+        """Restoring reads the layers' keys; it must never write them."""
+        from multitrack_recording_identity import MT_LAYER_RECORDING_KEYS_KEY
+
+        state = {"active_catalog_pick_key": PICK,
+                 MT_LAYER_RECORDING_KEYS_KEY: {SAX: "Bb", GUITAR: "Em"}}
+        restore_practice_key_for_project(state, project(tracks=[track(SAX, "Bb")]))
+        self.assertEqual(state[MT_LAYER_RECORDING_KEYS_KEY],
+                         {SAX: "Bb", GUITAR: "Em"})
+
+    def test_the_mixer_and_backing_references_are_left_as_they_were(self):
+        state = {
+            "active_catalog_pick_key": PICK,
+            f"mt_vol_{SAX}": 0.4,
+            f"mt_mute_{GUITAR}": True,
+            "mt_backing_storage_ref": "ws/backing/attya-bb.wav",
+            "mt_backing_prepared_at": "2026-11-11T09:00:00Z",
+        }
+        before = dict(state)
+        restore_practice_key_for_project(state, project(tracks=[track(SAX, "Bb")]))
+        for key, value in before.items():
+            if key == "active_catalog_pick_key":
+                continue
+            with self.subTest(key=key):
+                self.assertEqual(state[key], value)
+
+
 class TheMusiciansOwnAnswerMayBeRecorded(unittest.TestCase):
     """Testimony, not inference - which is why it is written at all."""
 
