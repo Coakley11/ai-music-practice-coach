@@ -17,12 +17,34 @@ with alteration ``#5`` became ``C#5`` - indistinguishable from the root C# with
 a stray 5, and that is how the parser read it. 36 of the documented
 root x quality x alteration combinations lost their root this way.
 
-The fix is a representation change, not a reinterpretation: when the quality is
-empty and the alteration begins with an accidental, a one-letter root now gets
-an explicit ``maj``, giving ``Cmaj#5``, which already voiced as C-E-G#.
-``parse_chord_parts`` strips that ``maj`` again so the editor's dropdowns
-round-trip. The strip has to happen before the quality scan, or the
-one-character ``m`` option claims its first letter and leaves ``aj#5`` behind.
+The fix is a representation change, not a reinterpretation. When the quality is
+empty and the alteration begins with an accidental, a one-letter root gets a
+spelling that cannot absorb it:
+
+* ``#5`` becomes ``C+``. A raised fifth over a plain triad is an augmented
+  chord and ``+`` is its conventional symbol, so this - the likeliest
+  alteration on a bare triad - needs no invented spelling at all. It parses
+  unambiguously because ``+`` is not a note letter.
+* the other five alterations have no short conventional symbol over a plain
+  triad, so the major quality is named explicitly: ``Cmajb9``. Verbose, but it
+  reads correctly, where ``Cb9`` would read as C-flat.
+
+``parse_chord_parts`` maps both back to an empty quality plus the alteration, so
+the editor's dropdowns round-trip. The ``maj`` strip has to happen before the
+quality scan, or the one-character ``m`` option claims its first letter and
+leaves ``aj#5`` behind.
+
+``C(#5)`` was considered and rejected: ``_chord_head`` strips parentheses before
+the root is read, so it parses as the root C# with a stray 5 - exactly the bug
+being fixed.
+
+**Known residual.** 35 symbols - the five unusual alterations over a bare triad,
+at all seven one-letter roots - still render as ``Xmaj<alt>`` in the lead sheet
+and the chart grid, because those surfaces print the stored token and there is
+no single label chokepoint to normalise. It is verbose rather than wrong, and a
+strict improvement on today, where the same selections produce an audibly wrong
+chord. Narrowing it further would mean a display-layer mapping across several
+label surfaces, which is deliberately not attempted here.
 
 **Deliberate non-goals.** A hand-written ``C#5`` keeps its current reading as a
 C# chord - it is genuinely ambiguous and only its author knows which was meant.
@@ -104,14 +126,14 @@ class EditorSymbolsAreUnambiguous(unittest.TestCase):
         self.assertEqual(bad, [], f"{len(bad)} symbols lose their root, e.g. {bad[:5]}")
 
     def test_a_one_letter_root_with_an_accidental_gets_an_explicit_maj(self) -> None:
-        for root, alt, want in (("C", "#5", "Cmaj#5"), ("C", "b9", "Cmajb9"),
+        for root, alt, want in (("C", "b9", "Cmajb9"),
                                 ("D", "b5", "Dmajb5"), ("E", "#11", "Emaj#11"),
-                                ("G", "#5", "Gmaj#5"), ("A", "b13", "Amajb13"),
+                                ("A", "b13", "Amajb13"),
                                 ("B", "b9", "Bmajb9"), ("F", "#9", "Fmaj#9")):
             self.assertEqual(build_chord_symbol(root=root, alteration=alt), want)
 
     def test_those_symbols_voice_the_chord_they_name(self) -> None:
-        for sym, want in (("Cmaj#5", ["C", "E", "Ab"]),
+        for sym, want in (("C+", ["C", "E", "Ab"]),
                           ("Cmajb5", ["C", "E", "F#"]),
                           ("Cmaj#9", ["C", "E", "G", "Eb"]),
                           ("Cmajb9", ["C", "E", "G", "C#"]),
@@ -147,11 +169,11 @@ class EditorSymbolsAreUnambiguous(unittest.TestCase):
         self.assertEqual(names("Cmaj9"), ["C", "E", "G", "B", "D"])
 
     def test_a_slash_bass_still_round_trips(self) -> None:
-        sym = build_chord_symbol(root="C", alteration="#5", bass="G")
-        self.assertEqual(sym, "Cmaj#5/G")
+        sym = build_chord_symbol(root="C", alteration="b9", bass="G")
+        self.assertEqual(sym, "Cmajb9/G")
         parsed = parse_chord_parts(sym)
         self.assertEqual((parsed["root"], parsed["alteration"], parsed["bass"]),
-                         ("C", "#5", "G"))
+                         ("C", "b9", "G"))
 
 
 class NonGoalsHold(unittest.TestCase):
@@ -192,6 +214,84 @@ class NonGoalsHold(unittest.TestCase):
                                 hits.append((rec["title"], part))
         self.assertEqual(hits, [], f"catalog uses an enharmonic root: {hits[:5]}")
         self.assertGreater(seen, 1000)
+
+
+class AugmentedUsesTheConventionalSymbol(unittest.TestCase):
+    """A raised fifth over a plain triad needs no invented spelling."""
+
+    ROOTS = ["C", "D", "E", "F", "G", "A", "B"]
+
+    def test_a_sharp_five_builds_as_plus(self) -> None:
+        for r in self.ROOTS:
+            self.assertEqual(build_chord_symbol(root=r, alteration="#5"), f"{r}+")
+
+    def test_plus_sounds_the_augmented_triad(self) -> None:
+        for r in self.ROOTS:
+            base = NAME_TO_PC[r]
+            self.assertEqual({n % 12 for n in chord_notes(f"{r}+")},
+                             {(base + i) % 12 for i in (0, 4, 8)}, f"{r}+")
+
+    def test_plus_round_trips_into_the_dropdowns(self) -> None:
+        for r in self.ROOTS:
+            parsed = parse_chord_parts(f"{r}+")
+            self.assertEqual(parsed["root"], normalize_root(r))
+            self.assertEqual(parsed["quality"], "")
+            self.assertEqual(parsed["alteration"], "#5")
+
+    def test_plus_takes_a_slash_bass(self) -> None:
+        sym = build_chord_symbol(root="C", alteration="#5", bass="G")
+        self.assertEqual(sym, "C+/G")
+        parsed = parse_chord_parts(sym)
+        self.assertEqual((parsed["root"], parsed["alteration"], parsed["bass"]),
+                         ("C", "#5", "G"))
+
+    def test_plus_is_never_an_invented_spelling_on_screen(self) -> None:
+        from songs.sheet_format import chord_display_cell
+
+        for r in self.ROOTS:
+            shown = chord_display_cell(f"{r}+", None)
+            self.assertEqual(shown, f"{r}+")
+            self.assertNotIn("maj", shown)
+
+
+class TheParenthesisedFormWasRejected(unittest.TestCase):
+    """Why C(#5) is not the stored spelling, so nobody retries it."""
+
+    def test_parentheses_are_stripped_before_the_root_is_read(self) -> None:
+        from backing_audio import _chord_head, split_chord
+
+        # split_chord alone reads the root correctly, because "(" is not an
+        # accidental - but chord_notes runs _chord_head first, and that strips
+        # the parentheses, which puts the accidental back against the root.
+        self.assertEqual(split_chord("C(#5)")[0], "C")
+        self.assertEqual(_chord_head("C(#5)"), "C#5")
+        self.assertEqual(split_chord(_chord_head("C(#5)"))[0], "C#")
+        self.assertNotEqual({n % 12 for n in chord_notes("C(#5)")},
+                            {n % 12 for n in chord_notes("C+")})
+
+
+class ResidualDisplayLeakIsBounded(unittest.TestCase):
+    """The maj spelling that does still reach the screen, counted and pinned."""
+
+    def test_only_the_five_unusual_alterations_show_maj(self) -> None:
+        leaked = set()
+        for root in (x for x in ROOT_OPTIONS if x):
+            for alt in (a for a in ALTERATION_OPTIONS if a):
+                sym = build_chord_symbol(root=root, alteration=alt)
+                if "maj" in sym:
+                    leaked.add(sym)
+        self.assertEqual(len(leaked), 35, sorted(leaked)[:8])
+        for sym in leaked:
+            self.assertNotIn("#5", sym, f"{sym}: #5 should use + instead")
+            # and each still voices the chord it names, which is the point
+            self.assertTrue(chord_notes(sym))
+
+    def test_the_leaked_form_still_renders_and_parses(self) -> None:
+        from songs.sheet_format import chord_display_cell
+
+        for sym in ("Cmajb9", "Cmaj#9", "Cmaj#11", "Cmajb13", "Cmajb5"):
+            self.assertEqual(chord_display_cell(sym, None), sym)
+            self.assertEqual(parse_chord_parts(sym)["root"], "C")
 
 
 if __name__ == "__main__":

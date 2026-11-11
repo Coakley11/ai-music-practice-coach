@@ -135,6 +135,10 @@ def parse_chord_parts(symbol: str) -> dict[str, str]:
         return {"root": "C", "quality": text, "alteration": "", "bass": bass, "raw": text}
     root = normalize_root(m.group(1)) or m.group(1)
     rest = m.group(2) or ""
+    if rest == "+":
+        # written by build_chord_symbol for a raised fifth over a plain triad
+        return {"root": root, "quality": "", "alteration": "#5",
+                "bass": bass, "raw": text}
     if rest.startswith("maj") and not rest.startswith(("maj7", "maj9")):
         # build_chord_symbol writes a bare "maj" to keep a one-letter root from
         # absorbing an accidental alteration ("Cmaj#5", not "C#5"). It is the
@@ -175,8 +179,17 @@ def build_chord_symbol(
     if not q and alt[:1] in ("#", "b") and len(r) == 1:
         # A one-letter root followed by an accidental alteration would read back
         # as a different root: "C" + "#5" is indistinguishable from the root C#
-        # with a stray 5. Naming the major quality explicitly removes the
-        # ambiguity, and the parser already reads "Cmaj#5" as C-E-G#.
+        # with a stray 5, and that is how the parser read it.
+        if alt == "#5":
+            # A raised fifth over a plain triad is an augmented chord, and "+"
+            # is its conventional symbol: unambiguous to the parser and the
+            # normal thing for a player to read. Preferred over any invented
+            # spelling for this, the likeliest alteration on a bare triad.
+            return normalize_chord_symbol(f"{r}+{f'/{normalize_root(bass)}' if bass else ''}") \
+                or f"{r}+"
+        # The remaining alterations have no short conventional symbol over a
+        # plain triad, so the major quality is named explicitly. "Cmajb9" is
+        # verbose but reads correctly, where "Cb9" would read as C-flat.
         q = "maj"
     body = f"{r}{q}{alt}"
     b = normalize_root(bass) if bass else ""
