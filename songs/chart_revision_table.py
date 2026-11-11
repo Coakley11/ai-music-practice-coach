@@ -77,6 +77,7 @@ PRIOR_REVISIONS: dict[str, tuple[tuple[str, str], ...]] = {
     ),
     'pop|kiss me|sixpence none the richer': (
         ('f3d5ce439d9db794', '550f2d9774cfc3c2'),
+        ('9abb3101ac7cbeb9', 'a16eca71c0f0416d'),
     ),
     'pop|photograph|ed sheeran': (
         ('6ce7dc1b3040166a', '7fcc1c9d4ad33003'),

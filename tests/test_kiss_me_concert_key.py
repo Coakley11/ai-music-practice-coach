@@ -18,11 +18,12 @@ capo-1 reading, not the sounding key.
 Only the key and the spelling change here: tempo (100), meter, sections, bar
 counts and chord qualities are identical, which the pin below proves.
 
-Form is NOT corrected and NOT verified. Advanced is 176 bars, 7:02 at 100 BPM,
-against a 3:30 album version (3:19 radio). The bar count is almost exactly
-double and the two-bar holds in the intro/verse cycle are the likely cause, but
-no bar-by-bar source was found, so no duration was altered to chase the
-recording length. Nothing here is checked by ear.
+The FORM was corrected separately, in W21: the chart had been written at
+half-bar granularity, so Advanced ran 176 bars = 7:02 at 100 BPM against a 3:30
+album version. It is now 88 bars = 3:31. ``OLD`` below is kept as the genuine
+pre-correction snapshot, because the saved-chart test needs a chart a user
+could actually have stored; ``D_SHAPES`` is the *current* chart in its D
+shapes, and the round-trip tests use that. Nothing here is checked by ear.
 """
 from __future__ import annotations
 
@@ -853,6 +854,456 @@ OLD = json.loads(r'''{
 }''')
 
 
+# The current chart, transposed back to the D shapes it is authored in. This is
+# what the Eb chart must round-trip to; OLD is the pre-W21 half-bar grid and is
+# deliberately NOT updated, so the saved-copy test still exercises a real old
+# chart.
+D_SHAPES = json.loads(r'''{
+ "sections": {
+  "Intro": [
+   "D",
+   "Dmaj7",
+   "D7",
+   "Dmaj7",
+   "D",
+   "Dmaj7",
+   "D7",
+   "Dmaj7"
+  ],
+  "Verse 1": [
+   "D",
+   "Dmaj7",
+   "D7",
+   "Dmaj7",
+   "D",
+   "Dmaj7",
+   "D7",
+   "G"
+  ],
+  "Chorus 1": [
+   "Em|A",
+   "D|Bm",
+   "Em|A",
+   "D|D7",
+   "Em|A",
+   "D|D/C#",
+   "Bm7|D/A",
+   "Gmaj7",
+   "Asus4|A"
+  ],
+  "Interlude": [
+   "D",
+   "Dmaj7",
+   "D7",
+   "Dmaj7",
+   "D",
+   "Dmaj7",
+   "D7",
+   "Dmaj7"
+  ],
+  "Verse 2": [
+   "D",
+   "Dmaj7",
+   "D7",
+   "Dmaj7",
+   "D",
+   "Dmaj7",
+   "D7",
+   "G"
+  ],
+  "Chorus 2": [
+   "Em|A",
+   "D|Bm",
+   "Em|A",
+   "D|D7",
+   "Em|A",
+   "D|D/C#",
+   "Bm7|D/A",
+   "Gmaj7",
+   "Asus4|A"
+  ],
+  "Harmonica / Accordion": [
+   "D",
+   "Dmaj7",
+   "D7",
+   "Dmaj7",
+   "D",
+   "Dmaj7",
+   "D7",
+   "Dmaj7"
+  ],
+  "Guitar Section": [
+   "Em|A",
+   "D|Bm",
+   "Em|A",
+   "D|D7"
+  ],
+  "Chorus 3": [
+   "Em|A",
+   "D|Bm",
+   "Em|A",
+   "D|D7",
+   "Em|A",
+   "D|D/C#",
+   "Bm7|D/A",
+   "Gmaj7",
+   "Asus4|A"
+  ],
+  "Outro": [
+   "D",
+   "Dmaj7",
+   "D7",
+   "Dmaj7",
+   "D",
+   "Dmaj7",
+   "D7",
+   "Dmaj7",
+   "D",
+   "Dmaj7",
+   "D7",
+   "Dmaj7",
+   "D",
+   "Dmaj7",
+   "D7",
+   "Dmaj7",
+   "D"
+  ]
+ },
+ "chart_versions": {
+  "Beginner": {
+   "Intro": [
+    "D",
+    "D",
+    "D",
+    "D",
+    "D",
+    "D",
+    "D",
+    "D"
+   ],
+   "Verse 1": [
+    "D",
+    "D",
+    "D",
+    "D",
+    "D",
+    "D",
+    "D",
+    "G"
+   ],
+   "Chorus 1": [
+    "Em|A",
+    "D|Bm",
+    "Em|A",
+    "D|D",
+    "Em|A",
+    "D|D",
+    "Bm|D",
+    "G",
+    "A|A"
+   ],
+   "Interlude": [
+    "D",
+    "D",
+    "D",
+    "D",
+    "D",
+    "D",
+    "D",
+    "D"
+   ],
+   "Verse 2": [
+    "D",
+    "D",
+    "D",
+    "D",
+    "D",
+    "D",
+    "D",
+    "G"
+   ],
+   "Chorus 2": [
+    "Em|A",
+    "D|Bm",
+    "Em|A",
+    "D|D",
+    "Em|A",
+    "D|D",
+    "Bm|D",
+    "G",
+    "A|A"
+   ],
+   "Harmonica / Accordion": [
+    "D",
+    "D",
+    "D",
+    "D",
+    "D",
+    "D",
+    "D",
+    "D"
+   ],
+   "Guitar Section": [
+    "Em|A",
+    "D|Bm",
+    "Em|A",
+    "D|D"
+   ],
+   "Chorus 3": [
+    "Em|A",
+    "D|Bm",
+    "Em|A",
+    "D|D",
+    "Em|A",
+    "D|D",
+    "Bm|D",
+    "G",
+    "A|A"
+   ],
+   "Outro": [
+    "D",
+    "D",
+    "D",
+    "D",
+    "D",
+    "D",
+    "D",
+    "D",
+    "D",
+    "D",
+    "D",
+    "D",
+    "D",
+    "D",
+    "D",
+    "D",
+    "D"
+   ]
+  },
+  "Intermediate": {
+   "Intro": [
+    "D",
+    "Dmaj7",
+    "D7",
+    "Dmaj7",
+    "D",
+    "Dmaj7",
+    "D7",
+    "Dmaj7"
+   ],
+   "Verse 1": [
+    "D",
+    "Dmaj7",
+    "D7",
+    "Dmaj7",
+    "D",
+    "Dmaj7",
+    "D7",
+    "G"
+   ],
+   "Chorus 1": [
+    "Em|A",
+    "D|Bm",
+    "Em|A",
+    "D|D7",
+    "Em|A",
+    "D|D/C#",
+    "Bm7|D/A",
+    "Gmaj7",
+    "Asus4|A"
+   ],
+   "Interlude": [
+    "D",
+    "Dmaj7",
+    "D7",
+    "Dmaj7",
+    "D",
+    "Dmaj7",
+    "D7",
+    "Dmaj7"
+   ],
+   "Verse 2": [
+    "D",
+    "Dmaj7",
+    "D7",
+    "Dmaj7",
+    "D",
+    "Dmaj7",
+    "D7",
+    "G"
+   ],
+   "Chorus 2": [
+    "Em|A",
+    "D|Bm",
+    "Em|A",
+    "D|D7",
+    "Em|A",
+    "D|D/C#",
+    "Bm7|D/A",
+    "Gmaj7",
+    "Asus4|A"
+   ],
+   "Harmonica / Accordion": [
+    "D",
+    "Dmaj7",
+    "D7",
+    "Dmaj7",
+    "D",
+    "Dmaj7",
+    "D7",
+    "Dmaj7"
+   ],
+   "Guitar Section": [
+    "Em|A",
+    "D|Bm",
+    "Em|A",
+    "D|D7"
+   ],
+   "Chorus 3": [
+    "Em|A",
+    "D|Bm",
+    "Em|A",
+    "D|D7",
+    "Em|A",
+    "D|D/C#",
+    "Bm7|D/A",
+    "Gmaj7",
+    "Asus4|A"
+   ],
+   "Outro": [
+    "D",
+    "Dmaj7",
+    "D7",
+    "Dmaj7",
+    "D",
+    "Dmaj7",
+    "D7",
+    "Dmaj7",
+    "D",
+    "Dmaj7",
+    "D7",
+    "Dmaj7",
+    "D",
+    "Dmaj7",
+    "D7",
+    "Dmaj7",
+    "D"
+   ]
+  },
+  "Advanced": {
+   "Intro": [
+    "Dadd9",
+    "Dmaj9",
+    "D9",
+    "Dmaj9",
+    "Dadd9",
+    "Dmaj9",
+    "D9",
+    "Dmaj9"
+   ],
+   "Verse 1": [
+    "Dadd9",
+    "Dmaj9",
+    "D9",
+    "Dmaj9",
+    "Dadd9",
+    "Dmaj9",
+    "D9",
+    "Gadd9"
+   ],
+   "Chorus 1": [
+    "Em9|Asus2",
+    "Dadd9|Bm9",
+    "Em9|Asus2",
+    "Dadd9|D9",
+    "Em9|Asus2",
+    "Dadd9|Dmaj7/C#",
+    "Bm9|Dadd9/A",
+    "Gmaj9",
+    "A7sus4|Asus2"
+   ],
+   "Interlude": [
+    "Dadd9",
+    "Dmaj9",
+    "D9",
+    "Dmaj9",
+    "Dadd9",
+    "Dmaj9",
+    "D9",
+    "Dmaj9"
+   ],
+   "Verse 2": [
+    "Dadd9",
+    "Dmaj9",
+    "D9",
+    "Dmaj9",
+    "Dadd9",
+    "Dmaj9",
+    "D9",
+    "Gadd9"
+   ],
+   "Chorus 2": [
+    "Em9|Asus2",
+    "Dadd9|Bm9",
+    "Em9|Asus2",
+    "Dadd9|D9",
+    "Em9|Asus2",
+    "Dadd9|Dmaj7/C#",
+    "Bm9|Dadd9/A",
+    "Gmaj9",
+    "A7sus4|Asus2"
+   ],
+   "Harmonica / Accordion": [
+    "Dadd9",
+    "Dmaj9",
+    "D9",
+    "Dmaj9",
+    "Dadd9",
+    "Dmaj9",
+    "D9",
+    "Dmaj9"
+   ],
+   "Guitar Section": [
+    "Em9|Asus2",
+    "Dadd9|Bm9",
+    "Em9|Asus2",
+    "Dadd9|D9"
+   ],
+   "Chorus 3": [
+    "Em9|Asus2",
+    "Dadd9|Bm9",
+    "Em9|Asus2",
+    "Dadd9|D9",
+    "Em9|Asus2",
+    "Dadd9|Dmaj7/C#",
+    "Bm9|Dadd9/A",
+    "Gmaj9",
+    "A7sus4|Asus2"
+   ],
+   "Outro": [
+    "Dadd9",
+    "Dmaj9",
+    "D9",
+    "Dmaj9",
+    "Dadd9",
+    "Dmaj9",
+    "D9",
+    "Dmaj9",
+    "Dadd9",
+    "Dmaj9",
+    "D9",
+    "Dmaj9",
+    "Dadd9",
+    "Dmaj9",
+    "D9",
+    "Dmaj9",
+    "Dadd9"
+   ]
+  }
+ }
+}''')
+
+
 def rec():
     return copy.deepcopy(
         next(r for r in curated_song_records() if r["title"] == TITLE and r["artist"] == ARTIST)
@@ -867,22 +1318,22 @@ class TestConcertKey(unittest.TestCase):
         self.assertEqual(ext["default_bpm"], OLD["bpm"])
         self.assertEqual(ext["time_signature"], "4/4")
         self.assertEqual(list(r.get("section_order") or r["sections"]), OLD["order"])
+        # The key correction did not change the form; W21's grid correction did.
         self.assertEqual(
             {n: len(c) for n, c in r["sections"].items()},
-            {n: len(c) for n, c in OLD["sections"].items()},
+            {n: len(c) for n, c in D_SHAPES["sections"].items()},
         )
 
     def test_the_concert_progression_is_what_the_chart_plays(self) -> None:
         r = rec()
         secs = r["sections"]
-        # intro/verse cycle: two bars each of I, Imaj7, I7
-        self.assertEqual(secs["Intro"][:8],
-                         ["Eb", "Eb", "Ebmaj7", "Ebmaj7", "Eb7", "Eb7", "Ebmaj7", "Ebmaj7"])
-        # the verse turns to IV at the end of its cycle
-        self.assertEqual(secs["Verse 1"][-2:], ["Ab", "Ab"])
-        # chorus is ii - V - I - vi, one bar each
-        self.assertEqual(secs["Chorus 1"][:4], ["Fm", "Bb", "Eb", "Cm"])
-        self.assertEqual(secs["Chorus 1"][-2:], ["Bbsus4", "Bb"])
+        # intro/verse cycle: one bar each of I, Imaj7, I7, Imaj7
+        self.assertEqual(secs["Intro"][:4], ["Eb", "Ebmaj7", "Eb7", "Ebmaj7"])
+        # the verse turns to IV in its last bar
+        self.assertEqual(secs["Verse 1"][-1], "Ab")
+        # chorus is ii - V - I - vi, TWO chords to a bar
+        self.assertEqual(secs["Chorus 1"][:2], ["Fm|Bb", "Eb|Cm"])
+        self.assertEqual(secs["Chorus 1"][-1], "Bbsus4|Bb")
         # no D-shape spelling may survive at any level
         for level in ("Beginner", "Intermediate", "Advanced"):
             _v, got = resolve_level_chart(rec(), level)
@@ -905,18 +1356,31 @@ class TestConcertKey(unittest.TestCase):
         for want in ("Eb", "Ebmaj7", "Eb7", "Ab", "Fm", "Bb", "Cm"):
             self.assertIn(want, tabs, f"missing concert fingering for {want}")
 
-    def test_form_is_unchanged_and_its_length_gap_is_documented(self) -> None:
+    def test_form_is_corrected_and_matches_the_recording(self) -> None:
+        """Renamed from test_form_is_unchanged_and_its_length_gap_is_documented.
+
+        That test pinned the defect (176 bars, "FORM NOT VERIFIED") on purpose,
+        so that the gap could not be forgotten. W21 closed the gap, so the pin
+        now asserts the corrected form instead of the documented defect.
+        """
         r = rec()
         self.assertEqual(r["extensions"]["default_bpm"], 100)
         self.assertEqual(len(r.get("section_order") or r["sections"]), 10)
         _v, adv = resolve_level_chart(rec(), "Advanced")
-        self.assertEqual(sum(len(v) for v in adv.values()), 176)
-        self.assertIn("FORM NOT VERIFIED", r["extensions"]["arrangement_notes"])
+        self.assertEqual(sum(len(v) for v in adv.values()), 88)
+        notes = r["extensions"]["arrangement_notes"]
+        self.assertNotIn("FORM NOT VERIFIED", notes)
+        self.assertIn("FORM CORRECTED", notes)
+        # 88 bars at 100 BPM is 3:31.2, against a 3:30 album version.
+        from songs.meter import meter_timing
+        self.assertAlmostEqual(88 * meter_timing(100, "4/4").bar_sec, 211.2, places=6)
 
     def test_transposed_back_to_the_shapes_it_is_the_old_chart_exactly(self) -> None:
         r = rec()
-        self.assertEqual(transpose_sections_dict(r["sections"], NEW_REF, OLD_REF), OLD["sections"])
-        for level, secs in OLD["chart_versions"].items():
+        self.assertEqual(
+            transpose_sections_dict(r["sections"], NEW_REF, OLD_REF), D_SHAPES["sections"]
+        )
+        for level, secs in D_SHAPES["chart_versions"].items():
             self.assertEqual(
                 transpose_sections_dict(r["chart_versions"][level], NEW_REF, OLD_REF), secs, level
             )
@@ -958,7 +1422,7 @@ class TestConcertKey(unittest.TestCase):
         r = rec()
         self.assertEqual(
             transpose_sections_dict(r["sections"], NEW_REF, "C"),
-            transpose_sections_dict(OLD["sections"], OLD_REF, "C"),
+            transpose_sections_dict(D_SHAPES["sections"], OLD_REF, "C"),
         )
 
 

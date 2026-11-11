@@ -194,60 +194,71 @@ _UPTOWN_LYRIC_CUES: dict[str, list[str]] = {
 # Folk-pop ballad in 4/4. One list item = one bar so chart, backing, and
 # practice timelines share the same harmonic rhythm.
 #
+# BAR GRID CORRECTED (W21). The cells used to be written at HALF-bar
+# granularity while the record is one chord per bar in the intro/verse cycle
+# and TWO chords per bar in the chorus and the instrumental. That made every
+# section twice as long as it is played: Advanced ran 176 bars = 7:02 at
+# 100 BPM against a 3:30 album version. The grid is now the recording's:
+# 88 bars = 3:31. No chord was deleted to shorten anything — the repeated
+# pairs in the cycle collapsed into one bar each, and the differing pairs in
+# the chorus became within-bar changes ("Em|A"), which is what the source
+# prints.
+#
+# Reference, named and kept consistent: the bar-formatted chord chart at
+# bellandcomusic.com/kiss-me.html, which gives the intro as four bars of one
+# chord each inside repeat signs (C | Cmaj7 | C7 | Cmaj7 in its capo-3 C
+# shapes) and the instrumental as its eight chorus chords in FOUR bars, i.e.
+# two chords to a bar. Its chorus and ours differ on a few chord identities
+# (it prints Em/Am7-G where we hold D/C#-D/A); those are left alone here,
+# because this correction is to the bar grid only.
+#
 # The cells below are written in the open D shapes every tab site prints,
 # then transposed up a semitone to the key the record actually sounds in.
 # Wikipedia and the Musicnotes listing both give Eb major, and an
 # AcousticBrainz estimate for the track says D# major (the same pitch), so
 # the D shapes are a capo-1 reading, not the sounding key.
 
+# One chord per bar, exactly as the reference prints the intro.
 _KISS_INTRO_CYCLE = (
-    _hold("D", 2)
-    + _hold("Dmaj7", 2)
-    + _hold("D7", 2)
-    + _hold("Dmaj7", 2)
-)
-_KISS_INTRO = list(_KISS_INTRO_CYCLE) * 2  # 16 bars
+    _hold("D", 1)
+    + _hold("Dmaj7", 1)
+    + _hold("D7", 1)
+    + _hold("Dmaj7", 1)
+)  # 4 bars
+_KISS_INTRO = list(_KISS_INTRO_CYCLE) * 2  # 8 bars
 
 _KISS_VERSE = (
-    _hold("D", 2)
-    + _hold("Dmaj7", 2)
-    + _hold("D7", 2)
-    + _hold("Dmaj7", 2)
-    + _hold("D", 2)
-    + _hold("Dmaj7", 2)
-    + _hold("D7", 2)
-    + _hold("G", 2)
-)  # 16 bars
-
-_KISS_CHORUS = (
-    # Em | A | D | Bm
-    _hold("Em", 1) + _hold("A", 1) + _hold("D", 1) + _hold("Bm", 1)
-    # Em | A | D | D7
-    + _hold("Em", 1) + _hold("A", 1) + _hold("D", 1) + _hold("D7", 1)
-    # Em | A | D | D/C#
-    + _hold("Em", 1) + _hold("A", 1) + _hold("D", 1) + _hold("D/C#", 1)
-    # Bm7 | D/A
-    + _hold("Bm7", 1) + _hold("D/A", 1)
-    # Gmaj7 (2 bars)
-    + _hold("Gmaj7", 2)
-    # Asus4 | A
-    + _hold("Asus4", 1) + _hold("A", 1)
-)  # 18 bars
-
-_KISS_INTERLUDE = list(_KISS_INTRO_CYCLE) * 2  # 16 bars
-_KISS_HARMONICA = list(_KISS_INTRO_CYCLE) * 2  # 16 bars
-
-_KISS_GUITAR_SECTION = (
-    # Em | A | D | Bm
-    _hold("Em", 1) + _hold("A", 1) + _hold("D", 1) + _hold("Bm", 1)
-    # Em | A | D | D7
-    + _hold("Em", 1) + _hold("A", 1) + _hold("D", 1) + _hold("D7", 1)
+    _hold("D", 1)
+    + _hold("Dmaj7", 1)
+    + _hold("D7", 1)
+    + _hold("Dmaj7", 1)
+    + _hold("D", 1)
+    + _hold("Dmaj7", 1)
+    + _hold("D7", 1)
+    + _hold("G", 1)
 )  # 8 bars
 
+# Two chords to a bar, as the reference's instrumental staves show. Each cell
+# below is one bar; "Em|A" means both chords inside it, two beats each.
+_KISS_CHORUS = [
+    "Em|A", "D|Bm",
+    "Em|A", "D|D7",
+    "Em|A", "D|D/C#",
+    "Bm7|D/A",
+    "Gmaj7",            # the one whole-bar chord in the chorus
+    "Asus4|A",
+]  # 9 bars
+
+_KISS_INTERLUDE = list(_KISS_INTRO_CYCLE) * 2  # 8 bars
+_KISS_HARMONICA = list(_KISS_INTRO_CYCLE) * 2  # 8 bars
+
+# The reference prints exactly these eight chords across FOUR bars.
+_KISS_GUITAR_SECTION = ["Em|A", "D|Bm", "Em|A", "D|D7"]  # 4 bars
+
 _KISS_OUTRO = (
-    list(_KISS_INTRO_CYCLE) * 4  # 32 bars
-    + _hold("D", 2)               # 2 final bars
-)  # 34 bars
+    list(_KISS_INTRO_CYCLE) * 4  # 16 bars
+    + _hold("D", 1)               # 1 final bar
+)  # 17 bars
 
 _KISS_SECTION_ORDER: list[str] = [
     "Intro",
@@ -291,8 +302,13 @@ def _kiss_beginner_chord(chord: str) -> str:
     return simple_map.get(chord, chord)
 
 
+def _kiss_map_cell(cell: str, fn) -> str:
+    """Apply a per-chord level map inside a possibly split bar ("Em|A")."""
+    return "|".join(fn(part) for part in str(cell).split("|"))
+
+
 _KISS_BEGINNER: dict[str, list[str]] = {
-    name: [_kiss_beginner_chord(c) for c in chords]
+    name: [_kiss_map_cell(c, _kiss_beginner_chord) for c in chords]
     for name, chords in _KISS_SECTIONS.items()
 }
 
@@ -319,7 +335,7 @@ def _kiss_advanced_chord(chord: str) -> str:
 
 
 _KISS_ADVANCED: dict[str, list[str]] = {
-    name: [_kiss_advanced_chord(c) for c in chords]
+    name: [_kiss_map_cell(c, _kiss_advanced_chord) for c in chords]
     for name, chords in _KISS_SECTIONS.items()
 }
 
@@ -380,7 +396,7 @@ _KISS_LYRIC_CUES: dict[str, list[str]] = {
     "Outro": [
         "Wordless extended D · Dmaj7 · D7 · Dmaj7 cycle, four times",
         "Soft 'kiss me' tag fragments allowed over the cycle",
-        "Settle and finish on two bars of D major",
+        "Settle and finish on a final bar of D major",
     ],
 }
 
@@ -488,19 +504,23 @@ _REFERENCE_BY_KEY: dict[tuple[str, str], dict[str, Any]] = {
             "stores the sounding chords. Form: "
             "**Intro → Verse 1 → Chorus 1 → Interlude → Verse 2 → Chorus 2 "
             "→ Harmonica / Accordion → Guitar Section → Chorus 3 → Outro**. "
-            "Intro / Interlude / Harmonica all share the same 4-chord cycle "
-            "**Eb(2) · Ebmaj7(2) · Eb7(2) · Ebmaj7(2)** (×2 = 16 bars each). "
-            "Verse: same cycle then **Eb(2) · Ebmaj7(2) · Eb7(2) · Ab(2)** (16 bars). "
-            "Chorus (18 bars, mostly 1 bar/chord): "
-            "**Fm Bb Eb Cm | Fm Bb Eb Eb7 | Fm Bb Eb Eb/D | Cm7 Eb/Bb | Abmaj7(2) | "
-            "Bbsus4 Bb**. "
-            "Guitar Section: **Fm Bb Eb Cm | Fm Bb Eb Eb7** (8 bars). "
-            "Outro: intro cycle ×4 (32 bars), then **Eb(2)** to finish (34 bars). "
+            "Intro / Interlude / Harmonica all share the same 4-chord cycle, "
+            "**one chord per bar**: **Eb · Ebmaj7 · Eb7 · Ebmaj7** (×2 = 8 bars each). "
+            "Verse: same cycle then **Eb · Ebmaj7 · Eb7 · Ab** (8 bars). "
+            "Chorus (9 bars, **two chords per bar**): "
+            "**Fm|Bb · Eb|Cm · Fm|Bb · Eb|Eb7 · Fm|Bb · Eb|Eb/D · Cm7|Eb/Bb · "
+            "Abmaj7 · Bbsus4|Bb**. "
+            "Guitar Section: **Fm|Bb · Eb|Cm · Fm|Bb · Eb|Eb7** (4 bars). "
+            "Outro: intro cycle ×4 (16 bars), then a final **Eb** bar (17 bars). "
             "One chart bar = one playback bar. "
-            "FORM NOT VERIFIED: 176 Advanced bars run 7:02 at 100 BPM against a 3:30 "
-            "album version (3:19 radio). The bar count is almost exactly double, and "
-            "the two-bar holds above are the likely cause, but no bar-by-bar source "
-            "was found, so the durations are left as they stand."
+            "FORM CORRECTED (W21): the chart was previously written at half-bar "
+            "granularity, which made every section twice as long as it is played "
+            "(176 Advanced bars = 7:02 at 100 BPM against a 3:30 album version). "
+            "The bar-formatted chart at bellandcomusic.com/kiss-me.html prints the "
+            "intro as four one-chord bars inside repeat signs and the instrumental's "
+            "eight chords across four bars, i.e. two to a bar. Regridded to match: "
+            "88 Advanced bars = 3:31. No chord was removed — repeated pairs became "
+            "one bar, differing pairs became within-bar changes."
         ),
     },
 }
