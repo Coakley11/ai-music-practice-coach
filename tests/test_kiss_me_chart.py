@@ -1,5 +1,9 @@
 """Kiss Me (Sixpence None the Richer): default tempo is ~100 BPM, not 124.
 
+The chart is now stored in the recording's concert key, Eb major; the old D
+spelling was the capo-1 open-D shape set. See test_kiss_me_concert_key.py for
+that correction and its sources. Tempo, meter and bar counts are unchanged.
+
 Sources agreeing on ~100: Hooktheory (100 BPM, 4/4), karaoke-version.com
 (original tempo 100), klang.io (100), Traktor analysis of the radio edit
 (100.1); Musicnotes (via Wikipedia) prints 96 and AcousticBrainz 102, so the
@@ -29,7 +33,7 @@ class KissMeTempoTests(unittest.TestCase):
         ext = self.rec["extensions"]
         self.assertEqual(ext["default_bpm"], 100)
         self.assertEqual(ext["time_signature"], "4/4")
-        self.assertEqual(self.rec["key"], "D")
+        self.assertEqual(self.rec["key"], "Eb")
 
     def test_notes_do_not_claim_124(self) -> None:
         notes = self.rec["extensions"]["arrangement_notes"]
@@ -42,8 +46,8 @@ class KissMeTempoTests(unittest.TestCase):
             self.assertEqual(sum(len(v) for v in secs.values()), n, level)
         self.assertAlmostEqual(176 * meter_timing(100, "4/4").bar_sec, 422.4, places=6)
         _v, adv = resolve_level_chart(self.rec, "Advanced")
-        self.assertEqual(adv["Intro"][:4], ["Dadd9", "Dadd9", "Dmaj9", "Dmaj9"])
-        self.assertEqual(adv["Chorus 1"][:4], ["Em9", "Asus2", "Dadd9", "Bm9"])
+        self.assertEqual(adv["Intro"][:4], ["Ebadd9", "Ebadd9", "Ebmaj9", "Ebmaj9"])
+        self.assertEqual(adv["Chorus 1"][:4], ["Fm9", "Bbsus2", "Ebadd9", "Cm9"])
 
 
 if __name__ == "__main__":

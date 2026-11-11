@@ -190,9 +190,15 @@ _UPTOWN_LYRIC_CUES: dict[str, list[str]] = {
     ],
 }
 
-# --- Kiss Me (Sixpence None the Richer) — written key D ---
+# --- Kiss Me (Sixpence None the Richer) — concert key Eb major ---
 # Folk-pop ballad in 4/4. One list item = one bar so chart, backing, and
 # practice timelines share the same harmonic rhythm.
+#
+# The cells below are written in the open D shapes every tab site prints,
+# then transposed up a semitone to the key the record actually sounds in.
+# Wikipedia and the Musicnotes listing both give Eb major, and an
+# AcousticBrainz estimate for the track says D# major (the same pitch), so
+# the D shapes are a capo-1 reading, not the sounding key.
 
 _KISS_INTRO_CYCLE = (
     _hold("D", 2)
@@ -317,6 +323,20 @@ _KISS_ADVANCED: dict[str, list[str]] = {
     for name, chords in _KISS_SECTIONS.items()
 }
 
+
+def _kiss_to_concert(charts: dict[str, list[str]]) -> dict[str, list[str]]:
+    """D shapes (capo 1) -> the sounding key, Eb major."""
+    from music_theory import transpose_sections_dict
+
+    return transpose_sections_dict(charts, "D", "Eb")
+
+
+# The level maps above are keyed on the D-shape names, so transposition happens
+# once, after all three tiers are built.
+_KISS_SECTIONS = _kiss_to_concert(_KISS_SECTIONS)
+_KISS_BEGINNER = _kiss_to_concert(_KISS_BEGINNER)
+_KISS_ADVANCED = _kiss_to_concert(_KISS_ADVANCED)
+
 # Lyric cues — short paraphrases of the section feel (no copyrighted lines).
 _KISS_LYRIC_CUES: dict[str, list[str]] = {
     "Intro": [
@@ -430,7 +450,10 @@ _REFERENCE_BY_KEY: dict[tuple[str, str], dict[str, Any]] = {
         ),
     },
     ("Kiss Me", "Sixpence None the Richer"): {
-        "key": "D",
+        "key": "Eb",
+        "concert_key": "Eb",
+        "guitar_friendly_key": "D",
+        "capo_note": "Capo 1 (open D shapes) · concert key Eb major",
         "genre": "Pop",
         "default_bpm": 100,
         "default_groove": "Folk Pop",
@@ -440,40 +463,44 @@ _REFERENCE_BY_KEY: dict[tuple[str, str], dict[str, Any]] = {
         "beginner": _KISS_BEGINNER,
         "advanced": _KISS_ADVANCED,
         "lyric_cues": _KISS_LYRIC_CUES,
+        # Concert-pitch fingerings, as the other capo-corrected songs carry.
+        # Every shape here is one this repo already uses for that chord name;
+        # the Advanced extensions (Ebadd9, Ebmaj9, Eb9, Abadd9, Abmaj9, Fm9,
+        # Bb7sus4) and the slash voicings are omitted rather than invented,
+        # since no verified fingering for them exists here yet.
         "guitar_tabs": {
-            "D": "xx0232",
-            "Dmaj7": "xx0222",
-            "D7": "xx0212",
-            "D/C#": "x4023x",
-            "D/A": "x00232",
-            "G": "320003",
-            "Gmaj7": "320002",
-            "Em": "022000",
-            "Bm": "x24432",
-            "Bm7": "x20202",
-            "A": "x02220",
-            "Asus4": "x02230",
-            "Dadd9": "xx0230",
-            "Dmaj9": "x54222",
-            "Gadd9": "320203",
-            "Gmaj9": "320032",
-            "Em9": "022002",
-            "Bm9": "x24222",
-            "Asus2": "x02200",
-            "A7sus4": "x02030",
+            "Eb": "x68886",
+            "Ebmaj7": "x6533x",
+            "Eb7": "x68686",
+            "Ab": "466544",
+            "Abmaj7": "465544",
+            "Fm": "133111",
+            "Bb": "x13331",
+            "Bbsus4": "x13341",
+            "Bbsus2": "x13311",
+            "Cm": "x35543",
+            "Cm7": "x35343",
+            "Cm9": "x3133x",
         },
         "arrangement_notes": (
-            "Folk-pop ballad in D, ~100 BPM, 4/4. Form: "
+            "Folk-pop ballad in **Eb major** (the recording's key), ~100 BPM, 4/4. "
+            "Guitarists read it in open **D shapes with a capo on fret 1**; the chart "
+            "stores the sounding chords. Form: "
             "**Intro → Verse 1 → Chorus 1 → Interlude → Verse 2 → Chorus 2 "
             "→ Harmonica / Accordion → Guitar Section → Chorus 3 → Outro**. "
             "Intro / Interlude / Harmonica all share the same 4-chord cycle "
-            "**D(2) · Dmaj7(2) · D7(2) · Dmaj7(2)** (×2 = 16 bars each). "
-            "Verse: same cycle then **D(2) · Dmaj7(2) · D7(2) · G(2)** (16 bars). "
+            "**Eb(2) · Ebmaj7(2) · Eb7(2) · Ebmaj7(2)** (×2 = 16 bars each). "
+            "Verse: same cycle then **Eb(2) · Ebmaj7(2) · Eb7(2) · Ab(2)** (16 bars). "
             "Chorus (18 bars, mostly 1 bar/chord): "
-            "**Em A D Bm | Em A D D7 | Em A D D/C# | Bm7 D/A | Gmaj7(2) | Asus4 A**. "
-            "Guitar Section: **Em A D Bm | Em A D D7** (8 bars). "
-            "Outro: intro cycle ×4 (32 bars), then **D(2)** to finish (34 bars). "
-            "One chart bar = one playback bar."
+            "**Fm Bb Eb Cm | Fm Bb Eb Eb7 | Fm Bb Eb Eb/D | Cm7 Eb/Bb | Abmaj7(2) | "
+            "Bbsus4 Bb**. "
+            "Guitar Section: **Fm Bb Eb Cm | Fm Bb Eb Eb7** (8 bars). "
+            "Outro: intro cycle ×4 (32 bars), then **Eb(2)** to finish (34 bars). "
+            "One chart bar = one playback bar. "
+            "FORM NOT VERIFIED: 176 Advanced bars run 7:02 at 100 BPM against a 3:30 "
+            "album version (3:19 radio). The bar count is almost exactly double, and "
+            "the two-bar holds above are the likely cause, but no bar-by-bar source "
+            "was found, so the durations are left as they stand."
         ),
     },
 }
