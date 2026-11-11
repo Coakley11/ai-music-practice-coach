@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 import struct
 import sys
 import tempfile
@@ -33,7 +34,6 @@ sys.path.insert(0, str(SCRIPTS))
 sys.path.insert(0, str(ROOT))
 
 from walk_creative_backing_matrix import (  # noqa: E402
-    click_button_has,
     click_nav,
     expand_sidebar,
     wait_idle,
@@ -188,6 +188,27 @@ def slot_state(page: Page, slot: str) -> str:
     return "unknown"
 
 
+def slot_uploader(page: Page, slot: str, idx: int):
+    """This slot's own dropzone input.
+
+    Addressed by Streamlit's key class (`st-key-mt_upload_Sax---winds`) rather than by
+    position: a run that indexed into every dropzone on the page put the Guitar take
+    nowhere once a save had added another uploader earlier in the DOM. Position is kept
+    only as a fallback.
+    """
+    key = slot.replace(" ", "-").replace("/", "-")
+    scoped = page.locator(
+        f'[class*="st-key-mt_upload_{key}"] [data-testid="stFileUploaderDropzoneInput"]'
+    )
+    if scoped.count():
+        return scoped.first
+    inputs = page.locator('[data-testid="stFileUploaderDropzoneInput"]')
+    if idx < inputs.count():
+        log(f"  {slot}: no key class, falling back to uploader #{idx}")
+        return inputs.nth(idx)
+    return None
+
+
 def upload_layer(page: Page, slot: str, wav: Path) -> bool:
     """Put a take into one slot through its uploader, and wait for the slot to say so.
 
@@ -211,12 +232,12 @@ def upload_layer(page: Page, slot: str, wav: Path) -> bool:
         if not expand_layer(page, slot) and attempt == 3:
             log(f"  {slot}: layer controls never opened")
         settle(page, 2)
-        inputs = page.locator('[data-testid="stFileUploaderDropzoneInput"]')
-        if idx >= inputs.count():
-            log(f"  only {inputs.count()} uploaders on the page, wanted #{idx}")
+        target = slot_uploader(page, slot, idx)
+        if target is None:
+            log(f"  no uploader found for {slot}")
             return False
         try:
-            inputs.nth(idx).set_input_files(str(wav))
+            target.set_input_files(str(wav))
         except Exception as exc:
             log(f"  upload into {slot} failed: {exc}")
             return False
@@ -238,26 +259,79 @@ def prompt_visible(page: Page) -> bool:
     return "would affect your current recording" in body
 
 
+def prompt_buttons(page: Page):
+    """Only the held-move prompt's own buttons.
+
+    Scoped by its widget keys. The Project Library has its own "Save Changes" and
+    "Save as New Project" buttons, and a run that matched on button text alone reported
+    those as the prompt's choices on a page where no prompt existed at all.
+    """
+    return page.locator('[class*="st-key-mt_switch_"] button')
+
+
 def prompt_choices(page: Page) -> list[str]:
-    found = []
-    for label in ("Save Changes", "Save as New Project", "Continue Editing",
-                  "Discard", "Cancel"):
-        if page.get_by_role("button", name=label, exact=True).count():
-            found.append(label)
-    return found
+    if not prompt_visible(page):
+        return []
+    loc = prompt_buttons(page)
+    out = []
+    for i in range(loc.count()):
+        try:
+            text = (loc.nth(i).inner_text() or "").strip()
+        except Exception:
+            continue
+        if text:
+            out.append(text)
+    return out
 
 
 def answer_prompt(page: Page, choice: str) -> bool:
-    loc = page.get_by_role("button", name=choice, exact=True)
-    if not loc.count():
-        return False
-    loc.first.click(timeout=8000)
-    settle(page, 4)
-    return True
+    loc = prompt_buttons(page)
+    for i in range(loc.count()):
+        el = loc.nth(i)
+        try:
+            if (el.inner_text() or "").strip() != choice:
+                continue
+            el.scroll_into_view_if_needed()
+            el.click(timeout=8000)
+            settle(page, 5)
+            return True
+        except Exception:
+            continue
+    log(f"  prompt choice {choice!r} not clickable; offered {prompt_choices(page)}")
+    return False
 
 
 def sidebar_pk(page: Page) -> str:
     return pk_val(page)
+
+
+_LEADING_GLYPHS = re.compile(r"^[^0-9A-Za-z]+")
+
+
+def click_exact(page: Page, label: str) -> bool:
+    """Click the button whose whole label is this, ignoring any leading icon.
+
+    "New Project" as a substring also matches "Save New Project" and "Save as New
+    Project": an earlier run meant to press New Project, pressed Save instead, and left
+    three stray projects in the library before anyone noticed.
+    """
+    buttons = page.locator("button")
+    for i in range(buttons.count()):
+        el = buttons.nth(i)
+        try:
+            text = (el.inner_text() or "").strip()
+        except Exception:
+            continue
+        if text != label and _LEADING_GLYPHS.sub("", text).strip() != label:
+            continue
+        try:
+            el.scroll_into_view_if_needed()
+            el.click(timeout=8000)
+            settle(page, 4)
+            return True
+        except Exception:
+            continue
+    return False
 
 
 def open_project_library(page: Page) -> bool:
@@ -391,11 +465,15 @@ def gate_new_project_is_held(page: Page) -> bool:
     """Starting a new project clears the workspace, so it must ask first."""
     if not goto_multitrack(page):
         return False
-    if slot_state(page, "Guitar") != "has_audio" and             slot_state(page, "Sax / winds") != "has_audio":
-        mark("G20 new project held", False, "no take in the workspace to protect")
+    # The guard only fires when something would be lost, so give it something. After the
+    # earlier save nothing was at risk and the prompt correctly stayed away - which an
+    # earlier run scored as a failure of the guard rather than of its own setup.
+    wav = make_wav("extra-take.wav", freq=294.0, seconds=1.0)
+    if not upload_layer(page, "Extra layer", wav):
+        mark("G20 new project held", False, "could not create unsaved work to protect")
         return False
     open_project_library(page)
-    if not click_button_has(page, r"New Project"):
+    if not click_exact(page, "New Project"):
         mark("G20 new project held", False, "New Project button not found")
         return False
     settle(page, 4)
@@ -418,7 +496,7 @@ def gate_load_is_held(page: Page) -> bool:
         mark("G22 project load held", False, "no loadable row in the library")
         return False
     before_sax = slot_state(page, "Sax / winds")
-    if not click_button_has(page, r"Load Project"):
+    if not click_exact(page, "Load Project"):
         mark("G22 project load held", False, "Load Project click failed")
         return False
     settle(page, 5)
@@ -437,7 +515,7 @@ def gate_return_and_resume(page: Page) -> bool:
     """The twelve-step point of the feature: come back and carry on overdubbing."""
     # Clear the bench deliberately so the load is a real restore, not what is already here.
     open_project_library(page)
-    if click_button_has(page, r"New Project"):
+    if click_exact(page, "New Project"):
         settle(page, 4)
         if prompt_visible(page):
             answer_prompt(page, "Discard")
@@ -452,7 +530,7 @@ def gate_return_and_resume(page: Page) -> bool:
     mark("G24 the project is listed for this song again",
          "Load Project" in body or "Currently loaded" in body)
 
-    if not click_button_has(page, r"Load Project"):
+    if not click_exact(page, "Load Project"):
         mark("G25 project loads on an explicit click", False, "no Load Project button")
         return False
     settle(page, 8)
@@ -485,7 +563,7 @@ def gate_equal_length_rerecord(page: Page) -> bool:
         mark("G28 equal-length re-record detected", False, "first take did not land")
         return False
     open_project_library(page)
-    if click_button_has(page, r"Save Changes"):
+    if click_exact(page, "Save Changes"):
         settle(page, 6)
     # Re-record the same slot with different audio of identical length.
     if not upload_layer(page, "Piano / Keys", second):

@@ -30,6 +30,7 @@ from typing import Any, Iterable, Mapping, Sequence
 __all__ = [
     "KEY_STATUS_LEGACY",
     "KEY_STATUS_MIXED",
+    "KEY_STATUS_PARTIAL",
     "KEY_STATUS_SINGLE",
     "MATCH_LEGACY",
     "MATCH_OTHER_KEY",
@@ -46,6 +47,10 @@ __all__ = [
 
 KEY_STATUS_SINGLE = "single"
 KEY_STATUS_MIXED = "mixed"
+#: One key is known and some layers carry no stamp at all. Not the same as mixed: the
+#: browser run produced a project labelled "Mixed keys (Bb)", which names one key and
+#: calls it mixed in the same breath. A musician reading that learns nothing true.
+KEY_STATUS_PARTIAL = "partial"
 KEY_STATUS_LEGACY = "unknown"
 
 MATCH_SONG_AND_KEY = "song_and_key"
@@ -102,9 +107,10 @@ def project_key_status(row: Mapping[str, Any]) -> tuple[str, list[str]]:
     if len(distinct) > 1:
         return KEY_STATUS_MIXED, distinct
     # One key stamped - but if some layers carry no stamp at all, say so rather than
-    # claiming the whole project is in that key.
+    # claiming the whole project is in that key. "Mixed" would be a different lie: there
+    # is one known key here, not several.
     if layer_keys and any(not k for k in layer_keys):
-        return KEY_STATUS_MIXED, distinct
+        return KEY_STATUS_PARTIAL, distinct
     return KEY_STATUS_SINGLE, distinct
 
 
@@ -116,6 +122,12 @@ def project_key_label(row: Mapping[str, Any]) -> str:
     if status == KEY_STATUS_MIXED:
         known = ", ".join(keys)
         return f"Mixed keys ({known})" if known else "Mixed keys"
+    if status == KEY_STATUS_PARTIAL:
+        unstamped = sum(
+            1 for t in _tracks(row) if not _text(t.get("recording_concert_key"))
+        )
+        layer_word = "layer" if unstamped == 1 else "layers"
+        return f"{keys[0]} - {unstamped} {layer_word} without a recorded key"
     return "Recording key unknown"
 
 

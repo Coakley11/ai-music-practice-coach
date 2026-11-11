@@ -267,8 +267,23 @@ def note_layer_recorded(
     keys = session_state.get(MT_LAYER_RECORDING_KEYS_KEY)
     if not isinstance(keys, dict):
         keys = {}
-    keys[slot] = key
-    session_state[MT_LAYER_RECORDING_KEYS_KEY] = keys
+    if not key and not any(_text(v) for v in keys.values()):
+        # Nothing resolved, and this is the first layer to be stamped. The identity
+        # frozen for this recording session holds the key *this* take was played in -
+        # not the live sidebar - so it is evidence, not a guess. A browser run produced
+        # exactly this: identity "Bb", the only layer stamped "".
+        frozen = session_state.get(MT_RECORDING_IDENTITY_KEY)
+        if isinstance(frozen, Mapping):
+            key = _text(frozen.get("recording_concert_key"))
+    if key:
+        keys[slot] = key
+        session_state[MT_LAYER_RECORDING_KEYS_KEY] = keys
+    elif slot in keys:
+        # Never leave an empty stamp behind: an empty string reads as "this slot was
+        # stamped" to the save path, which then lets a slot default overwrite stored
+        # identity, while telling the musician the key is unknown.
+        keys.pop(slot, None)
+        session_state[MT_LAYER_RECORDING_KEYS_KEY] = keys
     # The first layer still seeds the project-level facts (level, song, focus).
     freeze_recording_identity(session_state)
     return key

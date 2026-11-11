@@ -14,6 +14,7 @@ import unittest
 from multitrack_project_discovery import (
     KEY_STATUS_LEGACY,
     KEY_STATUS_MIXED,
+    KEY_STATUS_PARTIAL,
     KEY_STATUS_SINGLE,
     MATCH_LEGACY,
     MATCH_OTHER_KEY,
@@ -110,12 +111,54 @@ class AProjectSaysWhatKeyItIsHonestly(unittest.TestCase):
         self.assertEqual(LEGACY["practice_concert_key"], "G")
         self.assertNotIn("G", project_key_label(LEGACY))
 
-    def test_a_partly_stamped_project_is_mixed_not_single(self):
+    def test_a_partly_stamped_project_is_not_reported_as_single(self):
+        """One stamped layer does not speak for an unstamped one.
+
+        This asserted ``MIXED`` until a browser run showed what that produced in the
+        Project Library: **"Mixed keys (Bb)"** - naming one key and calling it mixed in
+        the same breath, which tells a musician nothing true. The intent was always
+        "do not claim the whole project is in Bb"; the status for it is now ``PARTIAL``,
+        and ``MIXED`` is kept for what the word means - two or more different keys.
+        """
         half = project("Half", tracks=[track("Flute", "Bb"),
                                        track("Guitar", "", slot="Guitar")])
-        status, _keys = project_key_status(half)
-        self.assertEqual(status, KEY_STATUS_MIXED,
-                         "one stamped layer does not speak for an unstamped one")
+        status, keys = project_key_status(half)
+        self.assertNotEqual(status, KEY_STATUS_SINGLE)
+        self.assertEqual(status, KEY_STATUS_PARTIAL)
+        self.assertEqual(keys, ["Bb"])
+
+    def test_the_partly_stamped_label_names_the_key_and_what_is_missing(self):
+        half = project("Half", tracks=[track("Flute", "Bb"),
+                                       track("Guitar", "", slot="Guitar")])
+        label = project_key_label(half)
+        self.assertIn("Bb", label)
+        self.assertIn("1 layer without a recorded key", label)
+        self.assertNotIn("Mixed", label)
+
+    def test_mixed_is_only_ever_said_about_more_than_one_key(self):
+        """The defect this guards is a label contradicting itself."""
+        rows = [
+            project("One", tracks=[track("Flute", "Bb")]),
+            project("Partly", tracks=[track("Flute", "Bb"),
+                                      track("Guitar", "", slot="Guitar")]),
+            project("None", tracks=[track("Flute", "", slot="Guitar")]),
+            project("Two", tracks=[track("Flute", "Bb"),
+                                   track("Guitar", "Ab", slot="Guitar")]),
+        ]
+        for row in rows:
+            label = project_key_label(row)
+            _status, keys = project_key_status(row)
+            with self.subTest(label=label):
+                if "Mixed" in label:
+                    self.assertGreater(len(keys), 1,
+                                       f"{label!r} says mixed about {keys}")
+
+    def test_two_unstamped_layers_are_counted_in_the_plural(self):
+        row = project("Two missing",
+                      tracks=[track("Flute", "", slot="Guitar"),
+                              track("Guitar", "", slot="Bass")],
+                      identity={"recording_concert_key": "Bb"})
+        self.assertIn("2 layers without a recorded key", project_key_label(row))
 
     def test_the_identity_block_is_used_when_layers_carry_no_stamp(self):
         row = project("From identity", tracks=[],

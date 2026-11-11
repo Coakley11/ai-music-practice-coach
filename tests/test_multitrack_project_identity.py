@@ -327,3 +327,73 @@ class ProjectsStayIndependent(ProjectCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ALayersRecordedKeyIsNeverStoredBlank(unittest.TestCase):
+    """What a browser run found in a real saved project row.
+
+    The row said ``recording_identity.recording_concert_key = "Bb"`` and, for its only
+    layer, ``layer_recording_keys = {"Sax / winds": ""}``. The Project Library then told
+    the musician "recording key unknown" about a take whose key the same row knew, and
+    an empty string counts as "this slot was stamped" to the save path - which is how a
+    slot default gets to overwrite stored identity.
+    """
+
+    def test_the_first_layer_falls_back_to_the_frozen_identity(self):
+        """Not a guess: that key was frozen for this recording, not read off the sidebar."""
+        from multitrack_recording_identity import (
+            MT_LAYER_RECORDING_KEYS_KEY,
+            MT_RECORDING_IDENTITY_KEY,
+            note_layer_recorded,
+        )
+
+        state = {MT_RECORDING_IDENTITY_KEY: {"recording_concert_key": "Bb"}}
+        self.assertEqual(note_layer_recorded(state, "Sax / winds"), "Bb")
+        self.assertEqual(state[MT_LAYER_RECORDING_KEYS_KEY], {"Sax / winds": "Bb"})
+
+    def test_a_later_layer_is_left_unstamped_rather_than_guessed(self):
+        """A second take may well be in another key, so the frozen one proves nothing."""
+        from multitrack_recording_identity import (
+            MT_LAYER_RECORDING_KEYS_KEY,
+            MT_RECORDING_IDENTITY_KEY,
+            note_layer_recorded,
+        )
+
+        state = {
+            MT_RECORDING_IDENTITY_KEY: {"recording_concert_key": "Bb"},
+            MT_LAYER_RECORDING_KEYS_KEY: {"Guitar": "Em"},
+        }
+        self.assertEqual(note_layer_recorded(state, "Sax / winds"), "")
+        self.assertEqual(state[MT_LAYER_RECORDING_KEYS_KEY], {"Guitar": "Em"})
+        self.assertNotIn("Sax / winds", state[MT_LAYER_RECORDING_KEYS_KEY])
+
+    def test_an_explicit_key_always_wins(self):
+        from multitrack_recording_identity import (
+            MT_LAYER_RECORDING_KEYS_KEY,
+            MT_RECORDING_IDENTITY_KEY,
+            note_layer_recorded,
+        )
+
+        state = {MT_RECORDING_IDENTITY_KEY: {"recording_concert_key": "Bb"}}
+        self.assertEqual(note_layer_recorded(state, "Sax / winds", concert_key="Ab"), "Ab")
+        self.assertEqual(state[MT_LAYER_RECORDING_KEYS_KEY], {"Sax / winds": "Ab"})
+
+    def test_a_blank_stamp_is_removed_rather_than_kept(self):
+        from multitrack_recording_identity import (
+            MT_LAYER_RECORDING_KEYS_KEY,
+            note_layer_recorded,
+        )
+
+        state = {MT_LAYER_RECORDING_KEYS_KEY: {"Guitar": "Em", "Sax / winds": ""}}
+        note_layer_recorded(state, "Sax / winds")
+        self.assertEqual(state[MT_LAYER_RECORDING_KEYS_KEY], {"Guitar": "Em"})
+
+    def test_re_recording_still_restamps_with_the_new_key(self):
+        from multitrack_recording_identity import (
+            MT_LAYER_RECORDING_KEYS_KEY,
+            note_layer_recorded,
+        )
+
+        state = {MT_LAYER_RECORDING_KEYS_KEY: {"Sax / winds": "Bb"}}
+        note_layer_recorded(state, "Sax / winds", concert_key="F")
+        self.assertEqual(state[MT_LAYER_RECORDING_KEYS_KEY], {"Sax / winds": "F"})
