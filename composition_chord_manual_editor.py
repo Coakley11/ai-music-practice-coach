@@ -135,6 +135,13 @@ def parse_chord_parts(symbol: str) -> dict[str, str]:
         return {"root": "C", "quality": text, "alteration": "", "bass": bass, "raw": text}
     root = normalize_root(m.group(1)) or m.group(1)
     rest = m.group(2) or ""
+    if rest.startswith("maj") and not rest.startswith(("maj7", "maj9")):
+        # build_chord_symbol writes a bare "maj" to keep a one-letter root from
+        # absorbing an accidental alteration ("Cmaj#5", not "C#5"). It is the
+        # plain major quality, which the dropdown spells as "". It has to come
+        # off before the quality scan, or the one-character "m" option claims
+        # its first letter and leaves "aj#5" behind.
+        rest = rest[3:]
     quality = ""
     alteration = ""
     for q in sorted(QUALITY_OPTIONS, key=len, reverse=True):
@@ -165,6 +172,12 @@ def build_chord_symbol(
     r = normalize_root(root) or str(root or "C").strip() or "C"
     q = str(quality or "").strip()
     alt = str(alteration or "").strip()
+    if not q and alt[:1] in ("#", "b") and len(r) == 1:
+        # A one-letter root followed by an accidental alteration would read back
+        # as a different root: "C" + "#5" is indistinguishable from the root C#
+        # with a stray 5. Naming the major quality explicitly removes the
+        # ambiguity, and the parser already reads "Cmaj#5" as C-E-G#.
+        q = "maj"
     body = f"{r}{q}{alt}"
     b = normalize_root(bass) if bass else ""
     if b:
