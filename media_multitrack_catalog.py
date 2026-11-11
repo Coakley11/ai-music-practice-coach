@@ -1013,6 +1013,25 @@ def catalog_multitrack_row_summary(row: dict[str, Any]) -> str:
     backing_part = _multitrack_backing_summary_part(payload, session_workspace=ws)
     if backing_part:
         bits.append(backing_part)
+    # What the layers were actually recorded in. A project is never labelled with the
+    # key the sidebar happens to show, a project whose layers disagree says so instead
+    # of passing as a single-key one, and a row saved before identity existed says its
+    # key is unknown rather than borrowing the project's Practice Key.
+    try:
+        from multitrack_project_discovery import (
+            KEY_STATUS_MIXED,
+            layer_key_lines,
+            project_key_label,
+            project_key_status,
+        )
+
+        bits.insert(0, project_key_label(payload))
+        if project_key_status(payload)[0] == KEY_STATUS_MIXED:
+            lines = layer_key_lines(payload)
+            if lines:
+                bits.append("; ".join(lines))
+    except Exception:
+        pass
     return " · ".join(bits)
 
 
@@ -1086,6 +1105,14 @@ def apply_multitrack_catalog_ui_state(session_state: dict[str, Any], row: dict[s
         session_state[_LAST_CATALOG_MULTITRACK_KEY] = mid
         session_state["multitrack_catalog_active_id"] = mid
         session_state["mt_hist_active_item"] = mid
+    # A freshly loaded project matches what is on disk. Stamping here is what makes a
+    # later overdub register as an unsaved change rather than looking already-saved.
+    try:
+        from multitrack_work_state import mark_project_saved
+
+        mark_project_saved(session_state)
+    except ImportError:
+        pass
 
 
 def loaded_multitrack_project_banner(session_state: dict[str, Any], *, st: Any | None = None) -> str:

@@ -440,6 +440,14 @@ def render_multitrack_history_panel(st_obj: Any, *, song_title: str = "") -> Non
                 ss["multitrack_catalog_active_id"] = item_key
                 ss["_last_catalog_multitrack_id"] = item_key
                 ss.pop("_mt_editing_new_project", None)
+                # The session and the stored project now agree; anything after this
+                # counts as an unsaved change (multitrack_work_state).
+                try:
+                    from multitrack_work_state import mark_project_saved
+
+                    mark_project_saved(ss)
+                except ImportError:
+                    pass
                 st_obj.rerun()
             else:
                 st_obj.error(_format_save_error(err))
@@ -535,6 +543,26 @@ def render_multitrack_history_panel(st_obj: Any, *, song_title: str = "") -> Non
 
         def _delete_mt(item_key: str) -> tuple[bool, str]:
             return delete_catalog_multitrack_session(item_key, st=st_obj)
+
+        # Matching projects first. Ranked by the saved song identity and the key the
+        # layers were recorded in, never by title - a Catalog song and a Composition of
+        # the same name are different songs and must not offer each other's takes.
+        # Nothing is hidden: other keys and rows with incomplete identity follow.
+        try:
+            from multitrack_project_discovery import rank_library_rows
+
+            rows, match_note = rank_library_rows(rows, ss)
+            if match_note:
+                st_obj.caption(match_note)
+        except Exception:
+            pass
+
+        try:
+            from multitrack_project_discovery import render_all_projects_view
+
+            render_all_projects_view(st_obj, rows)
+        except Exception:
+            pass
 
         _render_history_list(
             st_obj,
