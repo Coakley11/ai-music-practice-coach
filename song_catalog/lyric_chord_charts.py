@@ -86,23 +86,36 @@ WAITING_ON_THE_WORLD_CHART: list[LyricSection] = [
     },
 ]
 
-_SAY_INTRO_PATTERN = [{"chords": ["Bb", "Bb", "Bbsus4", "Bbsus4", "Bb", "Bb", "Bbsus4/C", "Bbsus4/C"]}]
+_SAY_INTRO_PATTERN = [{"chords": ["Bb", "Bbsus4", "Bb", "Bbsus4/C"]}]
 
 # One list item = one bar. ``:3.5|X:0.5p`` = pushed anticipation on beat 3.5.
-SAY_MAIN_LOOP = ["Bb:3.5|Eb:0.5p", "Eb:4", "Gm:3.5|F:0.5p", "F:4"]
-SAY_INTRO_PATTERN_BARS = ["Bb", "Bb", "Bbsus4", "Bbsus4", "Bb", "Bb", "Bbsus4/C", "Bbsus4/C"]
-SAY_INTRO_BARS = SAY_INTRO_PATTERN_BARS * 2
-SAY_BRIDGE_LOOP = ["Cm:4", "Cm:4", "Eb:3.5|F:0.5p", "F:4"]
-SAY_BRIDGE_BARS = SAY_BRIDGE_LOOP * 3 + ["Eb:4", "Eb:4", "Eb:3.5|F:0.5p", "F:4"]
-SAY_FINAL_CHORUS_LOOP = ["Gm:3.5|Bb:0.5p", "Bb:4", "Eb7:4", "Eb7:4"]
+# BAR GRID CORRECTED (W21). These cells used to be written at half-bar
+# granularity: the main loop took four bars for B♭–E♭–Gm–F, so every verse,
+# chorus and turnaround was twice its played length and one pass of the chart
+# ran 7:36 at 82 BPM against a 3:49 recording.
+#
+# The record puts TWO chords in a bar. The lyric-and-chord sheet the song is
+# charted from writes the verse as "|Bb Eb | Gm F |" repeated 4x and labels it
+# "Verse 2 (8 bars)" - a two-bar loop, four passes. Regridded to that:
+# 78 bars = 3:48 against the 3:49 single.
+#
+# The pushes are kept, re-expressed on the halved grid: E♭ and F still enter an
+# eighth before their slot, which is now the middle of the bar rather than the
+# next downbeat. ":2|:2p" = two beats each, second chord pushed.
+SAY_MAIN_LOOP = ["Bb:2|Eb:2p", "Gm:2|F:2p"]                      # 2 bars
+SAY_INTRO_PATTERN_BARS = ["Bb", "Bbsus4", "Bb", "Bbsus4/C"]      # 4 bars
+SAY_INTRO_BARS = SAY_INTRO_PATTERN_BARS * 2                       # 8 bars
+SAY_BRIDGE_LOOP = ["Cm", "Eb:2|F:2p"]                             # 2 bars
+SAY_BRIDGE_BARS = SAY_BRIDGE_LOOP * 3 + ["Eb", "Eb:2|F:2p"]      # 8 bars
+SAY_FINAL_CHORUS_LOOP = ["Gm:2|Bb:2p", "Eb7"]                     # 2 bars
 
 _SAY_MAIN = [{"chords": list(SAY_MAIN_LOOP)}]
 
 _SAY_BRIDGE_LINES = [
-    {"chords": list(SAY_BRIDGE_LOOP[:4]), "lyrics": "Walking like a one man army"},
-    {"chords": list(SAY_BRIDGE_LOOP[:4]), "lyrics": "Fighting with the shadows in your head"},
-    {"chords": list(SAY_BRIDGE_LOOP[:4]), "lyrics": "Living out the same old moment"},
-    {"chords": ["Eb:4", "Eb:4", "Eb:3.5|F:0.5p", "F:4"], "lyrics": "Knowing that it's all a waste of time"},
+    {"chords": list(SAY_BRIDGE_LOOP), "lyrics": "Walking like a one man army"},
+    {"chords": list(SAY_BRIDGE_LOOP), "lyrics": "Fighting with the shadows in your head"},
+    {"chords": list(SAY_BRIDGE_LOOP), "lyrics": "Living out the same old moment"},
+    {"chords": ["Eb", "Eb:2|F:2p"], "lyrics": "Knowing that it's all a waste of time"},
 ]
 
 _SAY_FINAL_CHORUS = [{"chords": list(SAY_FINAL_CHORUS_LOOP)}]
@@ -119,10 +132,10 @@ _SAY_VERSE_LYRICS = [
 ]
 
 _SAY_CHORUS_LINES = [
-    {"chords": ["Bb:3.5|Eb:0.5p", "Eb:4"], "lyrics": "Even if your hands are shaking"},
-    {"chords": ["Gm:3.5|F:0.5p", "F:4"], "lyrics": "And your faith is broken"},
-    {"chords": ["Bb:3.5|Eb:0.5p", "Eb:4"], "lyrics": "Even if your eyes are closing"},
-    {"chords": ["Gm:3.5|F:0.5p", "F:4"], "lyrics": "Say it anyway"},
+    {"chords": ["Bb:2|Eb:2p"], "lyrics": "Even if your hands are shaking"},
+    {"chords": ["Gm:2|F:2p"], "lyrics": "And your faith is broken"},
+    {"chords": ["Bb:2|Eb:2p"], "lyrics": "Even if your eyes are closing"},
+    {"chords": ["Gm:2|F:2p"], "lyrics": "Say it anyway"},
 ]
 
 SAY_CHART: list[LyricSection] = [

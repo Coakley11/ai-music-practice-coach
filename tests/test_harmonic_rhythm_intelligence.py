@@ -215,7 +215,25 @@ def test_say_chart_push_timing_is_preserved_under_hri():
         humanize_level="Strong",
         song_data={"title": "Say", "artist": "John Mayer"},
     )
-    assert result.sections["Verse 1"][0] == "Bb:3.5|Eb:0.5p"
-    assert result.sections["Verse 1"][2] == "Gm:3.5|F:0.5p"
-    assert "0.5p" in result.sections["Bridge"][2]
-    assert result.sections["Final Chorus"][0] == "Gm:3.5|Bb:0.5p"
+    # The property under test is that HRI leaves Say's written pushes alone.
+    # Asserted on the parsed subdivisions rather than on literal tokens at fixed
+    # indices, so a legitimate regrid of the chart cannot make this test lie.
+    # The old literals were right for the old grid, but W21 moved Say from four
+    # cells per loop to two and every one of them had to be rewritten by hand.
+    import chord_subdivisions as cs
+
+    def pushed(secs):
+        return {
+            (name, i, s.chord)
+            for name, cells in secs.items()
+            for i, tok in enumerate(cells)
+            for s in cs.parse_subdivisions(tok, beats_per_bar=4)
+            if s.push
+        }
+
+    before, after = pushed(sections), pushed(result.sections)
+    assert before, "precondition: Say's chart carries written pushes"
+    assert after == before, "HRI changed which chords are pushed"
+    # and the pushes are the ones the arrangement documents: Eb, F and Bb
+    assert {c for _n, _i, c in before} == {"Eb", "F", "Bb"}
+    assert result.sections["Verse 1"][0] == "Bb:2|Eb:2p"

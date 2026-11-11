@@ -77,12 +77,14 @@ PRIOR_REVISIONS: dict[str, tuple[tuple[str, str], ...]] = {
     ),
     'pop|kiss me|sixpence none the richer': (
         ('f3d5ce439d9db794', '550f2d9774cfc3c2'),
+        ('9abb3101ac7cbeb9', 'a16eca71c0f0416d'),
     ),
     'pop|photograph|ed sheeran': (
         ('6ce7dc1b3040166a', '7fcc1c9d4ad33003'),
     ),
     'pop|say|john mayer': (
         ('e268b4c248926ef9', '45a2f15297d15892'),
+        ('ad9ef0b0e9690163', 'eb8ed3981e575644'),
     ),
     'pop|the scientist|coldplay': (
         ('f06aff48dbf6149c', 'be05644c1a4a9efd'),

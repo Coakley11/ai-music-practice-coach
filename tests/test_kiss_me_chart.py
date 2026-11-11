@@ -7,10 +7,14 @@ that correction and its sources. Tempo, meter and bar counts are unchanged.
 Sources agreeing on ~100: Hooktheory (100 BPM, 4/4), karaoke-version.com
 (original tempo 100), klang.io (100), Traktor analysis of the radio edit
 (100.1); Musicnotes (via Wikipedia) prints 96 and AcousticBrainz 102, so the
-published range is 96-102 and nothing supports 124. Metadata-only change: the
-chart cells (2 bars per chord in intro/verse, 1 bar per chord in chorus) are
-untouched. Chart holds: at 100 BPM one pass is 176 bars * 2.4 s = 422 s versus a
-3:30 (210 s) recording, so the form length is MED-held (UNVERIFIED).
+published range is 96-102 and nothing supports 124. The tempo change itself was
+metadata-only.
+
+The bar grid was corrected later, in W21: the cells had been written at half-bar
+granularity (two cells per played bar), so one pass ran 176 bars * 2.4 s = 422 s
+against a 3:30 (210 s) recording. It is now one chord per bar in the intro and
+verse and two chords per bar in the chorus and instrumental - 88 bars = 211.2 s.
+See test_kiss_me_form_grid.py for that correction and its source.
 """
 from __future__ import annotations
 
@@ -21,7 +25,7 @@ from chart_level_arrangement import resolve_level_chart
 from song_catalog.catalog import curated_song_records
 from songs.meter import meter_timing
 
-BARS = {"Beginner": 118, "Intermediate": 126, "Advanced": 176}
+BARS = {"Beginner": 59, "Intermediate": 63, "Advanced": 88}
 
 
 class KissMeTempoTests(unittest.TestCase):
@@ -40,14 +44,16 @@ class KissMeTempoTests(unittest.TestCase):
         self.assertNotIn("124", notes)
         self.assertIn("100 BPM", notes)
 
-    def test_cells_unchanged_and_duration(self) -> None:
+    def test_bar_counts_and_duration(self) -> None:
+        """Renamed from test_cells_unchanged_and_duration: the cells did change
+        in W21, when the half-bar grid was corrected."""
         for level, n in BARS.items():
             _v, secs = resolve_level_chart(self.rec, level)
             self.assertEqual(sum(len(v) for v in secs.values()), n, level)
-        self.assertAlmostEqual(176 * meter_timing(100, "4/4").bar_sec, 422.4, places=6)
+        self.assertAlmostEqual(88 * meter_timing(100, "4/4").bar_sec, 211.2, places=6)
         _v, adv = resolve_level_chart(self.rec, "Advanced")
-        self.assertEqual(adv["Intro"][:4], ["Ebadd9", "Ebadd9", "Ebmaj9", "Ebmaj9"])
-        self.assertEqual(adv["Chorus 1"][:4], ["Fm9", "Bbsus2", "Ebadd9", "Cm9"])
+        self.assertEqual(adv["Intro"][:4], ["Ebadd9", "Ebmaj9", "Eb9", "Ebmaj9"])
+        self.assertEqual(adv["Chorus 1"][:2], ["Fm9|Bbsus2", "Ebadd9|Cm9"])
 
 
 if __name__ == "__main__":

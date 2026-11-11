@@ -4,6 +4,11 @@ Evidence: Hooktheory TheoryTab (Bb major, 89 BPM) and the Musicnotes edition ("o
 Bb major"); guitar charts show G-C-Em-D with a capo on fret 3, which sounds Bb-Eb-Gm-F. The chart
 used to carry the G shapes AS the original key.  These tests pin that the chord content did not
 change, only its concert spelling, and that saved data is neither double-transposed nor reset.
+
+The BAR GRID was corrected separately, in W21 (156 cells -> 78): the chart had been written at
+half-bar granularity. ``_old_sections()`` is deliberately left on the old grid, because the
+saved-copy tests need a chart a user could really have stored; ``_g_shapes()`` is the current
+chart in G shapes and is what the round-trip test compares against.
 """
 
 from __future__ import annotations
@@ -27,11 +32,36 @@ OLD_INTRO = (["G", "G", "Gsus4", "Gsus4", "G", "G", "Gsus4/A", "Gsus4/A"]) * 2
 
 
 def _old_sections() -> dict:
+    """The chart as a user could have saved it before either correction.
+
+    Kept on the pre-W21 half-bar grid on purpose: the saved-copy tests below
+    need a chart that really existed, so they can prove an old stored copy
+    refreshes without being double-transposed or silently reset.
+    """
     return {
         "Intro": list(OLD_INTRO), "Verse 1": OLD_MAIN * 4, "Chorus 1": OLD_MAIN * 4,
         "Turnaround 1": list(OLD_MAIN), "Verse 2": OLD_MAIN * 4, "Chorus 2": OLD_MAIN * 4,
         "Turnaround 2": list(OLD_MAIN), "Bridge": list(OLD_BRIDGE), "Turnaround 3": list(OLD_MAIN),
         "Verse 3": OLD_MAIN * 4, "Final Chorus": list(OLD_FINAL),
+    }
+
+
+# The CURRENT chart in its G shapes, i.e. after W21 corrected the bar grid to
+# the record's two-chords-per-bar reading. The round-trip test uses this; the
+# bar counts here are half the OLD ones because each played bar used to be
+# written as two cells.
+G_MAIN = ["G:2|C:2p", "Em:2|D:2p"]
+G_BRIDGE = ["Am", "C:2|D:2p"] * 3 + ["C", "C:2|D:2p"]
+G_FINAL = ["Em:2|G:2p", "C7"] * 8
+G_INTRO = ["G", "Gsus4", "G", "Gsus4/A"] * 2
+
+
+def _g_shapes() -> dict:
+    return {
+        "Intro": list(G_INTRO), "Verse 1": G_MAIN * 4, "Chorus 1": G_MAIN * 4,
+        "Turnaround 1": list(G_MAIN), "Verse 2": G_MAIN * 4, "Chorus 2": G_MAIN * 4,
+        "Turnaround 2": list(G_MAIN), "Bridge": list(G_BRIDGE), "Turnaround 3": list(G_MAIN),
+        "Verse 3": G_MAIN * 4, "Final Chorus": list(G_FINAL),
     }
 
 
@@ -52,12 +82,18 @@ class TestSayOriginalKey(unittest.TestCase):
         self.assertIn("Capo 3", str(ext.get("capo_note")))
         self.assertEqual(r["section_order"], list(_old_sections()))
 
-    def test_chart_in_the_old_g_practice_key_is_identical_to_the_old_chart(self) -> None:
-        """Transposing the new Bb chart to G reproduces the old chart exactly: nothing was lost."""
+    def test_chart_in_the_g_practice_key_is_identical_to_the_g_shape_chart(self) -> None:
+        """Transposing the Bb chart to G reproduces the G-shape chart exactly.
+
+        Renamed from test_chart_in_the_old_g_practice_key_is_identical_to_the_old_chart
+        and retargeted from _old_sections() to _g_shapes(): the key correction
+        this file is about lost nothing, and W21's separate grid correction
+        changed the bar layout, so the round-trip target is the current chart in
+        G shapes rather than the pre-W21 one.
+        """
         r = _record()
         back = transpose_sections_dict(r["sections"], "Bb", "G")
-        old = _old_sections()
-        for name, cells in old.items():
+        for name, cells in _g_shapes().items():
             self.assertEqual([_norm(c) for c in back[name]], [_norm(c) for c in cells], name)
 
     def test_all_levels_have_valid_chords_and_events(self) -> None:
@@ -68,9 +104,20 @@ class TestSayOriginalKey(unittest.TestCase):
             flat = " ".join(c for n in order for c in secs[n])
             self.assertNotRegex(flat, r"(?<![A-Za-z])(G|Em|Am|D)(?![A-Za-z#b0-9])", level)  # no leftover G-shape chords
 
-    def test_bar_counts_are_unchanged(self) -> None:
+    def test_bar_counts_match_the_corrected_grid(self) -> None:
+        """Renamed from test_bar_counts_are_unchanged.
+
+        The KEY correction left the bar counts alone, which is what this
+        originally pinned. W21 then halved them on purpose, so the pin now
+        states the corrected grid: 78 cells, one pass = 3:48 at 82 BPM against
+        a 3:49 single.
+        """
         r = _record()
-        self.assertEqual({n: len(c) for n, c in r["sections"].items()}, {n: len(c) for n, c in _old_sections().items()})
+        self.assertEqual(
+            {n: len(c) for n, c in r["sections"].items()},
+            {n: len(c) for n, c in _g_shapes().items()},
+        )
+        self.assertEqual(sum(len(c) for c in r["sections"].values()), 78)
 
     def test_saved_catalog_copy_of_the_old_chart_refreshes_with_its_key_not_double_transposed(self) -> None:
         new = _record()
