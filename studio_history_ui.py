@@ -133,6 +133,7 @@ def _render_history_list(
     key_prefix: str,
     active_item_key: str = "",
     load_button_label: str = "Load",
+    guard_load: Callable[..., bool] | None = None,
 ) -> None:
     if list_error:
         st_obj.error(f"Could not load history: {list_error}")
@@ -185,6 +186,12 @@ def _render_history_list(
                 key=f"{key_prefix}_load_{suffix}",
                 use_container_width=True,
             ):
+                # Issue 64: loading replaces the working layers, mixer and backing, so
+                # an unsaved take must be answered for first. The guard reruns to show
+                # the question; nothing here runs until it is answered.
+                if guard_load is not None and guard_load(payload, row=row):
+                    st_obj.rerun()
+                    return              # st.rerun() raises, but never rely on that here
                 ok, msg = on_load(payload, list_row=row)
                 if ok:
                     st_obj.session_state[f"{key_prefix}_flash"] = msg
@@ -348,8 +355,35 @@ def render_upload_history_panel(st_obj: Any) -> None:
         )
 
 
+def _guard_mt_switch(ss: Any, *, kind: str, apply: Callable[[], Any],
+                     target: str = "", payload: Any = None) -> bool:
+    """Hold a move that would replace the working recording. True when it was held.
+
+    The caller must stop immediately on True: the question renders on the next rerun,
+    and the move is carried out from the answer, not from here.
+    """
+    try:
+        from multitrack_switch_intent import request_switch, switch_is_pending
+        from multitrack_switch_prompt_ui import register_applier
+    except ImportError:
+        return False
+    if switch_is_pending(ss):
+        return True
+    register_applier(ss, kind, apply)
+    asked = request_switch(ss, kind=kind, target=target, reason=kind, payload=payload)
+    return not asked.get("allowed", True)
+
+
 def render_multitrack_history_panel(st_obj: Any, *, song_title: str = "") -> None:
     ss = st_obj.session_state
+    # Issue 64: a held move is asked about outside the expander, so the question cannot
+    # be missed by the Project Library being collapsed.
+    try:
+        from multitrack_switch_prompt_ui import render_switch_prompt
+
+        render_switch_prompt(st_obj, ss, song_title=song_title, where="library")
+    except ImportError:
+        pass
     mt = ss.get("mt_tracks") if isinstance(ss.get("mt_tracks"), dict) else {}
     try:
         from media_multitrack_catalog import session_has_saveable_multitrack_content
@@ -387,8 +421,18 @@ def render_multitrack_history_panel(st_obj: Any, *, song_title: str = "") -> Non
                 try:
                     from multitrack_session_persistence import start_new_multitrack_project
 
-                    start_new_multitrack_project(ss, song_title=song_title)
-                    ss[MT_FLASH_KEY] = "Started a new empty project (saved library rows unchanged)."
+                    def _start_new() -> None:
+                        start_new_multitrack_project(ss, song_title=song_title)
+                        ss[MT_FLASH_KEY] = (
+                            "Started a new empty project (saved library rows unchanged)."
+                        )
+
+                    # Issue 64: starting a new project clears the working layers, so an
+                    # unsaved take is answered for before anything is cleared.
+                    if _guard_mt_switch(ss, kind="new_project", apply=_start_new):
+                        st_obj.rerun()
+                        return          # st.rerun() raises, but never rely on that here
+                    _start_new()
                     st_obj.rerun()
                 except ImportError:
                     st_obj.error("Could not reset workspace.")
@@ -564,6 +608,17 @@ def render_multitrack_history_panel(st_obj: Any, *, song_title: str = "") -> Non
         except Exception:
             pass
 
+        def _guard_mt_load(payload: dict[str, Any], row: dict[str, Any] | None = None) -> bool:
+            info = row if isinstance(row, dict) else {}
+            return _guard_mt_switch(
+                ss,
+                kind="load_project",
+                apply=lambda p=payload, r=row: _load_mt(p, list_row=r),
+                target=str(info.get("title") or "").strip()
+                or str(payload.get("multitrack_id") or payload.get("item_key") or ""),
+                payload={"multitrack_id": str(payload.get("multitrack_id") or "")},
+            )
+
         _render_history_list(
             st_obj,
             item_type="multitrack_session",
@@ -575,6 +630,7 @@ def render_multitrack_history_panel(st_obj: Any, *, song_title: str = "") -> Non
             key_prefix="mt_hist",
             active_item_key=active_key,
             load_button_label="Load Project",
+            guard_load=_guard_mt_load,
         )
 
         try:

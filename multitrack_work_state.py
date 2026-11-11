@@ -14,10 +14,18 @@ You Are* is not part of *Eleanor Rigby* just because the musician navigated ther
 
 **How "changed" is decided.** Not by instrumenting every widget - that would mean a new
 flag beside every control and one missed call away from lying. Instead the saveable
-content is fingerprinted: which slots hold audio and how much, the mixer values, the
-prepared backing and the open project id. The fingerprint is stamped when a project is
-saved or loaded, and anything that differs from the stamp is an unsaved change. A
-fingerprint cannot miss a change it was never told about.
+content is fingerprinted, and anything differing from the stamp taken at the last save
+or load is an unsaved change. A fingerprint cannot miss a change it was never told
+about.
+
+**What goes into it, and why not the whole WAV.** Hashing every byte of every layer on
+every rerun would be the obvious answer and an expensive one. Length alone is the cheap
+answer and a wrong one: two takes of the same length are indistinguishable, and a second
+attempt at the same phrase is exactly that. So each slot contributes its length *and* a
+hash of its first and last few kilobytes - constant work whatever the file size, and a
+different performance differs in its samples well before the end. The take markers the
+recorder already maintains (``take_nonce``, ``is_take_saved``) go in as well, so a
+re-record that somehow produced byte-identical audio would still register.
 """
 
 from __future__ import annotations
@@ -70,29 +78,59 @@ def _slot_names() -> list[str]:
         return []
 
 
-def work_fingerprint(session_state: Mapping[str, Any]) -> str:
-    """A digest of everything a save would capture.
+#: How much of each end of a layer is hashed. Enough to cover a WAV header and a real
+#: stretch of samples; small enough that the cost does not grow with the recording.
+_SAMPLE_BYTES = 8192
 
-    Deliberately cheap: the *size* of each slot's audio rather than its bytes, because
-    re-recording a slot changes its length or its mixer state in practice and hashing
-    megabytes on every rerun would not be free. Mixer values, the prepared-backing
-    stamp and the open project id are included in full.
+
+def _audio_identity(audio: Any) -> str:
+    """A cheap, stable identity for one layer's audio.
+
+    Length plus a digest of both ends. Constant work regardless of how long the
+    recording is, and two different performances of the same length differ somewhere in
+    the first or last few kilobytes in any realistic case - whereas comparing lengths
+    alone treats them as the same take.
     """
+    if not isinstance(audio, (bytes, bytearray)):
+        return "0"
+    raw = bytes(audio)
+    digest = hashlib.sha256()
+    digest.update(raw[:_SAMPLE_BYTES])
+    if len(raw) > _SAMPLE_BYTES:
+        digest.update(raw[-_SAMPLE_BYTES:])
+    return f"{len(raw)}:{digest.hexdigest()[:16]}"
+
+
+def _take_markers(session_state: Mapping[str, Any], slot: str) -> str:
+    """The recorder's own revision markers for this slot, when they are available."""
+    try:
+        from multitrack_takes import is_take_saved, take_nonce
+
+        # Both read through .get only, so the live proxy can go straight in - copying
+        # the session per slot would be pure waste on a path that runs every rerun.
+        nonce = take_nonce(session_state, slot)
+        return f"{nonce}:{int(bool(is_take_saved(session_state, slot)))}"
+    except Exception:
+        return ""
+
+
+def work_fingerprint(session_state: Mapping[str, Any]) -> str:
+    """A digest of everything a save would capture."""
     parts: list[str] = [_active_project_id(session_state)]
     tracks = session_state.get("mt_tracks")
     tracks = tracks if isinstance(tracks, Mapping) else {}
     for slot in _slot_names():
-        audio = tracks.get(slot)
-        size = len(audio) if isinstance(audio, (bytes, bytearray)) else 0
-        parts.append(f"{slot}:{size}")
+        parts.append(f"{slot}:{_audio_identity(tracks.get(slot))}")
+        parts.append(f"{slot}:take:{_take_markers(session_state, slot)}")
         for control in ("vol", "delay", "mute", "solo"):
             parts.append(f"{slot}:{control}:{session_state.get(f'mt_{control}_{slot}')}")
         parts.append(f"{slot}:name:{_text(session_state.get(f'mt_name_{slot}'))}")
         parts.append(
             f"{slot}:inst:{_text(session_state.get(f'mt_layer_instrument_{slot}'))}")
-    mixed = session_state.get("mixed_track_wav")
-    parts.append(f"mix:{len(mixed) if isinstance(mixed, (bytes, bytearray)) else 0}")
+    parts.append(f"mix:{_audio_identity(session_state.get('mixed_track_wav'))}")
     parts.append(f"backing:{_text(session_state.get('mt_backing_prepared_at'))}")
+    parts.append(f"backing_ref:{_text(session_state.get('mt_backing_storage_ref'))}")
+    parts.append(f"backing_scope:{_text(session_state.get('mt_backing_scope'))}")
     return hashlib.sha256("|".join(parts).encode("utf-8")).hexdigest()[:20]
 
 

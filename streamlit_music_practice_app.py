@@ -15436,6 +15436,22 @@ _src_kind, _src_detail = unpack_active_source_banner(
 )
 sidebar_source_banner(_src_kind, _src_detail, target=_working_sidebar)
 
+# Issue 64: a move held because an unsaved Multitrack take would be lost is asked about
+# in the sidebar, which is on every page - the Practice Key control that triggers it is
+# reachable from anywhere, so the question has to be too.
+try:
+    from multitrack_switch_prompt_ui import render_switch_prompt as _render_mt_switch_prompt
+
+    with _working_sidebar:
+        _render_mt_switch_prompt(
+            st,
+            st.session_state,
+            song_title=str(st.session_state.get("song") or ""),
+            where="sidebar",
+        )
+except ImportError:
+    pass
+
 
 def _sidebar_open_song_selection() -> None:
     set_pending_anchor(st.session_state, ANCHOR_CHOOSE_ACTIVE_SONG)
@@ -16883,6 +16899,47 @@ else:
                         )
                 except Exception:
                     pass
+                # Issue 64: a Practice Key change must not step over an unsaved
+                # Multitrack take, and must never be allowed to re-point a layer that
+                # was recorded in another key. Streamlit has already moved the widget by
+                # the time this callback runs, so the previous key is captured here and
+                # written back if the musician cancels.
+                _pk_held_tok = str(st.session_state.get(_pk_widget_key) or "").strip()
+                if not st.session_state.pop("_mt_pk_guard_bypass", False):
+                    try:
+                        from multitrack_switch_intent import (
+                            KIND_PRACTICE_KEY,
+                            request_switch,
+                            switch_is_pending,
+                        )
+                        _pk_prior = str(
+                            st.session_state.get("improv_mission_concert_key")
+                            or st.session_state.get("display_key")
+                            or st.session_state.get("concert_key")
+                            or ""
+                        ).strip()
+                        if _pk_held_tok and _pk_prior and _pk_held_tok != _pk_prior:
+                            if switch_is_pending(st.session_state):
+                                st.session_state[_pk_widget_key] = _pk_prior
+                                return
+                            _pk_asked = request_switch(
+                                st.session_state,
+                                kind=KIND_PRACTICE_KEY,
+                                target=_pk_held_tok,
+                                reason="practice_key_change",
+                                revert={_pk_widget_key: _pk_prior},
+                            )
+                            if not _pk_asked.get("allowed", True):
+                                # The key to apply if the answer succeeds. The applier
+                                # itself is registered beside the widget each render, so
+                                # it always belongs to the current render rather than to
+                                # this one, whose closure will be stale by then.
+                                st.session_state["_mt_pk_held_target"] = _pk_held_tok
+                                # Put the control back until the question is answered.
+                                st.session_state[_pk_widget_key] = _pk_prior
+                                return
+                    except ImportError:
+                        pass
                 if _pk_widget_key == "display_key_sbi_composition":
                     # Composition lane edit belongs to that Composition only.
                     from sbi_lane_practice_key import commit_composition_lane_practice_key
@@ -17071,6 +17128,26 @@ else:
                 help="Concert pitch for charts and backing audio.",
                 on_change=_on_mission_or_global_pk_change,
             )
+        # Issue 64: how a held Practice Key change is finally applied. Registered here,
+        # every render, so the function the prompt calls is this render's commit path and
+        # not a closure left over from the render that was held.
+        try:
+            from multitrack_switch_intent import KIND_PRACTICE_KEY as _MT_KIND_PK
+            from multitrack_switch_prompt_ui import register_applier as _mt_register_applier
+
+            def _mt_apply_held_practice_key(_wk: str = _pk_widget_key) -> None:
+                _tok = str(st.session_state.pop("_mt_pk_held_target", "") or "").strip()
+                if not _tok:
+                    raise RuntimeError("No Practice Key change is waiting to be applied.")
+                st.session_state[_wk] = _tok
+                st.session_state["_mt_pk_guard_bypass"] = True
+                _on_mission_or_global_pk_change()
+
+            _mt_register_applier(
+                st.session_state, _MT_KIND_PK, _mt_apply_held_practice_key
+            )
+        except ImportError:
+            pass
         try:
             from sbi_active_catalog_practice_key import persist_sbi_active_sidebar_commit_before_render
 

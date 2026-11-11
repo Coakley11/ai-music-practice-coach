@@ -9,7 +9,10 @@ without trusting every widget to have remembered to set a flag.
 
 from __future__ import annotations
 
+import os
 import unittest
+
+from multitrack_takes import TAKE_NONCE_PREFIX, TAKE_SAVED_PREFIX, discard_take
 
 from multitrack_slots import MULTITRACK_SLOTS
 from multitrack_work_state import (
@@ -133,6 +136,164 @@ class TheFingerprintNoticesRealChanges(unittest.TestCase):
         self.assertEqual(classify_work(state), WORK_LOADED_CHANGED)
         mark_project_saved(state)
         self.assertEqual(classify_work(state), WORK_SAVED_PROJECT)
+
+
+class TwoTakesOfTheSameLengthAreNotTheSameTake(unittest.TestCase):
+    """The failure that size-only comparison cannot see.
+
+    A second attempt at the same eight bars is the same number of bytes as the first.
+    If the fingerprint only counts bytes, the app concludes nothing changed and lets the
+    better take be thrown away without a word.
+    """
+
+    def _saved(self, audio):
+        state = recorded(audio=audio, multitrack_catalog_active_id="mt-1")
+        return state, mark_project_saved(state)
+
+    def test_rerecording_the_same_length_is_detected(self):
+        first = b"RIFF" + os.urandom(64000)
+        second = b"RIFF" + os.urandom(64000)
+        self.assertEqual(len(first), len(second))
+        state, before = self._saved(first)
+        state["mt_tracks"][SLOT] = second
+        self.assertNotEqual(before, work_fingerprint(state))
+        self.assertEqual(classify_work(state), WORK_LOADED_CHANGED)
+
+    def test_a_difference_late_in_a_long_take_is_detected(self):
+        """A fix to the last phrase is a change, even with the opening identical."""
+        head = b"RIFF" + os.urandom(200_000)
+        first = head + b"" * 32000
+        second = head + b"" * 32000
+        state, before = self._saved(first)
+        state["mt_tracks"][SLOT] = second
+        self.assertNotEqual(before, work_fingerprint(state))
+
+    def test_identical_bytes_are_still_the_same_take(self):
+        """The other half: a rerun that re-reads the same audio must not look changed."""
+        audio = b"RIFF" + os.urandom(64000)
+        state, before = self._saved(audio)
+        state["mt_tracks"][SLOT] = bytes(audio)        # a different object, same audio
+        self.assertEqual(before, work_fingerprint(state))
+        self.assertEqual(classify_work(state), WORK_SAVED_PROJECT)
+
+    def test_discarding_a_take_is_detected_even_if_audio_is_replaced_identically(self):
+        """The recorder's own generation counter covers what bytes cannot.
+
+        Discard bumps the take nonce, so a discard followed by a byte-identical
+        re-record is still a different take.
+        """
+        audio = b"RIFF" + os.urandom(8000)
+        state = recorded(audio=audio, multitrack_catalog_active_id="mt-1")
+        state["mt_track_filenames"] = {}
+        before = mark_project_saved(state)
+        discard_take(state, SLOT)
+        state["mt_tracks"][SLOT] = bytes(audio)
+        self.assertEqual(state[f"{TAKE_NONCE_PREFIX}{SLOT}"], 1)
+        self.assertNotEqual(before, work_fingerprint(state))
+
+    def test_saving_a_layer_is_detected(self):
+        state, before = self._saved(WAV)
+        state[f"{TAKE_SAVED_PREFIX}{SLOT}"] = True
+        self.assertNotEqual(before, work_fingerprint(state))
+
+    def test_the_cost_does_not_grow_with_the_recording(self):
+        """Guards the requirement not to rehash large WAVs on every rerun.
+
+        A forty-megabyte layer must not cost forty megabytes of hashing per rerun, so
+        the work is bounded regardless of length.
+        """
+        import time
+
+        def elapsed(n_bytes):
+            state = recorded(audio=b"RIFF" + bytes(n_bytes),
+                             multitrack_catalog_active_id="mt-1")
+            work_fingerprint(state)                     # warm any imports
+            start = time.perf_counter()
+            for _ in range(20):
+                work_fingerprint(state)
+            return time.perf_counter() - start
+
+        small = elapsed(32_000)
+        large = elapsed(32_000_000)                     # 1000x the audio
+        self.assertLess(large, max(small, 0.001) * 20)
+
+
+class TheMixerAndContextStillRegister(unittest.TestCase):
+    """Re-confirming the cases the earlier fingerprint covered, after strengthening it."""
+
+    def _changed(self, mutate):
+        state = recorded(multitrack_catalog_active_id="mt-1")
+        before = mark_project_saved(state)
+        mutate(state)
+        return before != work_fingerprint(state)
+
+    def test_every_mixer_control_registers(self):
+        for control, value in (("vol", 0.3), ("delay", 120), ("mute", True),
+                               ("solo", True)):
+            with self.subTest(control=control):
+                self.assertTrue(self._changed(
+                    lambda s, c=control, v=value: s.__setitem__(f"mt_{c}_{SLOT}", v)))
+
+    def test_a_layer_name_registers(self):
+        self.assertTrue(self._changed(
+            lambda s: s.__setitem__(f"mt_name_{SLOT}", "Flute, take 2")))
+
+    def test_a_recorded_instrument_choice_registers(self):
+        self.assertTrue(self._changed(
+            lambda s: s.__setitem__(f"mt_layer_instrument_{SLOT}", "Flute")))
+
+    def test_a_backing_selection_registers(self):
+        for key, value in (("mt_backing_prepared_at", "2026-11-11T09:00:00Z"),
+                           ("mt_backing_storage_ref", "ws/backing/abc.wav"),
+                           ("mt_backing_scope", "song")):
+            with self.subTest(key=key):
+                self.assertTrue(self._changed(
+                    lambda s, k=key, v=value: s.__setitem__(k, v)))
+
+    def test_the_exported_mix_registers(self):
+        self.assertTrue(self._changed(
+            lambda s: s.__setitem__("mixed_track_wav", b"RIFF" + bytes(999))))
+
+    def test_a_remixed_export_of_equal_length_registers(self):
+        state = recorded(multitrack_catalog_active_id="mt-1",
+                         mixed_track_wav=b"RIFF" + os.urandom(50_000))
+        before = mark_project_saved(state)
+        state["mixed_track_wav"] = b"RIFF" + os.urandom(50_000)
+        self.assertNotEqual(before, work_fingerprint(state))
+
+
+class TheStampSurvivesARefresh(unittest.TestCase):
+    """Otherwise every refresh would turn a saved project into "unsaved changes".
+
+    The stamp describes the layers, and the layers are persisted. If one travels and the
+    other does not, a musician who refreshes gets asked to save on the next song or key
+    change although they changed nothing - which teaches them to click past the warning
+    that exists to protect their work.
+    """
+
+    def test_the_stamp_is_persisted_beside_the_layers(self):
+        from music_persistent_state import _PERSIST_KEYS
+
+        self.assertIn("mt_tracks", _PERSIST_KEYS)
+        self.assertIn(WORK_STAMP_KEY, _PERSIST_KEYS)
+
+    def test_a_restored_saved_project_is_not_reported_as_changed(self):
+        state = recorded(multitrack_catalog_active_id="mt-1")
+        mark_project_saved(state)
+        carried = {k: state[k] for k in ("mt_tracks", WORK_STAMP_KEY,
+                                         "multitrack_catalog_active_id")}
+        after_refresh = session(**carried)       # a fresh session, persisted keys only
+        self.assertEqual(classify_work(after_refresh), WORK_SAVED_PROJECT)
+        self.assertFalse(work_is_at_risk(after_refresh))
+
+    def test_changes_made_before_a_refresh_are_still_reported_as_changes(self):
+        state = recorded(multitrack_catalog_active_id="mt-1")
+        mark_project_saved(state)
+        state["mt_tracks"][OTHER] = WAV          # an overdub, then the page reloads
+        carried = {k: state[k] for k in ("mt_tracks", WORK_STAMP_KEY,
+                                         "multitrack_catalog_active_id")}
+        after_refresh = session(**carried)
+        self.assertEqual(classify_work(after_refresh), WORK_LOADED_CHANGED)
 
 
 class TheGuardRefusesToLetWorkVanish(unittest.TestCase):
