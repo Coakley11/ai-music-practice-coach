@@ -667,3 +667,19 @@
   .st-key-backing_art_card .st-key-backing_art_play_row [data-testid="stHorizontalBlock"]>[data-testid="stColumn"]:first-child{flex:1 1 auto!important;width:auto!important;min-width:0!important}
   .st-key-backing_art_card .st-key-backing_art_play_row [data-testid="stHorizontalBlock"]>[data-testid="stColumn"]:last-child{flex:0 0 260px!important;width:260px!important}
 }
+
+/* The card's actions: Show / Close lead sheet, Advanced settings, Key Cycling. In the card's own chip colours;
+   the Key Cycling button wears the Play colour while cycling is on. Stacked on a narrow card. */
+.st-key-backing_art_card .st-key-backing_art_actions{padding:2px 22px 20px;box-sizing:border-box}
+.st-key-backing_art_card .st-key-backing_art_actions [data-testid="stHorizontalBlock"]{gap:10px!important;flex-wrap:nowrap!important}
+.st-key-backing_art_card .st-key-backing_art_actions [data-testid="stHorizontalBlock"]>[data-testid="stColumn"]{min-width:0!important}
+.st-key-backing_art_card .st-key-backing_art_actions button{min-height:46px;border-radius:var(--tile-radius,12px)!important;background:var(--chip-bg,rgba(255,255,255,.14))!important;
+  border:1.5px solid var(--chip-line,rgba(255,255,255,.4))!important;color:var(--chip-ink,#fff)!important;font-weight:700;white-space:nowrap}
+.st-key-backing_art_card .st-key-backing_art_actions button p{font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.st-key-backing_art_card .st-key-backing_art_actions button[data-testid="stBaseButton-primary"]{background:var(--play-bg,var(--accent))!important;color:var(--play-ink,var(--accent-ink))!important;border-color:transparent!important}
+.st-key-backing_art_card .st-key-backing_art_actions button:disabled{opacity:.6;cursor:not-allowed}
+@container card (max-width:640px){
+  .st-key-backing_art_card .st-key-backing_art_actions{padding:2px 14px 16px}
+  .st-key-backing_art_card .st-key-backing_art_actions [data-testid="stHorizontalBlock"]{flex-direction:column!important;flex-wrap:wrap!important;gap:8px!important}
+  .st-key-backing_art_card .st-key-backing_art_actions [data-testid="stHorizontalBlock"]>[data-testid="stColumn"]{width:100%!important;flex:1 1 auto!important}
+}

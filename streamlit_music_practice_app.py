@@ -534,6 +534,7 @@ from studio_cache import (
 from studio_scroll_anchors import (
     ANCHOR_BACKING_FOLLOW_ALONG,
     ANCHOR_BACKING_MAIN_CONTROLS,
+    ANCHOR_BACKING_PLAYBACK_SETTINGS,
     ANCHOR_CHOOSE_ACTIVE_SONG,
     ANCHOR_CHORD_COACH,
     ANCHOR_LYRICS_EDITOR,
@@ -4540,11 +4541,12 @@ def _backing_arrangement_tag(strings: bool | None = None) -> str:
         strings = _backing_strings_on()
     from backing_audio import drum_renderer_tag
     from backing_bass_voice import bass_renderer_tag
+    from backing_loudness import loudness_renderer_tag
     from backing_pianist import piano_renderer_tag
     from backing_rock_guitar import guitar_renderer_tag
 
     return (_BACKING_RENDERER_TAG + drum_renderer_tag() + piano_renderer_tag() + bass_renderer_tag() + guitar_renderer_tag()
-            + ("+strings" if strings else ""))
+            + loudness_renderer_tag() + ("+strings" if strings else ""))
 
 
 def _cached_backing_wav(
@@ -10070,6 +10072,14 @@ def _stop_backing_playback(*, karaoke_index_before: int | None = None) -> bool:
     st.session_state[BACKING_AUTOPLAY] = False
     st.session_state[BACKING_TRANSPORT_STATUS] = "stopped"
     st.session_state["_backing_transport_user_stopped"] = True
+    # An explicit Stop ends Key Cycling's start-up phase: a genuine Off after it must not be swallowed by
+    # the stray-Off guard (it stayed armed when Stop came before the player's play_started proof).
+    try:
+        from backing_key_cycle import disarm_spurious_off_on_user_stop
+
+        disarm_spurious_off_on_user_stop(st.session_state)
+    except Exception:
+        pass
     st.session_state[BACKING_PLAY_FEEDBACK_KEY] = "Playback stopped"
     st.session_state.pop("playback_start_time", None)
     # A render still in flight belongs to the stopped session: finishing later
@@ -10168,7 +10178,10 @@ def _create_backing_card_slots(art: bool = False) -> tuple[Any, tuple | None]:
                     facts = st.container()
                     with st.container(key="backing_art_play_row"):
                         bpm_col, play_col = st.columns([1.6, 1.0], vertical_alignment="center", gap="medium")
-            return head, (keys, bpm_col, play_col, facts)
+                # Lead sheet, Advanced settings, Key Cycling: after the Play row, so a change here never moves
+                # the transport (an element before it would shift its index and remount the player).
+                actions = st.container(key="backing_art_actions")
+            return head, (keys, bpm_col, play_col, facts, actions)
         except Exception:
             pass
     head = st.container()
@@ -10182,8 +10195,9 @@ def _create_backing_card_slots(art: bool = False) -> tuple[Any, tuple | None]:
 
 
 def _backing_art_wanted(kind: str, creative_source: str = "") -> bool:
-    global _backing_art_identity
+    global _backing_art_identity, _backing_art_actions_slot
     _backing_art_identity = None
+    _backing_art_actions_slot = None
     try:
         from backing_art_card import backing_art_enabled
 
@@ -10322,6 +10336,116 @@ def _backing_art_play_theme() -> dict | None:
         return play_theme(_backing_art_identity)
     except Exception:
         return None
+
+
+BACKING_ADVANCED_SETTINGS_KEY = "backing_advanced_settings"
+_backing_art_actions_slot: Any = None
+
+
+def _set_backing_art_actions_slot(cols: Any) -> None:
+    """This run's actions row of the album-cover card (None for today's card)."""
+    global _backing_art_actions_slot
+    _backing_art_actions_slot = cols[4] if cols and len(cols) > 4 else None
+
+
+def _note_backing_advanced_toggle() -> None:
+    """Advanced playback settings opened or closed by the user: its own rerun, nothing else changes."""
+
+
+def _open_backing_advanced_settings() -> None:
+    """The card's settings button: open the existing Advanced playback settings and bring them into view.
+
+    Only the expander's open state changes (a rerun like any widget click), so playback keeps going."""
+    st.session_state[BACKING_ADVANCED_SETTINGS_KEY] = True
+    set_pending_anchor(st.session_state, ANCHOR_BACKING_PLAYBACK_SETTINGS)
+
+
+def _toggle_backing_key_cycle_from_card() -> None:
+    """What a click on Key cycling Off / On in Advanced settings does: the radio's value plus the user-toggle
+    mark its own on_change sets. Direction, interval, the saved key's return and Fixed Key all follow from the
+    existing Key Cycling controls on this run.
+
+    Off from the card is an unmistakable request, so it also sets the controls' explicit force-off (the flag
+    Key Cycling's own Stop uses). A radio Off can be a Streamlit remount snap and is swallowed while the
+    stray-Off guard is armed after Play; a click on this button never is."""
+    mode_key = "backing_key_cycle_enabled_ui"
+    on = str(st.session_state.get(mode_key) or "Off") == "On"
+    st.session_state[mode_key] = "Off" if on else "On"
+    st.session_state["_kc_cycle_user_toggled"] = True
+    if on:
+        st.session_state["_key_cycle_force_ui_off"] = True
+
+
+# The card's Lead sheet On / Off. One preference that both the card and the Open / Close lead sheet control above
+# the sheet write (through _set_backing_lead_sheet_open), so they always agree: On shows the sheet now when there
+# is a take to follow, and Play opens it for the take it makes; Off closes it and Play leaves it closed.
+BACKING_LEAD_SHEET_ON_PLAY_KEY = "backing_lead_sheet_on_play"
+
+
+def backing_lead_sheet_preference(session: Any) -> bool:
+    """Whether Lead sheet is On. Absent (older sessions), it is whatever the sheet is now."""
+    pref = session.get(BACKING_LEAD_SHEET_ON_PLAY_KEY)
+    if pref is None:
+        return bool(session.get("backing_lead_sheet_open"))
+    return bool(pref)
+
+
+def _toggle_backing_lead_sheet_from_card(ready: bool, set_leadsheet_open: Any) -> None:
+    """The card's Lead sheet button. With a take to follow it is exactly the Open / Close click (same callback,
+    so the playhead handoff is the same); before there is one it only sets the preference Play reads."""
+    on = not backing_lead_sheet_preference(st.session_state)
+    if ready:
+        set_leadsheet_open(on)
+        return
+    st.session_state[BACKING_LEAD_SHEET_ON_PLAY_KEY] = on
+    if not on:
+        st.session_state["backing_lead_sheet_open"] = False
+
+
+def _render_backing_art_actions(*, leadsheet_ready: bool, set_leadsheet_open: Any) -> bool:
+    """Lead sheet, Advanced settings and Key Cycling on the album-cover card; each drives the existing feature.
+
+    Returns True when the row was drawn (album-cover card only). Drawn late in the run, so the Lead sheet and
+    Key Cycling labels show the state the controls settled on this run."""
+    slot = _backing_art_actions_slot
+    if slot is None or _backing_art_identity is None:
+        return False
+    kc_allowed = False
+    try:
+        from monetization_entitlements import Feature, access_decision
+
+        kc_allowed = bool(access_decision(Feature.KEY_CYCLING, session_state=st.session_state).allowed)
+    except Exception:
+        kc_allowed = False
+    kc_on = str(st.session_state.get("backing_key_cycle_enabled_ui") or "Off") == "On"
+    sheet_on = backing_lead_sheet_preference(st.session_state)
+    with slot:
+        cols = st.columns(3 if kc_allowed else 2, gap="small")
+        with cols[0]:
+            st.button(
+                f"Lead sheet: {'On' if sheet_on else 'Off'}", key="backing_art_lead_sheet_btn",
+                icon=":material/menu_book:" if sheet_on else ":material/book:",
+                use_container_width=True, type="primary" if sheet_on else "secondary",
+                on_click=_toggle_backing_lead_sheet_from_card, args=(bool(leadsheet_ready), set_leadsheet_open),
+                help=(
+                    "On: the lead sheet opens with the backing track when you press Play."
+                    if not leadsheet_ready
+                    else None
+                ),
+            )
+        with cols[1]:
+            st.button(
+                f"{FEATURE_ICONS.get('action_settings', '⚙️')} Advanced settings", key="backing_art_settings_btn",
+                use_container_width=True, on_click=_open_backing_advanced_settings,
+            )
+        if kc_allowed:
+            with cols[2]:
+                st.button(
+                    f"{FEATURE_ICONS.get('key_cycle', '🔄')} Key Cycling: {'On' if kc_on else 'Off'}",
+                    key="backing_art_key_cycle_btn", use_container_width=True,
+                    type="primary" if kc_on else "secondary", on_click=_toggle_backing_key_cycle_from_card,
+                )
+    return True
 
 
 def _render_backing_pk_owner_select(proxy: dict[str, Any], options: list[str], *, label_visibility: str) -> None:
@@ -14615,7 +14739,10 @@ def _render_backing_step2_playback_action(
         # Advanced expander: do not force expanded=False when cycling is off —
         # that drops in-expander widget events on the next rerun. Leave open/closed
         # to Streamlit's own expander state.
-        with st.expander("Advanced playback settings", expanded=bool(st.session_state.pop("_home_open_key_cycle", False))):
+        if st.session_state.pop("_home_open_key_cycle", False):
+            st.session_state[BACKING_ADVANCED_SETTINGS_KEY] = True
+        render_scroll_anchor_marker(st, ANCHOR_BACKING_PLAYBACK_SETTINGS)
+        with st.expander("Advanced playback settings", key=BACKING_ADVANCED_SETTINGS_KEY, on_change=_note_backing_advanced_toggle):
             st.markdown('<div class="ui-backing-feel-inline">', unsafe_allow_html=True)
             st.markdown("<div>", unsafe_allow_html=True)
             # The groove is a playback choice (how it sounds); it is not the song's style (what kind of song
@@ -14687,6 +14814,15 @@ def _render_backing_step2_playback_action(
                 help="Adds a soft string section under the piano. Arrangement only: "
                 "song, key and tempo stay the same.",
             )
+
+            if _developer_mode_enabled():
+                # Which recorded instruments this server actually plays (they follow its environment).
+                try:
+                    from backing_sound_status import sound_engine_line
+
+                    st.caption(f"Developer · Backing sound: {sound_engine_line()}")
+                except Exception as _sound_status_err:
+                    st.caption(f"Developer · Backing sound: unavailable ({type(_sound_status_err).__name__})")
 
             try:
                 from backing_key_cycle import render_backing_key_cycle_controls
@@ -21695,11 +21831,13 @@ elif _studio_page == "backing":
                 str(getattr(_creative_backing_ctx, "source", "") or "") if _backing_card_kind == "creative" else "",
             )
         )
+        _set_backing_art_actions_slot(_backing_card_cols)
     except Exception as _backing_card_err:
         if _developer_mode_enabled():
             st.caption(f"Developer · backing card render: {_backing_card_err}")
         _backing_card_kind = "song"
         _backing_card_slot, _backing_card_cols = _create_backing_card_slots(art=_backing_art_wanted(_backing_card_kind))
+        _set_backing_art_actions_slot(_backing_card_cols)
     try:
         from improvisation_intelligence_ui import render_mission_practice_lick_on_backing
         from improvisation_missions import mission_practice_lick_payload
@@ -22133,7 +22271,12 @@ elif _studio_page == "backing":
         bpm_container=(_backing_card_cols[1] if _backing_card_cols else None),
     )
     if _play_clicked:
+        # Lead sheet On (the card's toggle, or an Open lead sheet click): Play opens it for the take it makes.
+        # Read first -- a new source's presentation starts with the sheet closed.
+        _sheet_on_play = backing_lead_sheet_preference(st.session_state)
         initialize_backing_presentation(st.session_state, _bpm_sync_id)
+        if _sheet_on_play and not km.is_voice_mode(st.session_state):
+            st.session_state["backing_lead_sheet_open"] = True
         try:
             from backing_owner_identity_trace import snapshot_backing_identity
 
@@ -25216,18 +25359,27 @@ elif _studio_page == "backing":
     _leadsheet_controls_ready = bool(
         _leadsheet_take_available or (_leadsheet_open and _kc_sheet_hold)
     )
+    # Applied in the click's own run (callback, no st.rerun): the extra rerun
+    # used to leave ~6 s with the music stopped and no sheet on screen. The
+    # card transport hands the playhead to whichever player mounts next.
+    def _set_backing_lead_sheet_open(open_: bool) -> None:
+        st.session_state["backing_lead_sheet_open"] = bool(open_)
+        # The card's Lead sheet On / Off is this same choice (Play reopens it for the next take).
+        st.session_state[BACKING_LEAD_SHEET_ON_PLAY_KEY] = bool(open_)
+        # Opened over a live take: the follow-along player mounts with native
+        # autoplay and starts at the playhead the card transport handed over
+        # (its own JS pauses it again when nothing was playing at the click).
+        if open_ and not st.session_state.get("_backing_transport_user_stopped"):
+            st.session_state["_backing_sheet_open_handoff"] = True
+
+    # The album-cover card carries Lead sheet On / Off (the same choice as the Open / Close control below)
+    # beside its Advanced settings and Key Cycling controls.
+    _render_backing_art_actions(
+        leadsheet_ready=_leadsheet_controls_ready,
+        set_leadsheet_open=_set_backing_lead_sheet_open,
+    )
     if _leadsheet_controls_ready:
         _ls_col_a, _ls_col_b = st.columns([1, 5])
-        # Applied in the click's own run (callback, no st.rerun): the extra rerun
-        # used to leave ~6 s with the music stopped and no sheet on screen. The
-        # card transport hands the playhead to whichever player mounts next.
-        def _set_backing_lead_sheet_open(open_: bool) -> None:
-            st.session_state["backing_lead_sheet_open"] = bool(open_)
-            # Opened over a live take: the follow-along player mounts with native
-            # autoplay and starts at the playhead the card transport handed over
-            # (its own JS pauses it again when nothing was playing at the click).
-            if open_ and not st.session_state.get("_backing_transport_user_stopped"):
-                st.session_state["_backing_sheet_open_handoff"] = True
 
         with _ls_col_a:
             if _leadsheet_open:
@@ -25516,20 +25668,19 @@ elif _studio_page == "backing":
                 _ls_tgen(st.session_state),
                 st.session_state.get("_karaoke_playback_generation", ""),
             )
-        if (
-            _ls_take
-            and transport_intent(st.session_state) in ("playing", "paused")
-            and st.session_state.get("_ls_rendered_take") == _ls_take
-        ):
-            _ls_autoplay = bool(st.session_state.get("_ls_autoplay_rendered", _ls_autoplay))
-            _show_countdown = bool(st.session_state.get("_ls_countdown_rendered", _show_countdown))
-            _ls_handoff_autoplay = bool(st.session_state.get("_ls_handoff_rendered", _ls_handoff_autoplay))
-        st.session_state["_ls_rendered_take"] = _ls_take
-        st.session_state["_ls_autoplay_rendered"] = bool(_ls_autoplay)
-        st.session_state["_ls_countdown_rendered"] = bool(_show_countdown)
-        # The one-shot "sheet just opened" hand-off flag too: it flipped off on
-        # the next run and re-created the player from 0:00.
-        st.session_state["_ls_handoff_rendered"] = bool(_ls_handoff_autoplay)
+        # The props stay as first drawn while this take is mounted (the one-shot
+        # "sheet just opened" hand-off flag too: it flipped off on the next run and
+        # re-created the player from 0:00). Reopening the sheet is a new mount.
+        from backing_sheet_mount import lead_sheet_mount_props
+
+        _ls_autoplay, _show_countdown, _ls_handoff_autoplay = lead_sheet_mount_props(
+            st.session_state,
+            take=_ls_take,
+            intent=transport_intent(st.session_state),
+            autoplay=_ls_autoplay,
+            countdown=_show_countdown,
+            handoff=_ls_handoff_autoplay,
+        )
         # What the browser player is actually handed. "Backing ready" in the UI
         # proves nothing: autoplay with zero bytes mounts a silent player, so
         # record bytes, autoplay intent and countdown together. autoplay True
