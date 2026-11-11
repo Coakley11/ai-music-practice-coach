@@ -177,6 +177,61 @@ class EachButtonDoesItsOwnThing(unittest.TestCase):
         self.assertEqual(applied, [1])
 
 
+class DiscardThrowsAwayOnlyTheUnsavedTake(unittest.TestCase):
+    """The narrowest requirement in the issue, and the easiest to get wrong.
+
+    Discard exists to drop the working take the musician just said they did not want.
+    It must not reach the Project Library, the media catalog or any durable audio - a
+    musician who clicks Discard to move on must not lose the project they saved an hour
+    ago.
+    """
+
+    def _discarded(self, extra):
+        from multitrack_switch_intent import KIND_NEW_PROJECT, request_switch
+
+        state = {"mt_tracks": {SLOT: WAV}, "mt_track_filenames": {},
+                 "display_key": "Bb"}
+        state.update(extra)
+        register_applier(state, KIND_NEW_PROJECT, lambda: None)
+        request_switch(state, kind=KIND_NEW_PROJECT)
+        _render(state, press=CHOICE_DISCARD)
+        return state
+
+    def test_the_media_catalog_cache_is_untouched(self):
+        from media_persistence import _CATALOG_SESSION_KEY
+
+        catalog = {"multitrack_sessions": [{"item_key": "mt-1", "title": "Bb flute"}]}
+        state = self._discarded({_CATALOG_SESSION_KEY: catalog})
+        self.assertEqual(state[_CATALOG_SESSION_KEY], catalog)
+
+    def test_the_working_layers_are_cleared(self):
+        state = self._discarded({})
+        self.assertFalse(any(state["mt_tracks"].values()))
+
+    def test_no_delete_is_wired_into_the_discard_path(self):
+        """A source check, because a delete added here would be silent and final."""
+        import inspect
+
+        import multitrack_switch_prompt_ui as ui
+
+        source = inspect.getsource(ui._discard_action)
+        for forbidden in ("delete", "remove", "tombstone", "unlink", "rmtree"):
+            self.assertNotIn(forbidden, source.lower(),
+                             f"discard must not {forbidden} anything durable")
+
+    def test_discard_leaves_the_workspace_genuinely_clean(self):
+        """Otherwise the very next move asks the same question again.
+
+        `reset_multitrack_working_session` leaves the prepared-backing stamp behind, and
+        that stamp alone counts as saveable content - so without clearing it a discard
+        would come back still "at risk".
+        """
+        from multitrack_work_state import work_is_at_risk
+
+        state = self._discarded({"mt_backing_prepared_at": "2026-11-11T09:00:00Z"})
+        self.assertFalse(work_is_at_risk(state))
+
+
 class WithoutAWayToGoThereNothingIsOffered(unittest.TestCase):
     def test_a_missing_applier_leaves_only_the_stay_choices(self):
         """Offering Discard with nowhere to go would destroy a take for nothing."""
