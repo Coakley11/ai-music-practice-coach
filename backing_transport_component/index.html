@@ -339,9 +339,45 @@
         } catch (e) {}
         if (h.playing) {
           if (target.paused) { const p = target.play(); if (p && p.catch) p.catch(function () {}); }
+          guardTakeOver(target);
         } else if (!target.paused) {
           try { target.pause(); } catch (e) {}
         }
+      }
+      // A destination loading this take for the first time can say "playing" before it has data: the
+      // seek to the live position cancels its first request and, when that position is inside the part
+      // already received, Chromium may never ask for the rest. The player then sits at readyState 1,
+      // silent, for good (Lead Sheet closed on Catalog / Custom / SBI, 2026-11-10; the outgoing sheet is
+      // already gone with its iframe). While it is meant to be playing but has neither moved nor got
+      // usable data, ask for the live position again (a fresh range request), then reload as a last
+      // resort. Stops the moment it moves or can, on Pause / Stop / end, or after a few seconds.
+      const TAKEOVER_CHECK_MS = 1200;
+      const TAKEOVER_GIVE_UP_MS = 9000;
+      function guardTakeOver(target) {
+        const t0 = Date.now();
+        const start = target.currentTime;
+        let tries = 0;
+        const live = function () { return start + (Date.now() - t0) / 1000; };
+        const tick = function () {
+          try {
+            if (!target.isConnected || target.ended || target.paused || intentNow() !== "playing") return;
+            if (target.currentTime > start + 0.15 || target.readyState >= 3) return;
+            if (Date.now() - t0 > TAKEOVER_GIVE_UP_MS) return;
+            tries += 1;
+            const at = Math.max(0, Math.min(live(), target.duration - 0.25));
+            if (tries <= 2) {
+              target.currentTime = at;
+            } else if (tries === 3) {
+              target.addEventListener("loadedmetadata", function () {
+                try { target.currentTime = Math.max(0, Math.min(live(), target.duration - 0.25)); } catch (e) {}
+                const p = target.play(); if (p && p.catch) p.catch(function () {});
+              }, { once: true });
+              target.load();
+            }
+          } catch (e) { return; }
+          setTimeout(tick, TAKEOVER_CHECK_MS);
+        };
+        setTimeout(tick, TAKEOVER_CHECK_MS);
       }
       function applyHandoff() {
         // The page player (lead sheet just closed) takes over here; the
