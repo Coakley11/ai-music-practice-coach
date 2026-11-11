@@ -3764,6 +3764,15 @@ def active_creative_backing_context(session: dict[str, Any]) -> BackingContext |
     return ctx
 
 
+def creative_backing_card_context(session: dict[str, Any]) -> BackingContext | None:
+    """The context whose Creative (Mission / SBI) card the Backing page shows, or None.
+
+    Kept as a public name (it is in ``__all__``): the page picks that card with
+    ``active_creative_backing_context``, so this is the same answer.
+    """
+    return active_creative_backing_context(session)
+
+
 def owned_backing_chart_identity(
     session: dict[str, Any] | None,
     ctx: BackingContext | None = None,

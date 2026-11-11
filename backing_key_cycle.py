@@ -49,6 +49,14 @@ _BACKING_KEY_CYCLE_STEP_UI_SEED_KEY = "_backing_key_cycle_step_ui_seed"
 _BACKING_KEY_CYCLE_DIRECTION_UI_SEED_KEY = "_backing_key_cycle_direction_ui_seed"
 
 
+# The Key Cycling dual-buffer holder lives on <body> (Streamlit reruns cannot drop it) and is never shown: off-screen,
+# 1 px, clipped and transparent. Audio plays the same; nothing of it can be seen or tapped.
+KC_HOLDER_HIDDEN_CSS = (
+    "position:fixed;left:0;top:0;width:1px;height:1px;margin:0;padding:0;border:0;overflow:hidden;"
+    "clip-path:inset(50%);opacity:0;pointer-events:none;z-index:-1;"
+)
+
+
 def _queue_key_cycle_widget_seed(
     session: dict[str, Any], *, interval: int, direction: str
 ) -> None:
@@ -691,6 +699,29 @@ def spurious_off_window_expired(session: dict[str, Any]) -> bool:
     except (TypeError, ValueError):
         return False
     return armed_at > 0 and (_time.time() - armed_at) > SPURIOUS_OFF_WINDOW_SEC
+
+
+def disarm_spurious_off_on_user_stop(session: dict[str, Any]) -> bool:
+    """An explicit Stop ends the start-up phase the stray-Off guard protects; disarm it.
+
+    The guard swallows Off snaps from remount churn while Key Cycling arms and its first take starts,
+    and the player's ``play_started`` proof clears it. A user who presses Stop before that proof (a slow
+    first render: 16 s with the recorded kit in the real-app trace, longer than the guard's window) left it
+    armed, and their next genuine Off was turned back On. After an explicit Stop nothing is starting, and
+    the real-app trace shows no remount Off snaps after Stop, so the next Off is the user's.
+
+    Only an explicit user Stop calls this. Key Cycling's own stop, a Pause, settings edits and display
+    reprojects keep the guard (the remount storms they cause are the reason it exists).
+    """
+    armed = bool(session.get("_kc_suppress_spurious_cycle_off")) or int(
+        session.get("_kc_suppress_spurious_cycle_off_runs") or 0
+    ) > 0
+    session.pop("_kc_suppress_spurious_cycle_off", None)
+    session.pop("_kc_suppress_spurious_cycle_off_runs", None)
+    session.pop("_kc_suppress_armed_at", None)
+    if armed:
+        _kc_enable_trace(session, "suppress_disarmed_user_stop")
+    return armed
 
 
 def should_honor_cycle_off_request(
@@ -2937,6 +2968,18 @@ def mark_cycle_next_pass_playing_clock(
     return gap
 
 
+def remembered_key_cycle_settings(session: dict[str, Any], data: dict[str, Any] | None = None) -> tuple[str, str]:
+    """Interval / Direction to show: the saved choice, else the live cycle session, else Semitone / Up."""
+    step = str(session.get(BACKING_KEY_CYCLE_STEP_KEY) or "").strip().lower()
+    direc = str(session.get(BACKING_KEY_CYCLE_DIRECTION_KEY) or "").strip().lower()
+    enabled = bool(data and data.get("enabled"))
+    if step not in {"semitone", "whole"}:
+        step = ("whole" if int(data.get("interval") or 1) == 2 else "semitone") if enabled else "semitone"
+    if direc not in {"up", "down"}:
+        direc = ("down" if str(data.get("direction") or "up").lower() == "down" else "up") if enabled else "up"
+    return step, direc
+
+
 def cycle_step_semitones(session: dict[str, Any]) -> int:
     step = str(session.get(BACKING_KEY_CYCLE_STEP_KEY) or "semitone").strip().lower()
     direction = str(session.get(BACKING_KEY_CYCLE_DIRECTION_KEY) or "up").strip().lower()
@@ -3883,7 +3926,11 @@ def stop_key_cycle(session: dict[str, Any], *, preserve_pause: bool = False) -> 
 
 
 def end_key_cycle_on_page_leave(session: dict[str, Any]) -> None:
-    """True leave from Backing: stop cycle and reset config defaults (not refresh)."""
+    """True leave from Backing: stop the cycle and turn Key cycling Off (not refresh).
+
+    Interval, Direction and Key Spelling are kept: turning cycling On again, here or after coming back, reuses them.
+    Semitone / Up and the default spellings apply only when nothing was ever chosen.
+    """
     try:
         if is_cycle_active(session):
             stop_key_cycle(session)
@@ -3892,13 +3939,14 @@ def end_key_cycle_on_page_leave(session: dict[str, Any]) -> None:
     clear_key_cycle_prepared_audio(session, stop_player=True)
     session[BACKING_KEY_CYCLE_SESSIONS_KEY] = {}
     session["backing_key_cycle_enabled"] = False
-    session[BACKING_KEY_CYCLE_STEP_KEY] = "semitone"
-    session[BACKING_KEY_CYCLE_DIRECTION_KEY] = "up"
-    session[BACKING_KEY_SPELLING_PREFS_KEY] = default_spelling_prefs()
+    _step, _direc = remembered_key_cycle_settings(session)
+    session[BACKING_KEY_CYCLE_STEP_KEY] = _step
+    session[BACKING_KEY_CYCLE_DIRECTION_KEY] = _direc
+    session[BACKING_KEY_SPELLING_PREFS_KEY] = spelling_prefs_from_session(session)
     session["backing_key_cycle_enabled_ui"] = "Off"
-    _queue_key_cycle_widget_seed(session, interval=1, direction="up")
+    _queue_key_cycle_widget_seed(session, interval=2 if _step == "whole" else 1, direction=_direc)
     session["_key_cycle_force_ui_off"] = True
-    # Drop spelling widget keys so defaults remount cleanly.
+    # Drop spelling widget keys so they remount from the kept preferences.
     for sharp, flat in ENHARMONIC_SPELLING_PAIRS:
         session.pop(f"backing_key_spell__{sharp}/{flat}", None)
 
@@ -4910,9 +4958,15 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
   const WANT = '{label}';
   const parentWin = window.parent;
   const parentDoc = parentWin.document;
+  const KC_HOLDER_HIDDEN_CSS = '{KC_HOLDER_HIDDEN_CSS}';
 
   function ensurePlayer() {{
     let root = parentDoc.getElementById('kc-persistent-root');
+    // The dual-buffer is never shown: the playbar and the card carry the key and the controls. It used to sit in
+    // the page flow under the app, so a phone showed its status line ("Key cycling off") below the toolbar.
+    const hideHolder = (el) => {{
+      if (el) el.style.cssText = KC_HOLDER_HIDDEN_CSS;
+    }};
     const rebuildBuffers = (host) => {{
       if (!host) return;
       if (!parentDoc.getElementById('kc-buf-0') || !parentDoc.getElementById('kc-buf-1')) {{
@@ -4927,7 +4981,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       root = parentDoc.createElement('div');
       root.id = 'kc-persistent-root';
       root.setAttribute('data-testid', 'kc-persistent-root');
-      root.style.cssText = 'margin:.35rem 0 .5rem;padding:0;position:relative;z-index:20;';
+      hideHolder(root);
       rebuildBuffers(root);
       // Attach to body so Streamlit widget rerenders cannot drop the dual-buffer.
       try {{
@@ -4946,6 +5000,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         }}
       }}
     }} else {{
+      hideHolder(root);
       rebuildBuffers(root);
       try {{
         if (root.parentElement !== parentDoc.body) {{
@@ -13212,19 +13267,20 @@ def render_backing_key_cycle_controls(st: Any, session: dict[str, Any]) -> None:
     # On again reuses them. Widgets themselves only mount while On.
     step_key = "backing_key_cycle_step_ui"
     dir_key = "backing_key_cycle_direction_ui"
+    _step_seeded = _BACKING_KEY_CYCLE_STEP_UI_SEED_KEY in session
+    _dir_seeded = _BACKING_KEY_CYCLE_DIRECTION_UI_SEED_KEY in session
     _apply_queued_key_cycle_widget_seed(session)
     data = get_owner_cycle_session(session, owner)
-    # Seed radios from the live cycle session so a remount after PK reanchor
-    # does not look like the user flipped Interval/Direction.
-    if data and data.get("enabled"):
-        session.setdefault(
-            step_key,
-            "whole" if int(data.get("interval") or 1) == 2 else "semitone",
-        )
-        session.setdefault(dir_key, str(data.get("direction") or "up"))
-    else:
-        session.setdefault(step_key, session.get(BACKING_KEY_CYCLE_STEP_KEY) or "semitone")
-        session.setdefault(dir_key, session.get(BACKING_KEY_CYCLE_DIRECTION_KEY) or "up")
+    # The radios show the remembered choice on every run. They unmount while Off, and on the run that turns cycling
+    # On again Streamlit still holds a stale entry under their keys: a setdefault left it alone, the remounted radios
+    # came back as Semitone / Up and overwrote the saved Whole tone / Down. The saved choice wins, then the live cycle
+    # session, then the defaults (only when nothing was ever chosen). A queued seed (settings reset, reanchor) has
+    # already set this run's value. A user's own click updates the saved choice in its callback first.
+    _want_step, _want_dir = remembered_key_cycle_settings(session, data)
+    if not _step_seeded:
+        session[step_key] = _want_step
+    if not _dir_seeded:
+        session[dir_key] = _want_dir
 
     # Practice Key drift while On → rebuild sequence from the new saved key.
     live_pk = str(current_backing_owner_practice_key(session) or "").strip()

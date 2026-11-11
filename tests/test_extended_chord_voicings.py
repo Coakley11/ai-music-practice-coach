@@ -259,41 +259,41 @@ class AddedFourthKeepsTheThird(unittest.TestCase):
         self.assertIn("F#", names("Dadd4"), "the symbol keeps its third")
 
 
-class RootLossIsPreExistingAndDocumented(unittest.TestCase):
-    """E#11 sounds different under this branch, and both renderings are wrong.
+class EnharmonicRootsNowResolve(unittest.TestCase):
+    """This class used to pin the old fallback; investigate/w18-chord-root-ambiguity fixed it.
 
-    split_chord("E#11") yields the root "E#", which is absent from NOTE_TO_MIDI
-    and which normalize_root does not fold to F, so the root falls back to C.
-    Before this change E#11 voiced C-E-G; now it voices C-G-Bb-D-F. Neither is an
-    E or an F chord, so this is a behaviour change without being a regression:
-    the old pitch set merely happened to contain an E, which masked the fault.
+    ``split_chord("E#11")`` yields the root ``E#``. It was absent from
+    ``NOTE_TO_MIDI`` and ``normalize_root`` did not fold it, so the root fell
+    back to C: E#11 voiced C-E-G before the 6/9 and eleventh work and
+    C-G-Bb-D-F after it, neither of which is an E or an F chord. That behaviour
+    change was documented at the time as a pre-existing fault, not a regression.
 
-    The same fallback affects B#, Fb and Cb. No catalog chart uses any of them -
-    they are reachable only by the Composition editor concatenating a root with
-    an alteration. Tracked separately; not fixed here.
+    ``normalize_root`` now folds E#, B#, Fb and Cb to the note each sounds, so
+    E#11 is an F eleventh - which is what the symbol literally says. The
+    assertions below are the inverse of the ones they replace, kept here so the
+    history of this symbol stays legible next to the voicing work.
     """
 
-    def test_unresolvable_roots_still_fall_back(self) -> None:
-        from backing_audio import NOTE_TO_MIDI, normalize_root, split_chord
+    def test_enharmonic_roots_resolve_to_their_sounding_pitch(self) -> None:
+        from backing_audio import NOTE_TO_MIDI, split_chord
+        from music_theory import normalize_root
 
-        for sym in ("E#11", "B#11", "Fb9", "Cb9"):
+        for sym, sounding in (("E#11", "F"), ("B#11", "C"), ("Fb9", "E"), ("Cb9", "B")):
             root = split_chord(sym)[0]
-            self.assertNotIn(root, NOTE_TO_MIDI, f"{root} unexpectedly resolvable")
-            self.assertNotIn(normalize_root(root), NOTE_TO_MIDI,
-                             f"{root} is folded now - update this test and the note")
+            self.assertEqual(normalize_root(root), sounding, sym)
+            self.assertIn(normalize_root(root), NOTE_TO_MIDI, sym)
 
-    def test_e_sharp_eleven_is_voiced_as_a_c_chord(self) -> None:
-        self.assertEqual(names("E#11"), names("C11"))
-        self.assertNotIn("E", names("E#11"), "not an E chord")
-        self.assertEqual(names("E#11")[0], "C", "the root fell back to C")
+    def test_e_sharp_eleven_is_an_f_eleventh_not_a_c_chord(self) -> None:
+        self.assertEqual(names("E#11"), names("F11"))
+        self.assertNotEqual(names("E#11"), names("C11"))
 
-    def test_no_catalog_chart_uses_an_unresolvable_root(self) -> None:
+    def test_no_catalog_chart_uses_an_enharmonic_root(self) -> None:
         import copy
 
         from chart_level_arrangement import resolve_level_chart
         from song_catalog.catalog import curated_song_records
 
-        bad = {"E#", "B#", "Fb", "Cb"}
+        enh = {"E#", "B#", "Fb", "Cb"}
         hits = []
         for rec in curated_song_records():
             for lv in ("Beginner", "Intermediate", "Advanced"):
@@ -305,9 +305,9 @@ class RootLossIsPreExistingAndDocumented(unittest.TestCase):
                     for tok in chords:
                         for part in str(tok).split("|"):
                             part = part.strip().split(":")[0]
-                            if part[:2] in bad:
+                            if part[:2] in enh:
                                 hits.append((rec["title"], part))
-        self.assertEqual(hits, [], f"catalog now uses an unresolvable root: {hits[:5]}")
+        self.assertEqual(hits, [], f"catalog now uses an enharmonic root: {hits[:5]}")
 
 
 if __name__ == "__main__":

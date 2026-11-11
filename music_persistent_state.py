@@ -662,6 +662,8 @@ _PERSIST_KEYS: tuple[str, ...] = (
     "backing_track_single_section",
     "backing_groove_style",
     "backing_lead_sheet_open",
+    # The Backing card's Lead sheet On / Off (Play opens the sheet while On).
+    "backing_lead_sheet_on_play",
     # Strings layer on/off (arrangement choice; default on when absent).
     "_backing_strings_on",
     # Chord Tone Hints on the chord grids (display only; off when absent).
@@ -852,7 +854,7 @@ def _device_view_keys() -> frozenset[str]:
     with the phone open on the same account, every phone save made the desktop
     re-apply the phone's Key cycling Off / editor / lead-sheet state.
     """
-    keys = {"backing_lead_sheet_open"}
+    keys = {"backing_lead_sheet_open", "backing_lead_sheet_on_play"}
     try:
         from picker_song_editor import PICKER_EDITOR_UI_KEYS
 
@@ -5542,6 +5544,7 @@ def apply_music_session_defaults(st: Any) -> None:
         "practice_focus_section",
         "backing_track_scope",
         "backing_lead_sheet_open",
+        "backing_lead_sheet_on_play",
         PICKER_EDITOR_OPEN_KEY,
         "chart_edit_mode",
         "_studio_page_snapshots",

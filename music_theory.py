@@ -43,6 +43,19 @@ FLAT_TO_SHARP = {
     "Bb": "A#",
 }
 
+# Spellings that name a natural note with an accidental. They are legitimate -
+# E# is the leading note of F# minor, Cb the fourth of Gb - but none of them is
+# a key in NOTE_TO_MIDI, and until these entries existed normalize_root passed
+# them through unchanged, so every pitch lookup fell back to its default. That
+# made "E#11" sound a C chord. Folding them to the note they sound keeps the
+# accidental out of the lookup without changing any spelling the catalog uses.
+ENHARMONIC_TO_SOUNDING = {
+    "E#": "F",
+    "B#": "C",
+    "Fb": "E",
+    "Cb": "B",
+}
+
 NOTE_TO_MIDI = {
     "C": 60, "C#": 61, "Db": 61,
     "D": 62, "D#": 63, "Eb": 63,
@@ -55,6 +68,7 @@ NOTE_TO_MIDI = {
 
 
 def normalize_root(root):
+    root = ENHARMONIC_TO_SOUNDING.get(root, root)
     return FLAT_TO_SHARP.get(root, root)
 
 
