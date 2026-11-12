@@ -26,6 +26,13 @@ def run_coach_submit(
     from music_coach_ami import warmup_plan as _warmup
     from music_coach_ami.exercise_revision import stale_song_response
 
+    from music_coach_ami import flexible_single
+    single = flexible_single.handle(question, session_state, ami_ctx)
+    if single is not None:
+        req = route_question(question, session_state, ami_ctx=ami_ctx)
+        _conv.record_turn(session_state, question, single.direct_answer)
+        return req, single
+
     warm = _warmup.handle(question, session_state, ami_ctx)   # an adaptive warmup request, or a change to the warmup the conversation is about
     if warm is not None:
         req = route_question(question, session_state, ami_ctx=ami_ctx)

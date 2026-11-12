@@ -592,10 +592,14 @@ DEFAULT_INTERVALS = {"Beginner": ["thirds"], "Intermediate": ["thirds", "fourths
 DEFAULT_ARTIC = {"Beginner": ["repeated", "two_note"], "Intermediate": ["slur_tongue", "two_note", "repeated", "contrast"],
                  "Advanced": ["slur_tongue", "repeated", "contrast", "two_note"]}
 FOCUS_BOOST = {"tone": ("long_tones",), "technique": ("scale", "intervals"), "articulation": ("articulation",), "improvisation": ("scale", "intervals"),
-               "speed": ("scale", "intervals"), "scales": ("scale",), "intervals": ("intervals",)}
+               "speed": ("scale", "intervals"), "scales": ("scale",), "intervals": ("intervals",), "melody": ("scale", "intervals"), "harmony": ("guide_tones", "chord_tones")}
 
 
 def _focus_key(focus: str) -> str:
+    from practice_focus_policy import category_for_focus
+    category = category_for_focus(focus)
+    if category in FOCUS_BOOST:
+        return category
     low = _clean(focus).lower()
     for key in FOCUS_BOOST:
         if key in low:
@@ -1364,6 +1368,10 @@ def create(question: str, session_ref: Any, ami_ctx: dict[str, Any] | None = Non
     ctx, _ = _page_values(question, session, ami_ctx)
     req = request if request is not None else parse_request(question)       # ``request``: the rules' reading, completed by a validated interpretation
     assumptions: list[str] = []
+    page_focus = _focus_key(_clean(getattr(ctx, "practice_focus", "")))
+    if not req["families"] and not req["focus"] and page_focus == "harmony":
+        req = {**req, "families": ["guide_tones", "chord_tones"], "focus_selected": True}
+        assumptions.append("Your Harmony focus selects guide tones and arpeggios from the active song's chart.")
     sinfo = song_request_info(question)
     song = sel = None
     song_fallback = ""
@@ -1441,7 +1449,9 @@ def create(question: str, session_ref: Any, ami_ctx: dict[str, Any] | None = Non
         assumptions.append("Because you asked to be warmed up for soloing over a song, I mixed " + ", ".join(we.FAMILY_LABEL[f].lower() for f in families)
                            + " — say “only guide tones” or “just arpeggios” to narrow it, or name the exercises you want.")
     else:
-        families = list(req["families"]) or list(DEFAULT_FAMILIES[level])
+        focus_families = {"tone": ["long_tones", "scale"], "technique": ["scale", "intervals", "articulation"],
+                          "articulation": ["articulation", "scale"], "melody": ["scale", "intervals"]}
+        families = list(req["families"]) or list(focus_families.get(page_focus, DEFAULT_FAMILIES[level]))
     if song is None and set(families) & set(SONG_FAMILIES):
         families = [f for f in families if f not in SONG_FAMILIES] or list(DEFAULT_FAMILIES[level])
     dropped: list[str] = []
@@ -1452,7 +1462,7 @@ def create(question: str, session_ref: Any, ami_ctx: dict[str, Any] | None = Non
             dropped.append(f"Left out {we.FAMILY_LABEL[f].lower()}: {reason}.")
     if not families:
         return _simple("; ".join(dropped).replace("Left out ", "I can't build that for this instrument — ") or "There's nothing I can build for that request.", failed="no_family")
-    explicit = bool(req["families"])
+    explicit = bool(req["families"]) and not req.get("focus_selected")
     focus = req["focus"] or _focus_key(_clean(getattr(ctx, "practice_focus", "")))
     if req["derived_from"]:
         chosen = [we.FAMILY_LABEL[f].lower() for f in req["families"] if f in we.FAMILY_LABEL]
@@ -1482,7 +1492,7 @@ def create(question: str, session_ref: Any, ami_ctx: dict[str, Any] | None = Non
     lead = ""
     song_title = _clean(((ami_ctx or {}).get("active_song") or {}).get("title"))
     if song is not None:
-        assumptions.append("Song-aware warmups currently build guide tones (the third and seventh of each chord); chord-tone patterns and approach notes are a later step.")
+        assumptions.append("Song-aware exercises use the active chart: guide tones, chord-tone arpeggios and approach notes are available.")
     elif song_fallback or req["song_aware"] or (song_title and song_title.lower() in question.lower()):
         why = song_fallback or "song-aware warmups currently cover guide tones only, and you didn't ask for them"
         lead = (f"_This warmup isn't tailored to a song's chords: {why}. It is built from your instrument, level and key. "
@@ -1972,6 +1982,10 @@ def handle(question: str, session_ref: Any, ami_ctx: dict[str, Any] | None = Non
         return None
     ensure_owner(session)
     active = is_active(session)
+    if active and current(session)["spec"].get("single"):
+        if is_warmup_request(question) and _asks_for_a_new_warmup(question):
+            return create(question, session, ami_ctx)
+        return None
     if not active and _WARM.search(question) and not _asks_for_a_new_warmup(question) and not is_song_request(question):
         guess = parse_revision(question)
         if guess is not None and guess["op"] not in (OP_UNSUPPORTED, OP_MINUTES, OP_ADD_FAMILY, OP_MORE_FAMILY):
