@@ -677,11 +677,25 @@ def record_entry_feel_override(session_state: Any, *, groove: str = "", meter: s
 #: the performance back exactly as it was.
 KARAOKE_RETUNE_ROLLBACK_KEY = "_karaoke_retune_rollback"
 
-#: Audio state that describes the *old* key and must not survive a re-key. Deliberately
-#: not the song-change set: a key change is a change inside one song, so the tempo,
-#: scope, section selection, play session and Backing context all still apply. Clearing
-#: those as well would silently reset the arrangement the musician had set up.
+#: State that describes the *old* key and must not survive a re-key.
+#:
+#: Deliberately not the song-change set: a key change happens inside one song, so the
+#: tempo, scope, section selection, play session and Backing context all still apply,
+#: and clearing those would silently reset the arrangement the musician had set up.
+#:
+#: The second group is the one the first version of this missed, and the Part D data-flow
+#: map is what found it. ``stash_audible_arrangement_after_generate`` records the
+#: arrangement that was actually installed - its chord-event timeline, its chart markup
+#: and the signature it was rendered under, noting that "each timeline carries the
+#: signature (and so the key) it was rendered in". Clearing only the WAV left those
+#: behind, so the chord tiles and the Current / Next Chord could have gone on showing
+#: the old key's chords after a re-key: precisely the defect being fixed.
+#:
+#: `_kc_audible_bpm` / `_groove` / `_meter` / `_section_names` are *not* cleared. They
+#: are facts about the arrangement that a key change does not alter, and they are
+#: rewritten as a set by the next stash.
 _RETUNE_STALE_AUDIO_KEYS = (
+    # The take itself.
     "_last_backing_wav",
     "_last_backing_wav_b64",
     "_last_backing_wav_path",
@@ -690,6 +704,15 @@ _RETUNE_STALE_AUDIO_KEYS = (
     "_backing_wav_building_signature",
     "_kc_current_static_url",
     "_kc_arrangement_url",
+    # The chords on screen and the timeline the Current / Next Chord reads.
+    "_last_backing_timeline",
+    "_last_backing_timeline_signature",
+    "_kc_audible_follow_timeline",
+    "_kc_audible_follow_timeline_signature",
+    "_kc_audible_follow_timeline_space",
+    "_kc_audible_signature",
+    "_kc_audible_chart_html",
+    "_kc_last_open_chart_html",
 )
 
 

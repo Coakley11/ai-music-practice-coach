@@ -317,3 +317,74 @@ class TheNoticeExplainsWhatHappened(unittest.TestCase):
         self.assertFalse(render_karaoke_retune_notice(st))
         self.assertNotIn(KARAOKE_RETUNE_NOTICE_KEY, st.session_state)
         self.assertEqual(st.infos, [])
+
+
+class TheChordsOnScreenGoWithTheAudio(unittest.TestCase):
+    """The gap the Part D data-flow map found in the first version of this fix.
+
+    ``stash_audible_arrangement_after_generate`` records the arrangement that was
+    actually installed - its chord-event timeline, its chart markup, and the signature it
+    was rendered under, noting that "each timeline carries the signature (and so the key)
+    it was rendered in". The first retune cleared only the WAV, so the tiles and the
+    Current / Next Chord could have gone on reading the old key's timeline: exactly the
+    defect being fixed, reintroduced by the fix.
+    """
+
+    STALE = {
+        "_kc_audible_follow_timeline": [{"chord": "Csus4/D"}],
+        "_kc_audible_follow_timeline_signature": ("Say", "C"),
+        "_kc_audible_follow_timeline_space": "concert",
+        "_kc_audible_signature": ("Say", "C"),
+        "_kc_audible_chart_html": "<b>C</b>",
+        "_kc_last_open_chart_html": "<b>C</b>",
+        "_last_backing_timeline": [{"chord": "Csus4/D"}],
+        "_last_backing_timeline_signature": ("Say", "C"),
+    }
+    #: Facts about the arrangement that a key change does not alter.
+    KEPT = {
+        "_kc_audible_bpm": 96,
+        "_kc_audible_groove": "ballad",
+        "_kc_audible_meter": "4/4",
+        "_kc_audible_section_names": ["Verse"],
+    }
+
+    def test_old_key_timeline_and_chart_are_dropped(self):
+        state = session(entry_key="C")
+        state.update(self.STALE)
+        km.retune_now_singing_entry(state, "D")
+        for key in self.STALE:
+            with self.subTest(key=key):
+                self.assertNotIn(key, state)
+
+    def test_tempo_feel_meter_and_sections_survive(self):
+        """A key change happens inside one song; it must not reset the arrangement."""
+        state = session(entry_key="C")
+        state.update(self.STALE | self.KEPT)
+        km.retune_now_singing_entry(state, "D")
+        for key, value in self.KEPT.items():
+            with self.subTest(key=key):
+                self.assertEqual(state[key], value)
+
+    def test_a_refused_retune_keeps_the_chords_on_screen(self):
+        """A no-op must not blank the chart of a performance that is already correct."""
+        state = session(entry_key="D")
+        state.update(self.STALE)
+        km.retune_now_singing_entry(state, "D")
+        for key, value in self.STALE.items():
+            with self.subTest(key=key):
+                self.assertEqual(state[key], value)
+
+    def test_the_song_change_resets_are_not_borrowed(self):
+        """Scope, play session and Backing context belong to a *song* change."""
+        state = session(entry_key="C")
+        untouched = {
+            "backing_track_bpm": 96,
+            "backing_track_single_section": "Verse",
+            "_pending_backing_scope": "Verse only",
+            "backing_context": {"source": "catalog"},
+        }
+        state.update(untouched)
+        km.retune_now_singing_entry(state, "D")
+        for key, value in untouched.items():
+            with self.subTest(key=key):
+                self.assertEqual(state[key], value)
