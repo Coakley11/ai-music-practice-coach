@@ -37,23 +37,6 @@
 ....................................F.........................F........F [ 98%]
 ............F...........................                                 [100%]
 ============================== warnings summary ===============================
-streamlit_music_practice_app.py:5457: 1 warning
-tests/test_mc1_phrase_motif_span_apptest.py: 8 warnings
-tests/test_mc2_span_motif_apptest.py: 6 warnings
-tests/test_mc3_span_missions_apptest.py: 5 warnings
-tests/test_practice_key_card_row.py: 16 warnings
-tests/test_r11_custom_source_mission_chord.py: 3 warnings
-  C:\tmp\ai-music-i67\streamlit_music_practice_app.py:5457: SyntaxWarning: invalid escape sequence '\s'
-
-streamlit_music_practice_app.py:5458: 1 warning
-tests/test_mc1_phrase_motif_span_apptest.py: 8 warnings
-tests/test_mc2_span_motif_apptest.py: 6 warnings
-tests/test_mc3_span_missions_apptest.py: 5 warnings
-tests/test_practice_key_card_row.py: 16 warnings
-tests/test_r11_custom_source_mission_chord.py: 3 warnings
-  C:\tmp\ai-music-i67\streamlit_music_practice_app.py:5458: SyntaxWarning: invalid escape sequence '\.'
-    def live_follow_along_component_html(
-
 tests/test_backing_card_practice_key.py: 2 warnings
 tests/test_backing_return_to_practice.py: 9 warnings
 tests/test_music_practice_context.py: 4 warnings
@@ -65,6 +48,21 @@ tests/test_backing_return_to_practice.py: 9 warnings
 tests/test_music_practice_context.py: 4 warnings
 tests/test_song_card_guidance.py: 1 warning
   <unknown>:5458: SyntaxWarning: invalid escape sequence '\.'
+
+tests/test_mc1_phrase_motif_span_apptest.py: 8 warnings
+tests/test_mc2_span_motif_apptest.py: 6 warnings
+tests/test_mc3_span_missions_apptest.py: 5 warnings
+tests/test_practice_key_card_row.py: 16 warnings
+tests/test_r11_custom_source_mission_chord.py: 3 warnings
+  C:\tmp\ai-music-i67\streamlit_music_practice_app.py:5457: SyntaxWarning: invalid escape sequence '\s'
+
+tests/test_mc1_phrase_motif_span_apptest.py: 8 warnings
+tests/test_mc2_span_motif_apptest.py: 6 warnings
+tests/test_mc3_span_missions_apptest.py: 5 warnings
+tests/test_practice_key_card_row.py: 16 warnings
+tests/test_r11_custom_source_mission_chord.py: 3 warnings
+  C:\tmp\ai-music-i67\streamlit_music_practice_app.py:5458: SyntaxWarning: invalid escape sequence '\.'
+    def live_follow_along_component_html(
 
 tests/test_mc4_span_upload_audio.py::TestUploadCases::test_a_two_chords
   C:\Users\danie\AppData\Local\Programs\Python\Python313\Lib\site-packages\audioread\rawread.py:16: DeprecationWarning: aifc was removed in Python 3.13. Please be aware that you are currently NOT using standard 'aifc', but instead a separately installed 'standard-aifc'.
@@ -2487,7 +2485,7 @@ PASSED tests/test_song_card_guidance.py::TestHarmonyMatchesTheChart::test_meter_
 PASSED tests/test_song_card_guidance.py::TestHarmonyMatchesTheChart::test_no_swing_claims_for_songs_that_do_not_swing
 PASSED tests/test_song_card_guidance.py::TestHarmonyMatchesTheChart::test_pipe_bars_are_expanded
 PASSED tests/test_song_card_guidance.py::TestHarmonyMatchesTheChart::test_satin_doll_is_ii_v_harmony_with_an_f_bridge
-PASSED tests/test_song_card_guidance.py::TestHarmonyMatchesTheChart::test_simple_diatonic_song_is_described_by_its_progression
+PASSED tests/test_song_card_guidance.py::TestHarmonyMatchesTheChart::test_simple_diatonic_song_is_described_simply
 PASSED tests/test_song_card_guidance.py::TestMelodyIsHonest::test_melody_language_follows_level_and_instrument
 PASSED tests/test_song_card_guidance.py::TestMelodyIsHonest::test_melody_points_to_generated_practice_melody_and_never_claims_the_original
 PASSED tests/test_song_card_guidance.py::TestMelodyIsHonest::test_no_catalog_song_carries_verified_melody_data
@@ -2784,4 +2782,4 @@ FAILED tests/test_songs_search_result_category_style.py::TestSearchResultCategor
 FAILED tests/test_style_jam_catalog_release.py::TestStyleJamCatalogRelease::test_active_custom_cycle_each_explicit_click_wins
 FAILED tests/test_style_jam_catalog_release.py::TestStyleJamCatalogRelease::test_jam_release_clears_same_mode_sticky_dm
 FAILED tests/test_style_jam_catalog_release.py::TestStyleJamCatalogRelease::test_stale_pending_custom_does_not_clobber_active_click
-34 failed, 2674 passed, 112 warnings, 1220 subtests passed in 844.62s (0:14:04)
+34 failed, 2674 passed, 110 warnings, 1220 subtests passed in 920.19s (0:15:20)

@@ -2784,4 +2784,4 @@ FAILED tests/test_songs_search_result_category_style.py::TestSearchResultCategor
 FAILED tests/test_style_jam_catalog_release.py::TestStyleJamCatalogRelease::test_active_custom_cycle_each_explicit_click_wins
 FAILED tests/test_style_jam_catalog_release.py::TestStyleJamCatalogRelease::test_jam_release_clears_same_mode_sticky_dm
 FAILED tests/test_style_jam_catalog_release.py::TestStyleJamCatalogRelease::test_stale_pending_custom_does_not_clobber_active_click
-34 failed, 2674 passed, 112 warnings, 1220 subtests passed in 989.47s (0:16:29)
+34 failed, 2674 passed, 112 warnings, 1220 subtests passed in 1089.71s (0:18:09)

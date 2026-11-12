@@ -266,7 +266,7 @@ Bass
 🎼
 Harmony
 
-A I–IV–vi–V loop (B♭ – E♭ – Gm – F) in B♭ major that repeats through the verse and chorus.
+The I–IV–vi–V progression (B♭ – E♭ – Gm – F) in B♭ major repeats through the verse and chorus.
 
 🎶
 Melody
@@ -304,10 +304,6 @@ Override YouTube URL (optional)
 Searching: Say · John Mayer
 
 ▶ Watch original on YouTube
-
-LOAD LAST SONG
-
-Load Last Song — 🎤 The A Team — Ed Sheeran
 
 🎯 Practice
 

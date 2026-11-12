@@ -1,0 +1,9 @@
+[issue67] 175 test files, sequential
+  baseline  34 failed, 2674 passed, 112 warnings, 1220 subtests passed in 1089.71s (0:18:09)
+  candidate 34 failed, 2674 passed, 110 warnings, 1220 subtests passed in 920.19s (0:15:20)
+  test ids: baseline=2700 candidate=2700
+  only in baseline (disappeared): 0
+  only in candidate (new): 0
+  outcome changed: 0
+  REGRESSIONS (passed -> not passed): 0
+VERDICT: CLEAN
