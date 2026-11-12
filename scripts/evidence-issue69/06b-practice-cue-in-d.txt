@@ -1,0 +1,264 @@
+keyboard_double_arrow_left
+
+←
+
+→
+
+keyboard_arrow_down
+
+Account & Workspace
+
+Active workspace: Daniel
+
+Shared suite profile (no individual sign-in on this deploy).
+
+Command Center
+
+🏠
+
+Saved Sessions
+
+Your last page, filters, and inputs reload automatically.
+
+Reset to default
+
+Membership
+
+Current access: Open access
+
+View plans
+
+🎼 ACTIVE SONG
+
+SONG
+Say — John Mayer
+
+🎼 Songs
+
+Say · Pop
+
+📜 Song Original Key: Bb
+
+🗝️ Practice / Concert Key
+
+🎸 YOUR PRACTICE SETUP
+
+Instrument
+
+📈 Level
+
+🔍 Practice focus
+
+💬 MUSIC COACH
+
+💬 Ask the Music Coach
+
+Get help with practice, theory, navigation, backing tracks, karaoke, or this app.
+
+Question
+
+💬 Ask the Music Coach
+
+⏱️ SESSION
+
+⏱️ Session: 30 min (adjust on the Practice page)
+
+☰ Pages
+
+Deploy
+🎵 Daniel Cohen Music Practice Coach AI
+
+AI-powered practice studio for songs, backing tracks, harmony, improvisation, recording, and instrument-specific coaching.
+
+📖 Tutorial
+
+🏠
+Home
+
+Open
+
+🎯
+Practice
+
+Open
+
+🎼
+Songs
+
+Open
+
+🎧
+Backing
+
+Open
+
+✍️
+Custom
+
+Open
+
+🪶
+Compose
+
+Open
+
+🎨
+Creative
+
+Open
+
+🎙️
+Upload
+
+Open
+
+🎚️
+Multitrack
+
+Open
+
+📓
+Log
+
+Open
+
+🎯
+
+MUSIC STUDIO
+
+Practice
+
+Song Practice
+
+Set up your session below — change key in the sidebar; pick songs on Song Selection.
+
+🎤
+Vocal practice mode · Breath Control — Breath, resonance, and vowel consistency more than volume. · Build technique on the active chart.
+
+💬 Ask the Music Coach
+
+Ask about this song, this practice session, theory, or how to use the app. Your current song and Practice context stay attached to the question.
+
+Question
+
+💬 Ask the Music Coach
+
+🎸 Your practice setup
+
+Instrument, level, and focus sync with the sidebar. Session goal, key behavior, and section focus shape coaching below.
+
+Instrument · level · focus
+
+⏱️ SESSION
+
+Session goal in minutes — coach scales to this.
+
+30
+
+10
+
+120
+
+Key behavior for this practice session
+
+Use each song's original/default key
+
+Use one key family for this practice session
+
+Session
+Voice · 🚀 Intermediate · Breath Control · Ballad · 30 min
+
+Coach and charts follow these choices. Tempo and section loops live on Backing Track.
+
+🔁 Section Focus
+
+SECTION FOCUS
+
+Full Song
+
+Intro
+
+Verse
+
+Chorus
+
+Bridge
+
+Chorus
+
+Full song
+10 chords
+72 bars
+
+Practice tools
+
+Open a focused tool without leaving your current song and practice setup.
+
+HARMONY & TECHNIQUE
+
+📖 Chord & song coach
+
+TIME & PITCH
+
+⏱️ 🎛️ Metronome, Tuner & Tone
+
+CHARTS & LYRICS
+
+📋 Chart & Melody
+
+🎤 Lyrics & phrasing
+
+REFERENCE
+
+↔️ Transpose helpers
+
+🎤 Lyrics & phrasing
+
+Lyric sheets, learning video, and phrasing guide.
+
+Close
+
+Say — John Mayer · Section: Full song · Voice · Intermediate · Breath Control · Chart key D · 82 BPM
+keyboard_arrow_right
+
+📺 Karaoke Reference
+
+keyboard_arrow_right
+
+Lyric & chord sheet
+
+keyboard_arrow_down
+
+🎤 Phrasing guide (optional)
+
+Notes worked out from your own lyrics and cues. Plan your breaths before the long lines.
+
+Intro
+Instrumental — D · G · Bm · A
+Verse 1
+Take all of your wasted honor
+Every little past frustration
+Take all of your so-called problems
+Better put 'em in quotations
+Chorus 1
+Even if your hands are shaking
+And your faith is broken
+Even if your eyes are closing
+Say it anyway
+Verse 2
+Second verse — same D · G · Bm · A loop
+Chorus 2
+Chorus lift — same loop, more energy
+Bridge
+Walking like a one man army
+Fighting with the shadows in your head
+Living out the same old moment
+Knowing that it's all a waste of time
+Verse 3
+Third verse — return to main loop
+Final Chorus
+Say what you need to say — Bm · D · G7 hold
+
+Deep harmony & improvisation → Creative Lab page.
+
+Key cycling off

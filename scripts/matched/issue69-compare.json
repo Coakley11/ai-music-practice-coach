@@ -1,0 +1,10 @@
+{
+ "baseline_summary": "126 failed, 6282 passed, 8 skipped, 115 warnings, 1 error, 1259 subtests passed in 1549.27s (0:25:49)",
+ "candidate_summary": "126 failed, 6282 passed, 8 skipped, 115 warnings, 1 error, 1259 subtests passed in 880.07s (0:14:40)",
+ "baseline_ids": 6360,
+ "candidate_ids": 6360,
+ "only_baseline": [],
+ "only_candidate": [],
+ "changed": {},
+ "regressions": []
+}

@@ -1,0 +1,293 @@
+←
+
+→
+
+keyboard_arrow_down
+
+Account & Workspace
+
+Active workspace: Daniel
+
+Shared suite profile (no individual sign-in on this deploy).
+
+Command Center
+
+🏠
+
+Saved Sessions
+
+Your last page, filters, and inputs reload automatically.
+
+Reset to default
+
+Membership
+
+Current access: Open access
+
+View plans
+
+🎼 ACTIVE SONG
+
+SONG
+Say — John Mayer
+
+🎼 Songs
+
+Say · Pop
+
+📜 Song Original Key: Bb
+
+Performance moved from Bb to D. Rebuilding the backing in D.
+
+🎸 YOUR PRACTICE SETUP
+
+Instrument
+
+📈 Level
+
+🔍 Practice focus
+
+💬 MUSIC COACH
+
+💬 Ask the Music Coach
+
+Get help with practice, theory, navigation, backing tracks, karaoke, or this app.
+
+Question
+
+💬 Ask the Music Coach
+
+⏱️ SESSION
+
+⏱️ Session: 30 min (adjust on the Practice page)
+
+☰ Pages
+
+Deploy
+🎵 Daniel Cohen Music Practice Coach AI
+
+AI-powered practice studio for songs, backing tracks, harmony, improvisation, recording, and instrument-specific coaching.
+
+📖 Tutorial
+
+🏠
+Home
+
+Open
+
+🎯
+Practice
+
+Open
+
+🎼
+Songs
+
+Open
+
+🎧
+Backing
+
+Open
+
+✍️
+Custom
+
+Open
+
+🪶
+Compose
+
+Open
+
+🎨
+Creative
+
+Open
+
+🎙️
+Upload
+
+Open
+
+🎚️
+Multitrack
+
+Open
+
+📓
+Log
+
+Open
+
+🎧
+
+AUDIO STUDIO
+
+Backing
+
+Vocal Performance Mode
+
+Sing along to a backing track shaped for your voice - phrasing, breath, and emotional delivery first.
+
+🎤
+Vocal practice mode · Breath Control — Breath, resonance, and vowel consistency more than volume. · Play along with generated accompaniment.
+Backing source: Catalog song · Say · D · 82 BPM
+
+No saved Custom Progression yet.
+
+✍️ Choose a Custom Progression
+
+CATALOG
+● Now singing
+🎤
+POP
+Say
+
+John Mayer
+
+📜
+ORIGINAL KEY
+
+B♭ major
+
+🗝️
+I’M PLAYING IN
+
+4 semitones higher
+
+✨
+Style
+🎤
+Pop
+🎧
+Backing groove
+🎹
+Ballad
+🥁
+Meter
+4/4
+📀
+Source
+🎵
+Catalog
+
+BPM
+
+82
+
+20
+
+180
+
+menu_book
+
+Lead sheet: On
+
+⚙️ Advanced settings
+
+🔄 Key Cycling: Off
+
+🎯 Return to Practice
+
+Playback
+
+Choose what to play; set the tempo on the song card above.
+
+Range
+Full song ×2
+
+PLAYBACK SCOPE
+
+Full song or a custom group of sections in song order.
+
+Full song
+
+Selected sections
+
+LOOP COUNT / REPEATS
+
+How many times to loop the chosen range.
+
+−
+
+2
+
+1
+
+10
+
++
+
+keyboard_arrow_down
+
+Advanced playback settings
+
+🎧
+BACKING GROOVE
+
+How the backing sounds. The song keeps its own style.
+
+🥁
+METER
+
+4/4
+
+3/4
+
+6/8
+
+2/4
+
+12/8
+
+4/4
+
+Preserve exact chart timing (disable harmonic rhythm intelligence)
+
+Strings
+
+🔄 Key cycling
+
+Off
+
+On
+
+Playback stopped
+
+keyboard_arrow_down
+
+Karaoke session
+
+KARAOKE SET · SONG 1 OF 1
+
+🎤 KARAOKE SETLIST · 1 OF 1
+NOW SINGING
+Say · D
+John Mayer
+
+⏮ Previous song
+
+⏭ Skip to next song
+
+End karaoke set
+
+Last song in the setlist.
+
+🎤
+
+NO LYRICS OR CUES YET
+
+Add lyrics & cues for Say
+
+🎤 Add lyrics & cues for Say
+
+Playback settings changed (key changed) - press Play Backing Track above to rebuild the backing track in the new settings.
+
+keyboard_arrow_down
+
+💡 Quick coaching — Intro
+
+Speak the lyric in rhythm before singing. Mark breaths, keep vowels forward, and stay softer in verses until the chorus asks for more. Plan your inhale points between phrases. Take low, diaphragmatic breaths and keep the air column steady through sustained notes. Set tempo and mood; don't overplay. Hold the suspended chord for a moment to build tension, then let it resolve smoothly into the next chord.
+
+Key cycling off

@@ -1,0 +1,374 @@
+←
+
+→
+
+keyboard_arrow_down
+
+Account & Workspace
+
+Active workspace: Daniel
+
+Shared suite profile (no individual sign-in on this deploy).
+
+Command Center
+
+🏠
+
+Saved Sessions
+
+Your last page, filters, and inputs reload automatically.
+
+Reset to default
+
+Membership
+
+Current access: Open access
+
+View plans
+
+🎼 ACTIVE SONG
+
+SONG
+Kiss Me — Sixpence None the Richer
+
+🎼 Songs
+
+Kiss Me · Pop
+
+📜 Song Original Key: Eb
+
+🗝️ Practice / Concert Key
+
+🎸 YOUR PRACTICE SETUP
+
+Instrument
+
+📈 Level
+
+🔍 Practice focus
+
+💬 MUSIC COACH
+
+💬 Ask the Music Coach
+
+Get help with practice, theory, navigation, backing tracks, karaoke, or this app.
+
+Question
+
+💬 Ask the Music Coach
+
+⏱️ SESSION
+
+⏱️ Session: 30 min (adjust on the Practice page)
+
+🧭 PAGES
+
+◀
+
+🏠 Home
+
+🎯 Practice
+
+🎼 Song Selection
+
+🎧 Backing Track
+
+✍️ Custom Progression
+
+🪶 Composition Studio
+
+🎨 Creative Lab
+
+🎙️ Upload Analysis
+
+🎚️ Multitrack
+
+📓 Practice Log
+
+Deploy
+🎵 Daniel Cohen Music Practice Coach AI
+
+AI-powered practice studio for songs, backing tracks, harmony, improvisation, recording, and instrument-specific coaching.
+
+📖 Tutorial
+
+🏠
+Home
+
+Open
+
+🎯
+Practice
+
+Open
+
+🎼
+Songs
+
+Open
+
+🎧
+Backing
+
+Open
+
+✍️
+Custom
+
+Open
+
+🪶
+Compose
+
+Open
+
+🎨
+Creative
+
+Open
+
+🎙️
+Upload
+
+Open
+
+🎚️
+Multitrack
+
+Open
+
+📓
+Log
+
+Open
+
+🎤
+
+SONG CATALOG
+
+Songs
+
+Song Selection
+
+Pick songs in **Active Song**, use **Edit Song Chart** for chords, or build your **Karaoke Performance Setlist** below.
+
+🎤
+Vocal practice mode · Breath Control — Breath, resonance, and vowel consistency more than volume. · Choose your active song for the whole studio.
+
+🎵 BROWSE LIBRARY
+
+Browse, search, or filter songs below.
+
+0 songs in this list
+
+SEARCH
+
+Matches title, artist, genre, style, and chart level.
+
+Search for a title or artist, tap a genre, or tap ★ Favorites to start building a list. The Active Song dropdown always covers the whole catalog.
+
+★ Favorites
+
+GENRES — CLICK TO TOGGLE
+
+Clear filters
+
+🎤 Pop
+
+🤘 Rock
+
+🎷 Jazz
+
+✡ Jewish
+
+🎸 Blues
+
+🕺 Funk
+
+🎻 Classical
+
+💜 Soul
+
+🤠 Country
+
+0 Browse results · click a result or use the Active Song dropdown to switch
+
+MUSIC SOURCE
+
+🎵 Song Selection (catalog song)
+
+✍️ Custom Progression
+
+🪶 Composition
+
+CURRENT ACTIVE SONG
+
+Switch active song
+
+CATALOG
+🎤
+POP
+Kiss Me
+
+Sixpence None the Richer
+
+📜
+ORIGINAL KEY
+
+E♭ major
+
+🗝️
+I’M PLAYING IN
+
+Tap to change
+
+⏱
+BPM
+100
+🥁
+Meter
+4/4
+✨
+Style
+🎤
+Pop
+📀
+Source
+🎵
+Catalog
+🎸
+Your setup
+🚀
+Intermediate
+🎤
+Voice
+🎤
+Breath Control
+📈
+Chart levels
+🌱
+Beginner
+🚀
+Intermediate
+🧠
+Advanced
+Common in Pop
+🎹
+Piano
+🎸
+Guitar
+🎤
+Voice
+🎸
+Bass
+🎼
+Harmony
+
+A repeating I–I–I–I loop (E♭ – E♭maj7 – E♭7 – E♭maj7) in E♭ major, with Chorus 1 switching to Fm–B♭–E♭–Cm for contrast.
+
+🎶
+Melody
+
+Shape phrases in 8-bar sections that land on a chord tone of each new chord as the harmony changes, keeping the folk pop pulse. The Generated Practice Melody on the Practice page (Chart & Melody) offers more ideas over these changes (generated for this song's chords, not the original melody).
+
+🔍
+Your focus: Breath Control
+
+Plan breaths at the ends of phrases so the 8-bar sections flow without breaking a line.
+
+🔥
+Your challenge
+
+Sing Verse 1 at 80 BPM breathing only every 4 bars, keeping the sound steady to the end of each phrase.
+
+📝 Chord chart
+
+Edit Verse, Chorus, Bridge, and other sections bar-by-bar — saved permanently for this song.
+
+📝 Edit Song Chart
+
+🎤 Add to Karaoke Set
+
+☆ Favorite
+
+keyboard_arrow_down
+
+🎵 Sing-along reference
+
+Would you like to hear the original recording or queue a karaoke version? Reference videos load only when you ask.
+
+Kiss Me — Sixpence None the Richer
+
+Override YouTube URL (optional)
+
+Searching: Kiss Me · Sixpence None the Richer
+
+🎤 Find a sing-along on YouTube
+
+LOAD LAST SONG
+
+Load Last Song — 🎤 Say — John Mayer
+
+🎯 Practice
+
+🎧 Backing
+
+🎨 Creative
+
+🎤 Karaoke
+
+📖 Chord Coach
+
+🧭 Song-Aware Coaching
+
+VOCAL PERFORMANCE
+
+🎤 Karaoke Performance Setlist (1 queued)
+
+Practice Key: Use the Practice Key control in the left sidebar before adding a song. The current Practice Key is saved with that Karaoke entry.
+
+Click a song to make it the active editing/viewing song (lyrics, song card, backing defaults switch to it). Queue order and karaoke state stay untouched.
+
+NOW SINGING
+
+1. Say · Bb
+
+↑
+
+↓
+
+✕
+
+🎤 Start Karaoke Set
+
+End Karaoke Set
+
+Clear Setlist
+
+Auto-advance between songs
+
+Countdown before each song
+
+Countdown length
+
+5
+
+1
+
+10
+
+Show chords while singing
+
+Lyric color
+
+Karaoke set in progress · 1 of 1 · Now singing Say — John Mayer
+
+📝 Song content editor
+
+Open Lyrics & Cues or Edit Song Chart from the active song card above when you want to edit.
+
+🎤 Lyrics & Cues
+
+📝 Edit Song Chart
+
+Open editor

@@ -1,0 +1,348 @@
+←
+
+→
+
+keyboard_arrow_down
+
+Account & Workspace
+
+Active workspace: Daniel
+
+Shared suite profile (no individual sign-in on this deploy).
+
+Command Center
+
+🏠
+
+Saved Sessions
+
+Your last page, filters, and inputs reload automatically.
+
+Reset to default
+
+Membership
+
+Current access: Open access
+
+View plans
+
+🎼 ACTIVE SONG
+
+SONG
+Say — John Mayer
+
+🎼 Songs
+
+Say · Pop
+
+📜 Song Original Key: Bb
+
+🗝️ Practice / Concert Key
+
+🎸 YOUR PRACTICE SETUP
+
+Instrument
+
+📈 Level
+
+🔍 Practice focus
+
+💬 MUSIC COACH
+
+💬 Ask the Music Coach
+
+Get help with practice, theory, navigation, backing tracks, karaoke, or this app.
+
+Question
+
+💬 Ask the Music Coach
+
+⏱️ SESSION
+
+⏱️ Session: 30 min (adjust on the Practice page)
+
+☰ Pages
+
+Deploy
+🎵 Daniel Cohen Music Practice Coach AI
+
+AI-powered practice studio for songs, backing tracks, harmony, improvisation, recording, and instrument-specific coaching.
+
+📖 Tutorial
+
+🏠
+Home
+
+Open
+
+🎯
+Practice
+
+Open
+
+🎼
+Songs
+
+Open
+
+🎧
+Backing
+
+Open
+
+✍️
+Custom
+
+Open
+
+🪶
+Compose
+
+Open
+
+🎨
+Creative
+
+Open
+
+🎙️
+Upload
+
+Open
+
+🎚️
+Multitrack
+
+Open
+
+📓
+Log
+
+Open
+
+🎤
+
+SONG CATALOG
+
+Songs
+
+Song Selection
+
+Pick songs in **Active Song**, use **Edit Song Chart** for chords, or build your **Karaoke Performance Setlist** below.
+
+🎤
+Vocal practice mode · Breath Control — Breath, resonance, and vowel consistency more than volume. · Choose your active song for the whole studio.
+
+🎵 BROWSE LIBRARY
+
+Browse, search, or filter songs below.
+
+0 songs in this list
+
+SEARCH
+
+Matches title, artist, genre, style, and chart level.
+
+Search for a title or artist, tap a genre, or tap ★ Favorites to start building a list. The Active Song dropdown always covers the whole catalog.
+
+★ Favorites
+
+GENRES — CLICK TO TOGGLE
+
+Clear filters
+
+🎤 Pop
+
+🤘 Rock
+
+🎷 Jazz
+
+✡ Jewish
+
+🎸 Blues
+
+🕺 Funk
+
+🎻 Classical
+
+💜 Soul
+
+🤠 Country
+
+0 Browse results · click a result or use the Active Song dropdown to switch
+
+MUSIC SOURCE
+
+🎵 Song Selection (catalog song)
+
+✍️ Custom Progression
+
+🪶 Composition
+
+CURRENT ACTIVE SONG
+
+Switch active song
+
+CATALOG
+🎤
+POP
+Say
+
+John Mayer
+
+📜
+ORIGINAL KEY
+
+B♭ major
+
+🗝️
+I’M PLAYING IN
+
+4 semitones higher
+
+⏱
+BPM
+82
+🥁
+Meter
+4/4
+✨
+Style
+🎤
+Pop
+📀
+Source
+🎵
+Catalog
+🎸
+Your setup
+🚀
+Intermediate
+🎤
+Voice
+🎤
+Breath Control
+📈
+Chart levels
+🌱
+Beginner
+🚀
+Intermediate
+🧠
+Advanced
+Common in Pop
+🎹
+Piano
+🎸
+Guitar
+🎤
+Voice
+🎸
+Bass
+🎼
+Harmony
+
+A repeating I–IV–vi–V loop (D – G – Bm – A) in D major.
+
+🎶
+Melody
+
+Shape phrases in 8-bar sections that land on a chord tone of each new chord as the harmony changes, keeping the ballad pulse. The Generated Practice Melody on the Practice page (Chart & Melody) offers more ideas over these changes (generated for this song's chords, not the original melody).
+
+🔍
+Your focus: Breath Control
+
+Plan breaths at the ends of phrases so the 8-bar sections flow without breaking a line.
+
+🔥
+Your challenge
+
+Sing Verse 1 at 65 BPM breathing only every 4 bars, keeping the sound steady to the end of each phrase.
+
+📝 Chord chart
+
+Edit Verse, Chorus, Bridge, and other sections bar-by-bar — saved permanently for this song.
+
+📝 Edit Song Chart
+
+🎤 Add again (1 in set)
+
+☆ Favorite
+
+keyboard_arrow_down
+
+🎵 Sing-along reference
+
+Would you like to hear the original recording or queue a karaoke version? Reference videos load only when you ask.
+
+Say — John Mayer
+
+Override YouTube URL (optional)
+
+Searching: Say · John Mayer
+
+🎤 Find a sing-along on YouTube
+
+🎯 Practice
+
+🎧 Backing
+
+🎨 Creative
+
+🎤 Karaoke
+
+📖 Chord Coach
+
+🧭 Song-Aware Coaching
+
+VOCAL PERFORMANCE
+
+🎤 Karaoke Performance Setlist (1 queued)
+
+Practice Key: Use the Practice Key control in the left sidebar before adding a song. The current Practice Key is saved with that Karaoke entry.
+
+Click a song to make it the active editing/viewing song (lyrics, song card, backing defaults switch to it). Queue order and karaoke state stay untouched.
+
+NOW SINGING · NOW EDITING
+
+1. Say · D
+
+↑
+
+↓
+
+✕
+
+🎤 Start Karaoke Set
+
+End Karaoke Set
+
+Clear Setlist
+
+Auto-advance between songs
+
+Countdown before each song
+
+Countdown length
+
+5
+
+1
+
+10
+
+Show chords while singing
+
+Lyric color
+
+Karaoke set in progress · 1 of 1 · Now singing Say — John Mayer
+
+📝 Song content editor
+
+Open Lyrics & Cues or Edit Song Chart from the active song card above when you want to edit.
+
+🎤 Lyrics & Cues
+
+📝 Edit Song Chart
+
+Open editor

@@ -1,0 +1,200 @@
+keyboard_double_arrow_left
+
+←
+
+→
+
+keyboard_arrow_down
+
+Account & Workspace
+
+Active workspace: Daniel
+
+Shared suite profile (no individual sign-in on this deploy).
+
+Command Center
+
+🏠
+
+Saved Sessions
+
+Your last page, filters, and inputs reload automatically.
+
+Reset to default
+
+Membership
+
+Current access: Open access
+
+View plans
+
+🎼 ACTIVE SONG
+
+SONG
+Say — John Mayer
+
+🎼 Songs
+
+Say · Pop
+
+📜 Song Original Key: Bb
+
+🗝️ Practice / Concert Key
+
+🎸 YOUR PRACTICE SETUP
+
+Instrument
+
+📈 Level
+
+🔍 Practice focus
+
+💬 MUSIC COACH
+
+💬 Ask the Music Coach
+
+Get help with practice, theory, navigation, backing tracks, karaoke, or this app.
+
+Question
+
+💬 Ask the Music Coach
+
+⏱️ SESSION
+
+⏱️ Session: 30 min (adjust on the Practice page)
+
+☰ Pages
+
+Deploy
+🎵 Daniel Cohen Music Practice Coach AI
+
+AI-powered practice studio for songs, backing tracks, harmony, improvisation, recording, and instrument-specific coaching.
+
+📖 Tutorial
+
+🏠
+Home
+
+Open
+
+🎯
+Practice
+
+Open
+
+🎼
+Songs
+
+Open
+
+🎧
+Backing
+
+Open
+
+✍️
+Custom
+
+Open
+
+🪶
+Compose
+
+Open
+
+🎨
+Creative
+
+Open
+
+🎙️
+Upload
+
+Open
+
+🎚️
+Multitrack
+
+Open
+
+📓
+Log
+
+Open
+
+📓
+
+SESSION HISTORY
+
+Log
+
+Practice Log
+
+Log sessions and get specific coaching — what to keep working on next.
+
+🎤
+Vocal practice mode · Breath Control — Breath, resonance, and vowel consistency more than volume. · Track sessions over time.
+
+SESSIONS THIS WEEK
+
+0
+
+MINUTES THIS WEEK
+
+0
+
+TOP SONG
+
+—
+
+TOP FOCUS
+
+—
+
+REPEATED CHALLENGE
+
+—
+
+Next: timing/rhythm
+
+⚡ Quick Save Practice Session
+
+✏️ Add Session Manually
+
+🧠 Analyze My Practice
+
+Quick Save uses your current song, instrument, key, BPM, and focus. Use Add Session Manually if you want to write detailed notes.
+
+Session history
+
+Search
+
+Date range
+
+Instrument
+
+Focus area
+
+Practice type
+
+No practice sessions yet. Log your first session above.
+
+Practice Analysis
+
+Coaching insight from your saved practice evidence
+
+keyboard_arrow_right
+
+Practice Analysis
+
+⏱️ Timed Session Planner
+
+Plan your next practice session by time block
+
+keyboard_arrow_right
+
+⏱️ Build a timed session plan
+
+Key cycling off
+
+Show full page list (Practice, Backing Track, Song Selection, …)
