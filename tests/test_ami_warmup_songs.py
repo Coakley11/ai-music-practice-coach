@@ -141,12 +141,14 @@ def test_written_tones_never_need_a_double_accidental_and_keep_the_chord_quality
 
 def test_known_written_spellings():
     alto = we.make_player("alto", "Cm")           # concert + 9 semitones
-    assert ws.chord_info("Ab7", alto.offset, alto.semitones)["written"] == {"root": "F", "third": "A", "upper": "Eb"}
-    assert ws.chord_info("F#m7", alto.offset, alto.semitones)["written"] == {"root": "D#", "third": "F#", "upper": "C#"}
+    three = lambda w: {k: w[k] for k in ("root", "third", "upper")}
+    assert three(ws.chord_info("Ab7", alto.offset, alto.semitones)["written"]) == {"root": "F", "third": "A", "upper": "Eb"}
+    assert three(ws.chord_info("F#m7", alto.offset, alto.semitones)["written"]) == {"root": "D#", "third": "F#", "upper": "C#"}
+    assert ws.chord_info("Ab7", alto.offset, alto.semitones)["written"]["fifth"] == "C"
     tenor = we.make_player("tenor", "Cm")          # concert + 14
-    assert ws.chord_info("Ab7", tenor.offset, tenor.semitones)["written"] == {"root": "Bb", "third": "D", "upper": "Ab"}
+    assert three(ws.chord_info("Ab7", tenor.offset, tenor.semitones)["written"]) == {"root": "Bb", "third": "D", "upper": "Ab"}
     flute = we.make_player("flute", "Cm")
-    assert ws.chord_info("Ab7", flute.offset, flute.semitones)["written"] == {"root": "Ab", "third": "C", "upper": "Gb"}
+    assert three(ws.chord_info("Ab7", flute.offset, flute.semitones)["written"]) == {"root": "Ab", "third": "C", "upper": "Gb"}
 
 
 @pytest.mark.parametrize("symbol,why", [("Csus4", "no third"), ("Cdim7", "diminished"), ("N.C.", "not a chord"), ("Bdim", "diminished")])
@@ -339,7 +341,7 @@ def families(plan):
 
 def slots_of(plan):
     sel = plan["spec"]["song_sel"]
-    slots = plan["spec"]["song"]["sections"][sel["section"]]
+    slots = ws.section_slots(plan["spec"]["song"], sel["section"])
     if sel.get("bars"):
         slots = slots[sel["bars"][0] - 1:sel["bars"][1]]
     return slots
@@ -349,15 +351,19 @@ def check_plan_notes(plan, who_offset):
     for r in plan["items"]:
         if r["family"] == "guide_tones":
             assert oracle.check_tune(r["abc"], slots_of(plan), who_offset) == [], r["title"]
+        elif r["family"] == "chord_tones":
+            assert oracle.check_chordline(r["abc"], slots_of(plan), who_offset, approach=False) == [], r["title"]
+        elif r["family"] == "approach_notes":
+            assert oracle.check_chordline(r["abc"], slots_of(plan), who_offset, approach=True, loop=bool(r["meta"].get("looping"))) == [], r["title"]
 
 
 class TestCreate:
-    def test_warm_me_up_for_soloing_over_the_active_song(self):
+    def test_warm_me_up_for_soloing_over_the_active_song_is_a_mixed_plan(self):
         s = song_session("Blue Bossa")
         resp = ask(s, "Warm me up for soloing over Blue Bossa.")
         plan = plan_of(s)
         text = resp.composed_markdown()
-        assert set(families(plan)) == {"guide_tones"} and len(plan["items"]) >= 3
+        assert {"guide_tones", "chord_tones", "approach_notes", "scale"} == set(families(plan)) and families(plan).count("scale") == 1 and len(plan["items"]) >= 5
         assert "Built from “Blue Bossa”" in text and "Section A" in text and plan["spec"]["song"]["hash"] in text and "Practice Key" in text
         check_plan_notes(plan, 9)
         assert resp.diagnostics["warmup_song_aware"] and resp.diagnostics["warmup_song"]["title"] == "Blue Bossa"
@@ -375,7 +381,7 @@ class TestCreate:
             assert ta[:2] == tb[:2], (a, b)               # the app's richer chart (Cm9) still has the catalog chord's third and seventh
 
     @pytest.mark.parametrize("q", ["Give me a guide-tone exercise over the chorus.", "Practice the thirds and sevenths of these chords.",
-                                   "Give me an advanced jazz guide-tone warmup.", "Warm me up for soloing over Blue Bossa."])
+                                   "Give me an advanced jazz guide-tone warmup."])
     def test_the_requests_in_the_brief_build_a_guide_tone_warmup(self, q):
         s = song_session("Blue Bossa")
         ask(s, q)
@@ -512,7 +518,7 @@ class TestChartIdentityAndOwnership:
 class TestRevisions:
     def fresh(self, **kw):
         s = song_session("Blue Bossa", **kw)
-        ask(s, "Warm me up for soloing over Blue Bossa.")
+        ask(s, "Give me a guide-tone warmup over Blue Bossa.")
         return s
 
     def test_just_the_first_four_bars(self):
@@ -766,7 +772,7 @@ class TestAutumnLeavesAsTheAppCharts:
 
     def test_soloing_over_it_follows_the_apps_chords_not_the_bare_catalog_triads(self):
         s = song_session("Autumn Leaves", instrument="Flute", sax=None)
-        ask(s, "Warm me up for soloing over Autumn Leaves.", instrument="Flute", key="Bm")
+        ask(s, "Give me a guide-tone warmup over Autumn Leaves.", instrument="Flute", key="Bm")
         plan = plan_of(s)
         section = plan["spec"]["song_sel"]["section"]
         chart = plan["spec"]["song"]["sections"][section]

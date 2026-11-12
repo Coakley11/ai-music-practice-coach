@@ -113,6 +113,57 @@ def find_section(order: list[str], text: str) -> str:
     return ""
 
 
+_NOT_THE_FORM = r"\b(?:intro|outro|coda|tag|ending|turnaround|interlude|break)\b"
+MAX_FORM_BARS = 64
+WHOLE_FORM_NAME = "Whole form"
+
+
+def section_slots(song: dict[str, Any], name: str) -> list[str]:
+    """The bar slots of a section; a derived section (the whole form) is the chart's own sections end to end."""
+    derived = (song.get("derived") or {}).get(name)
+    if derived:
+        return [slot for part in derived for slot in song["sections"].get(part, [])]
+    return list(song["sections"].get(name) or [])
+
+
+def section_parts(song: dict[str, Any], name: str) -> list[tuple[str, int, int]]:
+    """[(real section, first bar, last bar)] of a section as numbered in the exercise (1-based, continuing across the parts of a derived section)."""
+    parts = (song.get("derived") or {}).get(name) or [name]
+    out, at = [], 0
+    for part in parts:
+        n = len(song["sections"].get(part, []))
+        out.append((part, at + 1, at + n))
+        at += n
+    return out
+
+
+def whole_form(song: dict[str, Any]) -> tuple[list[str], str, str]:
+    """(the sections that make up the written form, how it was found, why not when empty). Only sections the chart really has are used."""
+    names = [n for n in song["order"] if song["sections"].get(n)]
+    for n in names:
+        if _norm(n) in ("head", "chorus", "form", "tune", "main"):
+            return [n], "named_form", ""
+    body = [n for n in names if not re.search(_NOT_THE_FORM, _norm(n))]
+    if not body:
+        return [], "", "this chart has no sections I can treat as its form"
+    if sum(len(song["sections"][n]) for n in body) > MAX_FORM_BARS:
+        return [], "", f"the whole form is longer than {MAX_FORM_BARS} bars; pick a section instead (for example “only the bridge”)"
+    return body, ("all_sections" if len(body) > 1 else "single_section"), ""
+
+
+def with_whole_form(song: dict[str, Any]) -> tuple[dict[str, Any], str, str]:
+    """(a copy of the song that also holds the derived whole-form section, how it was built, why not). The original sections are untouched."""
+    parts, how, why = whole_form(song)
+    if not parts:
+        return song, "", why
+    if len(parts) == 1:
+        return song, how, ""
+    out = dict(song)
+    out["derived"] = {**(song.get("derived") or {}), WHOLE_FORM_NAME: list(parts)}
+    out["order"] = [n for n in song["order"] if n != WHOLE_FORM_NAME] + [WHOLE_FORM_NAME]
+    return out, how, ""
+
+
 def pick_section(song: dict[str, Any], wanted: str = "") -> tuple[str, str]:
     """(section name, how it was chosen). ``wanted`` is the musician's word ('bridge', 'chorus', 'section b', ...); '' means the app's active section."""
     names = song["order"]
@@ -161,7 +212,7 @@ class Seg:
 
 def build_timeline(song: dict[str, Any], section: str, bars: tuple[int, int] | None, offset: int, semitones: int) -> tuple[list[Seg], int, int]:
     """(segments, first bar, last bar) of the section's chart in beat order. Raises ``SongUnavailable`` when the chart cannot be timed honestly."""
-    slots = list(song["sections"].get(section) or [])
+    slots = section_slots(song, section)
     if not slots:
         raise SongUnavailable(f"“{section}” has no chords")
     if sph._beats_per_bar(song.get("meter") or "4/4") != 4:
@@ -255,9 +306,18 @@ def chord_info(chord: str, offset: int, semitones: int) -> dict[str, Any]:
         return out
     suffix = chord[len(root):] if chord.startswith(root) else quality
     suffix = suffix.split("/")[0]
+    fifth_pcs = [pc for pc, r in roles.items() if r == "5"]
+    fifth_c = fifth_w = None
+    if fifth_pcs:
+        try:
+            fifth_c = sph._spell(_LETTERS.index(c_root[0].upper()) + 4, fifth_pcs[0])
+            fifth_w = sph._spell(_LETTERS.index(w_root[0].upper()) + 4, (fifth_pcs[0] + offset) % 12)
+        except ValueError:
+            fifth_c = fifth_w = None                 # a fifth that cannot be written without a double accidental is left out, never respelled wrongly
+    out["root_pc"], out["fifth_pc"] = root_pc, (fifth_pcs[0] if fifth_c else None)
     out.update({
         "ok": True, "third_pc": third_pc, "upper_pc": upper_pc, "upper_role": upper_role,
-        "concert": {"root": c_root, "third": c_third, "upper": c_upper}, "written": {"root": w_root, "third": w_third, "upper": w_upper},
+        "concert": {"root": c_root, "third": c_third, "upper": c_upper, "fifth": fifth_c}, "written": {"root": w_root, "third": w_third, "upper": w_upper, "fifth": fifth_w},
         "symbol_concert": chord.split("/")[0], "symbol_written": w_root + suffix, "slash_bass": "/" in chord,
         "note": "" if upper_role == "7" else ("a sixth chord: its sixth stands in for the seventh" if upper_role == "6" else "a triad: only its third is a guide tone"),
     })
