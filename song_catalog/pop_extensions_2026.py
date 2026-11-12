@@ -271,7 +271,14 @@ def _heal_the_world_a_major_chart_pack() -> dict[str, Any]:
         "composer": "Michael Jackson",
         "guitar_tabs": {
             "A": "x02220",
-            "Bm7": "x24202",
+            # The chart cell is right; the FINGERING omitted the third.
+            # "x24202" sounds B-F#-A-B-F#: the root, fifth and seventh with
+            # no D, so it is a Bm7 with the note that makes it minor left
+            # out. The B string was open (0) where the m7 barre frets it (3).
+            # "x24232" is this song's OWN C#m7 shape ("x46454") moved down
+            # two frets - C#m7 is the chord next to it in the verse - and it
+            # sounds B-F#-A-D-F#, the complete Bm7 the engine voices.
+            "Bm7": "x24232",
             "C#m7": "x46454",
             # D/E is the chord the published charts give here, and the engine
             # already voices it correctly (D-F#-A over an E bass). The FINGERING
@@ -289,7 +296,17 @@ def _heal_the_world_a_major_chart_pack() -> dict[str, Any]:
             "G": "320003",
             "B": "x24442",
             "F#": "244322",
-            "F#/A#": "x476xx",
+            # Another fingering that did not sound its chord. "x476xx" sounds
+            # C#-A-C# over a C# bass: no F#, no A#, and an A that is in no
+            # inversion of F# major. F#/A# itself is correct - the two
+            # modulation sections are the same progression a whole step
+            # apart, and this chord's analogue in Modulation 2 is G#/C
+            # ("x31144"), which is voiced correctly, so both are the V
+            # chord in first inversion used as a bass-line move.
+            # "698676" is this song's OWN E/G# shape ("476454") moved up two
+            # frets - the same first-inversion major form, the same hand -
+            # and it sounds A#-F#-A#-C#-F#-A#: F# major over its third.
+            "F#/A#": "698676",
             "G#m7": "464444",
             "D#m7": "x68676",
             "E": "022100",

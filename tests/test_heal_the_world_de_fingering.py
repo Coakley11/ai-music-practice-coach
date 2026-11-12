@@ -32,10 +32,30 @@ cannot reclassify, refresh or overwrite a saved chart, and both chart
 fingerprints are byte-identical to the previous revision. No chart cell, key,
 tempo or level was touched.
 
-Two further fingering mismatches in this same song were found by the same audit
-and are deliberately NOT changed here, pending their own evidence:
-``Bm7 = "x24202"`` omits the third (D), and ``F#/A# = "x476xx"`` sounds
-C#-A-C# over a C# bass, which is not an F#/A# at all.
+The same audit found two further fingering mismatches in this song, held back
+at the time pending their own evidence. Both are now corrected, by the same
+reasoning and from this song's own shapes.
+
+**``Bm7``: "x24202" -> "x24232".** The old one sounds B-F#-A-B-F#: root,
+fifth and seventh, with no D - a Bm7 missing the note that makes it minor.
+The B string was open where the m7 barre frets it. The catalog's own C#m7 is
+"x46454"; moved down two frets that shape is exactly "x24232", and C#m7 is
+the chord beside Bm7 in the verse. It sounds B-F#-A-D-F#.
+
+**``F#/A#``: "x476xx" -> "698676".** The old one sounds C#-A-C# over a C#
+bass - no F#, no A#, and an A that belongs to no inversion of F# major. The
+chord name is right: the two modulation sections are the same progression a
+whole step apart, and this chord's analogue in Modulation 2 is G#/C
+("x31144"), which is voiced correctly, so both are the V chord in first
+inversion used as a bass-line move. The catalog's own E/G# is "476454";
+moved up two frets that first-inversion shape is "698676", which sounds
+A#-F#-A#-C#-F#-A#.
+
+Published chord sheets for this song print the chord names but not these two
+fingerings, so unlike D/E neither correction has an external transcription
+behind it. Each is derived from a shape this same catalog entry already
+stores, and each is checked here against the engine's own chord_notes and
+bass_note rather than against a source.
 
 Not checked by ear.
 """
@@ -226,19 +246,106 @@ class TransposingKeepsTheSlashChord(unittest.TestCase):
         self.assertEqual(transpose_sections_dict(there, "C", "A"), start)
 
 
-class TheTwoOtherMismatchesAreRecordedNotFixed(unittest.TestCase):
-    """Found by the same audit; left alone pending their own evidence."""
+def shift(tab, n):
+    """The same fingering n frets higher, which is how both fixes were derived."""
+    return "".join(c if c in "xX" else "%x" % (int(c, 16) + n) for c in str(tab))
 
-    def test_bm7_still_omits_its_third(self) -> None:
+
+class Bm7NowSoundsItsThird(unittest.TestCase):
+    """"x24202" -> "x24232": the old shape had no D, so it was not minor."""
+
+    def test_the_old_shape_had_no_third(self) -> None:
+        old = sounding("x24202")
+        self.assertEqual(old, ["B", "F#", "A", "B", "F#"])
+        self.assertNotIn("D", old)
+
+    def test_the_stored_shape_sounds_the_complete_chord(self) -> None:
         got = sounding(rec()["guitar_tabs"]["Bm7"])
-        self.assertEqual(got, ["B", "F#", "A", "B", "F#"])
-        self.assertNotIn("D", got, "if this is ever fixed, update this test")
+        self.assertEqual(got, ["B", "F#", "A", "D", "F#"])
+        self.assertEqual(set(got), {PC[m % 12] for m in chord_notes("Bm7")})
 
-    def test_f_sharp_over_a_sharp_is_still_wrong(self) -> None:
+    def test_it_is_this_songs_own_c_sharp_minor_shape_two_frets_down(self) -> None:
+        tabs = rec()["guitar_tabs"]
+        self.assertEqual(tabs["C#m7"], "x46454")
+        self.assertEqual(tabs["Bm7"], shift(tabs["C#m7"], -2))
+
+    def test_only_the_b_string_changed(self) -> None:
+        # the error was one digit: the B string left open where the m7 shape frets it
+        self.assertEqual([a == b for a, b in zip("x24202", rec()["guitar_tabs"]["Bm7"])],
+                         [True, True, True, True, False, True])
+
+
+class FSharpOverASharpNowSoundsItsChord(unittest.TestCase):
+    """"x476xx" -> "698676": the old shape was not an F# chord in any inversion."""
+
+    def test_the_old_shape_was_not_this_chord_at_all(self) -> None:
+        old = sounding("x476xx")
+        self.assertEqual(old, ["C#", "A", "C#"])
+        for absent in ("F#", "Bb"):          # A# is spelled Bb by the engine
+            self.assertNotIn(absent, old)
+
+    def test_the_stored_shape_is_f_sharp_major_over_its_third(self) -> None:
         got = sounding(rec()["guitar_tabs"]["F#/A#"])
-        self.assertEqual(got, ["C#", "A", "C#"])
-        self.assertNotIn("F#", got)
-        self.assertNotIn("Bb", got)   # A# spelled Bb
+        self.assertEqual(got, ["Bb", "F#", "Bb", "C#", "F#", "Bb"])
+        self.assertEqual(set(got), {PC[m % 12] for m in chord_notes("F#/A#")})
+        self.assertEqual(got[0], PC[bass_note("F#/A#") % 12], "the third is in the bass")
+
+    def test_it_is_this_songs_own_e_over_g_sharp_shape_two_frets_up(self) -> None:
+        tabs = rec()["guitar_tabs"]
+        self.assertEqual(tabs["E/G#"], "476454")
+        self.assertEqual(tabs["F#/A#"], shift(tabs["E/G#"], 2))
+
+    def test_the_chord_name_is_confirmed_by_the_songs_own_transposition(self) -> None:
+        # Modulation 2 is Modulation 1 a whole step up, and this chord's analogue
+        # there is G#/C, whose fingering was already correct - so both are the V
+        # chord in first inversion, not a mis-named chord.
+        from music_theory import transpose_sections_dict
+
+        r = rec()
+        mod1, mod2 = r["sections"]["Modulation 1"], r["sections"]["Modulation 2"]
+        self.assertEqual(transpose_sections_dict({"m": list(mod1)}, "B", "C#")["m"],
+                         list(mod2[:len(mod1)]))
+        self.assertEqual(mod1[4], "F#/A#")
+        self.assertEqual(mod2[4], "G#/C")
+        self.assertEqual(sounding(r["guitar_tabs"]["G#/C"]), ["C", "Eb", "Ab", "Eb", "Ab"])
+
+
+class EveryFingeringSoundsItsChord(unittest.TestCase):
+    """The audit that found all three errors, kept as a test so it cannot regress."""
+
+    #: D/E deliberately adds the fifth of its bass; see the module docstring.
+    ALLOWED_EXTRA = {"D/E": {"E", "B"}}
+
+    def test_no_stored_fingering_omits_a_note_of_its_chord(self) -> None:
+        for name, tab in rec()["guitar_tabs"].items():
+            with self.subTest(chord=name):
+                want = {PC[m % 12] for m in chord_notes(name)}
+                self.assertTrue(want, "the engine should voice every stored chord")
+                self.assertLessEqual(want, set(sounding(tab)), "%s %s" % (name, tab))
+
+    def test_no_stored_fingering_adds_an_undocumented_note(self) -> None:
+        for name, tab in rec()["guitar_tabs"].items():
+            with self.subTest(chord=name):
+                want = {PC[m % 12] for m in chord_notes(name)}
+                extra = set(sounding(tab)) - want - self.ALLOWED_EXTRA.get(name, set())
+                self.assertFalse(extra, "%s %s sounds %s" % (name, tab, sorted(extra)))
+
+    def test_the_lowest_string_is_always_the_chords_bass_note(self) -> None:
+        for name, tab in rec()["guitar_tabs"].items():
+            with self.subTest(chord=name):
+                lowest = OPEN[next(i for i, c in enumerate(str(tab)) if c not in "xX")]
+                lowest += int(str(tab)[next(i for i, c in enumerate(str(tab))
+                                            if c not in "xX")], 16)
+                self.assertEqual(PC[lowest % 12], PC[bass_note(name) % 12],
+                                 "%s %s" % (name, tab))
+
+    def test_every_fingering_is_physically_reachable(self) -> None:
+        for name, tab in rec()["guitar_tabs"].items():
+            with self.subTest(chord=name):
+                frets = [int(c, 16) for c in str(tab) if c not in "xX" and c != "0"]
+                if len(frets) > 1:
+                    self.assertLessEqual(max(frets) - min(frets), 4,
+                                         "%s %s spans too many frets" % (name, tab))
 
 
 if __name__ == "__main__":
