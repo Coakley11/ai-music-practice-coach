@@ -341,14 +341,14 @@ def chord_scale_for(chord: str, key: KeyScale) -> ChordScale:
 # 9th, an Eb baritone a major 13th, a Bb soprano / trumpet / clarinet a major 2nd). Only instruments listed here are verified.
 _OFFSETS: dict[str, int] = {
     "flute": 0, "piano": 0, "alto saxophone": 9, "tenor saxophone": 14, "soprano saxophone": 2, "baritone saxophone": 21, "trumpet": 2,
-    "clarinet": 2,
+    "clarinet": 2, "bass guitar": 12,
 }
 
 # The lowest and highest WRITTEN pitch the instrument can play (midi). The app's notation profiles are comfort windows and, for tenor
 # and baritone sax, reach below the horn's lowest written note (Bb3), so the written line is also held inside these limits.
 _PLAYABLE_WRITTEN: dict[str, tuple[int, int]] = {
     "flute": (60, 96), "piano": (21, 108), "alto saxophone": (58, 89), "tenor saxophone": (58, 89), "soprano saxophone": (58, 89),
-    "baritone saxophone": (58, 89), "trumpet": (54, 84), "clarinet": (52, 96),
+    "baritone saxophone": (58, 89), "trumpet": (54, 84), "clarinet": (52, 96), "bass guitar": (40, 67),
 }
 
 

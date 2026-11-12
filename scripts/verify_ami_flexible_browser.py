@@ -21,6 +21,8 @@ parser.add_argument("--song-only",action="store_true")
 parser.add_argument("--technique-only",action="store_true")
 parser.add_argument("--technique-parser-only",action="store_true")
 parser.add_argument("--trumpet-only",action="store_true")
+parser.add_argument("--bass-only",action="store_true")
+parser.add_argument("--bass-context-only",action="store_true")
 args=parser.parse_args()
 OUT=args.out.resolve();OUT.mkdir(parents=True,exist_ok=True)
 ORIGIN=f"http://127.0.0.1:{args.port}"
@@ -188,7 +190,10 @@ try:
             page.get_by_test_id("stMainBlockContainer").get_by_role("textbox",name="Question",exact=True).wait_for(timeout=90000)
             idle(page)
             (OUT/"practice-start.txt").write_text(page.locator("body").inner_text(),encoding="utf-8")
-            if args.trumpet_only:
+            if args.bass_only or args.bass_context_only:
+                from ami_bass_browser_cases import run
+                run(page,request,select,OUT,context_only=args.bass_context_only)
+            elif args.trumpet_only:
                 from ami_trumpet_browser_cases import run
                 run(page,request,select,probe=args.probe)
             elif args.technique_parser_only:
