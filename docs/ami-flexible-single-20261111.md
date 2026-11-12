@@ -20,7 +20,7 @@ A finger-buster uses sixteenths, alternating extremes, octave-or-wider leaps whe
 
 Revisions reuse the same scoped version store: descending/ascending, slower/faster or numeric tempo, register, increased level, rhythm-only difficulty, instrument adaptation, repetitions and basic articulations. Explain reads the stored pitches without a new version. Undo/redo restore complete stored plans, including notation. Unsupported revisions preserve the current plan.
 
-Full warmups use canonical Practice Focus categories: Tone selects long tones/scales; Technique selects scales/intervals/articulation; Articulation selects articulation/scales; Melody selects scales/intervals; Harmony selects chart-derived guide tones/arpeggios and requests an active chart if unavailable. Explicit family requests take priority.
+Full warmups map the actual UI focus values (including Tone, Scales, Articulation, Breath Support and Guide Tones) through the existing canonical focus categories: Tone selects long tones/scales; Technique selects scales/intervals/articulation; Articulation selects articulation/scales; Melody selects scales/intervals; Harmony selects chart-derived guide tones/arpeggios and requests an active chart if unavailable. Explicit family requests take priority.
 
 The submit authority signature now includes the content-derived plan ID. Version count/cursor alone can collide between fresh plans. This closes a stale-card identity risk; it does not by itself prove the cause of the historical browser observation.
 
@@ -53,6 +53,9 @@ Song-specific requests continue to the existing authoritative chart engines. Thi
 
 ## Verification record
 
-Pending final test and browser results. No push, merge into dev or deployment is authorized or performed.
+See [continuation verification](ami-flexible-verification-20261112.md) for matched Python 3.12.8 results, real-app acceptance, the resolved Explain observation, and remaining limitations. No push, merge into dev or deployment was performed.
 
 Checkpoint on November 12, 2026: the production pipeline and permanent tests passed 254 focused tests under isolated Python 3.12.8 with the declared dependencies (Streamlit 1.61.0). Real-app browser and matched baseline verification continue before final sign-off. Generic instrument/register requests now use a short five-note drill rather than requiring a full octave.
+
+
+November 12 completion correction: a named-song arpeggio exercise without a duration now enters the existing Slice 2b engine for one pass through the selected real chart timeline. Its header, time allocation and suggested revisions disclose the one-pass contract. A fresh song warmup can replace an active standalone exercise, including the exact wording "Warm me up for soloing over Blue Bossa." Unsupported duration revisions preserve a one-pass exercise; tempo edits retain one repetition. These routes have permanent tests. The larger instrument expansion remains [a separate proposal](ami-instrument-technique-next-slice.md).

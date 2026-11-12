@@ -253,3 +253,57 @@ def test_generic_high_flute_plural_and_lower_revision():
     assert max(row(s)["written_midi"]) <= 72
     assert max(row(s)["written_midi"]) < min(before["written_midi"])
     assert read_abc(row(s)["abc"]) == row(s)["written_midi"]
+
+
+def test_exact_song_arpeggio_reuses_slice2b_for_one_chart_pass():
+    from tests.song_fixtures import song_session
+    from tests import song_oracle as oracle
+    from music_coach_ami import warmup_song as ws
+    s = song_session("Blue Bossa",level="Intermediate")
+    r = run_coach_submit("Give me a difficult arpeggio exercise over Blue Bossa.",s,
+        ami_ctx={"instrument":"Saxophone","level":"Intermediate","focus":"Tone","display_key":"Cm"})[1]
+    p = wp.current(s)
+    assert p and p["spec"]["single_song"] and p["level"]=="Advanced"
+    assert len(p["items"])==1 and p["items"][0]["reps"]==1
+    assert p["items"][0]["family"]=="chord_tones"
+    assert "10-minute" not in r.direct_answer and "one chart pass" in r.direct_answer
+    assert not any("Between exercises" in step for step in r.practice_steps)
+    assert "make it shorter" not in r.suggested_next_action
+    song=p["spec"]["song"];section=p["spec"]["song_sel"]["section"]
+    assert song["title"]=="Blue Bossa"
+    assert oracle.check_chordline(p["items"][0]["abc"],ws.section_slots(song,section),9,approach=False)==[]
+    before=copy.deepcopy(p); history=wp.history(s)
+    explain=run_coach_submit("Explain why these notes work.",s,ami_ctx={"instrument":"Saxophone","level":"Intermediate","display_key":"Cm"})[1]
+    assert "Why these notes work" in explain.direct_answer
+    assert wp.current(s)==before and wp.history(s)==history
+
+
+def test_song_warm_me_up_replaces_standalone_before_read_only_explain():
+    from tests.song_fixtures import song_session
+    s = song_session("Blue Bossa", level="Intermediate")
+    ctx = {"instrument":"Saxophone","level":"Intermediate","display_key":"Cm","focus":"Tone"}
+    run_coach_submit("Give me high-register flute exercises.",s,ami_ctx={**ctx,"level":"Advanced"})
+    assert wp.current(s)["spec"]["single"]
+    response = run_coach_submit("Warm me up for soloing over Blue Bossa.",s,ami_ctx=ctx)[1]
+    plan = copy.deepcopy(wp.current(s)); history = wp.history(s)
+    assert response and not plan["spec"].get("single")
+    assert plan["player"]["key"]=="alto" and plan["level"]=="Intermediate"
+    assert {"chord_tones","approach_notes"} <= {r["family"] for r in plan["items"]}
+    why = run_coach_submit("Explain why these notes work.",s,ami_ctx=ctx)[1]
+    assert "Each approach and what it resolves to" in why.direct_answer
+    assert wp.current(s)==plan and wp.history(s)==history
+
+
+def test_single_song_duration_refusal_and_tempo_preserve_one_pass():
+    from tests.song_fixtures import song_session
+    s=song_session("Blue Bossa",level="Intermediate")
+    ctx={"instrument":"Saxophone","level":"Intermediate","display_key":"Cm"}
+    run_coach_submit("Give me a difficult arpeggio exercise over Blue Bossa.",s,ami_ctx=ctx)
+    before=copy.deepcopy(wp.current(s)); history=wp.history(s)
+    r=run_coach_submit("Make it 5 minutes.",s,ami_ctx=ctx)[1]
+    assert "one chart pass" in r.direct_answer
+    assert wp.current(s)==before and wp.history(s)==history
+    run_coach_submit("Make exercise 1 slower.",s,ami_ctx=ctx)
+    after=wp.current(s)
+    assert after["items"][0]["reps"]==1
+    assert after["items"][0]["bpm"]<before["items"][0]["bpm"]

@@ -522,6 +522,8 @@ def is_song_request(question: str) -> bool:
     chordline = bool(_CHORDLINE.search(low))
     if warm and (chordline or _SONG_SCOPE_STRICT.search(low)):
         return True
+    if re.search(r"\barpeggios?\s+exercises?\b", low) and asks and (_NAMED_OVER.search(q) or _SONG_SCOPE_STRICT.search(low)):
+        return True
     if _PREPARE_FOR.search(low) or (guide and chordline and asks):
         return True
     if th7 and asks and re.search(r"\b(?:these\s+chords|the\s+chords|the\s+changes|chord\s+changes|progression|chorus|song|tune|head|bridge|section)\b", low):
@@ -877,6 +879,12 @@ def build_plan(player: we.Player, spec: dict[str, Any], *, replan: bool = True) 
             continue
         if not rows:
             raise we.WarmupUnavailable("none of the requested exercises can be built correctly for this instrument and key")
+        if spec.get("single_song"):
+            for row in rows:
+                row["reps"], row["seconds"] = 1, row["pass_seconds"]
+            target_s = _total(rows)
+            spec["minutes"] = target_s / 60.0
+            break
         allocate(rows, weights, target_s)
         total = _total(rows)
         if not replan:
@@ -914,7 +922,7 @@ def build_plan(player: we.Player, spec: dict[str, Any], *, replan: bool = True) 
             continue
         break
     plan = {"spec": copy.deepcopy(spec), "items": rows, "total_seconds": round(_total(rows), 1), "target_seconds": round(target_s, 1),
-            "transition_seconds": we.TRANSITION_SECONDS, "gap_seconds": we.GAP_SECONDS, "notes": notes,
+            "transition_seconds": 0 if spec.get("single_song") else we.TRANSITION_SECONDS, "gap_seconds": we.GAP_SECONDS, "notes": notes,
             "player": {"key": player.key, "label": player.label, "written_key": player.written_key, "concert_key": player.concert_key,
                        "offset": player.offset, "semitones": player.semitones},
             "level": spec["level"], "minutes": spec["minutes"]}
@@ -1086,6 +1094,9 @@ def _header(plan: dict[str, Any], label: str) -> str:
     n = len(plan["items"])
     head = (f"**Your {mins}-minute {plan['level']} {p['label'].lower()} warmup** — {n} exercise{'s' if n != 1 else ''}, {key_note}. "
             f"Planned playing time {_mmss(plan['total_seconds'])}.")
+    if plan["spec"].get("single_song"):
+        head = (f"**Your {plan['level']} {p['label'].lower()} song exercise** - one chart pass, {key_note}. "
+                f"Playing time {_mmss(plan['total_seconds'])}.")
     song = plan["spec"].get("song")
     if song:
         sel = plan["spec"]["song_sel"]
@@ -1124,7 +1135,10 @@ def _plan_response(plan: dict[str, Any], *, lead: str = "", changed: list[str] |
     else:
         direct = _header(plan, "")
         steps += [_item_line(i + 1, r, gap) for i, r in enumerate(items)]
-        steps.append(f"Between exercises take about {plan['transition_seconds']} seconds to breathe and turn to the next one — that is included in the total.")
+        if plan["spec"].get("single_song"):
+            steps.append("Play the selected chart timeline once, then rest before repeating on your own.")
+        else:
+            steps.append(f"Between exercises take about {plan['transition_seconds']} seconds to breathe and turn to the next one — that is included in the total.")
         listen = []
         sections = [r["abc"] for r in items]
     if lead:
@@ -1139,6 +1153,8 @@ def _plan_response(plan: dict[str, Any], *, lead: str = "", changed: list[str] |
     hist = history_info or history(session_ref)
     nxt = ("Say “next exercise” to work through them one at a time, or change the plan: “make it shorter”, “remove the long tones”, “add more articulation work”, "
            "“make the second exercise slower”, “change the interval exercise to fourths”, “undo that”.")
+    if plan["spec"].get("single_song"):
+        nxt = "Ask to make exercise 1 slower, explain the notes, change its starting chord tone, or undo the last change. Ask for a timed song warmup to set a duration."
     return CoachResponse(
         intent=CoachIntent.SCALE_PRACTICE, direct_answer=direct, practice_steps=steps, what_to_listen_for=list(listen), suggested_next_action=nxt if view.get("mode") != "item" else
         "Say “next exercise” for the next one, “show the whole warmup” for the plan, or change it (“make this one slower”).",
@@ -1385,9 +1401,14 @@ def create(question: str, session_ref: Any, ami_ctx: dict[str, Any] | None = Non
             return early
         if song is not None and req["families"] and not set(req["families"]) & set(SONG_FAMILIES):
             song_fallback, song, sel = "song-aware exercises (guide tones, arpeggios, approach notes) are included only when you ask for them", None, None
+    # A plain song arpeggio request is one chart pass, not a default timed routine.
+    single_song = bool(song is not None and req["minutes"] is None and req["families"] == ["chord_tones"]
+                       and not _WARM.search(question) and not re.search(r"\bwarm\s+(?:me|us)\s+up\b", question, re.I))
     # length
     minutes = req["minutes"]
-    if minutes is None:
+    if single_song:
+        minutes, m_source = 0.0, "single_pass"
+    elif minutes is None:
         minutes, m_source = float(DEFAULT_MINUTES), "default"
         assumptions.append(f"You didn't say how long, so I planned {DEFAULT_MINUTES} minutes.")
     else:
@@ -1481,6 +1502,8 @@ def create(question: str, session_ref: Any, ami_ctx: dict[str, Any] | None = Non
         "chord_start": (sinfo["chord_start"] if song is not None else ""), "approach_kind": (sinfo["approach_kind"] if song is not None else ""), "order_pref": order_pref,
         "family_caps": ({"scale": 1} if mixed_default else {}),
     }
+    if single_song:
+        spec["single_song"] = True
     if mixed_default:
         spec["more"] = {**spec["more"], "scale": 0.4}                  # a short scale to start, not a third of the warmup
     initial_items(spec)
@@ -1552,6 +1575,8 @@ def _rebuild(plan: dict[str, Any], spec: dict[str, Any], *, replan: bool) -> dic
 
 def _retarget_reps_for_item(old_plan: dict[str, Any], new_plan: dict[str, Any], uid: "str | set[str]") -> None:
     """A tempo or level change on some exercises keeps each one's share of the time (fewer plays when it is slower) and leaves every other exercise's plays alone."""
+    if new_plan["spec"].get("single_song"):
+        return
     uids = {uid} if isinstance(uid, str) else set(uid)
     old_by = {r["uid"]: r for r in old_plan["items"]}
     for r in new_plan["items"]:
@@ -1639,6 +1664,8 @@ def revise(op: dict[str, Any], question: str, session_ref: Any, ami_ctx: dict[st
     tempo_uid = ""
     lvl_uids: set[str] = set()
     if kind in (OP_SHORTER, OP_LONGER, OP_MINUTES):
+        if spec.get("single_song"):
+            return _unsupported(session, plan0, "This song exercise plays one chart pass. Ask for a timed song warmup to set a duration.")
         old_m = float(spec["minutes"])
         if kind == OP_MINUTES:
             new_m = float(op["minutes"])
@@ -1983,7 +2010,7 @@ def handle(question: str, session_ref: Any, ami_ctx: dict[str, Any] | None = Non
     ensure_owner(session)
     active = is_active(session)
     if active and current(session)["spec"].get("single"):
-        if is_warmup_request(question) and _asks_for_a_new_warmup(question):
+        if is_song_request(question) or (is_warmup_request(question) and _asks_for_a_new_warmup(question)):
             return create(question, session, ami_ctx)
         return None
     if not active and _WARM.search(question) and not _asks_for_a_new_warmup(question) and not is_song_request(question):
