@@ -34,7 +34,7 @@ DEFAULT_MINUTES = 10
 MIN_MINUTES, MAX_MINUTES = 2, 30
 MAX_REPS = 6
 SONG_FAMILIES = ("guide_tones", "chord_tones", "approach_notes")
-FAMILY_CAP = {"long_tones": 3, "scale": 5, "intervals": 4, "articulation": 4, "guide_tones": 5, "chord_tones": 5, "approach_notes": 4}   # variants a family can supply before plays are repeated instead
+FAMILY_CAP = {"long_tones": 3, "scale": 5, "intervals": 4, "articulation": 4, "guide_tones": 5, "chord_tones": 5, "approach_notes": 4, "bass_arpeggio": 4}   # variants a family can supply before plays are repeated instead
 MAX_COMFORT_REPS = 3        # more plays of one exercise than this and another variant of the family is added instead
 MAX_ITEMS = 12
 TOLERANCE = 0.08            # a plan's total stays within 8% (or 20 s) of the requested length when the exercises allow it
@@ -85,7 +85,7 @@ _NOT_WARMUP_TOPIC = re.compile(r"\b(?:dorian|phrygian|lydian|mixolydian|aeolian|
                                r"the\s+same|same\s+\w+\s+with|progressions?|arpeggios?|bass|melody|solo|song)\b", re.I)
 _UNVERIFIED_WORD = re.compile(r"\b(trombone|violin|viola|cello|guitar|bass|oboe|horn|bassoon|ukulele|banjo|recorder|voice|vocals?|singing|harp|tuba|"
                               r"euphonium|flugelhorn|piccolo|mandolin|harmonica|accordion|organ|keyboard|drums?)\b", re.I)
-_INSTRUMENT = re.compile(r"\b(?:(soprano|alto|tenor|bari(?:tone)?)\s+sax(?:ophone)?|(sax(?:ophone)?)|(flute)|(piano)|(trumpet)|(clarinet))\b", re.I)
+_INSTRUMENT = re.compile(r"\b(?:(soprano|alto|tenor|bari(?:tone)?)\s+sax(?:ophone)?|(sax(?:ophone)?)|(flute)|(piano)|(trumpet)|(clarinet)|(bass(?: guitar)?)(?!\s+trumpet))\b", re.I)
 _LEVEL = [("Beginner", re.compile(r"\b(?:beginner|beginning|novice|easy|simple|basic|starter)\b", re.I)),
           ("Advanced", re.compile(r"\b(?:advanced|hard|difficult|challenging|expert)\b", re.I)),
           ("Intermediate", re.compile(r"\b(?:intermediate|medium|moderate)\b", re.I))]
@@ -164,8 +164,8 @@ def parse_request(question: str) -> dict[str, Any]:
             out["sax_type_word"] = m.group(1).lower()
             out["instrument_word"] = "saxophone"
         else:
-            word = (m.group(2) or m.group(3) or m.group(4) or m.group(5) or m.group(6)).lower()
-            out["instrument_word"] = "saxophone" if word.startswith("sax") else word
+            word = (m.group(2) or m.group(3) or m.group(4) or m.group(5) or m.group(6) or m.group(7)).lower()
+            out["instrument_word"] = "saxophone" if word.startswith("sax") else "bass" if word.startswith("bass") else word
     else:
         u = _UNVERIFIED_WORD.search(q)
         if u:
@@ -586,7 +586,7 @@ def is_warmup_message(question: str) -> bool:
 
 DEFAULT_FAMILIES = {"Beginner": ["long_tones", "scale", "articulation"], "Intermediate": ["long_tones", "scale", "intervals", "articulation"],
                     "Advanced": ["long_tones", "scale", "intervals", "articulation"]}
-BASE_WEIGHT = {"long_tones": 1.0, "scale": 1.3, "intervals": 1.2, "articulation": 1.0, "guide_tones": 1.4, "chord_tones": 1.4, "approach_notes": 1.3}
+BASE_WEIGHT = {"bass_arpeggio": 1.4, "long_tones": 1.0, "scale": 1.3, "intervals": 1.2, "articulation": 1.0, "guide_tones": 1.4, "chord_tones": 1.4, "approach_notes": 1.3}
 DEFAULT_SONG_FAMILIES = {"Beginner": ["guide_tones", "chord_tones"], "Intermediate": ["scale", "guide_tones", "chord_tones", "approach_notes"],
                          "Advanced": ["scale", "guide_tones", "chord_tones", "approach_notes"]}
 PROGRESSIVE_INTERVALS = {"Beginner": ["thirds", "fourths"], "Intermediate": ["thirds", "fourths", "fifths"], "Advanced": ["thirds", "fourths", "fifths", "sixths"]}
@@ -798,8 +798,14 @@ def build_item(player: we.Player, spec: dict[str, Any], desc: dict[str, Any]) ->
         kind, target = _approach_combo(spec, int(params.get("variant") or 0), level)
         built = wc.build_approach(player, level, spec["song"], sel["section"], tuple(sel["bars"]) if sel.get("bars") else None, kind=kind, target=target,
                                   smooth=bool(spec.get("smooth")))
+    elif player.key == "bass":
+        from music_coach_ami.bass_technique import warmup_built
+        built = warmup_built(player, level, tonic, tonality, fam, **kwargs)
     else:
         built = we.BUILDERS[fam](player, level, tonic, tonality, **kwargs)
+    if player.key == "bass":
+        from music_coach_ami.bass_technique import certify
+        certify(built, level)
     scale = float(spec.get("tempo_scale") or 1.0)
     bpm = int(desc.get("tempo") or round(built.bpm * scale))
     bpm = max(36, min(160, bpm))
@@ -921,6 +927,8 @@ def build_plan(player: we.Player, spec: dict[str, Any], *, replan: bool = True) 
                 d["size"] = "short"
             continue
         break
+    if not rows or any("reps" not in row for row in rows):
+        raise we.WarmupUnavailable("the requested variants could not settle into a feasible timed plan; choose a shorter routine or fewer exercise families")
     plan = {"spec": copy.deepcopy(spec), "items": rows, "total_seconds": round(_total(rows), 1), "target_seconds": round(target_s, 1),
             "transition_seconds": 0 if spec.get("single_song") else we.TRANSITION_SECONDS, "gap_seconds": we.GAP_SECONDS, "notes": notes,
             "player": {"key": player.key, "label": player.label, "written_key": player.written_key, "concert_key": player.concert_key,
@@ -966,7 +974,7 @@ def resolve_player(req: dict[str, Any], session_ref: Any, ctx: Any, concert_key:
         if not word:
             return None, ("Which instrument is the warmup for? Name it in your request (for example “a flute warmup” or “an alto saxophone warmup”) or choose "
                           "your instrument in the app."), facts
-    key = ""
+    key = "bass" if word in ("bass", "bass guitar", "electric bass") else ""
     if "sax" in word:
         if sax_word:
             key = {"soprano": "soprano", "alto": "alto", "tenor": "tenor", "bari": "baritone", "baritone": "baritone"}[sax_word]
