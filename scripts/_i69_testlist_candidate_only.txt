@@ -1,0 +1,6 @@
+tests/test_issue69_chord_event_timing.py
+tests/test_issue69_key_ownership_contract.py
+tests/test_karaoke_entry_key_divergence.py
+tests/test_karaoke_retune_now_singing.py
+tests/test_karaoke_retune_preserves_recorded_takes.py
+tests/test_lyric_cue_accidental_transposition.py

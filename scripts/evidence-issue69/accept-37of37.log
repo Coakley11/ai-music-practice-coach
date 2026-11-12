@@ -1,0 +1,62 @@
+[PASS] G1 app renders  2999 chars
+picked Say dropdown=True landed=True sidebar_song='SONG\n\nSONG\nSay — John Mayer\n\n🎼 Songs\n\nSay · Pop\n\n📜 Song Original Key: Bb\n\n🗝️ Practice / Co'
+[PASS] G2 Say active, original key Bb shown  
+[PASS] G3 practice key starts at the song's own Bb  sidebar='Bb'
+[PASS] G4 instrument is Voice (karaoke needs it)  instrument='Voice'
+[PASS] G5 Say queued while the sidebar said Bb  
+[PASS] G6 karaoke surface open  
+[PASS] G7 performance started  Now Singing present (click helper returned True)
+[PASS] G8 performance starts in the song's own key  pk='B? major'
+[PASS] G9 the Bb cue names Bb chords  cue='Instrumental ? B? ? E? ? Gm ? F'
+  lead sheet open: True
+[PASS] G9b the Bb backing is built before the change  play=True synth_done key='Bb'
+  before: pk='B? major' cue='Instrumental ? B? ? E? ? Gm ? F' follow={'current': 'Bb', 'next': 'Bbsus4', 'bar': '1 of 8', 'section': 'Intro'} audio='Bb'
+    set_practice_key D: 'B? major' -> 'D major'
+    notice: 'Performance moved from Bb to D. Rebuilding the backing in D.'
+[PASS] G10 sidebar moved to D  pk='D'
+[PASS] G11 the re-key is announced  notice present
+[PASS] G12 the re-key did not fail  
+  trace rows: 0 -> 2
+    retune called: entry_key='Bb' requested='D' session_active=True
+    retune retuned: entry_key='D' requested='D' session_active=True
+[PASS] G12b the retune ran for this gesture  new trace rows=2 (helper returned True)
+[PASS] G15b the backing is rebuilt in D  play=True synth_done key='D' rows=['synth_submit:D']
+  after: sheet=True follow={'current': 'D', 'next': 'Dsus4', 'bar': '1 of 8', 'section': 'Intro'} audio='D'
+[PASS] G16 Current/Next are not in the old key  current='D' next='Dsus4'
+[PASS] G17 Current/Next differ from before the change  ('Bb', 'Bbsus4') -> ('D', 'Dsus4')
+[PASS] G18 the entry itself moved to D  retuned rows=[('Bb', 'D')]
+[PASS] G18b the page carries no old-key chord  no stale sus chord on the page
+  cue after the change: 'Instrumental ? D ? G ? Bm ? A'
+[PASS] G13 the Intro cue reads D G Bm A  cue chords=['D', 'G', 'Bm', 'A'] cue='Instrumental ? D ? G ? Bm ? A'
+[PASS] G14 no B-flat or E-flat survives in the cue  cue='Instrumental ? D ? G ? Bm ? A'
+[PASS] G15 no double accidental in the cue  cue='Instrumental ? D ? G ? Bm ? A'
+    pause clicked: 'pause' chords={'current': 'D', 'next': 'Dsus4', 'bar': '1 of 8', 'section': 'Intro'}
+    resume clicked: 'resume' chords={'current': 'D', 'next': 'Dsus4/E', 'bar': '3 of 8', 'section': 'Intro'}
+    restart (Play again): True
+[PASS] G18c pause / resume / restart stay in D  pk=d
+[PASS] G18d no Bb take is rebuilt after the re-key  synths since the change=[]
+[PASS] G19 the key survives page navigation  backing=d songs=d
+[PASS] G20 the key survives a reload  pk=d
+    set_practice_key E: 'D' -> 'E'
+    repeated change -> E: sidebar=e entry=e
+    set_practice_key Bb: 'E' -> 'Bb'
+    repeated change -> Bb: sidebar=bb entry=bb
+    set_practice_key D: 'Bb' -> 'D'
+    repeated change -> D: sidebar=d entry=d
+[PASS] G18e repeated changes each move the performance  [('E', 'e', 'e'), ('Bb', 'bb', 'bb'), ('D', 'd', 'd')]
+    set_practice_key Bb: 'D' -> 'Bb'
+[PASS] G21 changing back returns to Bb  pk='Bb'
+[PASS] G23 the song's original key never moved  original key still Bb
+picked Kiss Me dropdown=True landed=True sidebar_song='SONG\n\nSONG\nKiss Me — Sixpence None the Richer\n\n🎼 Songs\n\nKiss Me · Pop\n\n📜 Song Original Key'
+[PASS] G24 Kiss Me active  
+[PASS] G25 Kiss Me keeps its own original key Eb  original key Eb
+    set_practice_key G: 'Eb' -> 'G'
+[PASS] G26 Kiss Me moves to G  pk='G'
+[PASS] G27 Kiss Me's original key still Eb after the change  
+[PASS] G28-390 no horizontal scroll  
+[PASS] G29-390 page renders  
+[PASS] G28-360 no horizontal scroll  
+[PASS] G29-360 page renders  
+  (performance started: True)
+
+37/37 gates passed

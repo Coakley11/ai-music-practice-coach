@@ -31,7 +31,12 @@ SCRIPTS = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPTS))
 sys.path.insert(0, str(ROOT))
 
-from walk_creative_backing_matrix import click_nav, expand_sidebar, wait_idle  # noqa: E402
+from walk_creative_backing_matrix import (  # noqa: E402
+    click_nav,
+    expand_sidebar,
+    set_baseweb_select,
+    wait_idle,
+)
 from walk_guitar_shape_key import pick_song  # noqa: E402
 from _walk_core_key_coherence import set_songs_practice_key  # noqa: E402
 from _walk_custom_practice_key import pk_val  # noqa: E402
@@ -282,6 +287,25 @@ def live_chords(page: Page) -> dict[str, str]:
             "section": str(got.get("section") or "").strip()}
 
 
+def wait_for_live_strip(page: Page, seconds: float = 120.0) -> dict[str, str]:
+    """Wait for the lead sheet's live strip to carry a chord.
+
+    A re-key retires the take that was playing, so the sheet is gone until the new
+    key's take is installed. A fixed settle read an empty strip and called it a
+    missing display; this waits for the thing itself.
+    """
+    import time as _time
+
+    deadline = _time.time() + seconds
+    got = {"current": "", "next": ""}
+    while _time.time() < deadline:
+        got = live_chords(page)
+        if got.get("current") or got.get("next"):
+            return got
+        settle(page, 3)
+    return got
+
+
 def set_lead_sheet(page: Page, on: bool = True) -> bool:
     """The live chord strip lives in the lead sheet, so it has to be open."""
     want = "On" if on else "Off"
@@ -503,7 +527,11 @@ def gate_setup(page: Page) -> bool:
     mark("G3 practice key starts at the song's own Bb", key_token(pk) == "bb",
          f"sidebar={pk!r}")
 
+    # Karaoke is a Voice feature and a fresh workspace starts on Piano, so this is
+    # setup, not a gate: the gate is that the setup took.
     expand_sidebar(page)
+    set_baseweb_select(page, "Instrument", "Voice")
+    settle(page, 6)
     inst = page.evaluate("""() => {
         const el = [...document.querySelectorAll('[role="combobox"],input[aria-label]')]
           .find(e => /instrument/i.test(e.getAttribute('aria-label') || ''));
@@ -567,8 +595,7 @@ def gate_before_change(page: Page) -> dict[str, str]:
     built = wait_for_synth(page, "Bb", before_rows) if played else ""
     mark("G9b the Bb backing is built before the change",
          key_token(built) == "bb", f"play={played} synth_done key={built!r}")
-    settle(page, 4)
-    follow = follow_chords(page)
+    follow = wait_for_live_strip(page)
     log(f"  before: pk={pk!r} cue={cue[:70]!r} follow={follow} audio={built!r}")
     return {"pk": pk, "cue": cue, "audio": built, **follow}
 
@@ -578,18 +605,22 @@ def gate_change_key(page: Page) -> bool:
     before_trace = len(trace_rows())
     ok = set_practice_key(page, "D")
     settle(page, 8)
+    # The notice is one shot by design - it is popped as it renders - so it is read
+    # here, on the rerun after the change, which is where the musician sees it.
+    said = shot(page, "05-after-key-change")
+    notice = ("performance moved" in low(said)
+              or "could not move the performance" in low(said))
+    for line in said.splitlines():
+        if "performance moved" in line.lower() or "could not move" in line.lower():
+            log(f"    notice: {line.strip()[:110]!r}")
     click_nav(page, "Songs")
     settle(page, 5)
     pk = pk_val(page)
-    body = shot(page, "05-after-key-change")
+    body = shot(page, "05b-on-songs-in-d")
     mark("G10 sidebar moved to D", key_token(pk) == "d", f"pk={pk!r}")
-
-    # The app says so: the performance moved, or could not.
-    notice = ("performance moved" in low(body)
-              or "could not move the performance" in low(body))
     mark("G11 the re-key is announced", notice,
          "notice present" if notice else "no notice text found")
-    failed = "could not move the performance" in low(body)
+    failed = "could not move the performance" in low(said)
     mark("G12 the re-key did not fail", not failed)
     after_trace = trace_rows()
     log(f"  trace rows: {before_trace} -> {len(after_trace)}")
@@ -605,13 +636,57 @@ def gate_change_key(page: Page) -> bool:
 
 
 def gate_after_change(page: Page, before: dict[str, str]) -> bool:
-    """Every display, and the audio, in the new key - nothing left in the old."""
+    """Every display, and the audio, in the new key - nothing left in the old.
+
+    Order matters: the lead sheet's live strip is read while it is on screen, and
+    the cue last, because reading it navigates to the Practice page and takes the
+    sheet with it.
+    """
     click_key(page, "catalog_hub_karaoke") or click_text(page, "Karaoke")
     settle(page, 6)
     shot(page, "06-performing-in-d")
 
+    # The audible key: ``sig`` is the synthesizer's own, so this is what was
+    # actually built rather than what a label claims.
+    click_nav(page, "Backing")
+    settle(page, 6)
+    sheet = set_lead_sheet(page, True)
+    before_rows = len(regen_rows())
+    played = press_play(page)
+    built = wait_for_synth(page, "D", before_rows) if played else ""
+    mark("G15b the backing is rebuilt in D", key_token(built) == "d",
+         f"play={played} synth_done key={built!r} "
+         f"rows={synth_keys(regen_rows()[before_rows:])}")
+    follow = wait_for_live_strip(page)
+    body = shot(page, "06c-backing-in-d")
+    cur, nxt = follow.get("current", ""), follow.get("next", "")
+    log(f"  after: sheet={sheet} follow={follow} audio={built!r}")
+    if cur or nxt:
+        stale = any(x in f"{cur} {nxt}"
+                    for x in ("Csus4", "Bbsus4", "B" + FLAT, "E" + FLAT))
+        mark("G16 Current/Next are not in the old key", not stale,
+             f"current={cur!r} next={nxt!r}")
+        mark("G17 Current/Next differ from before the change",
+             (cur, nxt) != (before.get("current"), before.get("next")),
+             f"{(before.get('current'), before.get('next'))} -> {(cur, nxt)}")
+    else:
+        mark("G16 Current/Next are not in the old key", False,
+             f"live strip not present (lead sheet open={sheet})")
+        mark("G17 Current/Next differ from before the change", False,
+             f"live strip not present (lead sheet open={sheet})")
+
+    rows = [r for r in trace_rows() if r.get("stage") == "retuned"]
+    mark("G18 the entry itself moved to D",
+         any(key_token(str(r.get("entry_key") or "")) == "d" for r in rows),
+         f"retuned rows={[(r.get('previous'), r.get('to')) for r in rows]}")
+    mark("G18b the page carries no old-key chord",
+         not any(x in body for x in ("Bbsus4", "B" + FLAT + "sus4", "Csus4")),
+         "no stale sus chord on the page")
+
+    # Last, because it leaves the Backing page.
     cue = practice_cue(page)
     shot(page, "06b-practice-cue-in-d")
+    log(f"  cue after the change: {cue[:80]!r}")
     if cue:
         want = ["D", "G", "Bm", "A"]
         got = [c for c in chords_in(cue) if c not in ("Instrumental",)]
@@ -627,44 +702,6 @@ def gate_after_change(page: Page, before: dict[str, str]) -> bool:
                      "G14 no B-flat or E-flat survives in the cue",
                      "G15 no double accidental in the cue"):
             mark(gate, False, "no Intro cue found on the Practice page")
-
-    # The audible key: ``sig`` is the synthesizer's own, so this is what was
-    # actually built rather than what a label claims.
-    click_nav(page, "Backing")
-    settle(page, 6)
-    set_lead_sheet(page, True)
-    before_rows = len(regen_rows())
-    played = press_play(page)
-    built = wait_for_synth(page, "D", before_rows) if played else ""
-    mark("G15b the backing is rebuilt in D", key_token(built) == "d",
-         f"play={played} synth_done key={built!r} "
-         f"rows={synth_keys(regen_rows()[before_rows:])}")
-
-    body = shot(page, "06c-backing-in-d")
-    follow = follow_chords(page)
-    cur, nxt = follow.get("current", ""), follow.get("next", "")
-    log(f"  after: cue={cue[:80]!r} follow={follow} audio={built!r}")
-    if cur or nxt:
-        stale = any(x in f"{cur} {nxt}"
-                    for x in ("Csus4", "Bbsus4", "B" + FLAT, "E" + FLAT))
-        mark("G16 Current/Next are not in the old key", not stale,
-             f"current={cur!r} next={nxt!r}")
-        mark("G17 Current/Next differ from before the change",
-             (cur, nxt) != (before.get("current"), before.get("next")),
-             f"{(before.get('current'), before.get('next'))} -> {(cur, nxt)}")
-    else:
-        mark("G16 Current/Next are not in the old key", False,
-             "follow strip not present after Play")
-        mark("G17 Current/Next differ from before the change", False,
-             "follow strip not present after Play")
-
-    rows = [r for r in trace_rows() if r.get("stage") == "retuned"]
-    mark("G18 the entry itself moved to D",
-         any(key_token(str(r.get("entry_key") or "")) == "d" for r in rows),
-         f"retuned rows={[(r.get('previous'), r.get('to')) for r in rows]}")
-    mark("G18b the page carries no old-key chord",
-         not any(x in body for x in ("Bbsus4", "B" + FLAT + "sus4", "Csus4")),
-         "no stale sus chord on the page")
     return True
 
 
@@ -675,6 +712,12 @@ def gate_transport_after_rekey(page: Page) -> bool:
     back, the audio would be in Bb under a D chart - the reported defect with one
     extra step.
     """
+    click_nav(page, "Backing")
+    settle(page, 6)
+    set_lead_sheet(page, True)
+    if not (page.evaluate(TRANSPORT_STATE) or {}).get("pause"):
+        press_play(page)
+        settle(page, 10)
     before_rows = len(regen_rows())
     paused = press_pause_or_resume(page)
     log(f"    pause clicked: {paused!r} chords={live_chords(page)}")
