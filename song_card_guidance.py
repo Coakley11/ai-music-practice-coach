@@ -151,6 +151,18 @@ class HarmonyFacts:
     deceptive: list[tuple[str, str]] = field(default_factory=list)
     loop: tuple[str, ...] = ()
     loop_numerals: tuple[str, ...] = ()
+    #: Bars the recurring unit spans - a progression is counted in bars, not events.
+    loop_bars: int = 0
+    #: Sections that share it, in chart order.
+    loop_sections: tuple[str, ...] = ()
+    #: True when a single section plays it more than once end to end.
+    loop_repeats_within_section: bool = False
+    #: False when only an intro / coda / tag had a recurring unit.
+    loop_from_main_section: bool = True
+    #: Main sections whose own progression differs from the chosen one.
+    loop_other_sections: tuple[str, ...] = ()
+    #: Main sections that play the same chords starting somewhere else in the cycle.
+    loop_rotated_sections: tuple[str, ...] = ()
     contrast_section: tuple[str, list[str]] | None = None
     diatonic_share: float = 1.0
     slash: list[str] = field(default_factory=list)
@@ -186,29 +198,236 @@ class HarmonyFacts:
         return sorted(chains, key=len, reverse=True)
 
     @property
+    def has_progression(self) -> bool:
+        """An ordered recurring progression is known, whatever its length."""
+        return len(self.loop) >= 2
+
+    @property
     def character(self) -> str:
         if len(self.ii_v) >= 2 and self.functional_share >= 0.35:
             return "functional"
-        if self.loop:
+        if self.loop and 2 <= len(self.loop) <= 4 and (
+            self.loop_repeats_within_section or self.loop_bars <= 4
+        ):
             return "loop"
+        if self.has_progression:
+            return "progression"
         if self.diatonic_share >= 0.9 and len(self.distinct) <= 7:
             return "diatonic"
         return "mixed"
 
 
-def expand_sections(sections: dict[str, list[str]] | None) -> list[tuple[str, list[str]]]:
-    """Every chord in order, ``Dm7|G7`` bars split into their two chords."""
+SKIP_TOKENS = ("N.C.", "NC", "%", "-", "")
+
+
+def _bar_chords(bar: object) -> list[str]:
+    """One chart cell -> its chords in order, with chart-only syntax removed.
+
+    ``chord_stream`` is the app's own reader: ``"Bm:2|Em:2p"`` gives ``Bm``, ``Em``,
+    so a musician-facing name never carries a beat weight or a push mark, while the
+    root, quality, extensions and slash bass are untouched. A push changes when a
+    chord sounds, not what it is - the timing stays the chart's business.
+    """
+    from chord_subdivisions import chord_stream
+
+    out = []
+    for tok in chord_stream([bar]):
+        text = str(tok or "").strip()
+        if text and text.upper() not in SKIP_TOKENS:
+            out.append(text)
+    return out
+
+
+def section_bars(sections: dict[str, list[str]] | None) -> list[tuple[str, list[list[str]]]]:
+    """(section, bars) where each bar is its own chords in order.
+
+    Keeping the bar boundaries is what lets a repeating unit be counted in bars.
+    Flattening first made three chords inside one measure of *Shallow*
+    (``Em:2|D:1.5|G:0.5``) look like three members of a four-chord loop.
+    """
     out = []
     for name, chords in (sections or {}).items():
-        flat = []
-        for bar in chords or []:
-            for part in str(bar).split("|"):
-                tok = part.strip()
-                if tok and tok.upper() not in ("N.C.", "NC", "%", "-"):
-                    flat.append(tok)
-        if flat:
-            out.append((str(name), flat))
+        bars = [b for b in (_bar_chords(bar) for bar in (chords or [])) if b]
+        if bars:
+            out.append((str(name), bars))
     return out
+
+
+def expand_sections(sections: dict[str, list[str]] | None) -> list[tuple[str, list[str]]]:
+    """Every chord in order; a subdivided bar contributes each of its chords."""
+    return [(name, [c for bar in bars for c in bar]) for name, bars in section_bars(sections)]
+
+
+def _collapse(chords: Sequence[str]) -> list[str]:
+    """Consecutive repeats of the same chord are one harmonic event."""
+    out: list[str] = []
+    for c in chords:
+        if not out or out[-1] != c:
+            out.append(c)
+    return out
+
+
+def _bar_period(bars: Sequence[list[str]]) -> int:
+    """Smallest whole number of bars the section repeats on, else all of it.
+
+    Whole bars only: a unit that started halfway through a measure would not be a
+    progression a musician could count.
+
+    A trailing part-cycle is allowed, because a section usually ends by walking
+    into the next one.
+    """
+    n = len(bars)
+    for period in range(1, n // 2 + 1):
+        if n // period < 2:
+            continue
+        full = (n // period) * period
+        if all(bars[i] == bars[i % period] for i in range(full)):
+            return period
+    return n
+
+
+@dataclass
+class Progression:
+    """One section's recurring harmonic unit."""
+
+    chords: tuple[str, ...]
+    bars: int
+    sections: tuple[str, ...] = ()
+    repeats_within_section: bool = False
+    main: bool = True
+
+    @property
+    def is_short_loop(self) -> bool:
+        """Short enough to call a loop rather than describe as a progression."""
+        return 2 <= len(self.chords) <= 4 and self.bars <= 4
+
+
+def _section_progression(bars: Sequence[list[str]]) -> Progression | None:
+    period = _bar_period(bars)
+    chords = _collapse([c for bar in bars[:period] for c in bar])
+    if len(chords) < 2:
+        return None
+    return Progression(
+        chords=tuple(chords),
+        bars=period,
+        repeats_within_section=len(bars) >= period * 2,
+    )
+
+
+#: A pre-chorus or refrain supports the song; the verse and chorus carry it.
+PRIMARY_SECTION_WORDS = ("verse", "chorus")
+
+
+def _section_rank(name: str) -> int:
+    """0 for the sections a song is identified by, 1 for the others.
+
+    Both are main sections - this only breaks a tie. *Photograph*'s pre-chorus is
+    shared by three sections while its verses split into two, so without this the
+    card described the song by its pre-chorus.
+    """
+    low = str(name or "").strip().lower()
+    if "pre" in low:
+        return 1
+    return 0 if any(w in low for w in PRIMARY_SECTION_WORDS) else 1
+
+
+def _same_progression(a: Sequence[str], b: Sequence[str]) -> bool:
+    """One cycle is the other, or the start of it.
+
+    *Shallow*'s Refrain 2 is its verse progression with one extra bar of D. Calling
+    that a different progression made the card claim a contrast the song has not
+    got.
+    """
+    if tuple(a) == tuple(b):
+        return True
+    short, long = (a, b) if len(a) <= len(b) else (b, a)
+    return len(short) >= 2 and tuple(long[:len(short)]) == tuple(short)
+
+
+def _choose_progression(rows: Sequence[tuple[str, list[list[str]]]]) -> Progression | None:
+    """The progression the song is actually built on.
+
+    Ranked by what makes a progression the song's own: it has to come from a main
+    section (a Coda that repeats four times is still a tag, which is why *Hey
+    Jude* was being described by its "na-na-na" vamp); then by how many sections
+    share it; then by how many bars those sections account for. Only if no main
+    section has a recurring unit does an intro or coda answer, and the result says
+    so, so the wording can stay honest.
+    """
+    per_section: list[tuple[str, Progression, int]] = []
+    for name, bars in rows:
+        prog = _section_progression(bars)
+        if prog:
+            per_section.append((name, prog, len(bars)))
+    if not per_section:
+        return None
+
+    def gather(main_only: bool) -> Progression | None:
+        pool = [(n, p, b) for n, p, b in per_section
+                if not main_only or _is_main_section(n)]
+        if not pool:
+            return None
+        # Sections whose cycles agree form one group; the group's progression is
+        # the shortest cycle in it, so an extra tag bar never joins the name.
+        groups: list[list[tuple[str, Progression, int]]] = []
+        for item in pool:
+            for group in groups:
+                if _same_progression(group[0][1].chords, item[1].chords):
+                    group.append(item)
+                    break
+            else:
+                groups.append([item])
+
+        def score(group):
+            return (
+                # The sections a song is identified by.
+                -min(_section_rank(n) for n, _p, _b in group),
+                # A unit a section plays twice end to end is the song's loop;
+                # *All of Me*'s 18-bar chorus comes round once, its vi-IV-I-V
+                # four times a verse.
+                any(p.repeats_within_section for _n, p, _b in group),
+                len({_section_base(n) for n, _p, _b in group}),
+                sum(b for _n, _p, b in group),
+            )
+
+        group = max(groups, key=score)
+        shortest = min(group, key=lambda item: len(item[1].chords))[1]
+        return Progression(
+            chords=shortest.chords,
+            bars=shortest.bars,
+            sections=tuple(n for n, _p, _b in group),
+            repeats_within_section=any(p.repeats_within_section for _n, p, _b in group),
+            main=main_only,
+        )
+
+    return gather(True) or gather(False)
+
+
+def _rotations(chords: Sequence[str]) -> set[tuple[str, ...]]:
+    seq = list(chords)
+    return {tuple(seq[i:] + seq[:i]) for i in range(len(seq))}
+
+
+def _main_sections_disagree(
+    rows: Sequence[tuple[str, list[list[str]]]], chosen: Progression
+) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """(sections on other harmony, sections playing the same chords in another order).
+
+    *Photograph*'s verse runs E-C#m-B-A where its chorus runs E-B-C#m-A: the same
+    four chords entered at a different point. Calling that "moves differently"
+    would tell a musician to learn harmony they already know.
+    """
+    rotations = _rotations(chosen.chords)
+    other: list[str] = []
+    rotated: list[str] = []
+    for name, bars in rows:
+        if not _is_main_section(name) or name in chosen.sections:
+            continue
+        prog = _section_progression(bars)
+        if not prog or _same_progression(prog.chords, chosen.chords):
+            continue
+        (rotated if tuple(prog.chords) in rotations else other).append(name)
+    return tuple(other), tuple(rotated)
 
 
 def _form_label(record: dict[str, Any], names: Sequence[str]) -> str:
@@ -301,31 +520,43 @@ def analyze_song_harmony(record: dict[str, Any], sections: dict[str, list[str]] 
         if len(run) >= 3 and run not in facts.chromatic_dominants:
             facts.chromatic_dominants.append(run)
     facts.functional_share = functional_changes / max(1, changes)
-    # A repeated four-chord loop that carries much of the song.
+    # The recurring progression: the unit a section actually repeats, in whole
+    # bars, preferring the sections that carry the song. Counting four-chord
+    # windows in the stored chart text instead had the unit wrong both ways - a
+    # chart writes one pass per section, so *The A Team*'s I-V-vi-IV scored 2 and
+    # was discarded for a frequency list, while *Hey Jude*'s four written-out Coda
+    # blocks outvoted its verses.
     def fn(c: str) -> tuple[int, bool]:
         p = parsed.get(c) or _parse(c)
         return (p.pc, p.quality in ("minor", "m7", "half-dim", "dim"))
 
-    grams: Counter = Counter()
-    for _n, chords in rows:
-        motion = [c for i, c in enumerate(chords) if i == 0 or c != chords[i - 1]]
-        for i in range(len(motion) - 3):
-            g = tuple(motion[i:i + 4])
-            if len(set(g)) >= 3:
-                grams[g] += 1
-    if grams:
-        top, n = grams.most_common(1)[0]
-        loop_fns = {fn(c) for c in top}
-        covered = sum(1 for _n, cs in rows for c in cs if fn(c) in loop_fns)
-        if n >= 3 and covered / len(all_chords) >= 0.45:
-            facts.loop = top
-            facts.loop_numerals = tuple(
-                _numeral(_deg(parsed[c], key_pc), parsed[c].quality, minor) if parsed[c].pc >= 0 else "?" for c in top
-            )
-            outside = [(name, cs) for name, cs in rows if sum(1 for c in cs if fn(c) not in loop_fns) / len(cs) >= 0.4]
-            if outside:
-                name, cs = outside[0]
-                facts.contrast_section = (name, list(dict.fromkeys(cs))[:4])
+    bar_rows = section_bars(sections if sections is not None else record.get("sections"))
+    chosen = _choose_progression(bar_rows)
+    if chosen:
+        facts.loop = chosen.chords
+        facts.loop_bars = chosen.bars
+        facts.loop_sections = chosen.sections
+        facts.loop_repeats_within_section = chosen.repeats_within_section
+        facts.loop_from_main_section = chosen.main
+        facts.loop_other_sections, facts.loop_rotated_sections = _main_sections_disagree(
+            bar_rows, chosen
+        )
+        for c in chosen.chords:
+            parsed.setdefault(c, _parse(c))
+        facts.loop_numerals = tuple(
+            _numeral(_deg(parsed[c], key_pc), parsed[c].quality, minor) if parsed[c].pc >= 0 else "?"
+            for c in chosen.chords
+        )
+        # The contrast line names a section that really plays something else.
+        loop_fns = {fn(c) for c in chosen.chords}
+        outside = [
+            (name, cs) for name, cs in rows
+            if name not in chosen.sections
+            and sum(1 for c in cs if fn(c) not in loop_fns) / len(cs) >= 0.4
+        ]
+        if outside:
+            name, cs = outside[0]
+            facts.contrast_section = (name, _collapse(cs)[:4])
     names = [n for n, _c in rows]
     facts.form = _form_label(record, names)
     sizes = Counter(len((sections or record.get("sections") or {}).get(n) or []) for n in names)
@@ -471,6 +702,73 @@ def _pentatonic(ctx: CardContext) -> str:
 # --------------------------------------------------------------------------- harmony text
 
 
+def _section_base(name: str) -> str:
+    """"Verse 1" and "Verse 2" are both the verse, for a sentence about harmony."""
+    raw = re.sub(r"\s*\d+\s*$", "", str(name or "").strip())
+    return raw or str(name or "").strip()
+
+
+def _section_list(names: Sequence[str]) -> str:
+    """"the verse and chorus" from the section names that share a progression."""
+    phrases: list[str] = []
+    for name in names:
+        phrase = section_phrase(_section_base(name))
+        if phrase and phrase not in phrases:
+            phrases.append(phrase)
+    if len(phrases) > 3:
+        phrases = phrases[:3]
+    # "the verse and the chorus" -> "the verse and chorus".
+    if phrases and phrases[0].startswith("the "):
+        phrases = [phrases[0]] + [re.sub(r"^the ", "", p) for p in phrases[1:]]
+    return _join(phrases)
+
+
+def _recurrence_clause(f: HarmonyFacts) -> str:
+    """How the progression recurs, claiming no more than the chart shows.
+
+    A section that plays the unit twice end to end is a loop. A unit that appears
+    once in each of several sections is shared by those sections - the chart does
+    not say it runs continuously, so the card does not say so either.
+    """
+    where = _section_list(f.loop_sections)
+    if f.loop_repeats_within_section:
+        return f"repeats through {where}" if where else "repeats"
+    if len(f.loop_sections) >= 2 and where:
+        return f"is shared by {where}"
+    return f"runs through {where}" if where else ""
+
+
+def _bar_phrase(f: HarmonyFacts) -> str:
+    return f"{_number_word(f.loop_bars)}-bar" if 1 <= f.loop_bars <= 6 else f"{f.loop_bars}-bar"
+
+
+def _an(word: str) -> str:
+    """"an 8-bar", "a four-bar" - the sound of the word, not its spelling."""
+    return "an" if str(word)[:1].lower() in "aeiou8" else "a"
+
+
+def _moves(names: Sequence[str]) -> str:
+    return "move" if len({_section_base(n) for n in names}) > 1 else "moves"
+
+
+def _go(names: Sequence[str]) -> str:
+    return "go" if len({_section_base(n) for n in names}) > 1 else "goes"
+
+
+def _rotation_clause(f: HarmonyFacts) -> str:
+    """Name a section that plays the same chords from a different starting point."""
+    rotated = _section_list(f.loop_rotated_sections)
+    if not rotated:
+        return ""
+    verb = "start" if len({_section_base(n) for n in f.loop_rotated_sections}) > 1 else "starts"
+    return f", while {rotated} {verb} the same chords in another order"
+
+
+def _is_are(names: Sequence[str]) -> str:
+    """One section plays a progression; two or more play it."""
+    return "play" if len({_section_base(n) for n in names}) > 1 else "plays"
+
+
 def harmony_text(ctx: CardContext) -> str:
     f, lvl = ctx.facts, ctx.level
     key = key_label(ctx.chart_key)
@@ -546,30 +844,106 @@ def harmony_text(ctx: CardContext) -> str:
     if f.character == "loop":
         loop = ctx.chords(f.loop, " – ")
         contrast = f.contrast_section
+        where = _section_list(f.loop_sections)
+        romans = pretty("–".join(f.loop_numerals))
         if lvl == "Beginner":
-            text = f"Most of the song repeats the same four chords — {loop} — so once that pattern feels easy, you can play most of the song."
+            if f.loop_repeats_within_section:
+                text = (f"{_cap(_number_word(len(f.loop)))} chords in {key} — {loop} — come round again "
+                        f"and again, so once that pattern feels easy you can play most of the song.")
+            elif len(f.loop_sections) >= 2 and where:
+                text = (f"{_cap(where)} use the same {_number_word(len(f.loop))} chords in {key} — "
+                        f"{loop} — so one pattern covers both.")
+            else:
+                text = f"{_cap(where or 'The song')} uses {_number_word(len(f.loop))} chords in {key} — {loop}."
+            if not f.loop_from_main_section and where:
+                text = f"{_cap(where)} repeats {loop}; the rest of the song moves differently."
+            rotated = _section_list(f.loop_rotated_sections)
+            if rotated:
+                uses = "use" if len({_section_base(n) for n in f.loop_rotated_sections}) > 1 else "uses"
+                text += f" {_cap(rotated)} {uses} the same chords, starting in a different place."
             if contrast:
                 text += f" {_cap(section_phrase(contrast[0]))} changes the pattern for a moment ({ctx.chords(contrast[1], ', ')})."
             return text
-        romans = pretty("–".join(f.loop_numerals))
+        clause = _recurrence_clause(f)
         if lvl == "Intermediate":
-            text = f"A repeating {romans} loop ({loop}) in {key}"
+            if f.loop_repeats_within_section:
+                text = f"A repeating {romans} loop ({loop}) in {key}"
+                if where:
+                    text = f"A {romans} loop ({loop}) in {key} that {clause}"
+            elif clause:
+                text = f"One {romans} progression ({loop}) in {key} that {clause}"
+            else:
+                text = f"A {romans} progression ({loop}) in {key}"
+            text += _rotation_clause(f)
             text += f", with {section_phrase(contrast[0])} switching to {ctx.chords(contrast[1], '–')} for contrast." if contrast else "."
             return text
         extras = []
         if contrast:
-            extras.append(f"contrast only from {section_phrase(contrast[0])} ({ctx.chords(contrast[1], '–')})")
+            extras.append(f"contrast from {section_phrase(contrast[0])} ({ctx.chords(contrast[1], '–')})")
         if f.slash:
             extras.append(f"bass motion through slash chords ({', '.join(ctx.chord(s) for s in f.slash[:2])})")
         if f.deceptive:
             a, b = f.deceptive[0]
             extras.append(f"a deceptive {ctx.chord(a)}–{ctx.chord(b)}")
-        text = f"A static {romans} loop ({loop}) in {key}"
+        rotated = _section_list(f.loop_rotated_sections)
+        if rotated:
+            extras.append(f"{rotated} entering the same chords at another point")
+        lead = "A static" if f.loop_repeats_within_section else "One"
+        noun = "loop" if f.loop_repeats_within_section else "progression"
+        text = f"{lead} {romans} {noun} ({loop}) in {key}"
+        if clause:
+            text += f" that {clause}"
         return text + (f", with {_join(extras)}." if extras else "; interest has to come from voicing, rhythm and dynamics.")
+
+    if f.character == "progression":
+        # Longer than a pop loop, or a form whose sections differ: say which.
+        prog = ctx.chords(f.loop, " – ")
+        romans = pretty("–".join(f.loop_numerals))
+        where = _section_list(f.loop_sections) or "the song"
+        bars = _bar_phrase(f)
+        others = _section_list(f.loop_other_sections)
+        if lvl == "Beginner":
+            moves = _moves(f.loop_sections)
+            text = (f"{_cap(where)} {moves} through {_number_word(len(f.loop))} chords of {key} over "
+                    f"{_number_word(f.loop_bars)} bars — {prog}.")
+            if others:
+                it = "them" if _go(f.loop_other_sections) == "go" else "it"
+                text += (f" {_cap(others)} {_go(f.loop_other_sections)} somewhere else, "
+                         f"so learn {it} separately.")
+            rotated = _section_list(f.loop_rotated_sections)
+            if rotated:
+                uses = "use" if len({_section_base(n) for n in f.loop_rotated_sections}) > 1 else "uses"
+                text += f" {_cap(rotated)} {uses} the same chords, starting in a different place."
+            return text
+        if lvl == "Intermediate":
+            verb = "plays" if _is_are(f.loop_sections) == "plays" else "play"
+            text = f"{_cap(where)} {verb} {_an(bars)} {bars} progression ({prog}) in {key}"
+            if others:
+                text += f", while {others} {_moves(f.loop_other_sections)} differently"
+            text += _rotation_clause(f)
+            return text + "."
+        extras = []
+        if others:
+            extras.append(f"{others} on {'their' if ' and ' in others else 'its'} own harmony")
+        rotated = _section_list(f.loop_rotated_sections)
+        if rotated:
+            extras.append(f"{rotated} entering the same chords at another point")
+        if f.slash:
+            extras.append(f"slash-chord bass motion ({', '.join(ctx.chord(s) for s in f.slash[:2])})")
+        if f.sevenths:
+            extras.append("seventh-chord colour throughout")
+        verb = "plays" if _is_are(f.loop_sections) == "plays" else "play"
+        text = f"{_cap(where)} {verb} {_an(bars)} {bars} progression in {key} — {romans} ({prog})"
+        return text + (f", with {_join(extras)}." if extras else ".")
+
+    # No recurring progression the chart supports: name the chords as the chord
+    # vocabulary they are. Ranking chords by frequency and printing them with a
+    # dash would read as a progression the song never plays.
     common = ", ".join(ctx.chord(c) for c in f.frequent[:4])
     if f.character == "diatonic":
         if lvl == "Beginner":
-            return f"A few chords that all belong to {key} — mostly {common} — so the harmony sounds settled and easy to follow."
+            return (f"A few chords that all belong to {key} — mostly {common} — so the harmony sounds "
+                    f"settled and easy to follow.")
         extras = []
         if f.deceptive:
             a, b = f.deceptive[0]
@@ -579,7 +953,7 @@ def harmony_text(ctx: CardContext) -> str:
         if f.sus:
             extras.append("suspended chords that delay resolution")
         lead = "Diatonic harmony" if lvl == "Intermediate" else "Entirely diatonic harmony"
-        text = f"{lead} in {key} built on {common}"
+        text = f"{lead} in {key}, drawing mostly on {common}"
         if lvl == "Advanced" and not extras:
             return text + "; color has to come from voicing, register and rhythm rather than chord choice."
         return text + (f", with {_join(extras)}." if extras else ".")
@@ -598,7 +972,11 @@ def harmony_text(ctx: CardContext) -> str:
 
 
 def _number_word(n: int) -> str:
-    return {1: "one", 2: "two", 3: "three", 4: "four", 5: "five", 6: "six"}.get(int(n), str(n))
+    return {
+        1: "one", 2: "two", 3: "three", 4: "four", 5: "five", 6: "six",
+        7: "seven", 8: "eight", 9: "nine", 10: "ten", 11: "eleven", 12: "twelve",
+        16: "sixteen", 24: "twenty-four", 32: "thirty-two",
+    }.get(int(n), str(n))
 
 
 def _join(parts: Sequence[str]) -> str:

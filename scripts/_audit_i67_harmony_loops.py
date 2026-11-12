@@ -1,123 +1,105 @@
-"""Issue 67: does the reported loop match a progression the song actually repeats?
+"""Issue 67: does the reported progression match one the song actually plays?
 
-For every curated song this prints what the Songs card claims, beside what the chart
-says, and flags the disagreements:
+Catalog-wide, in several Practice Keys. The checks are the ones that would have
+caught the reported defects:
 
-  INTRO     the reported loop's chords sit only in an intro / outro / pickup
-  NOTRUN    the reported chords never occur consecutively anywhere in the chart
-  ORDER     those chords do occur, but not in the reported order
-  ONESEC    the loop was found in a single section that is not a main section
-  NUMERAL   a Roman numeral does not match the chord printed beside it
+  SYNTAX    a musician-facing chord label still carries chart-only syntax
+  ABSENT    the reported progression is not played by a section credited with it
+  NONMAIN   it is credited only to an intro / coda / tag, without saying so
+  FREQORDER the summary lists chords joined by dashes that the song never plays
+            in that order
 
-Nothing here asserts; it is a survey, so the implementation starts from measured
-cases rather than from a reading of the code.
+Run it after a change; it prints a verdict line and exits non-zero on a failure.
 """
 
 from __future__ import annotations
 
+import re
 import sys
-from collections import Counter
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from chord_subdivisions import chord_stream  # noqa: E402
-from song_card_guidance import analyze_song_harmony, expand_sections  # noqa: E402
+from song_card_guidance import (  # noqa: E402
+    _is_main_section,
+    _section_progression,
+    analyze_song_harmony,
+    build_song_card_guidance,
+    section_bars,
+)
 from song_catalog.catalog import curated_song_records  # noqa: E402
 
-INTRO_WORDS = ("intro", "outro", "pickup", "pick-up", "count-in", "tag", "coda", "vamp")
+#: Chart-only syntax *attached to a chord symbol*. Prose has colons of its own,
+#: so a bare ``[:|]`` search flagged every "come in pairs: a gentle chord" line.
+CHART_SYNTAX = re.compile(r"[A-G][#b♯♭]?[^\s,;.()]*(?::[0-9.]+|\|)")
+KEYS = ("C", "Eb", "A")
+LEVELS = ("Beginner", "Intermediate", "Advanced")
 
 
 def out(line: str) -> None:
     print(line.encode("ascii", "replace").decode("ascii"), flush=True)
 
 
-def is_intro_like(name: str) -> bool:
-    low = str(name or "").strip().lower()
-    return any(w in low for w in INTRO_WORDS)
+def plays(bars, want) -> bool:
+    """Does this section's own recurring unit contain the progression, in order?"""
+    prog = _section_progression(bars)
+    if not prog:
+        return False
+    seq, n = list(prog.chords), len(want)
+    doubled = seq + seq  # a cycle may be entered anywhere
+    return any(tuple(doubled[i:i + n]) == tuple(want) for i in range(len(seq)))
 
 
-def motion(chords):
-    """Consecutive duplicates collapsed - what the detector itself compares."""
-    return [c for i, c in enumerate(chords) if i == 0 or c != chords[i - 1]]
-
-
-def contains_run(seq, want):
-    n = len(want)
-    return any(tuple(seq[i:i + n]) == tuple(want) for i in range(len(seq) - n + 1))
-
-
-def rotations(want):
-    return {tuple(want[i:] + want[:i]) for i in range(len(want))}
-
-
-def survey(record):
+def check(record) -> list[str]:
+    problems: list[str] = []
+    title = str(record.get("title") or "")
     sections = record.get("sections") or {}
     if not sections:
-        return None
-    rows = expand_sections(sections)
+        return problems
     facts = analyze_song_harmony(record)
-    if not facts.loop:
-        return None
+    rows = dict(section_bars(sections))
 
-    loop = list(facts.loop)
-    flags = []
-    where = []
-    for name, chords in rows:
-        m = motion(chords)
-        if contains_run(m, loop):
-            where.append(name)
-    if not where:
-        # Maybe it is there in another rotation, or not consecutive at all.
-        rotated = [n for n, cs in rows
-                   if any(contains_run(motion(cs), list(r)) for r in rotations(loop))]
-        flags.append("ORDER" if rotated else "NOTRUN")
-        where = rotated
+    if facts.loop:
+        credited = [n for n in facts.loop_sections if n in rows]
+        if credited and not any(plays(rows[n], facts.loop) for n in credited):
+            problems.append(f"ABSENT {title}: {' - '.join(facts.loop)} not played by {credited}")
+        if credited and not any(_is_main_section(n) for n in credited):
+            if facts.loop_from_main_section:
+                problems.append(f"NONMAIN {title}: credited only to {credited}")
 
-    main = [n for n in where if not is_intro_like(n)]
-    if where and not main:
-        flags.append("INTRO")
-    elif len(where) == 1 and main:
-        flags.append("ONESEC")
-
-    return {
-        "title": str(record.get("title") or ""),
-        "key": str(record.get("key") or ""),
-        "loop": loop,
-        "numerals": list(facts.loop_numerals),
-        "where": where,
-        "sections": [n for n, _c in rows],
-        "flags": flags,
-    }
+    for key in KEYS:
+        for level in LEVELS:
+            card = build_song_card_guidance(
+                record, level=level, instrument="Piano", focus="Chords & Harmony",
+                practice_key=key, chart_key=key,
+            )
+            text = str(card.get("harmony") or "")
+            if CHART_SYNTAX.search(text):
+                problems.append(f"SYNTAX {title} @ {key} [{level}]: {text[:110]}")
+            # A dash-joined run of chords is a claim about order, so it may only
+            # appear when an ordered progression was found - never out of a
+            # frequency ranking.
+            if not facts.has_progression and re.search(r"[A-G][^\s]* – [A-G]", text):
+                problems.append(f"FREQORDER {title} @ {key} [{level}]: {text[:110]}")
+    return problems
 
 
 def main() -> int:
     records = list(curated_song_records())
-    out(f"{len(records)} curated songs")
-    surveys = [s for s in (survey(r) for r in records) if s]
-    out(f"{len(surveys)} report a repeating loop on the Songs card\n")
+    problems: list[str] = []
+    with_prog = 0
+    for record in records:
+        if analyze_song_harmony(record).has_progression:
+            with_prog += 1
+        problems.extend(check(record))
 
-    tally: Counter = Counter()
-    for s in surveys:
-        for f in s["flags"] or ["OK"]:
-            tally[f] += 1
-    out("flags: " + ", ".join(f"{k}={v}" for k, v in tally.most_common()) + "\n")
-
-    for s in surveys:
-        if not s["flags"]:
-            continue
-        out(f"[{','.join(s['flags'])}] {s['title']} ({s['key']})")
-        out(f"    loop     {' - '.join(s['loop'])}")
-        out(f"    numerals {' - '.join(s['numerals'])}")
-        out(f"    found in {s['where'] or '(nowhere)'}")
-        out(f"    sections {s['sections'][:9]}")
-
-    out("\n--- a few clean ones, for comparison ---")
-    for s in [x for x in surveys if not x["flags"]][:6]:
-        out(f"[OK] {s['title']} ({s['key']}): {' - '.join(s['loop'])} "
-            f"= {' - '.join(s['numerals'])}  in {s['where'][:3]}")
-    return 0
+    out(f"{len(records)} songs, {with_prog} with a recurring progression, "
+        f"{len(KEYS)} keys x {len(LEVELS)} levels each")
+    for line in problems[:40]:
+        out("  " + line)
+    out(f"VERDICT: {'CLEAN' if not problems else f'{len(problems)} PROBLEMS'}")
+    return 0 if not problems else 1
 
 
 if __name__ == "__main__":

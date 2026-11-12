@@ -233,13 +233,25 @@ class TestHarmonyMatchesTheChart(unittest.TestCase):
         # analyzer words that as an "unresolved ii–V of V". Left as the analyzer's output.
         self.assertIn("Am7–D7", c["harmony"])
 
-    def test_simple_diatonic_song_is_described_simply(self) -> None:
+    def test_simple_diatonic_song_is_described_by_its_progression(self) -> None:
+        """Updated for Issue 67, deliberately.
+
+        This asserted ``character == "diatonic"``, whose wording named the three
+        commonest chords as a chord vocabulary ("built on D, G, A"). The verse and
+        the chorus are both ``D G A G``, so the song does have a progression, and
+        naming it in order is what the card is for. The chord set is unchanged.
+        """
         f = analyze_song_harmony(song("Twist and Shout"))
-        self.assertEqual(f.character, "diatonic")
+        self.assertEqual(f.character, "loop")
+        self.assertEqual(f.loop, ("D", "G", "A", "G"))
+        self.assertEqual(f.loop_numerals, ("I", "IV", "V", "IV"))
+        self.assertEqual(f.loop_sections, ("Verse", "Chorus"))
+        self.assertFalse(f.loop_repeats_within_section, "once each, so shared not looping")
         self.assertEqual(sorted(f.distinct), ["A", "D", "G"])
         for level in LEVELS:
             h = card("Twist and Shout", level, "Guitar", "Strumming")["harmony"]
             self.assertIn("D major", h)
+            self.assertIn("D – G – A – G", h)
             self.assertNotRegex(h.lower(), r"ii–v|secondary|chromatic|tritone")
 
     def test_harmony_facts_do_not_change_with_level_only_language_does(self) -> None:
