@@ -53,6 +53,9 @@ PRIOR_REVISIONS: dict[str, tuple[tuple[str, str], ...]] = {
     'jazz|take the a train|duke ellington': (
         ('08c51bc718e50945', ''),
     ),
+    'jazz|the girl from ipanema|antonio carlos jobim': (
+        ('0b66ee3a9d7fd3f3', 'cde21beac128a2a9'),
+    ),
     'jazz|there will never be another you|harry warren': (
         ('c78885761295d2a9', ''),
     ),
