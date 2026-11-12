@@ -233,13 +233,18 @@ class TestHarmonyMatchesTheChart(unittest.TestCase):
         # analyzer words that as an "unresolved ii–V of V". Left as the analyzer's output.
         self.assertIn("Am7–D7", c["harmony"])
 
-    def test_simple_diatonic_song_is_described_by_its_progression(self) -> None:
-        """Updated for Issue 67, deliberately.
+    def test_simple_diatonic_song_is_described_simply(self) -> None:
+        """Assertions updated for Issue 67, deliberately; the name is unchanged.
 
         This asserted ``character == "diatonic"``, whose wording named the three
         commonest chords as a chord vocabulary ("built on D, G, A"). The verse and
         the chorus are both ``D G A G``, so the song does have a progression, and
-        naming it in order is what the card is for. The chord set is unchanged.
+        naming it in order is what the card is for. The chord set is unchanged,
+        and the song is still described simply - it is a simple song.
+
+        The name is kept so the test-ID set does not move: a rename reads as one
+        test disappearing and another appearing in a matched comparison, which
+        obscures the very thing such a comparison exists to show.
         """
         f = analyze_song_harmony(song("Twist and Shout"))
         self.assertEqual(f.character, "loop")

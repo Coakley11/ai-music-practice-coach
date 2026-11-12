@@ -867,13 +867,13 @@ def harmony_text(ctx: CardContext) -> str:
         clause = _recurrence_clause(f)
         if lvl == "Intermediate":
             if f.loop_repeats_within_section:
-                text = f"A repeating {romans} loop ({loop}) in {key}"
-                if where:
-                    text = f"A {romans} loop ({loop}) in {key} that {clause}"
-            elif clause:
-                text = f"One {romans} progression ({loop}) in {key} that {clause}"
+                text = f"The {romans} progression ({loop}) in {key} {clause or 'repeats'}"
+            elif len(f.loop_sections) >= 2 and where:
+                text = f"{_cap(where)} share one {romans} progression ({loop}) in {key}"
+            elif where:
+                text = f"{_cap(where)} plays one {romans} progression ({loop}) in {key}"
             else:
-                text = f"A {romans} progression ({loop}) in {key}"
+                text = f"The {romans} progression ({loop}) in {key}"
             text += _rotation_clause(f)
             text += f", with {section_phrase(contrast[0])} switching to {ctx.chords(contrast[1], '–')} for contrast." if contrast else "."
             return text
@@ -888,11 +888,20 @@ def harmony_text(ctx: CardContext) -> str:
         rotated = _section_list(f.loop_rotated_sections)
         if rotated:
             extras.append(f"{rotated} entering the same chords at another point")
-        lead = "A static" if f.loop_repeats_within_section else "One"
-        noun = "loop" if f.loop_repeats_within_section else "progression"
-        text = f"{lead} {romans} {noun} ({loop}) in {key}"
-        if clause:
-            text += f" that {clause}"
+        if f.loop_repeats_within_section:
+            # "unchanged" carries what "a static loop" used to say: the harmony
+            # itself never develops, so the interest has to come from elsewhere.
+            # "unchanged" sits with the verb: "repeats unchanged through the verse".
+            said = (clause or "repeats").replace("repeats through", "repeats unchanged through")
+            if said == "repeats":
+                said = "repeats unchanged"
+            text = f"The {romans} progression ({loop}) in {key} {said}"
+        elif len(f.loop_sections) >= 2 and where:
+            text = f"{_cap(where)} share one {romans} progression ({loop}) in {key}"
+        elif where:
+            text = f"{_cap(where)} plays one {romans} progression ({loop}) in {key}"
+        else:
+            text = f"The {romans} progression ({loop}) in {key}"
         return text + (f", with {_join(extras)}." if extras else "; interest has to come from voicing, rhythm and dynamics.")
 
     if f.character == "progression":

@@ -229,13 +229,22 @@ class LongerAndChangingHarmonyIsNotForcedIntoFourChords(unittest.TestCase):
         facts = analyze_song_harmony(CATALOG["The A Team"])
         self.assertFalse(facts.loop_repeats_within_section)
         text = card("The A Team")
-        self.assertIn("shared by", text)
-        self.assertNotIn("repeating", text)
+        self.assertIn("share one", text)
+        self.assertNotIn("repeat", text)
 
-    def test_a_genuine_loop_is_called_one(self):
+    def test_a_genuine_loop_says_it_repeats(self):
         facts = analyze_song_harmony(CATALOG["Say"])
         self.assertTrue(facts.loop_repeats_within_section)
-        self.assertIn("loop", card("Say", key="Bb"))
+        text = card("Say", key="Bb")
+        self.assertIn("repeats through", text)
+        self.assertNotIn("share", text)
+
+    def test_the_sentence_leads_with_the_progression(self):
+        """"A I-IV-vi-V loop" read as "a one"; the subject is the progression."""
+        for title in ("Say", "Shape of You", "Photograph"):
+            with self.subTest(song=title):
+                text = card(title)
+                self.assertRegex(text, r"^The [IiVv]")
 
 
 class NumeralsAndNamesDescribeTheSameProgression(unittest.TestCase):
