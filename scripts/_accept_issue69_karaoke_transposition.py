@@ -136,23 +136,13 @@ _CHORD = re.compile(r"\b([A-G](?:#|b|♯|♭)?(?:maj7|maj9|m7b5|m7|m9|sus4|sus2|
 
 
 def follow_chords(page: Page) -> dict[str, str]:
-    """The Current chord / Next tiles from the follow strip."""
-    out = {"current": "", "next": ""}
-    try:
-        tiles = page.locator('[class*="ui-follow-tile"]')
-        for i in range(tiles.count()):
-            text = (tiles.nth(i).inner_text() or "").strip()
-            lines = [l.strip() for l in text.splitlines() if l.strip()]
-            if len(lines) < 2:
-                continue
-            label, value = low(lines[0]), lines[-1]
-            if "current chord" in label:
-                out["current"] = value
-            elif label == "next":
-                out["next"] = value
-    except Exception:
-        pass
-    return out
+    """Current / Next Chord, read where the app draws them.
+
+    The reported screenshot came from the lead sheet's live strip (``#live-chord``
+    / ``#live-next`` inside its iframe), not from a page-level tile - an earlier
+    run looked for ``.ui-follow-tile``, found nothing, and asserted nothing.
+    """
+    return live_chords(page)
 
 
 def cue_line(page: Page) -> str:
@@ -212,19 +202,122 @@ def synth_keys(rows: list[dict]) -> list[str]:
     return out
 
 
+IFRAME_CLICK = """(sel) => {
+  for (const f of document.querySelectorAll('iframe')) {
+    try {
+      const doc = f.contentDocument;
+      if (!doc) continue;
+      const b = doc.querySelector(sel);
+      if (!b || b.disabled || b.hidden) continue;
+      b.click();
+      return true;
+    } catch (e) {}
+  }
+  return false;
+}"""
+
+LIVE_READ = """() => {
+  for (const f of document.querySelectorAll('iframe')) {
+    try {
+      const doc = f.contentDocument;
+      if (!doc || !doc.getElementById('live-chord')) continue;
+      const t = (id) => String((doc.getElementById(id) || {}).innerText || '').trim();
+      return {current: t('live-chord'), next: t('live-next'),
+              bar: t('live-bar'), section: t('live-section')};
+    } catch (e) {}
+  }
+  return {current: '', next: '', bar: '', section: ''};
+}"""
+
+TRANSPORT_STATE = """() => {
+  for (const f of document.querySelectorAll('iframe')) {
+    try {
+      const doc = f.contentDocument;
+      const b = doc && doc.getElementById('btn');
+      if (!b) continue;
+      const pz = doc.getElementById('pz');
+      return {label: (b.innerText || '').trim(), state: b.getAttribute('data-state') || '',
+              disabled: !!b.disabled,
+              pause: pz && !pz.hidden ? (pz.getAttribute('data-mode') || '') : ''};
+    } catch (e) {}
+  }
+  return null;
+}"""
+
+
 def press_play(page: Page) -> bool:
-    """Play Backing Track - the gesture that builds the audio for the live key."""
-    for attempt in (
-        lambda: page.get_by_role("button", name=re.compile(r"Play Backing Track", re.I)
-                                 ).first.click(timeout=8000),
-        lambda: page.locator('button:has-text("Play Backing Track")').first.click(timeout=6000),
-    ):
+    """Click the card's Play - ``#btn`` inside the transport component iframe."""
+    state = page.evaluate(TRANSPORT_STATE)
+    if state is None:
+        log("    transport: no component iframe on this page")
+        return False
+    if state.get("disabled"):
+        log(f"    transport: Play disabled (state={state.get('state')!r})")
+        return False
+    ok = bool(page.evaluate(IFRAME_CLICK, "#btn"))
+    settle(page, 3)
+    return ok
+
+
+def press_pause_or_resume(page: Page) -> str:
+    """Click the card's Pause / Resume and say which it was."""
+    state = page.evaluate(TRANSPORT_STATE) or {}
+    mode = str(state.get("pause") or "")
+    if not mode:
+        return ""
+    clicked = bool(page.evaluate(IFRAME_CLICK, "#pz"))
+    settle(page, 4)
+    return mode if clicked else ""
+
+
+def live_chords(page: Page) -> dict[str, str]:
+    """Current / Next from the lead sheet's own live strip."""
+    try:
+        got = page.evaluate(LIVE_READ) or {}
+    except Exception:
+        return {"current": "", "next": ""}
+    return {"current": str(got.get("current") or "").strip(),
+            "next": str(got.get("next") or "").strip(),
+            "bar": str(got.get("bar") or "").strip(),
+            "section": str(got.get("section") or "").strip()}
+
+
+def set_lead_sheet(page: Page, on: bool = True) -> bool:
+    """The live chord strip lives in the lead sheet, so it has to be open."""
+    want = "On" if on else "Off"
+    for _ in range(3):
         try:
-            attempt()
-            return True
+            body = page.inner_text("body") or ""
         except Exception:
-            continue
-    return False
+            body = ""
+        if f"Lead sheet: {want}" in body:
+            return True
+        if not click_text(page, "Lead sheet:"):
+            return False
+        settle(page, 5)
+    try:
+        return f"Lead sheet: {want}" in (page.inner_text("body") or "")
+    except Exception:
+        return False
+
+
+def goto_practice(page: Page) -> bool:
+    """The Practice page - not Practice Log, which also contains "Practice"."""
+    clicked = page.evaluate(
+        """() => {
+          const vis = (el) => !!(el && el.offsetParent !== null);
+          const btns = [...document.querySelectorAll('button')].filter(vis);
+          const hit = btns.find((b) => {
+            const t = (b.innerText || '').trim().toLowerCase();
+            return t.endsWith('practice') && !t.includes('log');
+          });
+          if (!hit) return false;
+          hit.click();
+          return true;
+        }"""
+    )
+    settle(page, 8)
+    return bool(clicked)
 
 
 def wait_for_synth(page: Page, want_key: str, before: int, seconds: float = 150.0) -> str:
@@ -247,18 +340,39 @@ def wait_for_synth(page: Page, want_key: str, before: int, seconds: float = 150.
 
 
 def practice_cue(page: Page) -> str:
-    """The Intro cue, read where the app renders it: the Practice page guide."""
-    click_nav(page, "Practice")
-    settle(page, 6)
-    for label in ("Phrasing guide", "Lyrics"):
-        try:
-            exp = page.locator(f'summary:has-text("{label}")')
-            if exp.count():
-                exp.first.evaluate("el => el.click()")
-                settle(page, 3)
-        except Exception:
-            pass
-    return cue_line(page)
+    """The Intro cue, read where the app renders it.
+
+    The Practice page does not show the phrasing guide by itself: it offers
+    "Lyrics & phrasing" under Practice tools, and the guide ("Phrasing guide
+    (optional)") opens inside that tool. An earlier run navigated to Practice,
+    read the page as it stood, found no cue and so asserted nothing about the
+    very text the report was about.
+    """
+    if not goto_practice(page):
+        click_nav(page, "Practice")
+    settle(page, 8)
+    cue = cue_line(page)
+    if cue:
+        return cue
+    if click_text(page, "Lyrics & phrasing") or click_text(page, "Lyrics &"):
+        settle(page, 8)
+    page.evaluate(
+        """() => {
+          for (const d of document.querySelectorAll('details')) {
+            const s = d.querySelector('summary');
+            const t = s ? (s.innerText || '').toLowerCase() : '';
+            if (t.includes('phrasing') || t.includes('lyric')) {
+              if (!d.open && s) s.click();
+            }
+          }
+        }"""
+    )
+    settle(page, 5)
+    cue = cue_line(page)
+    if cue:
+        return cue
+    shot(page, "zz-practice-no-cue")
+    return ""
 
 
 def trace_rows() -> list[dict]:
@@ -352,6 +466,8 @@ def gate_before_change(page: Page) -> dict[str, str]:
     # something to replace and the follow strip has a timeline to follow.
     click_nav(page, "Backing")
     settle(page, 6)
+    sheet = set_lead_sheet(page, True)
+    log(f"  lead sheet open: {sheet}")
     before_rows = len(regen_rows())
     played = press_play(page)
     built = wait_for_synth(page, "Bb", before_rows) if played else ""
@@ -422,6 +538,7 @@ def gate_after_change(page: Page, before: dict[str, str]) -> bool:
     # actually built rather than what a label claims.
     click_nav(page, "Backing")
     settle(page, 6)
+    set_lead_sheet(page, True)
     before_rows = len(regen_rows())
     played = press_play(page)
     built = wait_for_synth(page, "D", before_rows) if played else ""
@@ -465,11 +582,13 @@ def gate_transport_after_rekey(page: Page) -> bool:
     extra step.
     """
     before_rows = len(regen_rows())
-    for label in ("Pause", "Resume", "Restart", "Play Backing Track"):
-        clicked = click_text(page, label)
-        settle(page, 5)
-        log(f"    transport {label}: clicked={clicked}")
-    settle(page, 6)
+    paused = press_pause_or_resume(page)
+    log(f"    pause clicked: {paused!r} chords={live_chords(page)}")
+    resumed = press_pause_or_resume(page)
+    log(f"    resume clicked: {resumed!r} chords={live_chords(page)}")
+    replayed = press_play(page)
+    log(f"    restart (Play again): {replayed}")
+    settle(page, 8)
     pk = key_token(pk_val(page))
     keys = synth_keys(regen_rows()[before_rows:])
     stale = [k for k in keys if key_token(k.split(":", 1)[1]) == "bb"]

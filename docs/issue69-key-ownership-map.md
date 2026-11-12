@@ -124,11 +124,28 @@ writer, modelled on `record_entry_feel_override` ("Keep an explicit Feel / meter
 with the entry being sung"), which is the architecture's existing answer to the same
 shape of problem.
 
-* **Reached only from the sidebar's own `on_change`.** A callback fires for a musician's
-  action and nothing else, so reruns, hydration, page navigation and backing updates
-  cannot re-key a performance. Proven from the other side too: writing the Practice Key
-  store directly still leaves `current_session_practice_key` unchanged, because the store
-  has no route into the queue.
+* **Reached only from a Practice Key control's own `on_change`** — all three of them,
+  through one helper, `_karaoke_retune_after_explicit_key_change`. A callback fires for a
+  musician's action and nothing else, so reruns, hydration, page navigation and backing
+  updates cannot re-key a performance. Proven from the other side too: writing the
+  Practice Key store directly still leaves `current_session_practice_key` unchanged,
+  because the store has no route into the queue.
+
+  There are three such controls, and Part E measured what happens when only one is
+  wired. The sidebar selectbox's *widget identity depends on the owner* —
+  `display_key_catalog_backing` on Backing, the Mission and Composition lanes on theirs,
+  and plain **`display_key`** on Songs, which is where a karaoke set is normally started.
+  The first wiring sat inside the sidebar callback's `_pk_widget_key != "display_key"`
+  branch, so for the most ordinary route through the app the retune was never called at
+  all: the key moved to D, the performance kept singing in B flat, and nothing in the
+  session state said why. The other two controls are the editable Practice Key on the
+  Active Song card (`_apply_card_practice_key_change`) and the Custom workspace's own
+  (`_on_custom_workspace_practice_key_change`).
+
+  `tests/test_issue69_key_ownership_contract.py` now walks the app's AST and asserts that
+  the set of functions calling the helper is exactly those three, and that each is
+  registered as some widget's `on_change` — a check that survives the code moving,
+  unlike the hard-coded source offsets it replaced.
 * **Now Singing only**, written back through `_write_queue`; other queued entries and
   every other field of the row are untouched.
 * **The old key's audio and chords are dropped together** — the take is retired via
@@ -146,7 +163,12 @@ shape of problem.
   failed regeneration restores the previous key and retires the failed take. Re-keying to
   the key already in force is a no-op, so there is no double transposition and a correct
   performance is never silenced.
-* **A notice names the moment** — the new key with the old one, or, on failure, which key
+* **A notice names the moment** — rendered in the sidebar, beside the control the
+  musician just used, by `karaoke_ui.render_karaoke_retune_notice`. Not on the karaoke
+  stage: that panel sits inside an expander that is collapsed unless a set is running,
+  and the Practice Key can be changed from any page the sidebar is on. (Part E caught
+  this renderer existing, being set on every re-key, and being called by nobody.) It
+  names the new key with the old one, or, on failure, which key
   the performance is still in. The sidebar is never left claiming D while the music is
   quietly in C.
 
