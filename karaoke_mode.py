@@ -716,6 +716,43 @@ _RETUNE_STALE_AUDIO_KEYS = (
 )
 
 
+def _retune_trace(session_state: Any, stage: str, **fields: Any) -> None:
+    """Append one line of what a re-key attempt saw. Diagnostics only, env-gated.
+
+    Added because a browser run could not change the Practice Key during a performance
+    and nothing on the page said why. The interesting state is the one only a live
+    session has.
+    """
+    import os as _os
+
+    if not _os.environ.get("MUSIC_KARAOKE_RETUNE_TRACE"):
+        return
+    try:
+        import json as _json
+        import time as _time
+
+        path = _os.path.join(_os.environ.get("MUSIC_APP_DATA_DIR") or ".",
+                             "_karaoke_retune.jsonl")
+        row = {"t": round(_time.time(), 3), "stage": stage}
+        row.update({k: ("" if v is None else v) for k, v in fields.items()})
+        state = _state(session_state)
+        row["voice_mode"] = bool(is_voice_mode(session_state))
+        row["session_active"] = bool(is_karaoke_session_active(session_state))
+        for name in ("display_key", "concert_key", "instrument"):
+            try:
+                row[name] = str(state.get(name) or "")
+            except Exception:
+                row[name] = "<unreadable>"
+        try:
+            row["entry_key"] = str(current_session_practice_key(session_state) or "")
+        except Exception:
+            row["entry_key"] = "<unreadable>"
+        with open(path, "a", encoding="utf-8") as fh:
+            fh.write(_json.dumps(row, ensure_ascii=True) + chr(10))
+    except Exception:
+        pass
+
+
 def retune_now_singing_entry(session_state: Any, key: str) -> dict[str, Any]:
     """An explicit Practice Key change re-keys the song being sung. Nothing else.
 
@@ -737,6 +774,7 @@ def retune_now_singing_entry(session_state: Any, key: str) -> dict[str, Any]:
     :func:`rollback_now_singing_retune` so a failed regeneration can be undone.
     """
     token = str(key or "").strip()
+    _retune_trace(session_state, "called", requested=token)
     if not is_voice_mode(session_state) or not is_karaoke_session_active(session_state):
         return {"changed": False, "reason": "not performing"}
     if not token:
@@ -779,6 +817,7 @@ def retune_now_singing_entry(session_state: Any, key: str) -> dict[str, Any]:
         }
     except Exception:
         pass
+    _retune_trace(session_state, "retuned", previous=previous, to=token)
     return {"changed": True, "entry_id": entry_id, "previous": previous, "to": token,
             "reason": "retuned"}
 

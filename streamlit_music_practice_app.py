@@ -11688,6 +11688,60 @@ def _render_active_song_card(
         )
 
 
+def _karaoke_retune_after_explicit_key_change(tok: str) -> None:
+    """Re-key the song being sung, when the musician changes the Practice Key.
+
+    Karaoke runs on the entry's own frozen key - deliberately, so that editing the
+    same song in another key elsewhere cannot re-key a live performance - and a
+    global change used to move the tiles and leave the performance behind: Dsus4 on
+    screen, Csus4/D in the chords and in the audio.
+
+    Every explicit gesture lands here and nothing else does. There are three
+    Practice Key controls a musician can actually touch - the sidebar selectbox
+    (whose widget identity differs per owner: ``display_key``,
+    ``display_key_catalog_backing``, the Mission and Composition lanes), the
+    editable control on the Active Song card, and the Custom workspace's own -
+    and each reaches this through its ``on_change``. Part E measured the cost of
+    wiring only one of them: the sidebar control on Songs is plain ``display_key``,
+    so a performance started from Songs never re-keyed at all.
+
+    An ``on_change`` callback fires for nothing but the person's own action, so
+    reruns, hydration, page navigation and backing updates still cannot reach here
+    and the frozen key keeps protecting the performance from everything except the
+    musician singing it.
+    """
+    tok = str(tok or "").strip()
+    if not tok:
+        return
+    try:
+        result = km.retune_now_singing_entry(st.session_state, tok)
+    except Exception:
+        return
+    if not result.get("changed"):
+        return
+    # Old-key audio must not keep playing under new-key chord names, and a paused
+    # take no longer matches the selection, so Resume has to start the new key from
+    # its first chord. Both through the transport's own intent API rather than by
+    # poking playback state.
+    try:
+        from backing_transport_intent import (
+            PLAYING as _TP_PLAYING,
+            note_playback_settings_changed as _tp_changed,
+            stop_playback as _tp_stop,
+            transport_intent as _tp_intent,
+        )
+
+        if _tp_intent(st.session_state) == _TP_PLAYING:
+            _tp_stop(st.session_state, reason="karaoke_retune")
+        _tp_changed(st.session_state, reason="karaoke_retune")
+    except ImportError:
+        pass
+    st.session_state["_karaoke_retune_notice"] = {
+        "from": result.get("previous", ""),
+        "to": result.get("to", ""),
+    }
+
+
 def _apply_card_practice_key_change(widget_key: str) -> None:
     """on_change for the editable Practice Key selector on an active-song card.
 
@@ -11737,6 +11791,9 @@ def _apply_card_practice_key_change(widget_key: str) -> None:
         new_key = normalize_sidebar_display_key(st.session_state, raw) or raw
     except ImportError:
         new_key = raw
+    # Issue 69C: the card control is an explicit gesture too, so a performance
+    # started from Songs follows the key the musician just chose on the card.
+    _karaoke_retune_after_explicit_key_change(new_key)
     st.session_state["display_key"] = new_key
     st.session_state["concert_key"] = new_key
     try:
@@ -16710,6 +16767,9 @@ else:
             tok = str(
                 st.session_state.get(CUSTOM_WORKSPACE_PRACTICE_KEY_WIDGET) or ""
             ).strip()
+            # Issue 69C: the third explicit control. A Custom progression can be
+            # the song being sung, and it has its own Practice Key widget.
+            _karaoke_retune_after_explicit_key_change(tok)
             if tok:
                 try:
                     from custom_progression_lab import (
@@ -17115,47 +17175,6 @@ else:
                     except Exception:
                         pass
                     if tok:
-                        # Issue 69C: an explicit key change re-keys the song being sung.
-                        # Karaoke runs on the entry's own frozen key - deliberately, so
-                        # that editing the same song in another key elsewhere cannot
-                        # re-key a live performance - and a global change used to move
-                        # the tiles and leave the performance behind: Dsus4 on screen,
-                        # Csus4/D in the chords and in the audio.
-                        #
-                        # This is the one place that is unambiguously the musician's own
-                        # action: an on_change callback fires for nothing else. Reruns,
-                        # hydration, page navigation and backing updates do not reach
-                        # here, so the frozen key keeps protecting the performance from
-                        # everything except the person singing it.
-                        try:
-                            _kr_retune = km.retune_now_singing_entry(st.session_state, tok)
-                            if _kr_retune.get("changed"):
-                                # Old-key audio must not keep playing under new-key
-                                # chord names, and a paused take no longer matches the
-                                # selection, so Resume has to start the new key from its
-                                # first chord. Both through the transport's own intent
-                                # API rather than by poking playback state.
-                                try:
-                                    from backing_transport_intent import (
-                                        PLAYING as _TP_PLAYING,
-                                        note_playback_settings_changed as _tp_changed,
-                                        stop_playback as _tp_stop,
-                                        transport_intent as _tp_intent,
-                                    )
-
-                                    if _tp_intent(st.session_state) == _TP_PLAYING:
-                                        _tp_stop(st.session_state, reason="karaoke_retune")
-                                    _tp_changed(st.session_state, reason="karaoke_retune")
-                                except ImportError:
-                                    pass
-                                st.session_state[
-                                    "_karaoke_retune_notice"
-                                ] = {
-                                    "from": _kr_retune.get("previous", ""),
-                                    "to": _kr_retune.get("to", ""),
-                                }
-                        except Exception:
-                            pass
                         if _pk_widget_key == "display_key_sbi_custom":
                             try:
                                 from source_session_state import persist_sbi_custom_practice_key_edit
@@ -17216,6 +17235,11 @@ else:
                             except Exception:
                                 pass
                             st.session_state.pop("_sbi_custom_pk_force_save", None)
+                # Issue 69C: outside the per-widget branches above, so that the
+                # plain ``display_key`` sidebar control re-keys a performance too.
+                _karaoke_retune_after_explicit_key_change(
+                    str(st.session_state.get(_pk_widget_key) or "")
+                )
                 if _pk_widget_key != "display_key_sbi_custom":
                     on_sidebar_practice_concert_key_change()
                 try:
@@ -17387,6 +17411,19 @@ else:
                 )
         except Exception:
             pass
+# Issue 69C: say, beside the control the musician just used, that the performance
+# moved key. A re-key retires the take that was playing, so the moment after the
+# change is silent, and silence under a new key is the one state a singer cannot
+# read. It goes in the sidebar rather than on the karaoke stage because that panel
+# sits inside an expander that is collapsed unless a set is running, and because
+# the Practice Key can be changed from any page the sidebar is on.
+try:
+    from karaoke_ui import render_karaoke_retune_notice as _render_kr_notice
+
+    with _working_sidebar:
+        _render_kr_notice(st)
+except ImportError:
+    pass
 try:
     from key_display_diagnostics import render_key_display_diagnostics
 

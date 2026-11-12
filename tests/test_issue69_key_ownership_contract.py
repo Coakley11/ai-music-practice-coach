@@ -132,12 +132,74 @@ class OnlyTheExplicitGestureRekeysThePerformance(unittest.TestCase):
         self.assertEqual(len(callers), 1, f"callers: {callers}")
         self.assertTrue(callers[0].startswith("streamlit_music_practice_app.py"))
 
-    def test_that_place_is_inside_the_sidebar_key_callback(self):
-        callback = APP.index("def _on_mission_or_global_pk_change")
+    def test_that_place_is_the_shared_explicit_gesture_helper(self):
         call = APP.index("km.retune_now_singing_entry(")
-        widget = APP.index("on_change=_on_mission_or_global_pk_change,\n            )")
-        self.assertLess(callback, call, "the retune must sit inside the callback")
-        self.assertLess(call, widget)
+        helper = APP.index("def _karaoke_retune_after_explicit_key_change")
+        following = APP.index(chr(10) + "def ", helper + 1)
+        self.assertLess(helper, call, "the retune must sit inside the helper")
+        self.assertLess(call, following)
+
+    def test_the_helper_is_reached_only_from_the_three_on_change_callbacks(self):
+        """Part E measured why this matters.
+
+        The wiring first sat inside one sidebar branch, so a performance started from
+        Songs - where the sidebar widget is plain ``display_key`` - never re-keyed. The
+        app has three Practice Key controls a musician can touch; each must reach the
+        helper, and nothing that is not an ``on_change`` may.
+        """
+        import ast
+
+        tree = ast.parse(APP)
+        enclosing: dict[str, int] = {}
+
+        class Walk(ast.NodeVisitor):
+            def __init__(self):
+                self.stack: list[str] = []
+
+            def visit_FunctionDef(self, node):
+                self.stack.append(node.name)
+                self.generic_visit(node)
+                self.stack.pop()
+
+            def visit_Call(self, node):
+                func = node.func
+                name = getattr(func, "id", None) or getattr(func, "attr", None)
+                if name == "_karaoke_retune_after_explicit_key_change":
+                    owner = self.stack[-1] if self.stack else "<module>"
+                    enclosing[owner] = enclosing.get(owner, 0) + 1
+                self.generic_visit(node)
+
+        Walk().visit(tree)
+        self.assertEqual(
+            set(enclosing),
+            {
+                "_on_mission_or_global_pk_change",
+                "_apply_card_practice_key_change",
+                "_on_custom_workspace_practice_key_change",
+            },
+            f"call sites: {enclosing}",
+        )
+        for callback in enclosing:
+            with self.subTest(callback=callback):
+                self.assertIn(f"on_change={callback}", APP,
+                              "every caller must be a widget's on_change")
+
+    def test_the_sidebar_call_is_outside_the_per_widget_branches(self):
+        """``display_key`` is a real widget identity, not a fallback."""
+        callback = APP.index("def _on_mission_or_global_pk_change")
+        guard = APP.index('if _pk_widget_key != "display_key":', callback)
+        call = APP.index("_karaoke_retune_after_explicit_key_change(", guard)
+        router = APP.index("on_sidebar_practice_concert_key_change()", guard)
+        self.assertLess(call, router,
+                        "the retune must run before the owner-aware commit")
+        def indent_of(pos: int) -> int:
+            line_start = APP.rfind(chr(10), 0, pos) + 1
+            return pos - line_start
+
+        self.assertEqual(
+            indent_of(call), indent_of(guard),
+            "the call must sit at the guard's own level, not nested inside it",
+        )
 
     def test_the_practice_key_store_has_no_route_into_the_queue(self):
         """Hydration and page code go through the store; the store must not reach here."""
@@ -159,6 +221,51 @@ class OnlyTheExplicitGestureRekeysThePerformance(unittest.TestCase):
                                  pick_key="Pop\u001fSay — John Mayer",
                                  commit_catalog_practice_key=True)
         self.assertEqual(km.current_session_practice_key(state), "C")
+
+
+class TheMusicianIsToldTheKeyMoved(unittest.TestCase):
+    """A re-key silences the take that was playing; unexplained silence is a defect.
+
+    Part E caught the renderer existing and never being called - the notice was set
+    on every re-key and read by nobody.
+    """
+
+    def test_the_notice_renderer_is_called_by_the_app(self):
+        self.assertIn("render_karaoke_retune_notice", APP)
+        call = APP.index("_render_kr_notice(st)")
+        self.assertGreater(call, 0)
+
+    def test_it_renders_where_the_control_is(self):
+        """The karaoke panel is inside a collapsed expander; the sidebar is not."""
+        imp = APP.index("from karaoke_ui import render_karaoke_retune_notice")
+        window = APP[imp:imp + 400]
+        self.assertIn("with _working_sidebar:", window)
+
+    def test_the_notice_text_names_both_keys(self):
+        import karaoke_ui
+
+        class Fake:
+            def __init__(self):
+                self.session_state = {
+                    "instrument": "Voice",
+                    karaoke_ui.KARAOKE_RETUNE_NOTICE_KEY: {"from": "Bb", "to": "D"},
+                }
+                self.said: list[str] = []
+
+            def info(self, text):
+                self.said.append(("info", text))
+
+            def error(self, text):
+                self.said.append(("error", text))
+
+        fake = Fake()
+        self.assertTrue(karaoke_ui.render_karaoke_retune_notice(fake))
+        kind, text = fake.said[0]
+        self.assertEqual(kind, "info")
+        self.assertIn("Bb", text)
+        self.assertIn("D", text)
+        self.assertNotIn(karaoke_ui.KARAOKE_RETUNE_NOTICE_KEY, fake.session_state,
+                         "the notice is one shot")
 
 
 class ARetuneDropsTheOldKeysChordsAndAudioTogether(unittest.TestCase):
