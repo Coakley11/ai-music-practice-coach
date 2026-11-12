@@ -18,6 +18,8 @@ parser.add_argument("--out",type=Path,required=True)
 parser.add_argument("--port",type=int,default=8596)
 parser.add_argument("--probe",action="store_true")
 parser.add_argument("--song-only",action="store_true")
+parser.add_argument("--technique-only",action="store_true")
+parser.add_argument("--technique-parser-only",action="store_true")
 args=parser.parse_args()
 OUT=args.out.resolve();OUT.mkdir(parents=True,exist_ok=True)
 ORIGIN=f"http://127.0.0.1:{args.port}"
@@ -185,79 +187,86 @@ try:
             page.get_by_test_id("stMainBlockContainer").get_by_role("textbox",name="Question",exact=True).wait_for(timeout=90000)
             idle(page)
             (OUT/"practice-start.txt").write_text(page.locator("body").inner_text(),encoding="utf-8")
-            if not args.song_only:
-                select(page,"Instrument","Flute")
-                select(page,"Level","Beginner")
-                a,staff=request(page,"Give me a slow ascending A major scale for flute.","Concert key A","01-scale")
-                row=a["plan"]["items"][0]
-                assert row["written_midi"]==[69,71,73,74,76,78,80,81]
-                assert read_abc(row["abc"])==row["written_midi"]
-                if not args.probe:
-                    b,_=request(page,"Now make it descending.","Concert key A","02-descending")
-                    assert b["plan"]["items"][0]["written_midi"]==row["written_midi"][::-1]
-                    assert b["history"]["versions"]==a["history"]["versions"]+1
-                    request(page,"Undo.","Restored the exact stored version","03-undo")
-                    request(page,"Redo.","Restored the exact stored version","04-redo")
-                    tones,_=request(page,"Give me three long tones for flute.","3 Long tones","05-tones")
-                    assert len(tones["plan"]["items"])==1 and len(tones["plan"]["items"][0]["written_midi"])==3
+            if args.technique_parser_only:
+                from ami_technique_browser_cases import run_parser
+                run_parser(page,request,select)
+            elif args.technique_only:
+                from ami_technique_browser_cases import run
+                run(page,request,select)
+            else:
+                if not args.song_only:
+                    select(page,"Instrument","Flute")
+                    select(page,"Level","Beginner")
+                    a,staff=request(page,"Give me a slow ascending A major scale for flute.","Concert key A","01-scale")
+                    row=a["plan"]["items"][0]
+                    assert row["written_midi"]==[69,71,73,74,76,78,80,81]
+                    assert read_abc(row["abc"])==row["written_midi"]
+                    if not args.probe:
+                        b,_=request(page,"Now make it descending.","Concert key A","02-descending")
+                        assert b["plan"]["items"][0]["written_midi"]==row["written_midi"][::-1]
+                        assert b["history"]["versions"]==a["history"]["versions"]+1
+                        request(page,"Undo.","Restored the exact stored version","03-undo")
+                        request(page,"Redo.","Restored the exact stored version","04-redo")
+                        tones,_=request(page,"Give me three long tones for flute.","3 Long tones","05-tones")
+                        assert len(tones["plan"]["items"])==1 and len(tones["plan"]["items"][0]["written_midi"])==3
 
+                        select(page,"Instrument","Saxophone")
+                        select(page,"Level","Intermediate")
+                        buster,_=request(page,"Give me a difficult A-flat major seventh finger-buster for alto sax.","Finger-buster","06-buster")
+                        br=buster["plan"]["items"][0]
+                        assert buster["plan"]["level"]=="Advanced" and buster["settings"]["level"]=="Intermediate"
+                        assert {m%12 for m in br["sounding_midi"]}=={8,0,3,7}
+                        assert "sixteenth" in br["durations"]
+                        assert max(abs(b-a) for a,b in zip(br["written_midi"],br["written_midi"][1:]))>=12
+                        tenor,_=request(page,"Give me a tenor saxophone exercise.","Tenor Saxophone","07-tenor-override")
+                        assert tenor["plan"]["player"]["offset"]==14
+                        tr=tenor["plan"]["items"][0]
+                        assert all(w-c==14 for w,c in zip(tr["written_midi"],tr["sounding_midi"]))
+                        assert tenor["settings"]==buster["settings"]
+                        explanation,_=request(page,"Explain why these notes work.","These are the written notes","08-single-explain")
+                        assert explanation["plan"]==tenor["plan"] and explanation["history"]==tenor["history"]
+                        select(page,"Level","Advanced")
+                        high,_=request(page,"Give me high-register flute exercises.","high register","09-high-flute")
+                        assert high["plan"]["player"]["key"]=="flute"
+                        assert min(high["plan"]["items"][0]["written_midi"])>=84
+                        low,_=request(page,"Make them lower.","low register","10-low-flute")
+                        assert max(low["plan"]["items"][0]["written_midi"])<=72
+                        assert low["settings"]==high["settings"]
+                if args.song_only:
+                    select(page,"Level","Advanced")
+                    request(page,"Give me high-register flute exercises.","high register","song-precondition-single")
+                if not args.probe:
+                    import walk_guitar_shape_key as catalog_ui
+                    import walk_creative_backing_matrix as existing_ui
+                    catalog_ui.OUT=OUT/"catalog";existing_ui.OUT=OUT/"catalog"
+                    catalog_ui.OUT.mkdir(exist_ok=True)
+                    assert catalog_ui.pick_song(page,[],"Blue Bossa","Jazz"), "Could not select actual catalog Blue Bossa"
+                    address(page)
+                    before=RUNS["finished"]
+                    page.locator('.st-key-studio_quick_nav_btn_practice button:visible').first.click()
+                    finish(page,before,"return to Practice after catalog selection")
                     select(page,"Instrument","Saxophone")
                     select(page,"Level","Intermediate")
-                    buster,_=request(page,"Give me a difficult A-flat major seventh finger-buster for alto sax.","Finger-buster","06-buster")
-                    br=buster["plan"]["items"][0]
-                    assert buster["plan"]["level"]=="Advanced" and buster["settings"]["level"]=="Intermediate"
-                    assert {m%12 for m in br["sounding_midi"]}=={8,0,3,7}
-                    assert "sixteenth" in br["durations"]
-                    assert max(abs(b-a) for a,b in zip(br["written_midi"],br["written_midi"][1:]))>=12
-                    tenor,_=request(page,"Give me a tenor saxophone exercise.","Tenor Saxophone","07-tenor-override")
-                    assert tenor["plan"]["player"]["offset"]==14
-                    tr=tenor["plan"]["items"][0]
-                    assert all(w-c==14 for w,c in zip(tr["written_midi"],tr["sounding_midi"]))
-                    assert tenor["settings"]==buster["settings"]
-                    explanation,_=request(page,"Explain why these notes work.","These are the written notes","08-single-explain")
-                    assert explanation["plan"]==tenor["plan"] and explanation["history"]==tenor["history"]
-                    select(page,"Level","Advanced")
-                    high,_=request(page,"Give me high-register flute exercises.","high register","09-high-flute")
-                    assert high["plan"]["player"]["key"]=="flute"
-                    assert min(high["plan"]["items"][0]["written_midi"])>=84
-                    low,_=request(page,"Make them lower.","low register","10-low-flute")
-                    assert max(low["plan"]["items"][0]["written_midi"])<=72
-                    assert low["settings"]==high["settings"]
-            if args.song_only:
-                select(page,"Level","Advanced")
-                request(page,"Give me high-register flute exercises.","high register","song-precondition-single")
-            if not args.probe:
-                import walk_guitar_shape_key as catalog_ui
-                import walk_creative_backing_matrix as existing_ui
-                catalog_ui.OUT=OUT/"catalog";existing_ui.OUT=OUT/"catalog"
-                catalog_ui.OUT.mkdir(exist_ok=True)
-                assert catalog_ui.pick_song(page,[],"Blue Bossa","Jazz"), "Could not select actual catalog Blue Bossa"
-                address(page)
-                before=RUNS["finished"]
-                page.locator('.st-key-studio_quick_nav_btn_practice button:visible').first.click()
-                finish(page,before,"return to Practice after catalog selection")
-                select(page,"Instrument","Saxophone")
-                select(page,"Level","Intermediate")
-                select(page,"Focus","Tone")
-                mixed,_=request(page,"Warm me up for soloing over Blue Bossa.","Built from","11-blue-bossa-mixed")
-                assert mixed["plan"]["player"]["key"]=="alto" and mixed["plan"]["level"]=="Intermediate"
-                assert mixed["plan"]["spec"]["song"]["title"]=="Blue Bossa"
-                why,_=request(page,"Explain why these notes work.","Why these notes work","12-blue-bossa-explain")
-                assert why["plan"]==mixed["plan"] and why["history"]==mixed["history"]
-                assert "chord tones:" in why["response"]["direct_answer"]
-                assert "Each approach and what it resolves to" in why["response"]["direct_answer"]
-                print("EXPLAIN_IMMEDIATE_PREVIOUS_CARD="+str(any("Warm me up for soloing" in text for text in why["browser_sync"]["immediate_panels"])),flush=True)
-                arp,_=request(page,"Give me a difficult arpeggio exercise over Blue Bossa.","one chart pass","13-blue-bossa-arpeggio")
-                ap=arp["plan"];assert ap["spec"]["single_song"] and len(ap["items"])==1 and ap["items"][0]["reps"]==1
-                from tests import song_oracle as oracle
-                from music_coach_ami import warmup_song as ws
-                song=ap["spec"]["song"];section=ap["spec"]["song_sel"]["section"]
-                assert oracle.check_chordline(ap["items"][0]["abc"],ws.section_slots(song,section),9,approach=False)==[]
-                tone,_=request(page,"Give me a warmup.","warmup","14-tone-focus")
-                assert set(tone["plan"]["spec"]["families"])=={"long_tones","scale"}
-                select(page,"Focus","Articulation")
-                articulation,_=request(page,"Give me a warmup.","warmup","15-articulation-focus")
-                assert set(articulation["plan"]["spec"]["families"])=={"articulation","scale"}
+                    select(page,"Focus","Tone")
+                    mixed,_=request(page,"Warm me up for soloing over Blue Bossa.","Built from","11-blue-bossa-mixed")
+                    assert mixed["plan"]["player"]["key"]=="alto" and mixed["plan"]["level"]=="Intermediate"
+                    assert mixed["plan"]["spec"]["song"]["title"]=="Blue Bossa"
+                    why,_=request(page,"Explain why these notes work.","Why these notes work","12-blue-bossa-explain")
+                    assert why["plan"]==mixed["plan"] and why["history"]==mixed["history"]
+                    assert "chord tones:" in why["response"]["direct_answer"]
+                    assert "Each approach and what it resolves to" in why["response"]["direct_answer"]
+                    print("EXPLAIN_IMMEDIATE_PREVIOUS_CARD="+str(any("Warm me up for soloing" in text for text in why["browser_sync"]["immediate_panels"])),flush=True)
+                    arp,_=request(page,"Give me a difficult arpeggio exercise over Blue Bossa.","one chart pass","13-blue-bossa-arpeggio")
+                    ap=arp["plan"];assert ap["spec"]["single_song"] and len(ap["items"])==1 and ap["items"][0]["reps"]==1
+                    from tests import song_oracle as oracle
+                    from music_coach_ami import warmup_song as ws
+                    song=ap["spec"]["song"];section=ap["spec"]["song_sel"]["section"]
+                    assert oracle.check_chordline(ap["items"][0]["abc"],ws.section_slots(song,section),9,approach=False)==[]
+                    tone,_=request(page,"Give me a warmup.","warmup","14-tone-focus")
+                    assert set(tone["plan"]["spec"]["families"])=={"long_tones","scale"}
+                    select(page,"Focus","Articulation")
+                    articulation,_=request(page,"Give me a warmup.","warmup","15-articulation-focus")
+                    assert set(articulation["plan"]["spec"]["families"])=={"articulation","scale"}
         except Exception:
             page.screenshot(path=str(OUT/"failure.png"),full_page=True)
             (OUT/"failure-body.txt").write_text(page.locator("body").inner_text(),encoding="utf-8")

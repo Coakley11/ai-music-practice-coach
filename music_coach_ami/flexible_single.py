@@ -29,6 +29,9 @@ def _reply(text, plan=None, session=None, failed=""):
 
 
 def _response(plan, session, lead=""):
+    if plan["spec"].get("technique"):
+        from music_coach_ami.instrument_technique import response
+        return response(plan, session, lead)
     p, r, spec = plan["player"], plan["items"][0], plan["spec"]
     return _reply(
         f"{lead}**{r['title']}** — {p['label']}, {spec['level']}, {spec['register']} register. "
@@ -50,6 +53,9 @@ def _window(player, level, register):
 
 
 def build(spec: dict) -> dict:
+    if spec.get("technique"):
+        from music_coach_ami.instrument_technique import build as build_technique
+        return build_technique(spec)
     if spec["level"] not in we.LEVELS:
         raise we.WarmupUnavailable("choose Beginner, Intermediate or Advanced")
     player = we.make_player(spec["instrument"], spec["concert_key"])
@@ -125,16 +131,17 @@ def build(spec: dict) -> dict:
     else:
         title = f"{spec['count']} " + title
     built = we.Built(notes, bpm, title, ["Start slowly; keep every attack even. Stop and rest if coordination or tone deteriorates."], [], {"window": [lo, hi]})
+    allowed = {sph.pc_of(n) for n in names} if family == "arpeggio" else None
+    return package(spec, player, built, tonic, mode, allowed_pcs=allowed)
+
+
+def package(spec, player, built, tonic, mode, *, allowed_pcs=None):
+    """One canonical notation, verification and stored-plan path for single drills."""
+    notes, bpm, title = built.notes, built.bpm, built.title
+    family = spec["family"]
+    lo, hi = built.meta["window"]
     abc, diag = we.render(player, built, tonic, mode, title=title)
-    # The shared verifier checks scale membership; arpeggios get their own shared
-    # chord membership check while all range, rhythm and notation checks remain.
-    if family == "arpeggio":
-        allowed = {sph.pc_of(n) for n in names}
-        if any(n.midi % 12 not in allowed for n in notes if not n.rest):
-            raise we.WarmupUnavailable("arpeggio contains a non-chord tone")
-        checks = we.verify(player, spec["level"], built, tonic, mode, diag, allowed_pcs=allowed)
-    else:
-        checks = we.verify(player, spec["level"], built, tonic, mode, diag)
+    checks = we.verify(player, spec["level"], built, tonic, mode, diag, allowed_pcs=allowed_pcs)
     written = [n.midi for n in notes if not n.rest]
     if not all(lo <= m <= hi and player.play_low <= m <= player.play_high for m in written):
         raise we.WarmupUnavailable("notes exceed the instrument's level window")
@@ -176,6 +183,10 @@ def handle(question: str, session, ami_ctx: dict | None = None) -> CoachResponse
     # M1d owns explicit scale patterns, modes, bar counts and their revisions.
     if re.search(r"\bscale[ -]patterns?\b", q):
         return None
+    from music_coach_ami import instrument_technique
+    technique_response = instrument_technique.handle(question, session, ami_ctx)
+    if technique_response is not None:
+        return technique_response
     ctx = ami_ctx or {}
     plan = wp.current(session)
     active = bool(plan and plan["spec"].get("single"))
@@ -226,7 +237,7 @@ def handle(question: str, session, ami_ctx: dict | None = None) -> CoachResponse
                 "register": "high" if re.search(r"\b(?:high|upper)[ -]", q) else "low" if re.search(r"\blow(?:[ -]|$)", q) else "middle",
                 "direction": "descending" if "descending" in q else "ascending", "buster": buster,
                 "count": 3, "reps": 1, "bpm": 50 if "slow" in q or family == "long_tones" else 72, "articulation": "", "rhythm": ""}
-        count = re.search(r"\b(\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\s+long[ -]?tones?", q)
+        count = re.search(r"\b(\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\s+(?:(?:low|middle|high)[ -]register\s+)?long[ -]?tones?", q)
         if count:
             spec["count"] = int(count[1]) if count[1].isdigit() else wp._NUMBER_WORDS[count[1]]
         if not 1 <= spec["count"] <= 12:
