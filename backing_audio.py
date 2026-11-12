@@ -910,7 +910,12 @@ def _bass_motion_pitch(chord, next_chord, style, slot_index, slot_count, *, beat
     elif style == "Rock groove":
         line = [root, root, fifth, fifth, root + 12, root, fifth, root + 12]
     elif style == "Blues groove":
-        flat7 = fifth - 2
+        # Root - 5th - 7th: the 7th is the chord's own (b7 or major 7th), its 6th / bb7 on a 6 or dim7 chord
+        # (Fm6 -> D), else the blues b7. It used to be ``fifth - 2``, the 4th: on beat 3 of every bar the bass
+        # sounded the root of the chord a 4th up -- the next chord in a blues -- half a bar before the change.
+        intervals = {(n - notes[0]) % 12 for n in notes[1:]}
+        seventh = next((i for i in (10, 11, 9) if i in intervals), 10)
+        flat7 = chord_root + seventh
         line = [root, fifth, flat7, root, root + 12, fifth, flat7]
     elif style == "Ballad":
         line = [root, fifth]

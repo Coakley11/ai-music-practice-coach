@@ -273,7 +273,16 @@ def _heal_the_world_a_major_chart_pack() -> dict[str, Any]:
             "A": "x02220",
             "Bm7": "x24202",
             "C#m7": "x46454",
-            "D/E": "002220",
+            # D/E is the chord the published charts give here, and the engine
+            # already voices it correctly (D-F#-A over an E bass). The FINGERING
+            # was wrong: "002220" is the A shape (x02220) with the open low E
+            # added, so it sounded E-A-E-A-C#-E - an A major triad over E, i.e.
+            # A/E. It carried a C# and had neither D nor F#.
+            # "022232" is the voicing the ledutu transcription prints for D/E:
+            # E-B-E-A-D-F#. It adds B, the fifth of the E bass, so it sounds the
+            # full E11 / E9sus4 colour the record has; the engine comp stays
+            # D-F#-A over E, the same chord with the B left to the bass register.
+            "D/E": "022232",
             "D": "xx0232",
             "E/G#": "476454",
             "F#m7": "242222",

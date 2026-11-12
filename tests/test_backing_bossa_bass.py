@@ -176,7 +176,7 @@ class TestChordDigest(unittest.TestCase):
 
     def test_signatures_carry_the_digest_before_the_renderer_tag(self) -> None:
         src = ROOT.joinpath("streamlit_music_practice_app.py").read_text(encoding="utf-8")
-        self.assertIn('_BACKING_RENDERER_TAG = "arr_v4"', src)
+        self.assertIn('_BACKING_RENDERER_TAG = "arr_v5"', src)
         main = src[src.index("def _backing_signature_for_bpm") :][:2600]
         self.assertIn(
             "_backing_chord_digest(_backing_digest_sections, _audio_signature_key, selected_section_names),\n"

@@ -62,7 +62,8 @@ def mode() -> str:
 def piano_renderer_tag() -> str:
     """Part of saved audio's signature, so takes from another pianist are never replayed as this one."""
     m = mode()
-    return f"+pianist1-{m}" if m else ""
+    # pianist2: every change of harmony sounds on its first beat (2026-11-11).
+    return f"+pianist2-{m}" if m else ""
 
 
 @lru_cache(maxsize=1)
@@ -322,6 +323,8 @@ class Pianist:
         # A song's own centre: one pianist likes to sit a little higher or lower than another.
         self.song_centre = int(round((_roll(self.seed, "centre") - 0.5) * 4.0))
         self.contour = _CONTOURS[0]
+        # The chord sounding when the bar before ended, so a bar knows whether its first chord is a change.
+        self._sounding: str | None = None
 
     def _h(self, chord: str) -> Harmony:
         return harmony_of(chord, self.chord_notes, self.bass_note, colour=self.hands.colour and not self.simple)
@@ -500,7 +503,16 @@ class Pianist:
         out.append(Hit(2.0, 0.9, (top - 12 + 7, top), 0.82, "figure"))
         return out
 
-    def bar(self, segments, next_chord, *, role: str, quiet: bool, bar_in_section: int, section_end: bool, bar_index: int, pulses_per_bar: int, intensity: float = 1.0, section_bars: int = 0, lift: bool = False) -> list[Hit]:
+    def bar(self, segments, next_chord, **kw) -> list[Hit]:
+        """One bar's hits (see :meth:`_bar`). Remembers the chord the bar ends on, so the next bar can tell a
+        change of harmony from the same chord continuing."""
+        self._prev_sounding = self._sounding
+        hits = self._bar(segments, next_chord, **kw)
+        last = next((s[2] for s in reversed(list(segments)) if s[2] is not None), None)
+        self._sounding = str(last) if last is not None else None
+        return hits
+
+    def _bar(self, segments, next_chord, *, role: str, quiet: bool, bar_in_section: int, section_end: bool, bar_index: int, pulses_per_bar: int, intensity: float = 1.0, section_bars: int = 0, lift: bool = False) -> list[Hit]:
         """``lift``: the arrangement's last chorus, which plays everything and adds weight below."""
         full = role in FULL_ROLES and not quiet
         lift = lift and full
@@ -626,13 +638,44 @@ class Pianist:
 
         A bar may hold only one light chord, but a player practising over the song must hear every change.
         A chord already pushed in from the bar before counts as heard.
+
+        A change of harmony is heard where it happens (user, 2026-11-11): the new chord sounds on its first
+        beat, or was pushed in an 8th before it. When the comping idea leaves that beat empty, a soft shell
+        voicing marks the change, held only until the idea's next hit; the rest of the bar stays as varied as
+        before. A chord that simply continues (a repeat bar) keeps the old freedom to leave its downbeat empty.
+        Measured before this on a 12-bar F minor blues: the first attack on a new chord came on beat 2 or 3 in
+        11 of 28 chord spans, so the piano sounded a beat behind the Lead Sheet.
         """
         out = list(hits)
+        prev = getattr(self, "_prev_sounding", None)
         for n, (start, end, chord) in enumerate(segments):
             if chord is None:
+                prev = None
                 continue
+            change = str(chord) != str(prev)
+            prev = chord
             if n == 0 and self._came_in == str(chord):
                 continue
+            if change:
+                if any(start - 1e-6 <= x.beat < start + 0.26 and x.kind != "figure" and not x.push for x in out):
+                    continue
+                later = [x.beat for x in out if start + 0.26 <= x.beat < end - 1e-6 and x.kind != "figure" and not x.push]
+                if later:
+                    # The idea plays this chord, just later: mark the change softly, held until it comes in.
+                    # A shell (3rd and 7th) where the chord has a 7th; a triad's shell would be one note.
+                    h = self._h(chord)
+                    voice = "S" if h.seventh is not None else "C"
+                    held = min(min(later) - start - 0.05, (end - start) * 0.9)
+                    # The mark is voiced near the hand but never steers it: the comping's own voice leading
+                    # (self.prev) continues exactly as it would have without the mark.
+                    kept_prev = self.prev
+                    notes = self._chord_voicing(h, voice, (tag, "change", n))
+                    self.prev = kept_prev
+                    # kind "mark": it establishes the change but does not stand in for the comping's own
+                    # statement of the chord's quality (_state_quality still gives the idea's hits their 3rd).
+                    out.append(Hit(start, max(0.2, held), tuple(notes), 0.66 * self.arc, "mark"))
+                    continue
+                # Nothing of this chord in its span: the full chord on its first beat, as before.
             if any(start - 1e-6 <= x.beat < end - 1e-6 and x.kind != "figure" and not x.push for x in out):
                 continue
             h = self._h(chord)
@@ -655,7 +698,7 @@ class Pianist:
             if h.third is None:
                 continue
             # A push already belongs to the next chord: it is never bent toward this one.
-            inside = [i for i, x in enumerate(out) if start <= x.beat < end and x.kind != "figure" and not x.push]
+            inside = [i for i, x in enumerate(out) if start <= x.beat < end and x.kind not in ("figure", "mark") and not x.push]
             # The third has to arrive early, not only in a quiet pickup on the way out.
             early = [i for i in inside if out[i].beat < start + 0.75 * (end - start)] or inside
             if not inside or any(h.third in {n % 12 for n in out[i].notes} for i in early):

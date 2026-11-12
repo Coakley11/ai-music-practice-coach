@@ -49,8 +49,9 @@ Harmony Accuracy" repair; reproduced in ``tests/test_song_coach_backing.py::Test
    13, ``69`` → ♭7, ``maj13`` → ♭7 (``"13"`` branch is dominant). Affects 13 catalog songs
    (Dsus2, Csus2, D7b9, E9sus4, Faug, B5, Dbmaj13, A7#9 … in Wave, Corcovado, So Nice, Vienna,
    The Scientist …). Coaching: refused, naming the chord (:func:`voicing_problems`).
-3. **Blues walking line** — ``_bass_motion_pitch`` "Blues groove": ``flat7 = fifth - 2`` is the
-   4th (F under C7), not the ♭7. Musically a passing tone, so not refused; worth fixing.
+3. **Blues walking line** — fixed 2026-11-11: ``_bass_motion_pitch`` "Blues groove" played the 4th
+   (``fifth - 2``, F under C7) on beat 3, which sounded the next chord's root half a bar early; it now
+   plays the chord's own 7th (its 6th on a 6 chord).
 """
 
 from __future__ import annotations

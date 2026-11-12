@@ -431,11 +431,13 @@ class TestSharedArrangerDefects(unittest.TestCase):
         self.assertEqual(at_g[0], "G", "the arriving chord is on its root")
         self.assertIsNotNone(check_loop(_custom_request(["C:2|G:2", "Am"])), "coaching refuses split bars")
 
-    def test_blues_walking_flat_seven_is_the_fourth(self) -> None:
-        """In "Blues groove" the walking line's ``flat7 = fifth - 2`` is the 4th (F under C7)."""
+    def test_blues_walking_seventh_is_the_chords_own(self) -> None:
+        """In "Blues groove" the walking line's 7th is the chord's own: Bb under C7, D under Fm6 (it was the 4th, F,
+        which sounded the next chord's root half a bar early in a blues; fixed 2026-11-11)."""
         from backing_audio import _bass_motion_pitch
 
-        self.assertEqual(NAMES[_bass_motion_pitch("C7", None, "Blues groove", 2, 7) % 12], "F")
+        self.assertEqual(NAMES[_bass_motion_pitch("C7", None, "Blues groove", 2, 7) % 12], "Bb")
+        self.assertEqual(NAMES[_bass_motion_pitch("Fm6", None, "Blues groove", 2, 7) % 12], "D")
 
 
 # --------------------------------------------------------------------------- refusals
