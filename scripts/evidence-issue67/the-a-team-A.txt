@@ -1,0 +1,332 @@
+keyboard_double_arrow_left
+
+←
+
+→
+
+keyboard_arrow_down
+
+Account & Workspace
+
+Active workspace: Daniel
+
+Shared suite profile (no individual sign-in on this deploy).
+
+Command Center
+
+🏠
+
+Saved Sessions
+
+Your last page, filters, and inputs reload automatically.
+
+Reset to default
+
+Membership
+
+Current access: Open access
+
+View plans
+
+🎼 ACTIVE SONG
+
+SONG
+The A Team — Ed Sheeran
+
+🎼 Songs
+
+The A Team · Pop
+
+📜 Song Original Key: A
+
+🗝️ Practice / Concert Key
+
+🎸 YOUR PRACTICE SETUP
+
+Instrument
+
+📈 Level
+
+🔍 Practice focus
+
+💬 MUSIC COACH
+
+💬 Ask the Music Coach
+
+Get help with practice, theory, navigation, backing tracks, karaoke, or this app.
+
+Question
+
+💬 Ask the Music Coach
+
+⏱️ SESSION
+
+⏱️ Session: 30 min (adjust on the Practice page)
+
+🧭 PAGES
+
+◀
+
+🏠 Home
+
+🎯 Practice
+
+🎼 Song Selection
+
+🎧 Backing Track
+
+✍️ Custom Progression
+
+🪶 Composition Studio
+
+🎨 Creative Lab
+
+🎙️ Upload Analysis
+
+🎚️ Multitrack
+
+📓 Practice Log
+
+Deploy
+🎵 Daniel Cohen Music Practice Coach AI
+
+AI-powered practice studio for songs, backing tracks, harmony, improvisation, recording, and instrument-specific coaching.
+
+📖 Tutorial
+
+🏠
+Home
+
+Open
+
+🎯
+Practice
+
+Open
+
+🎼
+Songs
+
+Open
+
+🎧
+Backing
+
+Open
+
+✍️
+Custom
+
+Open
+
+🪶
+Compose
+
+Open
+
+🎨
+Creative
+
+Open
+
+🎙️
+Upload
+
+Open
+
+🎚️
+Multitrack
+
+Open
+
+📓
+Log
+
+Open
+
+🎼
+
+SONG CATALOG
+
+Songs
+
+Song Selection
+
+Choose a song from your library. The active song drives Practice, Backing Track, Creative Lab, Karaoke, and Upload/Multitrack. Use Edit Song Chart to customize chords, sections, and song structure.
+
+🎹
+Piano practice mode · Voicings — Left-hand roots vs inversions; right-hand chord tones and voice leading. · Choose your active song for the whole studio.
+
+🎵 BROWSE LIBRARY
+
+Browse, search, or filter songs below.
+
+0 songs in this list
+
+SEARCH
+
+Matches title, artist, genre, style, and chart level.
+
+Search for a title or artist, tap a genre, or tap ★ Favorites to start building a list. The Active Song dropdown always covers the whole catalog.
+
+★ Favorites
+
+GENRES — CLICK TO TOGGLE
+
+Clear filters
+
+🎤 Pop
+
+🤘 Rock
+
+🎷 Jazz
+
+✡ Jewish
+
+🎸 Blues
+
+🕺 Funk
+
+🎻 Classical
+
+💜 Soul
+
+🤠 Country
+
+0 Browse results · click a result or use the Active Song dropdown to switch
+
+MUSIC SOURCE
+
+🎵 Song Selection (catalog song)
+
+✍️ Custom Progression
+
+🪶 Composition
+
+CURRENT ACTIVE SONG
+
+Switch active song
+
+CATALOG
+🎤
+POP
+The A Team
+
+Ed Sheeran
+
+📜
+ORIGINAL KEY
+
+A major
+
+🗝️
+I’M PLAYING IN
+
+Tap to change
+
+⏱
+BPM
+100
+🥁
+Meter
+4/4
+✨
+Style
+🎤
+Pop
+📀
+Source
+🎵
+Catalog
+🎸
+Your setup
+🚀
+Intermediate
+🎹
+Piano
+🎼
+Voicings
+📈
+Chart levels
+🌱
+Beginner
+🚀
+Intermediate
+🧠
+Advanced
+Common in Pop
+🎹
+Piano
+🎸
+Guitar
+🎤
+Voice
+🎸
+Bass
+🎼
+Harmony
+
+One I–V–vi–IV progression (A – E – F♯m – D) in A major that is shared by the verse and chorus.
+
+🎶
+Melody
+
+Shape phrases in 4-bar sections that land on a chord tone of each new chord as the harmony changes, keeping the steady pulse. The Generated Practice Melody on the Practice page (Chart & Melody) offers more ideas over these changes (generated for this song's chords, not the original melody).
+
+🔍
+Your focus: Voicings
+
+Voice the changes with 3rds and 7ths in the left-hand shapes and move each note to the nearest note of the next chord.
+
+🔥
+Your challenge
+
+Comp through the verse in the steady pulse at 80 BPM using only rootless or shell voicings.
+
+📝 Chord chart
+
+Edit Verse, Chorus, Bridge, and other sections bar-by-bar — saved permanently for this song.
+
+📝 Edit Song Chart
+
+☆ Favorite
+
+keyboard_arrow_down
+
+🎵 Original song video
+
+Would you like to hear or watch the original recording? The video only loads when you ask.
+
+The A Team — Ed Sheeran
+
+Override YouTube URL (optional)
+
+Searching: The A Team · Ed Sheeran
+
+▶ Watch original on YouTube
+
+LOAD LAST SONG
+
+Load Last Song — 🎤 Say — John Mayer
+
+🎯 Practice
+
+🎧 Backing
+
+🎨 Creative
+
+🎤 Karaoke
+
+📖 Chord Coach
+
+🧭 Song-Aware Coaching
+
+📝 Song content editor
+
+Open Lyrics & Cues or Edit Song Chart from the active song card above when you want to edit.
+
+🎤 Lyrics & Cues
+
+📝 Edit Song Chart
+
+Open editor

@@ -1,0 +1,47 @@
+[PASS] app renders  
+picked Say dropdown=True landed=True sidebar_song='SONG\n\nSONG\nSay — John Mayer\n\n🎼 Songs\n\nSay · Pop\n\n📜 Song Original Key: Bb\n\n🗝️ Practice / Co'
+[PASS] Say: active  
+  Say @ Bb: 'A I?IV?vi?V loop (B? ? E? ? Gm ? F) in B? major that repeats through the verse and chorus.'
+[PASS] Say @ Bb: Harmony row present  90 chars
+[PASS] Say @ Bb: no chart syntax in the chords  A I?IV?vi?V loop (B? ? E? ? Gm ? F) in B? major that repeats through the verse and chorus.
+[PASS] Say @ Bb: says 'B? ? E? ? Gm ? F'  A I?IV?vi?V loop (B? ? E? ? Gm ? F) in B? major that repeats through the verse and chorus.
+[PASS] Say @ Bb: says 'I?IV?vi?V'  A I?IV?vi?V loop (B? ? E? ? Gm ? F) in B? major that repeats through the verse and chorus.
+  Say @ D: 'A I?IV?vi?V loop (D ? G ? Bm ? A) in D major that repeats through the verse and chorus.'
+[PASS] Say @ D: Harmony row present  87 chars
+[PASS] Say @ D: no chart syntax in the chords  A I?IV?vi?V loop (D ? G ? Bm ? A) in D major that repeats through the verse and chorus.
+[PASS] Say @ D: says 'D ? G ? Bm ? A'  A I?IV?vi?V loop (D ? G ? Bm ? A) in D major that repeats through the verse and chorus.
+[PASS] Say @ D: says 'I?IV?vi?V'  A I?IV?vi?V loop (D ? G ? Bm ? A) in D major that repeats through the verse and chorus.
+picked The A Team dropdown=True landed=True sidebar_song='SONG\n\nSONG\nThe A Team — Ed Sheeran\n\n🎼 Songs\n\nThe A Team · Pop\n\n📜 Song Original Key: A\n\n🗝️ '
+[PASS] The A Team: active  
+  The A Team @ A: 'One I?V?vi?IV progression (A ? E ? F?m ? D) in A major that is shared by the verse and chorus.'
+[PASS] The A Team @ A: Harmony row present  94 chars
+[PASS] The A Team @ A: no chart syntax in the chords  One I?V?vi?IV progression (A ? E ? F?m ? D) in A major that is shared by the verse and cho
+[PASS] The A Team @ A: says 'A ? E ? F?m ? D'  One I?V?vi?IV progression (A ? E ? F?m ? D) in A major that is shared by the verse and chorus.
+[PASS] The A Team @ A: says 'I?V?vi?IV'  One I?V?vi?IV progression (A ? E ? F?m ? D) in A major that is shared by the verse and chorus.
+  The A Team @ C: 'One I?V?vi?IV progression (C ? G ? Am ? F) in C major that is shared by the verse and chorus.'
+[PASS] The A Team @ C: Harmony row present  93 chars
+[PASS] The A Team @ C: no chart syntax in the chords  One I?V?vi?IV progression (C ? G ? Am ? F) in C major that is shared by the verse and chor
+[PASS] The A Team @ C: says 'C ? G ? Am ? F'  One I?V?vi?IV progression (C ? G ? Am ? F) in C major that is shared by the verse and chorus.
+[PASS] The A Team @ C: says 'I?V?vi?IV'  One I?V?vi?IV progression (C ? G ? Am ? F) in C major that is shared by the verse and chorus.
+picked Hey Jude dropdown=True landed=True sidebar_song='SONG\n\nSONG\nHey Jude — The Beatles\n\n🎼 Songs\n\nHey Jude · Rock\n\n📜 Song Original Key: F\n\n🗝️ Pr'
+[PASS] Hey Jude: active  
+  Hey Jude @ F: 'The verse plays an 8-bar progression (F ? C/E ? C7 ? F ? B? ? F/A ? C7 ? F) in F major, while the bridge moves differently.'
+[PASS] Hey Jude @ F: Harmony row present  123 chars
+[PASS] Hey Jude @ F: no chart syntax in the chords  The verse plays an 8-bar progression (F ? C/E ? C7 ? F ? B? ? F/A ? C7 ? F) in F major, wh
+[PASS] Hey Jude @ F: says '8-bar progression'  The verse plays an 8-bar progression (F ? C/E ? C7 ? F ? B? ? F/A ? C7 ? F) in F major, while the bridge moves
+[PASS] Hey Jude @ F: says 'verse'  The verse plays an 8-bar progression (F ? C/E ? C7 ? F ? B? ? F/A ? C7 ? F) in F major, while the bridge moves
+[PASS] Hey Jude: no Coda-only chord in the summary  The verse plays an 8-bar progression (F ? C/E ? C7 ? F ? B? ? F/A ? C7 ? F) in F major, while the bridge moves
+picked Shallow dropdown=True landed=True sidebar_song='SONG\n\nSONG\nShallow — Lady Gaga / Bradley Cooper\n\n🎼 Songs\n\nShallow · Pop\n\n📜 Song Original K'
+[PASS] Shallow: active  
+  Shallow @ G: 'The verse and refrain play a four-bar progression (Em ? D ? G ? C ? G ? D) in G major, while the chorus, bridge and Gaga build-up move differently.'
+[PASS] Shallow @ G: Harmony row present  147 chars
+[PASS] Shallow @ G: no chart syntax in the chords  The verse and refrain play a four-bar progression (Em ? D ? G ? C ? G ? D) in G major, whi
+[PASS] Shallow @ G: says 'four-bar progression'  The verse and refrain play a four-bar progression (Em ? D ? G ? C ? G ? D) in G major, while the chorus, bridg
+[PASS] 390px: no horizontal page scroll  
+[PASS] 390px: the Harmony row is not clipped  
+[PASS] 390px: the Harmony row still reads  The verse and refrain play a four-bar progression (Em ? D ? G ? C ? G 
+[PASS] 360px: no horizontal page scroll  
+[PASS] 360px: the Harmony row is not clipped  
+[PASS] 360px: the Harmony row still reads  The verse and refrain play a four-bar progression (Em ? D ? G ? C ? G 
+
+35/35 gates passed
