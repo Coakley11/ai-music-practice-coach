@@ -6279,6 +6279,10 @@ def live_follow_along_component_html(
     // Expose the timeline so the karaoke lyric-panel snippet can peek
     // at upcoming events to compute the "Next: ..." section label.
     window.__karaokeTimeline = timeline;
+    // M3: a fresh Play counts in -- the count-in engine (card transport) must see this player start.
+    try {{
+      if (window.parent.__backingCountIn) window.parent.__backingCountIn.watchDoc(document);
+    }} catch (eCi) {{}}
     const audio = document.getElementById("live-audio");
     // Created while the Backing transport is paused or stopped (a rerun that
     // re-renders the sheet): it must not start by itself -- only Resume / Play
@@ -10640,6 +10644,15 @@ def render_backing_card_transport_control(*, enabled: bool) -> None:
             _now_singing = km.now_singing_entry_id(st.session_state)
     except Exception:
         _now_singing = ""
+    _count_in = None
+    try:
+        from backing_count_in import backing_count_in_for_card
+
+        _count_in = backing_count_in_for_card(
+            st.session_state, karaoke=km.is_karaoke_session_active(st.session_state), cycle_active=_cycle_on,
+        )
+    except Exception:
+        _count_in = None
     with st.container(key="backing_card_transport_row"):
         render_backing_card_transport(
             st.session_state,
@@ -10651,6 +10664,7 @@ def render_backing_card_transport_control(*, enabled: bool) -> None:
             restart_on_resume=restart_on_resume(st.session_state),
             cycle_active=_cycle_on,
             theme=_backing_art_play_theme(),
+            count_in=_count_in,
         )
 
 
@@ -14887,6 +14901,16 @@ def _render_backing_step2_playback_action(
                 on_change=_on_backing_strings_change,
                 help="Adds a soft string section under the piano. Arrangement only: "
                 "song, key and tempo stay the same.",
+            )
+            from backing_count_in import COUNT_IN_SETTING_KEY as _CI_KEY
+
+            if _CI_KEY not in st.session_state:
+                st.session_state[_CI_KEY] = True
+            st.toggle(
+                "Count-in (2 bars)",
+                key=_CI_KEY,
+                help="Two bars of clicks at the track's tempo before Play starts the music. "
+                "Resume never counts in. Not used with Key Cycling or Karaoke.",
             )
 
             if _developer_mode_enabled():

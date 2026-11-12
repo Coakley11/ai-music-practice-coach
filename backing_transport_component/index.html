@@ -64,7 +64,7 @@
       const btn = document.getElementById("btn");
       const pz = document.getElementById("pz");
       const hint = document.getElementById("hint");
-      let args = { enabled: false, report_ended: true, server_playing: false, render_id: "", transport: "", restart_on_resume: false, cycle_active: false };
+      let args = { enabled: false, report_ended: true, server_playing: false, render_id: "", transport: "", restart_on_resume: false, cycle_active: false, count_in: null };
       // A click shows its result at once; the server's render confirms it.
       let localIntent = "";
       let localToken = "";
@@ -204,7 +204,8 @@
       }
       function doResume(handled) {
         const restart = !!args.restart_on_resume;
-        // A setting changed while paused: the server starts the new selection.
+        // A setting changed while paused: the server starts the new selection -- from the top, so it counts in.
+        if (restart) armCountIn();
         if (!restart && !handled) resumeBackingAudio();
         send("resume");
         setLocal("playing");
@@ -455,8 +456,10 @@
         }
         if (playing) wasPlaying = true;
         const intent = intentNow();
-        if (!playing && now < pendingUntil && args.server_playing && (args.consumed === pendingToken || pendingToken === "transition")) nudgeArmedPlayer();
-        if (!playing && now > stoppingUntil && intent === "playing") startMissedAutoplay();
+        watchFramesForCountIn();
+        const ciRun = (function () { const ci = countIn(); return ci && ci.state ? ci.state() : null; })();
+        if (!ciRun && !playing && now < pendingUntil && args.server_playing && (args.consumed === pendingToken || pendingToken === "transition")) nudgeArmedPlayer();
+        if (!ciRun && !playing && now > stoppingUntil && intent === "playing") startMissedAutoplay();
         let state = "stopped";
         if (intent === "paused" && !(playing && now > stoppingUntil)) state = "paused";
         else if (playing && now > stoppingUntil) state = "playing";
@@ -485,6 +488,14 @@
         setLabel(pz, state === "paused" ? LABEL_RESUME : LABEL_PAUSE);
         document.body.dataset.pair = showPz ? "1" : "";
         hint.textContent = state === "starting" ? "Starting…" : state === "paused" ? "Paused" : "";
+        if (ciRun && state !== "paused") {
+          if (ciRun.phase === "counting" && ciRun.beat > 0) {
+            const b = ciRun.beat - 1;
+            hint.textContent = "Count-in " + (Math.floor(b / ciRun.pulses) + 1) + "/" + ciRun.bars + " · " + ((b % ciRun.pulses) + 1);
+          } else {
+            hint.textContent = "Count-in…";
+          }
+        }
         try { window.parent.__backingTransportState = { transport: intent, restart_on_resume: !!args.restart_on_resume }; } catch (e) {}
         const h = Math.ceil(document.getElementById("wrap").getBoundingClientRect().height) + 6;
         if (h !== lastHeight) { lastHeight = h; post("streamlit:setFrameHeight", { height: Math.max(52, h) }); }
@@ -663,18 +674,157 @@
         };
         pdoc.addEventListener("click", window.parent.__backingTransportTransitionHook, true);
       } catch (e) {}
+      // ---- M3 count-in (backing_count_in.py). Runs in the page's own realm so it outlives a remount of
+      // this control; the card's Play arms it, the first Backing player that starts from the top is held at
+      // 0:00 until it can play, two bars of clicks sound, then the take starts. Resume never arms it.
+      function backingCountInEngine() {
+        var W = window;
+        if (W.__backingCountIn && Number(W.__backingCountIn.v) >= 1) return;
+        var E = { v: 1, armed: null, run: null, log: [] };
+        var ctx = null;
+        function ac() {
+          try {
+            if (!ctx) { var C = W.AudioContext || W.webkitAudioContext; if (C) ctx = new C({ latencyHint: "interactive" }); }
+            if (ctx && ctx.state === "suspended") ctx.resume();
+          } catch (e) {}
+          return ctx;
+        }
+        function audible(a) {
+          return !!(a && a.tagName === "AUDIO" && !a.muted && (a.id === "live-audio" ? a.hasAttribute("controls") : (a.currentSrc || a.src)));
+        }
+        E.prime = function () { ac(); };
+        E.arm = function (spec) { if (!spec) { E.armed = null; return; } E.armed = Object.assign({ at: Date.now() }, spec); ac(); };
+        E.disarm = function () { E.armed = null; };
+        E.active = function () { return !!E.run; };
+        E.state = function () {
+          var r = E.run;
+          if (!r) return null;
+          return { phase: r.phase, beat: r.beat, total: r.total, pulses: r.spec.pulses, bars: r.spec.bars };
+        };
+        E.cancel = function () {
+          var r = E.run;
+          E.armed = null; E.run = null;
+          if (!r) return;
+          r.cancelled = true;
+          try { clearTimeout(r.timer); } catch (e) {}
+          r.nodes.forEach(function (n) { try { n.stop(); } catch (e) {} });
+        };
+        E.onPlay = function (a) {
+          var r = E.run;
+          if (r) {
+            // Nothing else may start under the count-in (an autoplay nudge, a second player).
+            if (!(a === r.el && r.releasing) && audible(a)) { try { a.pause(); } catch (e) {} }
+            return;
+          }
+          var s = E.armed;
+          if (!s) return;
+          if (Date.now() - s.at > 120000) { E.armed = null; return; }
+          if (!audible(a) || a.currentTime > 0.35) return;
+          E.armed = null;
+          start(a, s);
+        };
+        function start(a, s) {
+          try { a.pause(); } catch (e) {}
+          try { if (a.currentTime > 0.005) a.currentTime = 0; } catch (e) {}
+          var n = Math.max(1, s.bars * s.pulses);
+          var r = E.run = { el: a, spec: s, nodes: [], releasing: false, beat: 0, total: n, phase: "loading", heldAt: Date.now() };
+          function release() {
+            if (E.run !== r) return;
+            r.releasing = true; r.phase = "release";
+            try { if (a.currentTime > 0.005) a.currentTime = 0; } catch (e) {}
+            var done = function () { if (E.run === r) E.run = null; };
+            var p = null;
+            try { p = a.play(); } catch (e) {}
+            if (p && p.then) p.then(done, done); else done();
+            E.log.push({ at: Date.now(), waited_ms: (r.clicksAt || Date.now()) - r.heldAt, pulses: n, pulse_sec: s.pulse_sec,
+                         ctx: r.ctx ? r.ctx.state : "none", late_ms: r.ctx ? Math.round((r.ctx.currentTime - r.end) * 1000) : null });
+            if (E.log.length > 20) E.log.shift();
+          }
+          function clicks() {
+            if (E.run !== r) return;
+            var c = ac();
+            if (!c || c.state !== "running") { release(); return; }
+            r.ctx = c; r.phase = "counting"; r.clicksAt = Date.now();
+            var t0 = c.currentTime + 0.12, ps = Number(s.pulse_sec) || 0.5;
+            for (var i = 0; i < n; i++) {
+              var t = t0 + i * ps;
+              var down = i % s.pulses === 0, group = !!s.compound && i % 3 === 0;
+              var o = c.createOscillator(), g = c.createGain();
+              o.type = "sine";
+              o.frequency.value = down ? 1568 : group ? 1175 : 880;
+              g.gain.setValueAtTime(0.0001, t);
+              g.gain.exponentialRampToValueAtTime(down ? 0.6 : group ? 0.38 : 0.28, t + 0.002);
+              g.gain.exponentialRampToValueAtTime(0.0001, t + 0.075);
+              o.connect(g); g.connect(c.destination);
+              o.start(t); o.stop(t + 0.09);
+              r.nodes.push(o);
+            }
+            r.t0 = t0; r.end = t0 + n * ps;
+            (function tick() {
+              if (E.run !== r) return;
+              var now = c.currentTime;
+              r.beat = Math.min(n, Math.max(0, Math.floor((now - t0) / ps) + 1));
+              // The take starts on the downbeat after the count (play() is asked ~12 ms early: its start-up).
+              if (now >= r.end - 0.012) { release(); return; }
+              r.timer = setTimeout(tick, Math.max(1, Math.min(25, (r.end - 0.012 - now) * 1000 - 2)));
+            })();
+          }
+          var waitStart = Date.now();
+          (function waitReady() {
+            if (E.run !== r) return;
+            // Only once the audio can actually play: the count must end on the take's first beat.
+            if (a.readyState >= 3 || Date.now() - waitStart > 12000) { clicks(); return; }
+            r.timer = setTimeout(waitReady, 30);
+          })();
+        }
+        E.watchDoc = function (d) {
+          try {
+            if (!d || d.__backingCountInHooked) return;
+            d.__backingCountInHooked = true;
+            d.addEventListener("play", function (ev) { E.onPlay(ev.target); }, true);
+          } catch (e) {}
+        };
+        E.watchDoc(W.document);
+        W.__backingCountIn = E;
+      }
+      try {
+        if (!(window.parent.__backingCountIn && Number(window.parent.__backingCountIn.v) >= 1)) {
+          const sc = window.parent.document.createElement("script");
+          sc.textContent = "(" + backingCountInEngine.toString() + ")();";
+          window.parent.document.head.appendChild(sc);
+          sc.remove();
+        }
+      } catch (e) {}
+      function countIn() { try { return window.parent.__backingCountIn || null; } catch (e) { return null; } }
+      function armCountIn() {
+        const ci = countIn();
+        if (!ci) return;
+        if (args.count_in && !args.cycle_active) ci.arm(args.count_in); else ci.disarm();
+      }
+      function watchFramesForCountIn() {
+        const ci = countIn();
+        if (!ci || !ci.armed) return;
+        try {
+          window.parent.document.querySelectorAll("iframe").forEach(function (f) {
+            try { if (f.contentDocument) ci.watchDoc(f.contentDocument); } catch (e) {}
+          });
+        } catch (e) {}
+      }
       btn.addEventListener("click", function () {
         if (btn.dataset.state !== "stopped") {
           // Stop ends the session -- playing, paused or still starting.
           stoppingUntil = Date.now() + 1500;
           pendingUntil = 0;
           savePending();
+          try { const ci = countIn(); if (ci) ci.cancel(); } catch (e) {}
           silenceBackingAudio();
           try { window.parent.__backingPausedTake = null; } catch (e) {}
           clearSheetPosition();
           send("stop");
           setLocal("stopped");
         } else if (args.enabled) {
+          // A fresh start: count in (never on Resume).
+          armCountIn();
           pendingUntil = Date.now() + 120000;
           send("play");
           pendingToken = SESSION + ":" + nonce;
