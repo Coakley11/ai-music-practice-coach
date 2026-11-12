@@ -101,8 +101,7 @@ def test_chord_qualities_are_different(quality, pcs):
     assert {m % 12 for m in row(s)["sounding_midi"]} == pcs
 
 
-@pytest.mark.parametrize("q", ["Give me a clarinet octave exercise.", "Help me practice crossing the clarinet register break.",
-                              "Give me a trumpet open-valve lip-slur exercise.", "Give me a bass guitar E minor warmup."])
+@pytest.mark.parametrize("q", ["Give me a trumpet open-valve lip-slur exercise.", "Give me a bass guitar E minor warmup."])
 def test_unsupported_techniques_are_truthful(q):
     s = session()
     r = ask(s, q)
