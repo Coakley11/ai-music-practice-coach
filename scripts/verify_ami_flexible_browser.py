@@ -20,6 +20,7 @@ parser.add_argument("--probe",action="store_true")
 parser.add_argument("--song-only",action="store_true")
 parser.add_argument("--technique-only",action="store_true")
 parser.add_argument("--technique-parser-only",action="store_true")
+parser.add_argument("--trumpet-only",action="store_true")
 args=parser.parse_args()
 OUT=args.out.resolve();OUT.mkdir(parents=True,exist_ok=True)
 ORIGIN=f"http://127.0.0.1:{args.port}"
@@ -122,7 +123,7 @@ def request(page,q,cue,tag):
                 for (const st of (line.staff||[])) for (const voice of (st.voices||[]))
                 for (const e of voice) {
                     if (e.el_type!=='note' || !e.pitches || !e.pitches.length) continue;
-                    notes.push({pitches:e.pitches.map(p=>({pitch:p.pitch,verticalPos:p.verticalPos,accidental:p.accidental})),
+                    notes.push({startSlur:e.startSlur,endSlur:e.endSlur,pitches:e.pitches.map(p=>({pitch:p.pitch,verticalPos:p.verticalPos,accidental:p.accidental,startSlur:p.startSlur,endSlur:p.endSlur})),
                                 headPitches:((e.abselem&&e.abselem.heads)||[]).map(h=>h.pitch)});
                 }
                 out.push({abc:r.abc,notes});
@@ -187,7 +188,10 @@ try:
             page.get_by_test_id("stMainBlockContainer").get_by_role("textbox",name="Question",exact=True).wait_for(timeout=90000)
             idle(page)
             (OUT/"practice-start.txt").write_text(page.locator("body").inner_text(),encoding="utf-8")
-            if args.technique_parser_only:
+            if args.trumpet_only:
+                from ami_trumpet_browser_cases import run
+                run(page,request,select,probe=args.probe)
+            elif args.technique_parser_only:
                 from ami_technique_browser_cases import run_parser
                 run_parser(page,request,select)
             elif args.technique_only:
