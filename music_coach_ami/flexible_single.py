@@ -29,6 +29,9 @@ def _reply(text, plan=None, session=None, failed=""):
 
 
 def _response(plan, session, lead=""):
+    if plan["spec"].get("trumpet"):
+        from music_coach_ami.trumpet_technique import response
+        return response(plan, session, lead)
     if plan["spec"].get("technique"):
         from music_coach_ami.instrument_technique import response
         return response(plan, session, lead)
@@ -53,6 +56,9 @@ def _window(player, level, register):
 
 
 def build(spec: dict) -> dict:
+    if spec.get("trumpet"):
+        from music_coach_ami.trumpet_technique import build as build_trumpet
+        return build_trumpet(spec)
     if spec.get("technique"):
         from music_coach_ami.instrument_technique import build as build_technique
         return build_technique(spec)
@@ -183,6 +189,10 @@ def handle(question: str, session, ami_ctx: dict | None = None) -> CoachResponse
     # M1d owns explicit scale patterns, modes, bar counts and their revisions.
     if re.search(r"\bscale[ -]patterns?\b", q):
         return None
+    from music_coach_ami import trumpet_technique
+    trumpet_response = trumpet_technique.handle(question, session, ami_ctx)
+    if trumpet_response is not None:
+        return trumpet_response
     from music_coach_ami import instrument_technique
     technique_response = instrument_technique.handle(question, session, ami_ctx)
     if technique_response is not None:
