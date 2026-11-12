@@ -10639,9 +10639,102 @@ def curated_song_records() -> list[dict[str, Any]]:
               full_form_levels=["Beginner"],
           )),
         _s("There Will Never Be Another You", "Harry Warren", "Jazz", "Eb", {
-            "A Section": ["Ebmaj7", "Cm7", "Fm7", "Bb7", "Gm7", "C7", "Fm7", "Bb7"],
-            "B Section": ["Ebmaj7", "Abmaj7", "Dm7b5", "G7", "Cm7", "F7", "Fm7", "Bb7"],
-        }, composer="Harry Warren"),
+            # 32-bar ABAC. The old chart was 16 bars whose "A Section" ran
+            # Ebmaj7 Cm7 Fm7 Bb7 Gm7 C7 Fm7 Bb7 - a I-vi-ii-V turnaround, not
+            # this tune. The real A holds the tonic two bars and goes to the
+            # ii7b5-V of the relative minor in bars 3-4.
+            "A1": ["Ebmaj7", "Ebmaj7", "Dm7b5", "G7b9",
+                   "Cm7", "Cm7", "Bbm7", "Eb7"],
+            "B": ["Abmaj7", "Db7#11", "Ebmaj7", "Cm7",
+                  "F7", "F7", "Fm7", "Bb7"],
+            # Identical to A1. The reference states the two A sections are the
+            # same, and both of its presentations give the same changes for
+            # bars 1-8 and 17-24.
+            "A2": ["Ebmaj7", "Ebmaj7", "Dm7b5", "G7b9",
+                   "Cm7", "Cm7", "Bbm7", "Eb7"],
+            # C turns the B material into the final cadence: from bar 28 the
+            # harmonic rhythm doubles to two chords a bar, which is the point
+            # of the C section and the reason it is not a second B.
+            "C": ["Abmaj7", "Db7#11", "Ebmaj7", "Am7b5|D7",
+                  "Ebmaj7|Ab7", "Gm7|C7", "Fm7|Bb7", "Eb6|Bb7"],
+        }, composer="Harry Warren",
+          section_order=["A1", "B", "A2", "C"],
+          chart_versions={
+              # Every level keeps all 32 bars and every chord change: the form
+              # IS the tune, and the C section's doubled harmonic rhythm is what
+              # distinguishes it from B. Only chord QUALITIES are simplified -
+              # maj7 and 6 to major, m7 to minor, m7b5 to minor, the altered
+              # dominants to plain sevenths.
+              "Beginner": {
+                  "A1": ["Eb", "Eb", "Dm", "G7", "Cm", "Cm", "Bbm", "Eb7"],
+                  "B": ["Ab", "Db7", "Eb", "Cm", "F7", "F7", "Fm", "Bb7"],
+                  "A2": ["Eb", "Eb", "Dm", "G7", "Cm", "Cm", "Bbm", "Eb7"],
+                  "C": ["Ab", "Db7", "Eb", "Am|D7",
+                        "Eb|Ab7", "Gm|C7", "Fm|Bb7", "Eb|Bb7"],
+              },
+              # Intermediate keeps the sevenths and the half-diminished chords,
+              # and reduces only the stacked alterations (b9, #11).
+              "Intermediate": {
+                  "A1": ["Ebmaj7", "Ebmaj7", "Dm7b5", "G7",
+                         "Cm7", "Cm7", "Bbm7", "Eb7"],
+                  "B": ["Abmaj7", "Db7", "Ebmaj7", "Cm7",
+                        "F7", "F7", "Fm7", "Bb7"],
+                  "A2": ["Ebmaj7", "Ebmaj7", "Dm7b5", "G7",
+                         "Cm7", "Cm7", "Bbm7", "Eb7"],
+                  "C": ["Abmaj7", "Db7", "Ebmaj7", "Am7b5|D7",
+                        "Ebmaj7|Ab7", "Gm7|C7", "Fm7|Bb7", "Eb6|Bb7"],
+              },
+              "Advanced": {
+                  "A1": ["Ebmaj7", "Ebmaj7", "Dm7b5", "G7b9",
+                         "Cm7", "Cm7", "Bbm7", "Eb7"],
+                  "B": ["Abmaj7", "Db7#11", "Ebmaj7", "Cm7",
+                        "F7", "F7", "Fm7", "Bb7"],
+                  "A2": ["Ebmaj7", "Ebmaj7", "Dm7b5", "G7b9",
+                         "Cm7", "Cm7", "Bbm7", "Eb7"],
+                  "C": ["Abmaj7", "Db7#11", "Ebmaj7", "Am7b5|D7",
+                        "Ebmaj7|Ab7", "Gm7|C7", "Fm7|Bb7", "Eb6|Bb7"],
+              },
+          },
+          extensions=_ext(
+              time_signature="4/4",
+              # Without this the level resolver abridges the shorter levels by
+              # dropping sections, which misrepresents a tune whose shape is
+              # ABAC - B and C share an opening and differ at the cadence, so
+              # dropping either loses the point.
+              full_form_levels=["Beginner", "Intermediate"],
+              arrangement_notes=(
+                  "**There Will Never Be Another You** - Harry Warren, 1942. "
+                  "**Eb major**, **32-bar ABAC** (8+8+8+8). Reference "
+                  "arrangement: the iReal Pro chart catalogued at "
+                  "jazzchanges.app/there-will-never-be-another-you, which that "
+                  "page derives from Chet Baker's 1954 opening chorus (Weimar "
+                  "Jazz Database) moved from the record's F to Eb. Kept "
+                  "consistent rather than blended with fake-book variants, which "
+                  "that page notes differ in the last four bars. "
+                  "HARMONY CORRECTED (W22): the old 16-bar chart opened "
+                  "**Ebmaj7 Cm7 Fm7 Bb7** - a I-vi-ii-V turnaround belonging to "
+                  "no part of this tune. The A section holds the **tonic for two "
+                  "bars** and moves to **Dm7b5-G7**, the ii7b5-V of the relative "
+                  "minor, in bars 3-4, then Cm7 for two bars and Bbm7-Eb7 into "
+                  "the IV. B and C both open **Abmaj7 Db7#11 Ebmaj7**; they part "
+                  "company at bar 28, where C doubles to **two chords a bar** for "
+                  "the final cadence. "
+                  "SOURCE CONSISTENCY: the reference page renders that one iReal "
+                  "chart **two ways**, and they disagree - the chart graphic "
+                  "gives **G7b9** (bars 4 and 20) and **Db7#11** (bars 10 and "
+                  "26), while its bar-by-bar text list gives G7 and Db9#11. The "
+                  "**chart graphic is used throughout**, so the two A sections "
+                  "are identical, as that page states they are. The Chet Baker "
+                  "transcription named above supplies the page's harmonic "
+                  "basis but **no chord labels of its own**, so it is not a "
+                  "second source for these chords and nothing is taken from it. "
+                  "**Tempo and groove are still unset** and are not "
+                  "source-verified here. No melody is reproduced; not checked by "
+                  "ear."
+              ),
+              chart_confidence={"chords": "medium-high", "timing": "medium",
+                                "tempo": "unset"},
+          )),
         _s("All the Things You Are", "Jazz Standard", "Jazz", "Ab", {
             "A": ["Fm7", "Bbm7", "Eb7", "Abmaj7"],
             "B": ["Fm7", "Bbm7", "Eb7", "Abmaj7"],
