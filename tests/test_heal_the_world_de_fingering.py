@@ -310,18 +310,68 @@ class FSharpOverASharpNowSoundsItsChord(unittest.TestCase):
         self.assertEqual(sounding(r["guitar_tabs"]["G#/C"]), ["C", "Eb", "Ab", "Eb", "Ab"])
 
 
+def defining_tones(name):
+    """The notes a fingering of `name` must sound, and the ones it may drop.
+
+    A guitar voicing is allowed to leave notes out, so "every chord tone is
+    present" is the wrong rule - it would reject perfectly good shapes. What a
+    shape may NOT drop is a note that carries the chord's identity: the third
+    (minor or major) says whether the chord is minor, the seventh says whether
+    it is a seventh chord, and an altered fifth is the whole point of the
+    chord that has one.
+
+    The PERFECT fifth is the omittable note: it is implied by the root and
+    duplicated by the bass, and countless real voicings skip it. So the rule
+    here is "everything except a perfect fifth", applied per chord from the
+    engine's own `chord_notes` rather than from a hand-written table.
+
+    Every one of this song's shapes happens to include its fifth as well, but
+    that is an observation about these 19 fingerings, NOT a requirement - a
+    future voicing that drops a fifth is legitimate and must still pass.
+    """
+    notes = chord_notes(name)
+    root = notes[0]
+    must, may = set(), set()
+    for n in notes:
+        (may if (n - root) % 12 == 7 else must).add(PC[n % 12])
+    return must, may - must
+
+
 class EveryFingeringSoundsItsChord(unittest.TestCase):
-    """The audit that found all three errors, kept as a test so it cannot regress."""
+    """The audit that found all three errors, kept as a test so it cannot regress.
+
+    Scoped to this one song's `guitar_tabs`. It is not a catalog-wide rule and
+    deliberately does not become one.
+    """
 
     #: D/E deliberately adds the fifth of its bass; see the module docstring.
     ALLOWED_EXTRA = {"D/E": {"E", "B"}}
 
-    def test_no_stored_fingering_omits_a_note_of_its_chord(self) -> None:
+    def test_no_stored_fingering_omits_a_note_that_defines_its_chord(self) -> None:
         for name, tab in rec()["guitar_tabs"].items():
             with self.subTest(chord=name):
-                want = {PC[m % 12] for m in chord_notes(name)}
-                self.assertTrue(want, "the engine should voice every stored chord")
-                self.assertLessEqual(want, set(sounding(tab)), "%s %s" % (name, tab))
+                must, _ = defining_tones(name)
+                self.assertTrue(must, "the engine should voice every stored chord")
+                self.assertLessEqual(must, set(sounding(tab)), "%s %s" % (name, tab))
+
+    def test_bm7_sounds_the_minor_third_that_makes_it_minor(self) -> None:
+        # the specific defect this commit fixes, pinned on its own
+        must, _ = defining_tones("Bm7")
+        self.assertEqual(must, {"B", "D", "A"})          # root, minor 3rd, minor 7th
+        self.assertIn("D", sounding(rec()["guitar_tabs"]["Bm7"]))
+        self.assertNotIn("D", sounding("x24202"))        # and was absent before
+
+    def test_a_perfect_fifth_is_not_required_of_any_shape(self) -> None:
+        # Guards the rule itself: dropping a fifth must stay acceptable, so a
+        # shape that omits one still satisfies the defining-tone check.
+        for name, tab in rec()["guitar_tabs"].items():
+            with self.subTest(chord=name):
+                must, fifth = defining_tones(name)
+                self.assertFalse(must & fifth, "a fifth is never also a defining tone")
+                without = set(sounding(tab)) - fifth
+                self.assertLessEqual(must, without,
+                                     "%s %s should still define its chord with the "
+                                     "fifth removed" % (name, tab))
 
     def test_no_stored_fingering_adds_an_undocumented_note(self) -> None:
         for name, tab in rec()["guitar_tabs"].items():
