@@ -320,6 +320,94 @@ def goto_practice(page: Page) -> bool:
     return bool(clicked)
 
 
+PK_MARK = """() => {
+  const re = /Practice\\s*\\/?\\s*Concert\\s*Key/i;
+  document.querySelectorAll('[data-i69pk]').forEach((el) => el.removeAttribute('data-i69pk'));
+  for (const c of document.querySelectorAll('[role="combobox"]')) {
+    const name = (c.getAttribute('aria-label') || c.innerText || '');
+    if (!re.test(name)) continue;
+    const box = c.closest('[data-testid="stSelectbox"]')
+             || c.closest('[data-baseweb="select"]') || c;
+    box.setAttribute('data-i69pk', '1');
+    box.scrollIntoView({block: 'center', inline: 'nearest'});
+    return String(c.getAttribute('aria-label') || '');
+  }
+  return "";
+}"""
+
+
+def set_practice_key(page: Page, token: str) -> bool:
+    """Move the Practice Key on whatever surface is open.
+
+    The control's identity differs by surface - the sidebar selectbox on Songs,
+    the card's own on Backing (label collapsed, so it carries no visible text to
+    filter on) - but all of them expose the same accessible name, so that is what
+    this drives. The option reads ``D`` in the sidebar and ``D major`` on the
+    card, so both spellings are accepted.
+    """
+    expand_sidebar(page)
+    before = pk_val(page)
+    found = page.evaluate(PK_MARK)
+    if not found:
+        log("    set_practice_key: no Practice Key combobox on this page")
+        return False
+    # BaseWeb opens its menu on a real mouse event; element.click() does nothing.
+    box = page.locator('[data-i69pk="1"]').first
+    target = box.locator('[role="combobox"], input, [data-baseweb="select"]').first
+    try:
+        (target if target.count() else box).click(timeout=6000)
+    except Exception as exc:
+        log(f"    set_practice_key: could not open the control ({exc})")
+        return False
+    page.wait_for_timeout(600)
+    want = re.compile(rf"^{re.escape(token)}(\s+(major|minor))?$", re.I)
+    try:
+        page.keyboard.press("Control+A")
+        page.keyboard.press("Backspace")
+        page.keyboard.type(str(token), delay=35)
+        page.wait_for_timeout(600)
+    except Exception:
+        pass
+    for _ in range(8):
+        opt = page.locator('[role="option"]').filter(has_text=want)
+        if not opt.count():
+            opt = page.locator('[role="option"]').filter(
+                has_text=re.compile(rf"^{re.escape(token)}\b", re.I))
+        if opt.count():
+            try:
+                opt.first.scroll_into_view_if_needed()
+                opt.first.click(timeout=5000)
+                settle(page, 6)
+                after = pk_val(page)
+                log(f"    set_practice_key {token}: {before!r} -> {after!r}")
+                return key_token(after) == key_token(token)
+            except Exception:
+                pass
+        page.keyboard.press("PageDown")
+        page.wait_for_timeout(150)
+    try:
+        page.keyboard.press("Escape")
+    except Exception:
+        pass
+    after = pk_val(page)
+    log(f"    set_practice_key {token}: FAILED {before!r} -> {after!r}")
+    return key_token(after) == key_token(token)
+
+
+def audible_key(page: Page) -> str:
+    """The key of the audio the app is actually holding.
+
+    Read from the play path's own trace rather than from a label: ``audio_key`` on
+    an ``audio_ready_check`` row, and the signature's key on the newest row that
+    carries one.
+    """
+    for row in reversed(_jsonl("_play_trace.jsonl")):
+        key = str(row.get("audio_key") or "").strip()
+        if key:
+            return key
+    return ""
+
+
 def wait_for_synth(page: Page, want_key: str, before: int, seconds: float = 150.0) -> str:
     """Wait for a finished build whose own signature carries ``want_key``."""
     import time as _time
@@ -327,14 +415,20 @@ def wait_for_synth(page: Page, want_key: str, before: int, seconds: float = 150.
     deadline = _time.time() + seconds
     seen = ""
     while _time.time() < deadline:
-        rows = regen_rows()[before:]
-        for row in rows:
+        for row in regen_rows()[before:]:
             if row.get("event") != "synth_done":
                 continue
             key = str(row.get("sig") or "").split("|", 1)[0].strip()
             seen = key or seen
             if key_token(key) == key_token(want_key):
                 return key
+        # The app answers Play with the wav it already holds when the signature
+        # has not changed ("needs_regen": false). That is the right behaviour and
+        # it synthesizes nothing, so the audio the app holds counts as built.
+        held = audible_key(page)
+        if key_token(held) == key_token(want_key):
+            return held
+        seen = seen or held
         settle(page, 3)
     return seen
 
@@ -482,7 +576,7 @@ def gate_before_change(page: Page) -> dict[str, str]:
 def gate_change_key(page: Page) -> bool:
     """The explicit gesture: move the sidebar Practice Key to D."""
     before_trace = len(trace_rows())
-    ok = set_songs_practice_key(page, "D")
+    ok = set_practice_key(page, "D")
     settle(page, 8)
     click_nav(page, "Songs")
     settle(page, 5)
@@ -602,7 +696,7 @@ def gate_repeated_changes(page: Page) -> bool:
     """Several explicit changes in a row; the entry follows each one."""
     seen = []
     for token in ("E", "Bb", "D"):
-        set_songs_practice_key(page, token)
+        set_practice_key(page, token)
         settle(page, 7)
         pk = key_token(pk_val(page))
         rows = [r for r in trace_rows() if r.get("stage") == "retuned"]
@@ -634,7 +728,7 @@ def gate_navigate_and_reload(page: Page) -> bool:
 
 
 def gate_change_back(page: Page) -> bool:
-    set_songs_practice_key(page, "Bb")
+    set_practice_key(page, "Bb")
     settle(page, 8)
     click_nav(page, "Songs")
     settle(page, 5)
@@ -660,7 +754,7 @@ def gate_second_song(page: Page) -> bool:
     mark("G25 Kiss Me keeps its own original key Eb",
          "Original Key: Eb" in body or "Original Key: E♭" in body,
          "original key Eb")
-    set_songs_practice_key(page, "G")
+    set_practice_key(page, "G")
     settle(page, 6)
     pk = pk_val(page)
     body = shot(page, "10-kiss-me-in-g")
