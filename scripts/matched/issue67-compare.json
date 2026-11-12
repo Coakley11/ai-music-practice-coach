@@ -1,0 +1,14 @@
+{
+ "baseline_summary": "34 failed, 2674 passed, 112 warnings, 1220 subtests passed in 989.47s (0:16:29)",
+ "candidate_summary": "34 failed, 2674 passed, 112 warnings, 1220 subtests passed in 844.62s (0:14:04)",
+ "baseline_ids": 2700,
+ "candidate_ids": 2700,
+ "only_baseline": [
+  "tests/test_song_card_guidance.py::TestHarmonyMatchesTheChart::test_simple_diatonic_song_is_described_simply"
+ ],
+ "only_candidate": [
+  "tests/test_song_card_guidance.py::TestHarmonyMatchesTheChart::test_simple_diatonic_song_is_described_by_its_progression"
+ ],
+ "changed": {},
+ "regressions": []
+}
