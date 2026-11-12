@@ -101,19 +101,30 @@ def _titles_agree(row: dict[str, Any], label: str, expected: str) -> bool:
 
 
 def _picker_catalog(session: Any) -> dict[str, Any]:
+    """The picker catalog, read without writing anything into the session.
+
+    ``ensure_song_picker_catalog`` stamps ``_reconcile_song_picker_catalog`` and
+    ``_catalog_backup_picker`` onto the session. Hydrating a catalog as a side
+    effect of *reading* one key changes what every other key resolver can see --
+    it moved a staged Mission session's resolved concert key from C to the song's
+    own F. ``load_song_catalog`` is module-cached and touches no session.
+    """
     try:
-        from songs.music_source import (
-            _catalog_picker_from_session,
-            ensure_song_picker_catalog,
-        )
+        from songs.music_source import _catalog_picker_from_session
     except ImportError:
-        return {}
+        _catalog_picker_from_session = None  # type: ignore[assignment]
+    if _catalog_picker_from_session is not None:
+        try:
+            cached = _catalog_picker_from_session(session)
+            if isinstance(cached, dict) and cached:
+                return cached
+        except Exception:
+            pass
     try:
-        cached = _catalog_picker_from_session(session)
-        if isinstance(cached, dict) and cached:
-            return cached
-        resolved = ensure_song_picker_catalog(session)
-        return resolved if isinstance(resolved, dict) else {}
+        from song_catalog.catalog import load_song_catalog
+
+        _library, picker, _genres, _records = load_song_catalog()
+        return picker if isinstance(picker, dict) else {}
     except Exception:
         return {}
 

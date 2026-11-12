@@ -3955,6 +3955,15 @@ def owned_backing_chart_identity(
     if not owner_original and branch_original:
         owner_original = branch_original
         owner_original_reason = f"{owner_original_reason}|branch_saved_home"
+    if not owner_original and show_orig_always:
+        # The musician's own Custom material. There is no external song whose
+        # Original Key could differ, and a progression that is simply not in
+        # session has no other key to offer: a saved Blues in F minor whose blob
+        # could not be read must keep reading F minor, not go blank and not
+        # become a generic C. Catalog and Composition owners -- songs with
+        # authoritative metadata elsewhere -- stay strict: unknown is unknown.
+        owner_original = working_key
+        owner_original_reason = f"{owner_original_reason}|own_material_working_key"
 
     song_data = {
         "title": song_name,
