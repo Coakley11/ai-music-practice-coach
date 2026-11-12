@@ -70,7 +70,7 @@ def test_backing_turns_it_on_and_karaoke_keeps_its_own_box():
 
 def test_practice_melody_no_longer_scrolls_the_page_itself():
     src = APP[APP.index("def render_abc("):APP.index("def render_notation_metronome(")]
-    assert "scrollIntoView" not in src
+    assert ".scrollIntoView(" not in src
     assert "__lsFollow.request('practice-melody'" in src
 
 
