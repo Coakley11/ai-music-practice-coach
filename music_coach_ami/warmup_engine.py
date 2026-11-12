@@ -25,7 +25,7 @@ from music_coach_ami import scale_pattern_harmony as sph
 
 LEVELS = ("Beginner", "Intermediate", "Advanced")
 FAMILIES = ("long_tones", "scale", "intervals", "articulation")
-FAMILY_LABEL = {"long_tones": "Long tones", "scale": "Scale", "intervals": "Intervals", "articulation": "Articulation", "guide_tones": "Guide tones"}
+FAMILY_LABEL = {"long_tones": "Long tones", "scale": "Scale", "intervals": "Intervals", "articulation": "Articulation", "guide_tones": "Guide tones", "chord_tones": "Chord tones", "approach_notes": "Approach notes"}
 INTERVALS = {"seconds": 1, "thirds": 2, "fourths": 3, "fifths": 4, "sixths": 5, "sevenths": 6, "octaves": 7}   # scale steps
 INTERVAL_SINGULAR = {"seconds": "second", "thirds": "third", "fourths": "fourth", "fifths": "fifth", "sixths": "sixth", "sevenths": "seventh",
                      "octaves": "octave"}
@@ -543,11 +543,11 @@ def render(player: Player, built: Built, tonic: str, tonality: str, *, title: st
     return abc, diag
 
 
-def verify(player: Player, level: str, built: Built, tonic: str, tonality: str, diag: dict[str, Any]) -> list[dict[str, Any]]:
+def verify(player: Player, level: str, built: Built, tonic: str, tonality: str, diag: dict[str, Any], *, allowed_pcs: set[int] | None = None) -> list[dict[str, Any]]:
     """The checks every exercise passes before it is shown. Raises ``WarmupUnavailable`` listing any that fail."""
     pitched = [n for n in built.notes if not n.rest]
     lo, hi = (built.meta.get("window") or list(player.window(level)))[:2]
-    pcs = {sph.pc_of(x) for x in scale_spelling(tonic, tonality)}
+    pcs = allowed_pcs if allowed_pcs is not None else {sph.pc_of(x) for x in scale_spelling(tonic, tonality)}
     midi = [n.midi for n in pitched]
     checks = [
         {"name": "bars_add_up", "ok": total_beats(built.notes) % BEATS_PER_BAR == 0, "detail": f"{total_beats(built.notes) / BEATS_PER_BAR} bars of 4"},

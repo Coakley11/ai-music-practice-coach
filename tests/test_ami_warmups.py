@@ -802,7 +802,9 @@ class TestIsolationAndTheRestOfTheApp:
         resp = ask(s, "Warm me up for soloing over Blue Bossa.", active_song={"title": "Blue Bossa", "key": "Cm", "default_key": "Cm"},
                    chart_sections={"Section A": ["Cm7", "Fm7"]})
         assert resp.diagnostics["warmup_song_aware"] is True and "Built from" in resp.composed_markdown()
-        for r in plan_of(s)["items"]:
+        songs = [r for r in plan_of(s)["items"] if r["family"] in ("guide_tones", "chord_tones", "approach_notes")]
+        assert songs
+        for r in songs:
             assert '"Cm7"' in r["abc"] and '"Fm7"' in r["abc"], "the chord symbols of the chart are printed over the staff"
 
     def test_the_duplicate_send_guard_sees_each_warmup_command_as_new_work(self):
