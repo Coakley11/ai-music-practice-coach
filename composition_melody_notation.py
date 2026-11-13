@@ -8,6 +8,7 @@ aligned by measure, optional lyrics beneath — derived from canonical events
 from __future__ import annotations
 
 import html
+import re
 from typing import Any
 
 from music_theory import (
@@ -530,10 +531,34 @@ def build_section_score_model(
     }
 
 
+_ABC_TITLE_RE = re.compile(r"^T:(.*)$", re.M)
+
+
+def split_abc_title(abc_text: str) -> tuple[str, str]:
+    """(title, abc without its T: lines).
+
+    abcjs draws ``T:`` as one unwrapped line of SVG text centred on the staff, so a long
+    take name such as "Rhythmic take - Off-beat accent" is cut at the staff edge on a phone.
+    The title is shown as wrapping HTML above the score instead; the staff carries none.
+    """
+    text = str(abc_text or "")
+    titles = [t.strip() for t in _ABC_TITLE_RE.findall(text) if t.strip()]
+    return (titles[0] if titles else ""), _ABC_TITLE_RE.sub("", text)
+
+
 def render_abc_html(abc_text: str, *, height: int = 280, add_classes: bool = True) -> str:
-    """HTML document for Streamlit components.html abcjs render."""
+    """HTML document for Streamlit components.html abcjs render.
+
+    Narrow viewports: the staff is sized from the real viewport (never wider than it), the
+    title wraps in HTML, and anything still wider than the frame scrolls inside ``#paper``
+    (overflow-x: auto) instead of being cropped.
+    """
+    title, abc_body = split_abc_title(abc_text)
+    title_html = (
+        f'<div id="score-title">{html.escape(title)}</div>' if title else ""
+    )
     escaped = (
-        str(abc_text or "")
+        abc_body
         .replace("\\", "\\\\")
         .replace("`", "\\`")
         .replace("${", "\\${")
@@ -542,9 +567,13 @@ def render_abc_html(abc_text: str, *, height: int = 280, add_classes: bool = Tru
     return f"""
     <html>
     <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
       html, body {{ margin: 0; padding: 0; background: #fff; overflow-x: auto; overflow-y: auto; }}
       body {{ padding: 6px 2px 14px 2px; max-width: 100%; box-sizing: border-box; }}
+      #score-title {{ font: 700 15px/1.3 system-ui, sans-serif; color: #0f172a; padding: 0 6px 4px;
+        min-width: 0; max-width: 100%; box-sizing: border-box; white-space: normal;
+        overflow-wrap: anywhere; word-break: break-word; }}
       #paper {{ min-height: 120px; max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }}
       #paper svg {{ max-width: 100%; height: auto; }}
       #paper svg .abcjs-note.cplay-active,
@@ -555,13 +584,18 @@ def render_abc_html(abc_text: str, *, height: int = 280, add_classes: bool = Tru
     <script src="https://cdn.jsdelivr.net/npm/abcjs@6.4.4/dist/abcjs-basic-min.js"></script>
     </head>
     <body>
+    {title_html}
     <div id="paper"></div>
     <script>
     (function () {{
-      var w = Math.max(240, Math.min(520, (window.innerWidth || 360) - 16));
+      // staff + both side paddings + body gutter must fit the viewport (375/390 px phones).
+      var pad = 10;
+      var w = Math.max(280, Math.min(520, (window.innerWidth || 360) - 2 * pad - 12));
       ABCJS.renderAbc("paper", `{escaped}`, {{
         responsive: "resize",
         staffwidth: w,
+        paddingleft: pad,
+        paddingright: pad,
         paddingtop: 6,
         paddingbottom: 14,
         wrap: {{ minSpacing: 1.8, maxSpacing: 2.7, preferredMeasuresPerLine: 4 }},

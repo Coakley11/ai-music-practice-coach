@@ -1005,6 +1005,11 @@ def melody_text(ctx: CardContext) -> str:
     caveat = "generated for this song's chords, not the original melody"
     if not f.distinct:
         return f"Once the song has a chord chart, {where} can generate practice phrases for it."
+    composed = list((ctx.record.get("extensions") or {}).get("composition_melody_sections") or [])
+    if composed:
+        return (f"Your composed melody ({_join([section_phrase(_section_base(n)) for n in composed[:3]])}) "
+                "is saved with this chart — play or sing it over these chords; it is your own melody, "
+                "not a generated one.")
     form = f.form
     repeat = ""
     if re.match(r"^A+B", form or ""):

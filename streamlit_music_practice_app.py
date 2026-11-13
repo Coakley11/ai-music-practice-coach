@@ -12936,14 +12936,9 @@ def _render_composition_active_song_hub(*, wrap_section: bool) -> None:
         _emit_composition_hub_ready_marker()
         _render_composition_song_library_selector()
         if isinstance(doc, dict):
-            rec = {
-                "title": composition_title(doc),
-                "artist": "Composition",
-                "key": composition_home_key(doc),
-                "genre": "Auto",
-                "source": "Composition",
-                "pick_key": f"composition::{doc.get('id')}",
-            }
+            from composition_songs_bridge import composition_song_card_record
+
+            rec = composition_song_card_record(doc)
             _render_active_song_card(rec, show_nav_actions=False, edit_mode="composition")
 
             def _on_composition_hub_backing() -> None:

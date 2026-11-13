@@ -471,6 +471,31 @@ def composition_playback_sections(
     return dict((transpose_sections_fn or _transpose_sections)(song_data, target) or {})
 
 
+def composition_song_card_record(doc: dict[str, Any]) -> dict[str, Any]:
+    """Songs-page card record for a Composition, carrying its own chord chart.
+
+    The composition owns the authoritative chart; this projects it (concert
+    chords in the composition's home key) into the ``sections`` shape the
+    card's harmony analysis reads, so the card never claims "no chart" for a
+    saved composition that Backing is playing. No second chart is stored.
+    """
+    from custom_progression_lab import sections_to_chord_lists
+
+    sections = sections_to_chord_lists(composition_original_sections(doc))
+    sections = {k: v for k, v in sections.items() if v}
+    melody = composition_section_melody_events(doc)
+    return {
+        "title": composition_title(doc),
+        "artist": "Composition",
+        "key": composition_home_key(doc),
+        "genre": "Auto",
+        "source": "Composition",
+        "pick_key": composition_pick_key_for(doc),
+        "sections": sections,
+        "extensions": {"composition_melody_sections": list(melody.keys())},
+    }
+
+
 def composition_as_chart_active(doc: dict[str, Any]) -> dict[str, Any]:
     """CPL-shaped projection for chart/backing — identity stays Composition."""
     pg = playback_globals(doc)
