@@ -127,11 +127,12 @@ class TestNavButtonKeys(unittest.TestCase):
 
     def test_library_item_shows_active_song_badge(self) -> None:
         src = Path("composition_studio_page.py").read_text(encoding="utf-8")
-        lib_block_start = src.index("My compositions")
-        lib_block_end = src.index("Start new song")
-        block = src[lib_block_start:lib_block_end]
+        # Library rows moved to composition_library_ui/composition_library (P9): the
+        # statuses are now independent "Now Editing" and "Active Song" badges.
+        self.assertIn("render_library_rows", src)
+        block = Path("composition_library.py").read_text(encoding="utf-8")
         self.assertIn("Active Song", block)
-        self.assertIn("Currently editing", block)
+        self.assertIn("Now Editing", block)
 
 
 class TestActivationPipeline(unittest.TestCase):

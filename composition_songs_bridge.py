@@ -1217,6 +1217,12 @@ def apply_pending_composer_new_song(session_state: dict[str, Any]) -> bool:
         return False
     from composition_session_state import COMPOSER_ACTIVE_KEY, COMPOSER_NEEDS_SEED_KEY
 
+    try:
+        from composition_library import preserve_active_document
+
+        preserve_active_document(session_state)  # the previous draft must stay in the library
+    except Exception:
+        pass
     session_state.pop(COMPOSER_ACTIVE_KEY, None)
     session_state[COMPOSER_NEEDS_SEED_KEY] = True
     try:

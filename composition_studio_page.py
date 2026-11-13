@@ -1264,12 +1264,14 @@ def _library_save_feedback(
     disk_ok: bool,
     cloud_ok: bool,
     cloud_required: bool,
+    failure_code: str = "",
 ) -> tuple[str, str]:
     """Arguments are verified readbacks, never raw write-return flags."""
     from composition_save_verification import save_feedback
 
     return save_feedback({"cloud_verified": bool(saved and force_ok and cloud_ok),
-                          "disk_verified": bool(saved and disk_ok)})
+                          "disk_verified": bool(saved and disk_ok),
+                          "failure_code": failure_code})
 
 
 def _render_library_sidebar(session_state: dict) -> None:
@@ -1307,6 +1309,7 @@ def _render_library_sidebar(session_state: dict) -> None:
                     saved=bool(saved), success_message=library_save_success_message(session_state),
                     force_ok=bool(result.get("force_ok")), disk_ok=disk_ok,
                     cloud_ok=cloud_ok, cloud_required=bool(result.get("cloud_required", True)),
+                    failure_code=str(result.get("failure_code") or "") if current else "",
                 )
                 if saved and cloud_ok:
                     try:
@@ -1320,40 +1323,18 @@ def _render_library_sidebar(session_state: dict) -> None:
                     st.warning(feedback)
                 else:
                     st.error(feedback)
+        from composition_library_ui import render_save_recovery
+
+        render_save_recovery(st, session_state)
         with st.expander("📁 My compositions"):
-            active_doc = get_active_document(session_state)
-            active_id = str((active_doc or {}).get("id") or "")
-            global_active_comp_id = _global_active_composition_id(session_state)
-            for row in list_library_documents(session_state):
-                rid = str(row.get("id") or "")
-                label = str(row.get("title") or "Untitled")
-                is_active = bool(rid) and rid == active_id
-                is_global_active = bool(rid) and rid == global_active_comp_id
-                c1, c2 = st.columns([3, 1])
-                with c1:
-                    if is_active:
-                        badge = "Active Song" if is_global_active else "Currently editing"
-                        st.markdown(
-                            f'<div class="composer-library-item is-active" data-composer-active="1"'
-                            f'{" data-composer-active-song=\"1\"" if is_global_active else ""}>'
-                            f"<h4>{html.escape(label)}"
-                            f'<span class="composer-active-badge">{badge}</span></h4>'
-                            f"</div>",
-                            unsafe_allow_html=True,
-                        )
-                    if st.button(
-                        label if not is_active else f"{label} · Active",
-                        key=f"composer_lib_open_{rid}",
-                        use_container_width=True,
-                        type="primary" if is_active else "secondary",
-                    ):
-                        load_library_document(session_state, rid)
-                        st.rerun()
-                with c2:
-                    if st.button("🗑", key=f"composer_lib_del_{rid}"):
-                        delete_library_document(session_state, rid)
-                        st.rerun()
+            from composition_library_ui import render_library_rows
+
+            if render_library_rows(st, session_state, _global_active_composition_id(session_state)):
+                st.rerun()
         if st.button("➕ Start new song", key="composer_new_song", use_container_width=True):
+            from composition_library import preserve_active_document
+
+            preserve_active_document(session_state)  # never drop the draft being edited
             from composition_songs_bridge import PENDING_COMPOSER_NEW_SONG_KEY, PENDING_COMPOSER_STUDIO_EDIT_ID_KEY
 
             session_state.pop("composer_active_document", None)
