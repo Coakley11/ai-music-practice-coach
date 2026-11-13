@@ -1816,6 +1816,16 @@ def _attach_synced_score_preview(
         if chord_syms
         else []
     )
+    chord_romans: list[str] | None = None
+    if chord_syms and not events:
+        # Chords-only preview: the player's chord chips ARE the card's chord row, so
+        # they carry the same Roman numerals the static card shows.
+        try:
+            from roman_numeral_analysis import analyze_progression as _analyze_prog_chips
+
+            chord_romans = _analyze_prog_chips(list(chord_syms), key)
+        except Exception:
+            chord_romans = None
     mount_synced_score_playback(
         st,
         wav_bytes=bytes(wav),
@@ -1830,8 +1840,24 @@ def _attach_synced_score_preview(
         ),
         dom_id=dom_id or slot.replace(":", "_")[:40],
         height=height,
+        chord_roman_labels=chord_romans,
     )
     return True
+
+
+def _chord_row_lives_in_player(session_state: dict, slot: str, *, has_melody: bool) -> bool:
+    """True when this slot's chords-only preview player is mounted.
+
+    The player then renders the chord row itself (highlightable chips), so the card
+    must not also print its static chord line - that was the duplicated row.
+    """
+    from composition_preview import composer_preview_slot
+
+    return (
+        not has_melody
+        and composer_preview_slot(session_state) == slot
+        and bool(session_state.get(COMPOSER_PREVIEW_WAV_KEY))
+    )
 
 
 def _section_has_accepted_melody(section: dict[str, Any] | None) -> bool:
@@ -6178,11 +6204,20 @@ def _render_active_progression_card(
         if _roman_line
         else ""
     )
+    if _chord_row_lives_in_player(
+        session_state,
+        f"chords:{section_id}:active",
+        has_melody=bool(section_melody_events(section)),
+    ):
+        display_html = _roman_html = ""  # the player's chips are the chord row
+    _chords_div = (
+        f'<div class="composer-suggestion-chords">{display_html}</div>' if display_html else ""
+    )
     st.markdown(
         f"""
 <div class="composer-suggestion-card is-active" data-composer-active="1">
   <h4>{html.escape(title)}<span class="composer-active-badge">Active</span></h4>
-  <div class="composer-suggestion-chords">{display_html}</div>
+  {_chords_div}
   {_roman_html}
   <p class="composer-suggestion-why">{html.escape(why)}</p>
 </div>
@@ -6252,6 +6287,8 @@ def _render_active_progression_controls(
                 include_melody=bool(mel_events),
             ):
                 st.warning("Could not play the active progression.")
+            elif not mel_events:
+                st.rerun()  # card re-renders without its static chord row (the player owns it)
         if mel_events:
             _attach_synced_score_preview(
                 session_state,
@@ -6320,11 +6357,20 @@ def _render_suggestion_card(
         badge = '<span class="composer-active-badge">Active</span>'
         card_class = "composer-suggestion-card is-active"
         subtitle = " · previewing" if is_active_preview else ""
+        if _chord_row_lives_in_player(
+            session_state,
+            f"chords:{section_id}:active",
+            has_melody=bool(section_melody_events(section)),
+        ):
+            display_html = _roman_html = ""  # the player's chips are the chord row
+        _chords_div = (
+            f'<div class="composer-suggestion-chords">{display_html}</div>' if display_html else ""
+        )
         st.markdown(
             f"""
 <div class="{card_class}" data-composer-active="1">
   <h4>{html.escape(name)}{badge}{html.escape(subtitle)}</h4>
-  <div class="composer-suggestion-chords">{display_html}</div>
+  {_chords_div}
   {_roman_html}
   <p class="composer-suggestion-why">{html.escape(why)}</p>
 </div>
@@ -6347,21 +6393,30 @@ def _render_suggestion_card(
         if _roman_line
         else ""
     )
-    st.markdown(
-        f"""
+    card_slot = f"chords:{section_id}:{sid}"
+    has_mel = bool(section and section_melody_events(section))
+    _roman_static = _roman_html
+
+    def _candidate_card_html() -> str:
+        # Chords-only preview: the player below renders THIS card's chord row as
+        # highlightable chips (symbol + Roman numeral), so print it only once.
+        in_player = _chord_row_lives_in_player(session_state, card_slot, has_melody=has_mel)
+        chords_block = (
+            "" if in_player else f'<div class="composer-suggestion-chords">{html.escape(line)}</div>'
+        )
+        return f"""
 <div class="{card_class}">
-  <h4>{html.escape(name)}{" · previewing" if is_active_preview else ""}</h4>
-  <div class="composer-suggestion-chords">{html.escape(line)}</div>
-  {_roman_html}
+  <h4>{html.escape(name)}{" · previewing" if in_player or is_active_preview else ""}</h4>
+  {chords_block}
+  {"" if in_player else _roman_static}
   <p class="composer-suggestion-why">{html.escape(why)}</p>
 </div>
-        """,
-        unsafe_allow_html=True,
-    )
+        """
+
+    _card_slot_ph = st.empty()
+    _card_slot_ph.markdown(_candidate_card_html(), unsafe_allow_html=True)
     p1, p2 = st.columns(2)
     with p1:
-        card_slot = f"chords:{section_id}:{sid}"
-        has_mel = bool(section and section_melody_events(section))
         preview_btn = "▶ Preview with melody" if has_mel else "▶ Preview"
         if st.button(preview_btn, key=f"{prefix}_preview_{sid}", use_container_width=True):
             if not _play_chord_idea(
@@ -6378,27 +6433,9 @@ def _render_suggestion_card(
                 include_melody=has_mel,
             ):
                 st.warning("Could not generate preview for that progression.")
-        mel_ev = list(section_melody_events(section) or []) if has_mel else None
-        if has_mel and mel_ev:
-            _attach_synced_score_preview(
-                session_state,
-                doc,
-                slot=card_slot,
-                events=mel_ev,
-                chord_syms=chord_syms,
-                caption="Proposed harmony under your active melody — follow the highlighted note",
-                dom_id=f"sug_{sid}"[:40],
-            )
-        else:
-            _attach_synced_score_preview(
-                session_state,
-                doc,
-                slot=card_slot,
-                events=None,
-                chord_syms=chord_syms,
-                caption="Follow the highlighted chord",
-                dom_id=f"sug_ch_{sid}"[:40],
-            )
+            else:
+                # Same click-run: drop the static chord row now that the player owns it.
+                _card_slot_ph.markdown(_candidate_card_html(), unsafe_allow_html=True)
     with p2:
         if st.button("Use this", key=f"{prefix}_use_{sid}", type="primary", use_container_width=True):
             # When melody already defines section length, accept the full proposed
@@ -6426,6 +6463,42 @@ def _render_suggestion_card(
             invalidate_composer_preview(session_state)
             _save_doc(session_state, doc)
             st.rerun()
+    # Full-width synced player (chord chips / score) directly under the card.
+    _mount_candidate_preview(
+        session_state, doc, section, slot=card_slot, chord_syms=chord_syms, sid=sid,
+    )
+
+
+def _mount_candidate_preview(
+    session_state: dict,
+    doc: dict[str, Any],
+    section: dict[str, Any] | None,
+    *,
+    slot: str,
+    chord_syms: list[str],
+    sid: str,
+) -> bool:
+    """Mount the synced player for a suggestion card (chips when chords-only)."""
+    mel_ev = list(section_melody_events(section) or []) if section else []
+    if mel_ev:
+        return _attach_synced_score_preview(
+            session_state,
+            doc,
+            slot=slot,
+            events=mel_ev,
+            chord_syms=chord_syms,
+            caption="Proposed harmony under your active melody — follow the highlighted note",
+            dom_id=f"sug_{sid}"[:40],
+        )
+    return _attach_synced_score_preview(
+        session_state,
+        doc,
+        slot=slot,
+        events=None,
+        chord_syms=chord_syms,
+        caption="Follow the highlighted chord",
+        dom_id=f"sug_ch_{sid}"[:40],
+    )
 
 
 def _render_chord_refinement_panel(
@@ -6484,22 +6557,37 @@ def _render_chord_refinement_panel(
             f'<span style="opacity:0.6">{html.escape(_src_roman)}</span>'
             f' → <strong>{html.escape(_prop_roman)}</strong></div>'
         )
-    st.markdown(
-        f"""
-<div class="composer-suggestion-card">
-  <h4>{html.escape(str(proposal.get('name') or 'Proposed change'))}</h4>
-  <div class="composer-suggestion-chords">
-    <span style="opacity:0.65">{source_html}</span>
-    <br>→ <strong>{proposed_html}</strong>
-  </div>
-  {_refine_roman_html}
-  <p class="composer-suggestion-why">{html.escape(str(proposal.get('why') or ''))}</p>
-</div>
-        """,
-        unsafe_allow_html=True,
-    )
     chord_syms = expand_entries_to_chords(proposed_entries)
     refine_slot = f"chords:{section_id}:refine"
+    _refine_has_mel = bool(section_melody_events(section_by_id(doc, section_id)))
+
+    def _refine_card_html() -> str:
+        # Chords-only preview: the player renders the proposed chords as highlightable
+        # chips, so the card keeps only the current line and drops the proposed row.
+        in_player = _chord_row_lives_in_player(session_state, refine_slot, has_melody=_refine_has_mel)
+        if in_player:
+            chords_inner = (
+                f'<span style="opacity:0.65">{source_html}</span>'
+                '<br>→ <em>proposed progression: see the player below</em>'
+            )
+            roman_inner = ""
+        else:
+            chords_inner = (
+                f'<span style="opacity:0.65">{source_html}</span>'
+                f'<br>→ <strong>{proposed_html}</strong>'
+            )
+            roman_inner = _refine_roman_html
+        return f"""
+<div class="composer-suggestion-card">
+  <h4>{html.escape(str(proposal.get('name') or 'Proposed change'))}</h4>
+  <div class="composer-suggestion-chords">{chords_inner}</div>
+  {roman_inner}
+  <p class="composer-suggestion-why">{html.escape(str(proposal.get('why') or ''))}</p>
+</div>
+        """
+
+    _refine_card_ph = st.empty()
+    _refine_card_ph.markdown(_refine_card_html(), unsafe_allow_html=True)
     a1, a2, a3, a4 = st.columns(4)
     with a1:
         mel_evs = list(section_melody_events(section_by_id(doc, section_id)) or [])
@@ -6519,26 +6607,8 @@ def _render_chord_refinement_panel(
                 include_melody=bool(mel_evs),
             ):
                 st.warning("Could not preview that proposal.")
-        if mel_evs:
-            _attach_synced_score_preview(
-                session_state,
-                doc,
-                slot=refine_slot,
-                events=mel_evs,
-                chord_syms=chord_syms,
-                caption="Follow the highlighted melody note",
-                dom_id=f"chref_{section_id[:8]}",
-            )
-        else:
-            _attach_synced_score_preview(
-                session_state,
-                doc,
-                slot=refine_slot,
-                events=None,
-                chord_syms=chord_syms,
-                caption="Follow the highlighted chord",
-                dom_id=f"chref_{section_id[:8]}",
-            )
+            else:
+                _refine_card_ph.markdown(_refine_card_html(), unsafe_allow_html=True)
     with a2:
         if st.button("Use this", key=f"composer_refine_use_{section_id}", type="primary", use_container_width=True):
             accept_full_progression(
@@ -6570,6 +6640,28 @@ def _render_chord_refinement_panel(
         if st.button("👋 Dismiss", key=f"composer_refine_dismiss_{section_id}", use_container_width=True):
             session_state.pop(f"composer_refine_proposal_{section_id}", None)
             st.rerun()
+    # Full-width synced player directly under the card (chord chips when no melody).
+    _mount_refine_preview(session_state, doc, section_id, refine_slot, chord_syms)
+
+
+def _mount_refine_preview(
+    session_state: dict,
+    doc: dict[str, Any],
+    section_id: str,
+    slot: str,
+    chord_syms: list[str],
+) -> bool:
+    """Synced player for the chord-refinement proposal (shares the suggestion helpers)."""
+    mel_evs = list(section_melody_events(section_by_id(doc, section_id)) or [])
+    return _attach_synced_score_preview(
+        session_state,
+        doc,
+        slot=slot,
+        events=mel_evs or None,
+        chord_syms=chord_syms,
+        caption="Follow the highlighted melody note" if mel_evs else "Follow the highlighted chord",
+        dom_id=f"chref_{section_id[:8]}",
+    )
 
 
 def _render_transport(session_state: dict, doc: dict[str, Any]) -> None:
