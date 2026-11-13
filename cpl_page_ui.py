@@ -1303,6 +1303,17 @@ def render_custom_progression_lab_page() -> None:
             unsafe_allow_html=True,
         )
 
+        from custom_chord_suggest_ui import render_next_chord_suggestion
+
+        render_next_chord_suggestion(
+            st,
+            active=active,
+            practice_key=practice_key,
+            edit_section=edit_section,
+            style=style,
+            pending_chord=pending_chord,
+        )
+
         st.markdown("**1. Pick a chord**")
         from responsive_layout import iter_ui_rows
         from roman_numeral_analysis import chord_to_roman as _c2r
