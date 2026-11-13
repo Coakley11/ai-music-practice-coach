@@ -5,46 +5,46 @@ picked Let It Be dropdown=True landed=True sidebar_song='SONG\n\nSONG\nLet It Be
 
 == count-in 'None' ==
 [PASS] count-in set to None  reads 'None'
-  sources=4 clicks=0 margin=+120.0 ms instants=[1.032]
+  sources=4 clicks=0 margin=+120.0 ms instants=[0.57067]
 [PASS] count-in None: 0 click(s) scheduled  got 0
 [PASS] count-in None: no click behind the clock  0 late
 [PASS] count-in None: nothing scheduled in the past  worst -120.0 ms late
-[PASS] count-in None: every layer on one instant  instants [1.032]
+[PASS] count-in None: every layer on one instant  instants [0.57067]
 
 == count-in '1 bar' ==
 [PASS] count-in set to 1 bar  reads '1 bar'
-  sources=4 clicks=4 margin=+2520.0 ms instants=[3.77067]
+  sources=4 clicks=4 margin=+2520.0 ms instants=[3.12]
 [PASS] count-in 1 bar: 4 click(s) scheduled  got 4
 [PASS] count-in 1 bar: no click behind the clock  0 late
 [PASS] count-in 1 bar: nothing scheduled in the past  worst -2520.0 ms late
-[PASS] count-in 1 bar: every layer on one instant  instants [3.77067]
+[PASS] count-in 1 bar: every layer on one instant  instants [3.12]
   bar 1 is 2.4000s after the first click (a 1 bar at 100 BPM is 2.4000s)
 [PASS] count-in 1 bar: bar 1 is exactly the count-in's length later  2.4000s vs 2.4000s
 
 == count-in '2 bars' ==
 [PASS] count-in set to 2 bars  reads '2 bars'
-  sources=4 clicks=8 margin=+4920.0 ms instants=[6.06133]
+  sources=4 clicks=8 margin=+4912.0 ms instants=[5.472]
 [PASS] count-in 2 bars: 8 click(s) scheduled  got 8
 [PASS] count-in 2 bars: no click behind the clock  0 late
-[PASS] count-in 2 bars: nothing scheduled in the past  worst -4920.0 ms late
-[PASS] count-in 2 bars: every layer on one instant  instants [6.06133]
+[PASS] count-in 2 bars: nothing scheduled in the past  worst -4912.0 ms late
+[PASS] count-in 2 bars: every layer on one instant  instants [5.472]
   bar 1 is 4.8000s after the first click (a 2 bars at 100 BPM is 4.8000s)
 [PASS] count-in 2 bars: bar 1 is exactly the count-in's length later  4.8000s vs 4.8000s
 
 == Stop returns the transport to the start ==
-  while playing: {"time": "3.4s", "bar": "2", "beat": "2", "cursor": "0.628968%", "label": "Counting you in \u2014 everything starts together on beat 1.", "clock": {"t": 8.181333333333335, "playing": true, "at": 1794583847405}}
+  while playing: {"time": "3.4s", "bar": "2", "beat": "2", "cursor": "0.639881%", "label": "Counting you in \u2014 everything starts together on beat 1.", "clock": {"t": 8.24, "playing": true, "at": 1794585658366}}
 [PASS] the position readout advances while playing  time '3.4s'
-  after Stop:    {"time": "0.0s", "bar": "1", "beat": "1", "cursor": "0%", "label": "Stopped.", "clock": {"t": 0, "playing": false, "at": 1794583847447}}
+  after Stop:    {"time": "0.0s", "bar": "1", "beat": "1", "cursor": "0%", "label": "Stopped.", "clock": {"t": 0, "playing": false, "at": 1794585658409}}
 [PASS] Stop resets the position readout to zero  time '0.0s'
 [PASS] Stop resets the progress cursor  cursor '0%'
 [PASS] Stop resets the bar and beat readout too  bar '1' beat '1'
 [PASS] Stop says so in the transport label  label 'Stopped.'
-[PASS] Stop tells the layer chord strips the transport is not playing  clock {'t': 0, 'playing': False, 'at': 1794583847447}
+[PASS] Stop tells the layer chord strips the transport is not playing  clock {'t': 0, 'playing': False, 'at': 1794585658409}
 
 == Play, Play again: no stale audio from the first run ==
-  contexts=2 sources=8 instants=[6.032, 6.41067]
+  contexts=2 sources=8 instants=[5.84, 5.90133]
 [PASS] a second Play builds a second context  2 contexts
-[PASS] repeat Play schedules nothing in the past  worst -4912.0 ms late
+[PASS] repeat Play schedules nothing in the past  worst -4920.0 ms late
   iframes on the page: 7
 [PASS] Stop after a repeat still resets  time '0.0s'
 [PASS] no uncaught JS errors  []

@@ -61,17 +61,17 @@
       "clicks_scheduled": 0,
       "late_sources": 0,
       "late_clicks": 0,
-      "worst_late_sec": -0.12000000000000001,
-      "smallest_scheduling_margin_sec": 0.12000000000000001,
+      "worst_late_sec": -0.11999999999999998,
+      "smallest_scheduling_margin_sec": 0.11999999999999998,
       "actual_start_spread_sec": 0.0,
       "actual_start_spread_basis": "scheduled instants within a run, all honoured",
       "scheduled_instants_per_run": {
         "1": [
-          0.2
+          0.232
         ]
       },
       "distinct_whens": [
-        0.2
+        0.232
       ],
       "js_errors": [],
       "label": "Playing \u2014 everything started together on beat 1.",
@@ -89,17 +89,17 @@
       "clicks_scheduled": 4,
       "late_sources": 0,
       "late_clicks": 0,
-      "worst_late_sec": -2.5199999999999996,
-      "smallest_scheduling_margin_sec": 2.5199999999999996,
+      "worst_late_sec": -2.52,
+      "smallest_scheduling_margin_sec": 2.52,
       "actual_start_spread_sec": 0.0,
       "actual_start_spread_basis": "scheduled instants within a run, all honoured",
       "scheduled_instants_per_run": {
         "1": [
-          2.68
+          2.69067
         ]
       },
       "distinct_whens": [
-        2.68
+        2.69067
       ],
       "js_errors": [],
       "label": "Counting you in \u2014 everything starts together on beat 1.",
@@ -117,17 +117,17 @@
       "clicks_scheduled": 4,
       "late_sources": 0,
       "late_clicks": 0,
-      "worst_late_sec": -1.4426666666666665,
-      "smallest_scheduling_margin_sec": 1.4426666666666665,
+      "worst_late_sec": -1.4533333333333331,
+      "smallest_scheduling_margin_sec": 1.4533333333333331,
       "actual_start_spread_sec": 0.0,
       "actual_start_spread_basis": "scheduled instants within a run, all honoured",
       "scheduled_instants_per_run": {
         "1": [
-          1.624
+          1.63467
         ]
       },
       "distinct_whens": [
-        1.624
+        1.63467
       ],
       "js_errors": [],
       "label": "Counting you in \u2014 everything starts together on beat 1.",
@@ -151,11 +151,11 @@
       "actual_start_spread_basis": "scheduled instants within a run, all honoured",
       "scheduled_instants_per_run": {
         "1": [
-          0.992
+          1.032
         ]
       },
       "distinct_whens": [
-        0.992
+        1.032
       ],
       "js_errors": [],
       "label": "Playing \u2014 everything started together on beat 1.",
@@ -179,11 +179,11 @@
       "actual_start_spread_basis": "scheduled instants within a run, all honoured",
       "scheduled_instants_per_run": {
         "1": [
-          0.36
+          0.41067
         ]
       },
       "distinct_whens": [
-        0.36
+        0.41067
       ],
       "js_errors": [],
       "label": "Playing \u2014 everything started together on beat 1.",
@@ -201,17 +201,17 @@
       "clicks_scheduled": 0,
       "late_sources": 0,
       "late_clicks": 0,
-      "worst_late_sec": -0.12000000000000001,
-      "smallest_scheduling_margin_sec": 0.12000000000000001,
+      "worst_late_sec": -0.12,
+      "smallest_scheduling_margin_sec": 0.12,
       "actual_start_spread_sec": 0.0,
       "actual_start_spread_basis": "scheduled instants within a run, all honoured",
       "scheduled_instants_per_run": {
         "1": [
-          0.192
+          0.21067
         ]
       },
       "distinct_whens": [
-        0.192
+        0.21067
       ],
       "js_errors": [],
       "label": "Playing \u2014 everything started together on beat 1.",
@@ -235,15 +235,15 @@
       "actual_start_spread_basis": "scheduled instants within a run, all honoured",
       "scheduled_instants_per_run": {
         "1": [
-          2.672
+          2.69067
         ],
         "2": [
-          2.68
+          2.72
         ]
       },
       "distinct_whens": [
-        2.672,
-        2.68
+        2.69067,
+        2.72
       ],
       "js_errors": [],
       "label": "Counting you in \u2014 everything starts together on beat 1.",
@@ -282,36 +282,8 @@
       "clicks_scheduled": 9,
       "late_sources": 0,
       "late_clicks": 0,
-      "worst_late_sec": -2.52,
-      "smallest_scheduling_margin_sec": 2.52,
-      "actual_start_spread_sec": 0.0,
-      "actual_start_spread_basis": "scheduled instants within a run, all honoured",
-      "scheduled_instants_per_run": {
-        "1": [
-          2.58133
-        ]
-      },
-      "distinct_whens": [
-        2.58133
-      ],
-      "js_errors": [],
-      "label": "Counting you in \u2014 everything starts together on beat 1.",
-      "offsets": [
-        0.0
-      ],
-      "context_states": [
-        "running"
-      ]
-    },
-    "align-zero-layers-together": {
-      "case": "align-zero-layers-together",
-      "contexts": 1,
-      "sources": 3,
-      "clicks_scheduled": 4,
-      "late_sources": 0,
-      "late_clicks": 0,
-      "worst_late_sec": -2.52,
-      "smallest_scheduling_margin_sec": 2.52,
+      "worst_late_sec": -2.512,
+      "smallest_scheduling_margin_sec": 2.512,
       "actual_start_spread_sec": 0.0,
       "actual_start_spread_basis": "scheduled instants within a run, all honoured",
       "scheduled_instants_per_run": {
@@ -331,6 +303,34 @@
         "running"
       ]
     },
+    "align-zero-layers-together": {
+      "case": "align-zero-layers-together",
+      "contexts": 1,
+      "sources": 3,
+      "clicks_scheduled": 4,
+      "late_sources": 0,
+      "late_clicks": 0,
+      "worst_late_sec": -2.5199999999999996,
+      "smallest_scheduling_margin_sec": 2.5199999999999996,
+      "actual_start_spread_sec": 0.0,
+      "actual_start_spread_basis": "scheduled instants within a run, all honoured",
+      "scheduled_instants_per_run": {
+        "1": [
+          2.61067
+        ]
+      },
+      "distinct_whens": [
+        2.61067
+      ],
+      "js_errors": [],
+      "label": "Counting you in \u2014 everything starts together on beat 1.",
+      "offsets": [
+        0.0
+      ],
+      "context_states": [
+        "running"
+      ]
+    },
     "align-positive-moves-the-start-later": {
       "case": "align-positive-moves-the-start-later",
       "contexts": 1,
@@ -338,21 +338,21 @@
       "clicks_scheduled": 4,
       "late_sources": 0,
       "late_clicks": 0,
-      "worst_late_sec": -2.52,
-      "smallest_scheduling_margin_sec": 2.52,
+      "worst_late_sec": -2.5199999999999996,
+      "smallest_scheduling_margin_sec": 2.5199999999999996,
       "actual_start_spread_sec": 1.0,
       "actual_start_spread_basis": "scheduled instants within a run, all honoured",
       "scheduled_instants_per_run": {
         "1": [
-          2.592,
-          3.092,
-          3.592
+          2.61067,
+          3.11067,
+          3.61067
         ]
       },
       "distinct_whens": [
-        2.592,
-        3.092,
-        3.592
+        2.61067,
+        3.11067,
+        3.61067
       ],
       "js_errors": [],
       "label": "Counting you in \u2014 everything starts together on beat 1.",

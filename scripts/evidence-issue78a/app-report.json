@@ -41,7 +41,7 @@
       "worst_late_sec": -2.5199999999999996,
       "smallest_margin_sec": 2.5199999999999996,
       "whens": [
-        3.42133
+        3.28
       ],
       "offsets": [
         0.0
@@ -51,11 +51,11 @@
     "transport_at_0.5": {
       "sources": 2,
       "clicks": 4,
-      "worst_late_sec": -2.509333333333333,
-      "smallest_margin_sec": 2.509333333333333,
+      "worst_late_sec": -2.52,
+      "smallest_margin_sec": 2.52,
       "whens": [
-        3.76,
-        4.26
+        3.032,
+        3.532
       ],
       "offsets": [
         0.0
@@ -77,7 +77,7 @@
       "worst_late_sec": -2.5199999999999996,
       "smallest_margin_sec": 2.5199999999999996,
       "whens": [
-        3.86133
+        3.01067
       ],
       "offsets": [
         0.0,
@@ -93,14 +93,14 @@
       "peak_abs": 31128,
       "peak_sec": 0.5
     },
-    "agreement_ms_at_-0.5": 0.0033333333329110815,
+    "agreement_ms_at_-0.5": 0.00333333333379926,
     "transport_at_0.0": {
       "sources": 2,
       "clicks": 4,
-      "worst_late_sec": -2.52,
-      "smallest_margin_sec": 2.52,
+      "worst_late_sec": -2.5199999999999996,
+      "smallest_margin_sec": 2.5199999999999996,
       "whens": [
-        3.81067
+        3.57067
       ],
       "offsets": [
         0.0

@@ -6,10 +6,10 @@ picked Let It Be dropdown=True landed=True sidebar_song='SONG\n\nSONG\nLet It Be
 == three layers, one scheduled instant ==
   staged ['guitar', 'sax / winds', 'extra layer']
 [PASS] three layers staged  ['guitar', 'sax / winds', 'extra layer']
-  sources=4 clicks=4 margin=+2520.0 ms instants=[3.42133]
+  sources=4 clicks=4 margin=+2520.0 ms instants=[3.28]
   transport says: 'Counting you in — everything starts together on beat 1.'
 [PASS] no layer scheduled in the past  worst -2520.0 ms late
-[PASS] every layer shares one scheduled instant  instants [3.42133]
+[PASS] every layer shares one scheduled instant  instants [3.28]
 [PASS] sax / winds can be muted  mute reads True
 [PASS] extra layer can be muted  mute reads True
   the other two layers are muted and carry no transient, so the exported peak can only be the guitar's
@@ -36,8 +36,8 @@ picked Let It Be dropdown=True landed=True sidebar_song='SONG\n\nSONG\nLet It Be
 [PASS] Align reads back as -0.50  slider shows -0.5
   transport buffer offsets = [0.0, 0.5]
 [PASS] transport applies buffer offset 0.50s  offsets [0.0, 0.5]
-  layer source: when-bar1=+0.0000s, buffer offset=0.5000s, buffer=6s
-  preview puts the transient 0.5000033333333329s after bar 1
+  layer source: when-bar1=-0.0000s, buffer offset=0.5000s, buffer=6s
+  preview puts the transient 0.4999966666666662s after bar 1
   Create mixed WAV -> clicked
   exported WAV: 1ch @ 44100Hz 5.5s, transient at 0.5s
 [PASS] exported mix can be read back  

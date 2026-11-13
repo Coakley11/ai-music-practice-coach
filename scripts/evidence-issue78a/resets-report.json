@@ -41,7 +41,7 @@
       "worst_late_sec": -0.12,
       "margin_sec": 0.12,
       "source_instants": [
-        1.032
+        0.57067
       ],
       "first_click": null,
       "late_clicks": 0
@@ -53,35 +53,35 @@
       "worst_late_sec": -2.52,
       "margin_sec": 2.52,
       "source_instants": [
-        3.77067
+        3.12
       ],
-      "first_click": 1.3706666666666667,
+      "first_click": 0.72,
       "late_clicks": 0
     },
-    "count_in_1 bar_gap_sec": 2.4000033333333333,
+    "count_in_1 bar_gap_sec": 2.4000000000000004,
     "count_in_2 bars": {
       "contexts": 1,
       "sources": 4,
       "clicks": 8,
-      "worst_late_sec": -4.92,
-      "margin_sec": 4.92,
+      "worst_late_sec": -4.911999999999999,
+      "margin_sec": 4.911999999999999,
       "source_instants": [
-        6.06133
+        5.472
       ],
-      "first_click": 1.2613333333333334,
+      "first_click": 0.672,
       "late_clicks": 0
     },
-    "count_in_2 bars_gap_sec": 4.799996666666667,
+    "count_in_2 bars_gap_sec": 4.800000000000001,
     "readout_playing": {
       "time": "3.4s",
       "bar": "2",
       "beat": "2",
-      "cursor": "0.628968%",
+      "cursor": "0.639881%",
       "label": "Counting you in \u2014 everything starts together on beat 1.",
       "clock": {
-        "t": 8.181333333333335,
+        "t": 8.24,
         "playing": true,
-        "at": 1794583847405
+        "at": 1794585658366
       }
     },
     "readout_stopped": {
@@ -93,20 +93,20 @@
       "clock": {
         "t": 0,
         "playing": false,
-        "at": 1794583847447
+        "at": 1794585658409
       }
     },
     "repeat_play": {
       "contexts": 2,
       "sources": 8,
       "clicks": 16,
-      "worst_late_sec": -4.912,
-      "margin_sec": 4.912,
+      "worst_late_sec": -4.92,
+      "margin_sec": 4.92,
       "source_instants": [
-        6.032,
-        6.41067
+        5.84,
+        5.90133
       ],
-      "first_click": 1.2320000000000002,
+      "first_click": 1.04,
       "late_clicks": 0
     }
   },
