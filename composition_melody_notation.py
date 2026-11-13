@@ -532,6 +532,7 @@ def build_section_score_model(
 
 
 _ABC_TITLE_RE = re.compile(r"^T:(.*)$", re.M)
+_ABC_TITLE_LINE_RE = re.compile(r"^T:[^\r\n]*(?:\r?\n)?", re.M)
 
 
 def split_abc_title(abc_text: str) -> tuple[str, str]:
@@ -543,7 +544,9 @@ def split_abc_title(abc_text: str) -> tuple[str, str]:
     """
     text = str(abc_text or "")
     titles = [t.strip() for t in _ABC_TITLE_RE.findall(text) if t.strip()]
-    return (titles[0] if titles else ""), _ABC_TITLE_RE.sub("", text)
+    # Drop the whole line including its newline: a leftover blank line ends the tune header
+    # for abcjs ("X:1" blank "M:4/4"...) and the staff then renders with no notes at all.
+    return (titles[0] if titles else ""), _ABC_TITLE_LINE_RE.sub("", text)
 
 
 def render_abc_html(abc_text: str, *, height: int = 280, add_classes: bool = True) -> str:
