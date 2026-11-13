@@ -25711,7 +25711,10 @@ elif _studio_page == "backing":
             st.markdown(
                 "<style>.st-key-backing_leadsheet_play_hint_slot [data-testid='stCaptionContainer'] p,"
                 ".st-key-backing_leadsheet_play_hint_slot [data-testid='stCaptionContainer']"
-                "{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}</style>",
+                "{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}"
+                # The blank caption collapses (measured: slot 16 px playing, 38 px paused), so the slot keeps
+                # the one-line height itself.
+                ".st-key-backing_leadsheet_play_hint_slot{min-height:38px;}</style>",
                 unsafe_allow_html=True,
             )
             _hint_intent = str(transport_intent(st.session_state) or "")
