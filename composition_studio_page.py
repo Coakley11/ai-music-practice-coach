@@ -23,6 +23,8 @@ from composition_chord_suggestions import (
 )
 from composition_chord_refinements import (
     CHORD_REFINEMENT_INTENTS,
+    diff_card_html,
+    proposal_is_current,
     propose_chord_refinement,
     refinement_intent_label,
 )
@@ -6432,6 +6434,12 @@ def _render_suggestion_card(
             st.rerun()
 
 
+def _manual_draft_key(section_id: str) -> str:
+    from composition_chord_manual_editor import draft_key
+
+    return draft_key(section_id)
+
+
 def _render_chord_refinement_panel(
     session_state: dict,
     doc: dict[str, Any],
@@ -6448,35 +6456,48 @@ def _render_chord_refinement_panel(
         "(including repeats). Preview before accepting."
     )
     intent_ids = [i[0] for i in CHORD_REFINEMENT_INTENTS]
+    _pkey = f"composer_refine_proposal_{section_id}"
+    _kc = str(doc.get("global", {}).get("original_key_center") or "C")
+    # The selectbox is the only writer of its own key; no code below assigns to it
+    # (Streamlit forbids that after instantiation) - "Try another" cycles the variant
+    # of the same intent instead of rotating the widget value.
     picked = st.selectbox(
         "I want this to…",
         intent_ids,
         format_func=refinement_intent_label,
         key=f"composer_refine_intent_{section_id}",
     )
+    _draft = session_state.get(_manual_draft_key(section_id))
+    if isinstance(_draft, list) and [str((d or {}).get("chord") or "") for d in _draft] != [
+        str((e or {}).get("chord") or "") for e in entries
+    ]:
+        st.warning(
+            "The manual chord editor has unapplied edits. Refinements work on the saved "
+            "progression above, and Use this will replace those unapplied edits."
+        )
     c1, c2 = st.columns(2)
     with c1:
         if st.button("Propose change", key=f"composer_refine_propose_{section_id}", type="primary", use_container_width=True):
-            proposal = propose_chord_refinement(doc, section, picked, entries=entries)
-            session_state[f"composer_refine_proposal_{section_id}"] = proposal
+            session_state[_pkey] = propose_chord_refinement(doc, section, picked, entries=entries)
             st.rerun()
     with c2:
         if st.button("Clear proposal", key=f"composer_refine_clear_{section_id}", use_container_width=True):
-            session_state.pop(f"composer_refine_proposal_{section_id}", None)
+            session_state.pop(_pkey, None)
             st.rerun()
 
-    proposal = session_state.get(f"composer_refine_proposal_{section_id}")
+    proposal = session_state.get(_pkey)
+    if proposal is not None and not proposal_is_current(proposal, section_id, entries, _kc):
+        # Stale: other section / key / progression changed since it was proposed.
+        session_state.pop(_pkey, None)
+        proposal = None
     if not isinstance(proposal, dict):
         return
+    if not proposal.get("available", True):
+        st.info(str(proposal.get("why") or "No change available for this progression."))
+        return
     proposed_entries = list(proposal.get("chords") or [])
-    plen = pattern_length_for_display(section)
-    source_display = format_full_progression_display(entries, pattern_len=plen)
-    proposed_display = format_full_progression_display(proposed_entries, pattern_len=plen)
-    source_html = html.escape(source_display).replace("\n", "<br>")
-    proposed_html = html.escape(proposed_display).replace("\n", "<br>")
     from roman_numeral_analysis import analyze_progression as _analyze_prog
 
-    _kc = str(doc.get("global", {}).get("original_key_center") or "C")
     _src_syms = expand_entries_to_chords(entries)
     _prop_syms = expand_entries_to_chords(proposed_entries)
     _src_roman = " ".join(r for r in _analyze_prog(_src_syms, _kc) if r)
@@ -6488,16 +6509,13 @@ def _render_chord_refinement_panel(
             f'<span style="opacity:0.6">{html.escape(_src_roman)}</span>'
             f' → <strong>{html.escape(_prop_roman)}</strong></div>'
         )
+    _opt = f" · option {int(proposal.get('variant', 0)) + 1} of {int(proposal.get('variant_count', 1))}"
     st.markdown(
         f"""
 <div class="composer-suggestion-card">
-  <h4>{html.escape(str(proposal.get('name') or 'Proposed change'))}</h4>
-  <div class="composer-suggestion-chords">
-    <span style="opacity:0.65">{source_html}</span>
-    <br>→ <strong>{proposed_html}</strong>
-  </div>
+  <h4>{html.escape(str(proposal.get('name') or 'Proposed change'))}<span style="font-weight:400;opacity:0.6;font-size:0.8rem">{html.escape(_opt)}</span></h4>
+  <div class="composer-suggestion-chords">{diff_card_html(proposal)}</div>
   {_refine_roman_html}
-  <p class="composer-suggestion-why">{html.escape(str(proposal.get('why') or ''))}</p>
 </div>
         """,
         unsafe_allow_html=True,
@@ -6561,13 +6579,20 @@ def _render_chord_refinement_panel(
             _save_doc(session_state, doc)
             st.rerun()
     with a3:
-        if st.button("Try another", key=f"composer_refine_another_{section_id}", use_container_width=True):
-            # Rotate to next intent for a fresh local proposal.
-            idx = intent_ids.index(picked) if picked in intent_ids else 0
-            nxt = intent_ids[(idx + 1) % len(intent_ids)]
-            session_state[f"composer_refine_intent_{section_id}"] = nxt
-            session_state[f"composer_refine_proposal_{section_id}"] = propose_chord_refinement(
-                doc, section, nxt, entries=entries
+        _multi = int(proposal.get("variant_count") or 1) > 1
+        if st.button(
+            "Try another",
+            key=f"composer_refine_another_{section_id}",
+            use_container_width=True,
+            disabled=not _multi,
+            help=None if _multi else "That is the only option for this progression.",
+        ):
+            session_state[_pkey] = propose_chord_refinement(
+                doc,
+                section,
+                str(proposal.get("intent") or picked),
+                entries=entries,
+                variant=int(proposal.get("variant") or 0) + 1,
             )
             st.rerun()
     with a4:
