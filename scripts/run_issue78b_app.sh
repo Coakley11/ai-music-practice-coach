@@ -26,6 +26,13 @@ case "${HERE}" in
     ;;
 esac
 
+if curl -s -o /dev/null --max-time 3 "http://127.0.0.1:${PORT}/"; then
+  echo "REFUSING to start: something is already serving port ${PORT}."
+  echo "Pick a free port, or stop that server if it is yours. Driving someone else's app"
+  echo "produces results that look real and are not."
+  exit 2
+fi
+
 echo "worktree : ${HERE}"
 echo "port     : ${PORT}"
 
@@ -42,8 +49,23 @@ echo "server pid: ${SERVER}"
 
 for _ in $(seq 1 60); do
   if curl -s -o /dev/null "http://127.0.0.1:${PORT}/"; then break; fi
+  if ! kill -0 "${SERVER}" 2>/dev/null; then
+    echo "SERVER DIED before answering - last log lines:"
+    tail -5 "${LOG}"
+    exit 3
+  fi
   sleep 2
 done
+
+# A plain curl cannot tell this script's server from someone else's on the same port. Confirm the
+# process we started is alive AND that it is the one listening, or the whole run is measuring
+# another app. This exact mistake drove a stale Slice 78A server for a full acceptance run.
+if ! kill -0 "${SERVER}" 2>/dev/null; then
+  echo "REFUSING to continue: the server this script started is not running, so whatever is"
+  echo "answering on ${PORT} belongs to something else. Last log lines:"
+  tail -5 "${LOG}"
+  exit 3
+fi
 
 python scripts/_accept_issue78b_app.py "http://127.0.0.1:${PORT}"
 RC=$?

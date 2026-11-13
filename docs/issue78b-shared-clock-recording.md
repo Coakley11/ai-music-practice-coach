@@ -112,12 +112,23 @@ an earlier gate hardcoded 120 bpm and failed the recorder for being right):
 | 390 px and 360 px | Record button unclipped, no horizontal page scroll |
 | page errors | none |
 
-**A trap worth recording.** `MUSIC_APP_DATA_DIR` is read only by debug-dump code
-(`backing_context`, `backing_key_cycle`); it is **not** the app's persistence root. The app writes
-its state into the worktree's gitignored `data/`. An acceptance run therefore started with the
-previous run's three takes already in place, which silently invalidated its monitor counts. The
-launcher now clears only the ignored files under its own worktree's `data/` and refuses to run in
-the main checkout, and the first gate asserts the slot is empty before counting anything.
+**Two traps worth recording.**
+
+*An acceptance run measured the wrong app.* A server left over from the Slice 78A acceptance was
+still listening on the port this run was given. Streamlit could not bind, but the readiness check
+was a plain `curl`, which answered happily - from that other server, on another worktree, running
+78A code with no shared-clock recorder and three saved fixture layers. The run duly reported
+"no-recorder-iframe" and three takes nobody had recorded. The giveaway was the export length:
+exactly 6.00 s, which is 78A's `LAYER_SEC`. **A readiness check that cannot tell your server from
+somebody else's is not a readiness check.** The launcher now refuses to start if the port is
+already answering, and verifies afterwards that the process it started is the one alive.
+
+*`MUSIC_APP_DATA_DIR` is not the app's persistence root.* It is read only by debug-dump code in
+`backing_context` and `backing_key_cycle`; the app writes its state into the worktree's gitignored
+`data/`. Nothing personal is at risk from a worktree run, but that is because worktrees are
+separate - not because of the variable, which an earlier version of this script relied on. The
+launcher now clears only the ignored files under its own worktree's `data/`, refuses to run in the
+main checkout, and the first gate asserts the slot is empty before any monitor count is believed.
 
 ### Deterministic tests — `tests/test_issue78b_live_recorder.py`, 58 tests
 
