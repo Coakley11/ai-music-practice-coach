@@ -143,6 +143,9 @@ def response(plan,session,lead=''):
 def handle(question,session,ami_ctx=None):
     from music_coach_ami import flexible_single as fs
     if session is None:return None
+    from music_coach_ami.sax_conversation import handle as conversational_handle
+    conversational = conversational_handle(question, session, ami_ctx)
+    if conversational is not None: return conversational
     q=question.lower().strip(' .!?');plan=wp.current(session);active=bool(plan and plan['spec'].get('sax'))
     fresh=bool(re.search(r'\b(?:give|generate|write|create|build|want|need)\b|^make me',q))
     # Existing musical-idea/expression and mode owners retain their vocabulary.

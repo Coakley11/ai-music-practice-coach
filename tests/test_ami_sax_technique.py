@@ -176,7 +176,7 @@ def test_song_chromatic_approach_is_verified_at_actual_chart_changes():
 
 def test_timed_articulation_revision_and_undo_preserve_every_pitch_and_duration():
  s,p=start('Give me a five-minute alto sax articulation warmup.');before=copy.deepcopy(p)
- ask(s,'Slur every two notes.');new=wp.current(s)
+ ask(s,'Slur every two notes throughout the whole routine.');new=wp.current(s)
  assert new!=before
  for old,row in zip(before['items'],new['items']):
   assert old['written_midi']==row['written_midi'] and old['durations']==row['durations'] and old['bpm']==row['bpm']
