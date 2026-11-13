@@ -152,5 +152,27 @@ class TestActivationPipeline(unittest.TestCase):
         self.assertLess(save_pos, activate_pos, "Save should happen before activation")
 
 
+class TestActiveSongSnapshotIgnoresEditedDocument(unittest.TestCase):
+    """Browser QA: opening another composition for editing re-pointed the saved Active Song."""
+
+    def test_snapshot_uses_live_pick_not_the_document_being_edited(self) -> None:
+        from composition_document import bootstrap_from_vision
+        from composition_session_state import save_document_to_library, set_active_document
+        from composition_songs_bridge import composition_pick_key_for
+        from songs.state import ACTIVE_CATALOG_PICK_KEY
+        import active_song_state
+
+        song_a = bootstrap_from_vision(genre="Pop", song_idea="x", title="Song A", key="C major", bpm=100)
+        song_b = bootstrap_from_vision(genre="Pop", song_idea="y", title="Song B", key="G major", bpm=90)
+        ss: dict = {}
+        save_document_to_library(ss, song_a)
+        set_active_document(ss, song_b)  # Studio is editing B ...
+        ss[ACTIVE_CATALOG_PICK_KEY] = composition_pick_key_for(song_a)  # ... but A is the Active Song
+        with mock.patch("songs.music_source.composition_song_is_active", return_value=True):
+            ctx = active_song_state.gather_active_song_context(ss)
+        self.assertEqual(ctx["pick_key"], composition_pick_key_for(song_a))
+        self.assertEqual(ctx["composition_title"], "Song A")
+
+
 if __name__ == "__main__":
     unittest.main()
