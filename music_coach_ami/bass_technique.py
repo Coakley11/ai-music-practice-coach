@@ -205,6 +205,9 @@ def handle(question,session,ami_ctx=None):
     q=question.lower().strip(" .!?");plan=wp.current(session)
     active=bool(plan and plan['spec'].get('bass'))
     fresh=bool(re.search(r"\b(?:give|generate|write|create|build|want|need|help)\b",q))
+    # A bass-line role for a song is not automatically a bass-guitar instrument override.
+    # Keep the established Song Coach owner unless this is an explicit technique/chart drill.
+    if fresh and re.search(r"\bbass[ -]line\b",q) and not re.search(r"bass guitar|\bover\b|chord changes|\bexercises?\b",q):return None
     vocab=bool(re.search(r"exercise|warm[ -]?up|scale|arpeggio|finger[ -]?buster|coordination|octaves?|bass line",q))
     req=wp.parse_request(question)
     page,_=wp._page_values(question,session,ami_ctx)

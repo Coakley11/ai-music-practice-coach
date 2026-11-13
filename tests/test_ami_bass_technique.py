@@ -184,3 +184,11 @@ def test_unavailable_variant_retry_limit_refuses_without_corrupting_history(monk
     r=run_coach_submit('Give me a beginner bass guitar warmup.',s,ami_ctx={'instrument':'Saxophone','level':'Beginner','focus':'Scales','display_key':'Bb'})[1]
     assert wp.current(s)==old and wp.history(s)==history
     assert 'couldn' in r.direct_answer.lower()
+
+
+@pytest.mark.parametrize('instrument',['Piano','Guitar','Saxophone','Bass'])
+def test_song_bass_role_is_not_an_implicit_bass_guitar_override(instrument):
+    from music_coach_ami import bass_technique
+    s=session();s['instrument']=instrument
+    assert bass_technique.handle('Give me a good bass line to use for this song.',s,{'instrument':instrument}) is None
+    assert wp.current(s) is None
