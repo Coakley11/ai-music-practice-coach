@@ -144,9 +144,35 @@
       function post(type, data) {
         window.parent.postMessage(Object.assign({ isStreamlitMessage: true, type: type }, data), "*");
       }
-      function send(action) {
+      function send(action, extra) {
         nonce += 1;
-        post("streamlit:setComponentValue", { value: { action: action, nonce: nonce, session: SESSION } });
+        const value = { action: action, nonce: nonce, session: SESSION };
+        // Optional, additive fields (today only Pause's ``kc``); every other
+        // command is sent exactly as before.
+        if (extra && typeof extra === "object") {
+          Object.keys(extra).forEach(function (k) { if (extra[k] != null) value[k] = extra[k]; });
+        }
+        post("streamlit:setComponentValue", { value: value });
+      }
+      // Key Cycling only: the key that was SOUNDING when Pause was pressed. A
+      // Pause within ~0.5 s of an automatic key change interrupts the handoff
+      // before the page reports it, so the server would still hold the key
+      // before. The server adopts this key only when it is the cycle's next one.
+      function cycleSoundingAtPause() {
+        if (!args.cycle_active) return null;
+        try {
+          const p = window.parent;
+          let key = "";
+          const stash = p.__kcPauseSounding;
+          if (stash && Date.now() - Number(stash.at || 0) < 1500) key = String(stash.key || "");
+          const last = p.__kcLastLive;
+          if (!key && last && Date.now() - Number(last.at || 0) < 700) key = String(last.key || "");
+          if (!key && typeof p.__kcLiveKey === "function") key = String(p.__kcLiveKey() || "");
+          if (!key) return null;
+          return { sounding: key, cycleId: String(((p.__kcLastCmd || {}).cycleId) || "") };
+        } catch (e) {
+          return null;
+        }
       }
       // Pause and resume of the plain backing players go through here: the
       // card's Pause / Resume and the Lead Sheet's Pause / Resume playback.
@@ -197,8 +223,9 @@
         try { window.parent.__backingPausedTake = null; } catch (e) {}
       }
       function doPause(handled) {
+        const kc = cycleSoundingAtPause();
         if (!handled) pauseBackingAudio();
-        send("pause");
+        send("pause", kc ? { kc: kc } : null);
         setLocal("paused");
         render();
       }

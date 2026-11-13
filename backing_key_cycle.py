@@ -4613,10 +4613,30 @@ def _adopt_handoff_made_before_pause(
             extra={"expected": expected},
         )
         return False
+    return _hold_cycle_at_next_key(
+        session, owner, data, want, trigger="paused_ack_adopt_handoff_before_pause", pass_id=ack.get("passId")
+    )
+
+
+def _hold_cycle_at_next_key(
+    session: dict[str, Any],
+    owner: str,
+    data: dict[str, Any],
+    key: str,
+    *,
+    trigger: str,
+    pass_id: Any = None,
+) -> bool:
+    """Move the paused cycle onto ``key`` (its next key) and keep it paused.
+
+    The browser holds that key's take paused: nothing is remounted, restarted
+    or regenerated; Resume continues it.
+    """
     seq = cycle_key_sequence(session, owner)
-    idx = next((i for i, k in enumerate(seq) if _keys_equivalent(k, want)), -1)
+    idx = next((i for i, k in enumerate(seq) if _keys_equivalent(k, key)), -1)
     if idx < 0:
         return False
+    before = str(data.get("current_playback_key") or "").strip()
     mag = normalize_cycle_interval(data.get("interval"))
     unit = -mag if str(data.get("direction") or "up") == "down" else mag
     data = dict(data)
@@ -4628,29 +4648,70 @@ def _adopt_handoff_made_before_pause(
     data["pending_pass_advance"] = False
     data["status"] = STATUS_HELD
     _put_owner_cycle_session(session, owner, data)
-    try:
-        mark_pass_id_seen(session, int(ack.get("passId") or 0))
-    except Exception:
-        pass
+    if pass_id is not None:
+        try:
+            from backing_key_cycle_handoff import mark_pass_id_seen
+
+            mark_pass_id_seen(session, int(pass_id or 0))
+        except Exception:
+            pass
     promote_prepared_cycle_audio(session, seq[idx])
-    # The browser holds this take paused: never remount or restart it.
     session["_kc_skip_audio_remount"] = True
     session.pop(BACKING_KEY_CYCLE_CONTINUE_PLAY_KEY, None)
     session["_kc_last_playing_confirm"] = {
         "key": seq[idx],
-        "passId": ack.get("passId"),
+        "passId": pass_id,
         "cycleId": str(data.get("cycle_id") or ""),
         "t": __import__("time").time(),
     }
     _log_cycle_key_write(
         session,
-        trigger="paused_ack_adopt_handoff_before_pause",
+        trigger=trigger,
         old_key=before,
         new_key=seq[idx],
         cycle_id=str(data.get("cycle_id") or ""),
-        pass_id=ack.get("passId"),
+        pass_id=pass_id,
     )
     return True
+
+
+def adopt_sounding_key_at_pause(session: dict[str, Any], sounding: str, *, cycle_id: str = "") -> bool:
+    """Pause froze the key that was SOUNDING (the card's Pause report carries it).
+
+    A Pause within ~0.5 s of an automatic key change interrupts that handoff
+    before the page reports it: the browser holds the new key, the server
+    still the previous one. The report names the key heard at the press; it is
+    adopted only when it is the cycle's next key (the interrupted automatic
+    change), for the same cycle, and the cycle is paused. Anything else --
+    the current key, another key, a stale cycle -- changes nothing, so a retry
+    of the same command, or a late handoff ack for the same move, cannot step
+    twice. Returns True when the paused position moved.
+    """
+    owner = resolve_cycle_owner(session)
+    data = get_owner_cycle_session(session, owner)
+    want = str(sounding or "").strip()
+    if not data or not data.get("enabled") or not want:
+        return False
+    if str(data.get("status") or "") != STATUS_HELD:
+        return False
+    cid = str(data.get("cycle_id") or "").strip()
+    if cycle_id and cid and str(cycle_id).strip() != cid:
+        return False
+    before = str(data.get("current_playback_key") or "").strip()
+    if _keys_equivalent(before, want):
+        return False
+    expected = str(next_cycle_playback_key(session) or "").strip()
+    if not _keys_equivalent(want, expected) or session.get("_kc_arr_key_lock"):
+        _log_cycle_key_write(
+            session,
+            trigger="pause_report_reject_not_next",
+            old_key=before,
+            new_key=want,
+            cycle_id=cid,
+            extra={"expected": expected},
+        )
+        return False
+    return _hold_cycle_at_next_key(session, owner, data, want, trigger="pause_report_adopt_sounding_key")
 
 
 def note_backing_pass_finished(
@@ -7792,7 +7853,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
     // one kept counting presses after its frame was replaced, but the timer it
     // scheduled for the switch never fired, so later presses changed nothing.
     // The parent-realm timer calls the live frame's __kcSwitchPrepared.
-    if (parentWin.__kcNavVersion !== 11) {{
+    if (parentWin.__kcNavVersion !== 12) {{
       try {{
         const navBoot = parentDoc.createElement('script');
         navBoot.textContent = `
@@ -7986,7 +8047,13 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
     }});
   }}
   W.setInterval(enforceSingleOwner, 250);
-  W.__kcNavVersion = 11;
+  // The sounding key for the transport (Pause reports it; see the card's
+  // cycleSoundingAtPause), refreshed while something is audible.
+  W.__kcLiveKey = liveKey;
+  W.setInterval(function () {{
+    try {{ var lk = liveKey(); if (lk) W.__kcLastLive = {{ key: lk, at: Date.now() }}; }} catch (e) {{}}
+  }}, 150);
+  W.__kcNavVersion = 12;
 }})();`;
         parentDoc.documentElement.appendChild(navBoot);
         navBoot.remove();
@@ -8912,6 +8979,14 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           // a Pause, not a Resume (it used to start the take behind the Pause).
           const starting = !prog && !running && !held && /^Starting/i.test(String(label || ''));
           if (starting) running = true;
+          // The transport is playing and the musician is not holding: this press
+          // is a Pause even when nothing is audible at this instant -- the few
+          // milliseconds between one take ending and the next starting at an
+          // automatic key change, or a take still loading. Judged by sound
+          // alone, that press became a Resume no-op and cycling carried on.
+          let tpIntent = '';
+          try {{ tpIntent = String(((parentWin.__backingTransportState || {{}}).transport) || ''); }} catch (eTp) {{ tpIntent = ''; }}
+          if (!prog && !running && !held && tpIntent === 'playing') running = true;
           const doResume = prog || (!running && (held || true)) && !running;
           // Simplify: running (audible) → Pause; otherwise → Resume.
           if (prog || !running) {{
@@ -8921,6 +8996,15 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
             const restartPending = !!((parentWin.__backingTransportState || {{}}).restart_on_resume);
             if (!restartPending && typeof parentWin.__kcResumeAudio === 'function') parentWin.__kcResumeAudio();
           }} else {{
+            // The key sounding at the press, captured before the audio stops
+            // (the card's Pause report carries it to the server).
+            try {{
+              parentWin.__kcPauseSounding = {{
+                key: (typeof parentWin.__kcLiveKey === 'function' ? String(parentWin.__kcLiveKey() || '') : '')
+                  || String((parentWin.__kcLastLive || {{}}).key || ''),
+                at: Date.now(),
+              }};
+            }} catch (ePs) {{}}
             if (typeof parentWin.__kcPauseAudio === 'function') parentWin.__kcPauseAudio();
             else if (typeof abortTransportPlayback === 'function') abortTransportPlayback({{ seekZero: false }});
             parentWin.__kcLastPauseMs = kcNow() - parentWin.__kcClickT0;
@@ -14245,6 +14329,7 @@ __all__ = [
     "STATUS_OFF",
     "STATUS_RUNNING",
     "STATUS_STOPPED",
+    "adopt_sounding_key_at_pause",
     "advance_key_cycle_now",
     "apply_backing_key_cycle",
     "arm_key_cycle_prefetch",
