@@ -118,22 +118,20 @@ def describe_wav(raw: bytes) -> dict:
     return out
 
 
-def fetch_audio_in(page: Page, scope_text: str, which: int = -1) -> bytes | None:
-    """Fetch what an <audio> element on the page is actually serving."""
+def fetch_audio_bytes(page: Page, selector: str, which: int = 0) -> bytes | None:
+    """Fetch what one <audio> element is actually serving, chosen by CSS selector.
+
+    Deliberately not "the last audio element on the page": Step 4 renders the mixed
+    export first and then the export library, which renders more audio elements after
+    it, so a page-wide last-match would read somebody else's file.
+    """
     b64 = page.evaluate(
-        """async ([scopeText, which]) => {
-          const s = scopeText.toLowerCase();
-          let scope = document;
-          if (s) {
-            const all = [...document.querySelectorAll('details')];
-            const el = all.find((d) => {
-              const sum = d.querySelector('summary');
-              return ((sum && sum.innerText) || '').toLowerCase().includes(s);
-            });
-            if (el) scope = el;
-          }
+        """async ([sel, which]) => {
+          const scope = document.querySelector(sel);
+          if (!scope) return {err: 'scope-not-found'};
           const au = [...scope.querySelectorAll('audio')].filter((a) => a.src);
-          if (!au.length) return null;
+          if (!au.length) return {err: 'no-audio-in-scope'};
+          if (which >= au.length) return {err: 'only-' + au.length + '-audio'};
           const node = which < 0 ? au[au.length - 1] : au[which];
           const r = await fetch(node.src);
           const buf = await r.arrayBuffer();
@@ -142,11 +140,49 @@ def fetch_audio_in(page: Page, scope_text: str, which: int = -1) -> bytes | None
           for (let i = 0; i < v.length; i += 0x8000) {
             bin += String.fromCharCode.apply(null, v.subarray(i, i + 0x8000));
           }
-          return btoa(bin);
+          return {b64: btoa(bin), count: au.length};
         }""",
-        [scope_text, which],
+        [selector, which],
     )
-    return base64.b64decode(b64) if b64 else None
+    if not isinstance(b64, dict) or b64.get("err"):
+        log(f"    fetch {selector}[{which}] -> {b64}")
+        return None
+    return base64.b64decode(b64["b64"])
+
+
+def fetch_layer_audio(page: Page, slot: str) -> bytes | None:
+    """The Original Take Preview for one layer, scoped by its own expander.
+
+    The layer's audio element sits inside the "Layer controls" expander rather than a
+    keyed container, so it is found by that expander's summary text.
+    """
+    b64 = page.evaluate(
+        """async (slot) => {
+          const s = slot.toLowerCase();
+          const all = [...document.querySelectorAll('details')];
+          const el = all.find((d) => {
+            const sum = d.querySelector('summary');
+            const t = ((sum && sum.innerText) || '').toLowerCase();
+            return t.includes('layer controls') && t.includes(s);
+          });
+          if (!el) return {err: 'layer-not-found'};
+          const au = [...el.querySelectorAll('audio')].filter((a) => a.src);
+          if (!au.length) return {err: 'no-audio-in-layer'};
+          const r = await fetch(au[0].src);
+          const buf = await r.arrayBuffer();
+          let bin = '';
+          const v = new Uint8Array(buf);
+          for (let i = 0; i < v.length; i += 0x8000) {
+            bin += String.fromCharCode.apply(null, v.subarray(i, i + 0x8000));
+          }
+          return {b64: btoa(bin), count: au.length};
+        }""",
+        slot,
+    )
+    if not isinstance(b64, dict) or b64.get("err"):
+        log(f"    fetch layer audio for {slot} -> {b64}")
+        return None
+    return base64.b64decode(b64["b64"])
 
 
 def slider_report(page: Page, slot: str) -> dict:
@@ -381,21 +417,36 @@ def gate_preview_matches_export(page: Page, slot: str, expect_delay: float) -> N
          f"offsets {play.get('offsets')}")
 
     # Position of the transient relative to bar 1, as the transport scheduled it.
+    #
+    # The layer is identified by its buffer LENGTH, not by its buffer offset. At a
+    # positive Align the layer's offset is 0 and so is the backing monitor's, and the
+    # backing is scheduled first - so matching on offset picked the backing and reported
+    # the transient at 1.0 s regardless of the Align setting. The layer is 6 s; the
+    # backing is the whole song.
     preview_pos = None
     srcs = play.get("raw") or []
     if srcs and play.get("whens"):
         bar1 = min(play["whens"])
-        for e in srcs:
-            off = float(e.get("offset") or 0)
-            if abs(off - want_offset) < 1e-3 and e.get("when") is not None:
-                preview_pos = (float(e["when"]) - bar1) + (TRANSIENT_AT - off)
-                break
+        layer = next(
+            (e for e in srcs
+             if e.get("when") is not None
+             and abs(float(e.get("buffer_sec") or 0) - LAYER_SEC) < 0.25),
+            None,
+        )
+        if layer is None:
+            log("  no 6 s layer source found among "
+                f"{[round(float(e.get('buffer_sec') or 0), 2) for e in srcs]}")
+        else:
+            off = float(layer.get("offset") or 0)
+            preview_pos = (float(layer["when"]) - bar1) + (TRANSIENT_AT - off)
+            log(f"  layer source: when-bar1={float(layer['when']) - bar1:+.4f}s, "
+                f"buffer offset={off:.4f}s, buffer={layer.get('buffer_sec')}s")
     log(f"  preview puts the transient {preview_pos}s after bar 1"
         if preview_pos is not None else "  could not derive the preview position")
 
     log(f"  Create mixed WAV -> {click_text_button(page, 'create mixed wav')}")
     settle(page, 25)
-    raw = fetch_audio_in(page, "")
+    raw = fetch_audio_bytes(page, ".st-key-multitrack_export_panel", 0)
     if not raw:
         mark("exported mix can be read back", False)
         return
@@ -427,12 +478,11 @@ def gate_dry_take_is_unchanged(page: Page, slot: str, original: Path) -> None:
     log("\n== the stored recording is still the recording ==")
     expand_layer(page, slot)
     settle(page, 3)
-    raw = fetch_audio_in(page, f"layer controls — {slot}")
-    if not raw:
-        raw = fetch_audio_in(page, slot)
+    raw = fetch_layer_audio(page, slot)
     if not raw:
         mark("the layer's own audio can be read back", False)
         return
+    mark("the layer's own audio can be read back", True)
     desc = describe_wav(raw)
     MEASURED["dry_take"] = desc
     log(f"  stored take: {desc.get('duration_sec')}s @ {desc.get('sample_rate')}Hz, "
