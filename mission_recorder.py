@@ -28,6 +28,11 @@ _COMPONENT = components.declare_component(
 LAST_TAKE_ID_KEY = "_mission_recorder_last_take_id"
 LIVE_TAKE_KEY = "_mission_live_take"
 
+# The declared component, so another surface can render the same recorder rather than declare a
+# second one. Multitrack overdubbing uses it (``multitrack_live_recorder``): same AudioWorklet, same
+# single AudioContext, a different set of parts to play along with.
+RECORDER_COMPONENT = _COMPONENT
+
 
 def backing_media_url(wav: bytes, coordinates: str) -> str:
     """A same-origin URL the recorder can fetch the generated backing from."""
@@ -92,4 +97,4 @@ def render_mission_recorder(
     return {"take_id": str(value["take_id"]), "wav": wav, "timing": dict(value.get("timing") or {})}
 
 
-__all__ = ["LIVE_TAKE_KEY", "backing_media_url", "render_mission_recorder"]
+__all__ = ["LIVE_TAKE_KEY", "RECORDER_COMPONENT", "backing_media_url", "render_mission_recorder"]
