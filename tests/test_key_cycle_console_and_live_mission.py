@@ -226,6 +226,89 @@ class TestGuitarShapeMission(_MissionCycleCase):
         self.assertGreater(wraps, 0)
 
 
+class TestCapoRegisterIsHonest(_MissionCycleCase):
+    """Circle of Fourths with a fixed shape: the capo wraps inside frets 0-11, so
+    some steps move the guitar DOWN a fifth while the key name moves up a fourth.
+    The console must say which way the guitar really moves."""
+
+    base = "G"
+
+    def _guitar(self) -> dict:
+        return self._session(instrument="Guitar", guitar_capo_enabled=True, guitar_capo_shape_key="E")
+
+    def test_every_step_reports_the_physical_capo_move(self) -> None:
+        from music_theory import semitone_distance
+
+        ss = self._guitar()
+        self._start(ss)
+        total = 0
+        wraps = 0
+        for _ in range(12):
+            m = self._model(ss)
+            step = int(m["capo_step"])
+            self.assertEqual(step, m["next_capo"] - m["capo"])
+            # Same key motion (a fourth up) every time; the register move is +5 or -7.
+            self.assertIn(step, (5, -7))
+            self.assertEqual(step % 12, semitone_distance(m["current_concert"], m["next_concert"]) % 12)
+            self.assertEqual(m["capo_wraps"], step < 0)
+            wraps += int(step < 0)
+            total += step
+            kc.advance_key_cycle_now(ss)
+        self.assertEqual(total, 0)  # back on the starting fret after twelve keys
+        self.assertGreater(wraps, 0)
+
+    def test_console_and_panel_state_the_register(self) -> None:
+        from key_cycle_console import console_readout_html
+
+        ss = self._guitar()
+        self._start(ss)
+        # G (capo 3) -> C (8) -> F (1): the second move wraps.
+        kc.advance_key_cycle_now(ss)
+        m = self._model(ss)
+        self.assertEqual((m["capo"], m["next_capo"]), (8, 1))
+        html = console_readout_html(m)
+        self.assertIn("↓ 7 semitones lower · same shape", html)
+        kc.previous_key_cycle_now(ss)
+        self.assertIn("↑ 5 semitones · same shape", console_readout_html(self._model(ss)))
+        ss[MISSION_PRACTICE_LICK_KEY] = _lick(
+            chart_key="E", chord="Am7", concert_chord="Cm7",
+            notes=["A", "C", "E", "G"], midi=[57, 60, 64, 67],
+            concert_notes=["C", "Eb", "G", "Bb"], instrument="Guitar",
+        )
+        live = live_mission_model(ss, current_concert="G")
+        self.assertEqual(live["capo"], 3)
+
+
+class TestArmWithCyclingOff(unittest.TestCase):
+    def test_play_without_cycling_sets_no_cycle_markers(self) -> None:
+        ss: dict = {"display_key": "C", "concert_key": "C"}
+        kc.arm_key_cycle_for_explicit_play(ss)
+        for key in ("_kc_force_arrangement_replace", "_kc_arrangement_reload", kc.BACKING_KEY_CYCLE_CONTINUE_PLAY_KEY):
+            self.assertFalse(ss.get(key), key)
+        from songs.key_state import BACKING_NEEDS_REGEN
+
+        self.assertFalse(ss.get(BACKING_NEEDS_REGEN))
+
+
+class TestStaleCommandHold(unittest.TestCase):
+    def test_command_carries_consumed_acks_and_page_holds_stale_commands(self) -> None:
+        from pathlib import Path
+
+        src = Path(kc.__file__).read_text(encoding="utf-8")
+        self.assertIn('"consumedAckIds": [', src)
+        self.assertIn("heldStaleCmd", src)
+        self.assertIn("__kcNaturalPending = {{ key:", src)
+
+    def test_stop_retries_until_applied_and_display_reads_any_audible_player(self) -> None:
+        from pathlib import Path
+
+        src = Path(kc.__file__).read_text(encoding="utf-8")
+        self.assertIn("parentWin.__kcStopWanted = Date.now();", src)
+        self.assertIn("if (tries >= 5) {{", src)
+        self.assertIn("Nearest its", src)
+        self.assertIn("if (live && live !== base && ks.indexOf(live) >= 0) base = live;", src)
+
+
 class TestSpellingIsNotation(_MissionCycleCase):
     base = "C"
 

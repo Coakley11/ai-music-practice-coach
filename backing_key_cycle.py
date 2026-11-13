@@ -3682,7 +3682,11 @@ def arm_key_cycle_for_explicit_play(session: dict[str, Any]) -> dict[str, Any] |
     # Explicit Play must not flip to Running/Pause with an empty dual-buffer.
     # Restored Held cycles often lack static/kc after a clean; force CONTINUE so
     # Play regenerates (or spills+publishes) before the bridge enables.
-    if not ensure_cycle_current_static_url(session):
+    # Only an active cycle has a dual-buffer to fill. With cycling Off this ran
+    # anyway on every Play: it left Key Cycling replace markers behind and set
+    # "needs regenerate" after the page had cleared it for the take it was
+    # generating, so "Playback settings changed" showed over a fresh take.
+    if data is not None and not ensure_cycle_current_static_url(session):
         session[BACKING_KEY_CYCLE_CONTINUE_PLAY_KEY] = True
         try:
             from songs.key_state import BACKING_NEEDS_REGEN
@@ -5836,6 +5840,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       }} catch (eQ) {{}}
       window.__kcLastHandoffAck = ack;
       try {{ if (window.__kcNav && Number(window.__kcNav.ackSeq || 0) > 0) window.__kcNav.settled = true; }} catch (eNs) {{}}
+      try {{ window.__kcNaturalPending = {{ key: String(ack.playingKey || ''), from: String(ack.fromKey || ''), ackId: String(ack.ackId || ''), at: Date.now() }}; }} catch (eNp) {{}}
       window.__kcLastGapMs = gapMs;
       window.__kcLastSounding = playingKey;
       window.__kcLastChartMs = st.chartMs;
@@ -7787,7 +7792,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
     // one kept counting presses after its frame was replaced, but the timer it
     // scheduled for the switch never fired, so later presses changed nothing.
     // The parent-realm timer calls the live frame's __kcSwitchPrepared.
-    if (parentWin.__kcNavVersion !== 8) {{
+    if (parentWin.__kcNavVersion !== 11) {{
       try {{
         const navBoot = parentDoc.createElement('script');
         navBoot.textContent = `
@@ -7812,6 +7817,18 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       }});
     }}
     return out;
+  }}
+  function liveKey() {{
+    // The key of a take that is actually sounding (unmuted, advancing), or ''.
+    // The audible take nearest its start: at a handoff the outgoing take is
+    // still ending (and incoming takes were warmed up muted, so their start
+    // stamps are older than the outgoing take's).
+    var live = null;
+    Array.prototype.slice.call(D.querySelectorAll('audio[id^="kc-"]')).forEach(function (a) {{
+      if (!a.paused && !a.ended && !a.muted && Number(a.volume) > 0.01 && Number(a.currentTime || 0) > 0.05
+          && (!live || Number(a.currentTime) < Number(live.currentTime))) live = a;
+    }});
+    return String((live && live.getAttribute('data-kc-sounding')) || '').trim();
   }}
   function audibleKey() {{
     var bufs = [D.getElementById('kc-buf-0'), D.getElementById('kc-buf-1')].filter(Boolean);
@@ -7894,6 +7911,13 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
     if (!ks.length) return false;
     var nav = W.__kcNav;
     var base = W.__kcNavPending() ? String(nav.target || '') : '';
+    // A press whose switch already landed (acknowledged) is not "in flight":
+    // if the music moved on since (a natural handoff), count from the key that
+    // is really playing. Only a press still coalescing counts from its target.
+    if (base && Number(nav.ackSeq || 0) > 0) {{
+      var live = liveKey();
+      if (live && live !== base && ks.indexOf(live) >= 0) base = live;
+    }}
     if (!base || ks.indexOf(base) < 0) base = audibleKey();
     var idx = ks.indexOf(base);
     if (idx < 0) {{
@@ -7962,7 +7986,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
     }});
   }}
   W.setInterval(enforceSingleOwner, 250);
-  W.__kcNavVersion = 8;
+  W.__kcNavVersion = 11;
 }})();`;
         parentDoc.documentElement.appendChild(navBoot);
         navBoot.remove();
@@ -8666,7 +8690,19 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           const bufs = ['kc-buf-0', 'kc-buf-1']
             .map((id) => parentDoc.getElementById(id))
             .filter(Boolean);
-          const playing = bufs.find((a) => a && !a.paused && Number(a.currentTime || 0) > 0.05);
+          // A handoff can play from a kc-prep-* / kc-park-* element: when no
+          // dual buffer is playing, read the audible Key Cycling player nearest
+          // its start (reading the paused buffer kept its old key and the
+          // console trailed the music until Python re-rendered it). Nearest its
+          // start, not page order or start time: at a handoff the outgoing take
+          // is still ending, and incoming takes were warmed up muted earlier.
+          let playing = bufs.find((a) => a && !a.paused && Number(a.currentTime || 0) > 0.05);
+          if (!playing) {{
+            [...parentDoc.querySelectorAll('audio[id^="kc-"]')].forEach((a) => {{
+              if (a && !a.paused && !a.ended && !a.muted && Number(a.volume) > 0.01 && Number(a.currentTime || 0) > 0.05
+                  && (!playing || Number(a.currentTime) < Number(playing.currentTime))) playing = a;
+            }});
+          }}
           const act = playing || activeAudio();
           const live = act
             ? String(act.getAttribute('data-kc-sounding') || '').trim()
@@ -8800,6 +8836,16 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           try {{ ev.preventDefault(); }} catch (eP2) {{}}
           try {{ ev.stopPropagation(); }} catch (eS2) {{}}
           try {{ if (ev.stopImmediatePropagation) ev.stopImmediatePropagation(); }} catch (eI2) {{}}
+          return;
+        }}
+        const kcStopRoot = t.closest('[class*="st-key-backing_key_cycle_stop_btn"]');
+        if (kcStopRoot) {{
+          // Key Cycling Stop: silence now; the page re-presses it until Python
+          // has turned cycling off (a Streamlit button press can be lost while
+          // handoff acks rerun the page). Stop is idempotent.
+          if (!parentWin.__kcStopWanted) parentWin.__kcStopTries = 0;
+          parentWin.__kcStopWanted = Date.now();
+          try {{ if (typeof parentWin.__kcHardStop === 'function') parentWin.__kcHardStop(); }} catch (eKs) {{}}
           return;
         }}
         const stopRoot = t.closest('[class*="st-key-stop_backing_btn"]');
@@ -9178,6 +9224,27 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
               parentWin.__kcPinTransportRow();
             }}
             enforceAudibleSurfaces();
+            // Key Cycling Stop retry (see __kcOnTransportClick).
+            if (parentWin.__kcStopWanted) {{
+              const consoleUp = !!parentDoc.querySelector('.ui-key-cycle-playbar.kc-console');
+              if (!consoleUp) {{
+                parentWin.__kcStopWanted = 0;
+                parentWin.__kcStopTries = 0;
+              }} else if (Date.now() - Number(parentWin.__kcStopWanted) > 2500) {{
+                const tries = Number(parentWin.__kcStopTries || 0);
+                if (tries >= 5) {{
+                  parentWin.__kcStopWanted = 0;
+                }} else {{
+                  parentWin.__kcStopTries = tries + 1;
+                  parentWin.__kcStopWanted = Date.now();
+                  const sb = parentDoc.querySelector('[class*="st-key-backing_key_cycle_stop_btn"] button');
+                  if (sb && !sb.disabled) {{
+                    try {{ (parentWin.__kcStopRetryLog = parentWin.__kcStopRetryLog || []).push(Date.now()); }} catch (eRl) {{}}
+                    sb.click();
+                  }}
+                }}
+              }}
+            }}
           }} catch (eArm) {{}}
         }}, 200);
       }}
@@ -9925,6 +9992,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           // A natural handoff moved the music on: the next Previous / Next counts
           // from what is sounding, not from an older, already-applied press target.
           try {{ if (parentWin.__kcNav && Number(parentWin.__kcNav.ackSeq || 0) > 0) parentWin.__kcNav.settled = true; }} catch (eNs) {{}}
+          try {{ parentWin.__kcNaturalPending = {{ key: String(ack.playingKey || ''), from: String(ack.fromKey || ''), ackId: String(ack.ackId || ''), at: Date.now() }}; }} catch (eNp) {{}}
           parentWin.__kcTimingLast = timing;
           parentWin.__kcAckLog = parentWin.__kcAckLog || [];
           parentWin.__kcAckLog.push({{
@@ -11121,6 +11189,30 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         }}
         state.cycleId = neuCycle;
       }}
+      // A natural handoff Python has not adopted yet: the page already plays the
+      // next key, and a command Python built before it read that ack still names
+      // the key the page left. Applied, it reloaded that take -- the music went
+      // back a key for a second or two until the ack landed (and the console
+      // with it). Hold such a command until Python lists the ack as consumed;
+      // from then on its key is authoritative again (a refused handoff still
+      // converges). Stop / Pause / an explicit Play are never held.
+      try {{
+        const nat = parentWin.__kcNaturalPending;
+        if (nat && nat.key) {{
+          const cmdS2 = String(cmd.sounding || '');
+          const consumed = Array.isArray(cmd.consumedAckIds) ? cmd.consumedAckIds.map(String) : [];
+          if (cmdS2 === nat.key || consumed.indexOf(String(nat.ackId)) >= 0 || (Date.now() - Number(nat.at || 0)) > 20000) {{
+            parentWin.__kcNaturalPending = null;
+          }} else if (cmdS2 && cmdS2 === nat.from && !cmd.hardStop && !cmd.paused && !cmd.forcePlay) {{
+            try {{
+              const bag = parentWin.__kcNavLog || (parentWin.__kcNavLog = []);
+              bag.push({{ t: Date.now(), heldStaleCmd: cmdS2, playing: nat.key, ackId: nat.ackId, restart: !!cmd.restart }});
+              if (bag.length > 60) parentWin.__kcNavLog = bag.slice(-60);
+            }} catch (eHl) {{}}
+            return;
+          }}
+        }}
+      }} catch (eNat) {{}}
       if (cmd.passId != null && Number(cmd.passId) >= Number(state.passId || 0)) {{
         state.passId = Number(cmd.passId);
       }}
@@ -12593,6 +12685,11 @@ def render_backing_key_cycle_persistent_player(
         "displayReproject": _display_reproject,
         "displayProjectionId": _cmd_proj_id,
         "displayCmdNonce": int(session.get("_kc_display_cmd_nonce") or 0),
+        # Handoff acks Python has applied (newest first). The page holds back a
+        # command naming the key it naturally left until its ack is listed here.
+        "consumedAckIds": [
+            str(x) for x in (session.get("_kc_handoff_acked_ids") or [])[:12] if str(x or "").strip()
+        ],
         "followTimelineSpace": FOLLOW_TIMELINE_SPACE_CONCERT,
         # Everything cleanup keeps on disk; the browser retires parked/prepared
         # elements holding anything else.

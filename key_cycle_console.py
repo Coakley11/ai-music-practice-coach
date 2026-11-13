@@ -171,6 +171,7 @@ def console_model(
         "capo": None,
         "next_capo": None,
         "capo_wraps": False,
+        "capo_step": 0,
     }
     if mode == "shape":
         cur_proj = _shape(session, cur)
@@ -184,8 +185,11 @@ def console_model(
             capo=capo,
             next_capo=next_capo,
             # The capo cannot keep climbing: the fixed shape returns to a lower
-            # fret for the same sounding key an octave down (existing 0-11 rule).
+            # fret for the same sounding key (existing 0-11 rule). The guitar then
+            # really moves DOWN (Circle of Fourths up from fret 10 to fret 3 sounds
+            # 7 semitones lower, not 5 higher): same key name, different register.
             capo_wraps=bool(cur_proj) and next_capo < capo,
+            capo_step=(next_capo - capo) if cur_proj and next_proj else 0,
             show_sounding=True,
             sounding_label=key_label(_concert_display(session, cur)),
             next_sounding_label=key_label(_concert_display(session, nxt)),
@@ -382,6 +386,9 @@ def _live_single_model(session: dict[str, Any], *, base: str, current: str) -> d
         notes = format_phrase_notes_by_measure(motif)
     except Exception:
         notes = " – ".join(str(n) for n in (motif.get("notes") or []))
+    if mode == "shape":
+        proj = _shape(session, current)
+        model["capo"] = int(proj["capo_fret"]) if proj else None
     model.update(
         motif=motif,
         abc=abc,
@@ -463,6 +470,9 @@ def _live_span_model(session: dict[str, Any], *, base: str, current: str) -> dic
         notes = format_phrase_notes_by_measure(shown)
     except Exception:
         notes = " – ".join(str(n) for n in (shown.get("notes") or []))
+    if mode == "shape":
+        proj = _shape(session, current)
+        model["capo"] = int(proj["capo_fret"]) if proj else None
     model.update(
         motif=shown,
         abc=abc,
@@ -621,6 +631,15 @@ def _cell(cap: str, value: str, *, cls: str, big: bool = True, tag: str = "", sr
     )
 
 
+def _capo_step_tag(step: int) -> str:
+    """What the guitar really does on the next capo move (the register, not just the key name)."""
+    if step > 0:
+        return f"↑ {step} semitone{'s' if step != 1 else ''} · same shape"
+    if step < 0:
+        return f"↓ {-step} semitone{'s' if step != -1 else ''} lower · same shape"
+    return "same fret"
+
+
 def _dots(index: int, count: int) -> str:
     if not count or count > 12:
         return ""
@@ -665,7 +684,7 @@ def console_readout_html(model: dict[str, Any]) -> str:
             + _cell("Current capo", f"Fret {model.get('capo')}", cls="kc-console-capo", tag="Capo")
             + sep
             + _cell("Next capo", f"Fret {model.get('next_capo')}", cls="kc-console-next-capo", big=False,
-                    tag="↺ lower fret, same shape" if model.get("capo_wraps") else "Capo")
+                    tag=_capo_step_tag(int(model.get("capo_step") or 0)))
             + "</div>"
         )
         foot = (
@@ -710,6 +729,12 @@ def render_live_mission_panel(st: Any, session: dict[str, Any], model: dict[str,
     if mode == "shape":
         rows.append(f"Shape key <strong>{html.escape(_pretty(key_label(model.get('chart_key') or '')))}</strong> · fixed")
         rows.append(f"Sounding <strong>{html.escape(_pretty(key_label(model.get('sounding_key') or '')))}</strong>")
+        capo = model.get("capo")
+        if capo is not None:
+            rows.append(
+                f"Capo fret <strong>{int(capo)}</strong>: the shapes sound {int(capo)} semitone"
+                f"{'s' if int(capo) != 1 else ''} above written"
+            )
     elif mode == "written":
         rows.append(f"Written <strong>{html.escape(_pretty(key_label(model.get('chart_key') or '')))}</strong>")
         rows.append(f"Sounding <strong>{html.escape(_pretty(key_label(model.get('sounding_key') or '')))}</strong>")

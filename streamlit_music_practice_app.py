@@ -23428,6 +23428,15 @@ elif _studio_page == "backing":
             st.session_state.pop("_kc_refresh_resume_from_start", None)
             st.session_state["_kc_restart_play"] = True
             st.session_state["_backing_autoplay"] = True
+    if _play_needs_generate and not _kc_paused_build:
+        # This run generates the take: a "needs regenerate" set while arming the
+        # cycle for it (no published take yet) is already being satisfied.
+        try:
+            from songs.key_state import clear_backing_needs_regen
+
+            clear_backing_needs_regen(st.session_state)
+        except Exception:
+            st.session_state[BACKING_NEEDS_REGEN] = False
     _cycle_prefetch_hit = bool(
         _cycle_continue_play
         and _backing_audio_ready
