@@ -5681,6 +5681,18 @@ def live_follow_along_component_html(
     .live-stop-hint {{
       flex: 1 1 180px;
       margin-top: 0;
+      /* Both hints share one cell, so Pause / Resume never changes the header's height and the chart below
+         (now on the page itself) does not jump. */
+      display: grid;
+    }}
+    .live-stop-hint > span {{
+      grid-area: 1 / 1;
+    }}
+    .live-stop-hint > .hint-off {{
+      visibility: hidden;
+    }}
+    .live-stop-btn {{
+      min-width: 11.5em;
     }}
     .live-follow-shell .chord-cell.current-chord {{
       background: #86efac !important;
@@ -6250,7 +6262,7 @@ def live_follow_along_component_html(
     <div class="live-player-toolbar">
       <button type="button" class="live-stop-btn" id="live-stop-btn" data-state="stop">⏸ Pause playback</button>
       <button type="button" class="live-loop-start-btn" id="live-loop-start-btn" title="Seek to the first chord of the current loop and play">↺ Back to loop start</button>
-      <span class="live-help live-stop-hint" id="live-stop-hint">Stop keeps your place. Resume continues from there. Back to loop start seeks the current repetition’s first chord and plays.</span>
+      <span class="live-help live-stop-hint" id="live-stop-hint"><span class="hint-play">Pause keeps your place. Resume continues from there. Back to loop start restarts the current loop and plays.</span><span class="hint-pause hint-off">Paused — Resume continues from this place. Back to loop start seeks the current repetition’s first chord and plays.</span></span>
     </div>
     <div class="live-status-grid">
       <div class="live-status-card">
@@ -6510,9 +6522,11 @@ def live_follow_along_component_html(
       // Loop-start always available — seeks current-rep first chord and plays.
       if (loopStartBtn) loopStartBtn.disabled = false;
       if (stopHint) {{
-        stopHint.textContent = paused
-          ? "Paused — Resume continues from this place. Back to loop start seeks the current repetition’s first chord and plays."
-          : "Pause keeps your place. Resume continues from there. Back to loop start restarts the current loop and plays.";
+        const hp = stopHint.querySelector(".hint-play"), hz = stopHint.querySelector(".hint-pause");
+        if (hp && hz) {{
+          hp.classList.toggle("hint-off", paused);
+          hz.classList.toggle("hint-off", !paused);
+        }}
       }}
     }}
     // Parent dual-buffer pushes pause/play state so both surfaces stay aligned.
