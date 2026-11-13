@@ -24,6 +24,7 @@ parser.add_argument("--trumpet-only",action="store_true")
 parser.add_argument("--bass-only",action="store_true")
 parser.add_argument("--bass-context-only",action="store_true")
 parser.add_argument("--bass-tab-only",action="store_true")
+parser.add_argument("--sax-only",action="store_true")
 parser.add_argument("--mobile",action="store_true")
 args=parser.parse_args()
 OUT=args.out.resolve();OUT.mkdir(parents=True,exist_ok=True)
@@ -128,7 +129,7 @@ def request(page,q,cue,tag):
                 for (const st of (line.staff||[])) for (const voice of (st.voices||[]))
                 for (const e of voice) {
                     if (e.el_type!=='note' || !e.pitches || !e.pitches.length) continue;
-                    notes.push({startSlur:e.startSlur,endSlur:e.endSlur,pitches:e.pitches.map(p=>({pitch:p.pitch,verticalPos:p.verticalPos,accidental:p.accidental,startSlur:p.startSlur,endSlur:p.endSlur})),
+                    notes.push({duration:e.duration,decoration:e.decoration,startSlur:e.startSlur,endSlur:e.endSlur,pitches:e.pitches.map(p=>({pitch:p.pitch,verticalPos:p.verticalPos,accidental:p.accidental,startSlur:p.startSlur,endSlur:p.endSlur})),
                                 headPitches:((e.abselem&&e.abselem.heads)||[]).map(h=>h.pitch)});
                 }
                 out.push({abc:r.abc,notes});
@@ -197,7 +198,10 @@ try:
             page.get_by_test_id("stMainBlockContainer").get_by_role("textbox",name="Question",exact=True).wait_for(timeout=90000)
             idle(page)
             (OUT/"practice-start.txt").write_text(page.locator("body").inner_text(),encoding="utf-8")
-            if args.bass_tab_only:
+            if args.sax_only:
+                from ami_sax_browser_cases import run
+                run(page,request,select,OUT,probe=args.probe)
+            elif args.bass_tab_only:
                 from ami_bass_tab_browser_cases import run
                 run(page,request,select,OUT,mobile=args.mobile,probe=args.probe)
             elif args.bass_only or args.bass_context_only:
