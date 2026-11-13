@@ -7,7 +7,7 @@ changes are authorized or implemented in the advanced-jazz milestone.
 
 - `exercise_adapt.SPECS`: soprano/alto/tenor/baritone identity, notation name and
   transposing-type label; no horn model, keywork or fingering system.
-- `scale_pattern_harmony._EXACT_OFFSETS`: written minus sounding 2/9/14/21
+- `scale_pattern_harmony._OFFSETS`: written minus sounding 2/9/14/21
   semitones for soprano/alto/tenor/baritone, including octaves.
 - `_PLAYABLE_WRITTEN`: generic conservative Bb3-F6 (MIDI 58-89) for all four.
   This is the accepted application cap, not a claim that every model's physical
@@ -92,3 +92,15 @@ existing conservative adapter, without changing generators. A separately
 approved teacher-reviewed pilot can then address register transitions or overtone
 preparation. Altissimo and alternate-fingering generation require their own
 approval, validated profiles and acceptance criteria.
+
+
+## Capability-foundation follow-up
+
+The local foundation (AMI_SAX_CAPABILITY_FOUNDATION_20261113.md) keeps the audited
+engines unchanged, corrects the offset table identifier to _OFFSETS accessed via
+exact_offset, and adds documentary metadata plus unimplemented-technique gates.
+The US archived-model YBS-62II source at
+https://usa.yamaha.com/products/musical_instruments/winds/saxophones/ybs-62_03/specs.html
+was rechecked and explicitly identifies Eb, low A, high F# and front F. This does
+not authorize importing contradictory data from the similarly named newer page.
+The interactive fingering roadmap is planning only; no recipes were imported.
