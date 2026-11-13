@@ -14,7 +14,10 @@ from __future__ import annotations
 from typing import Any
 
 COUNT_IN_BARS = 2
+# The choice (a plain session key, never a widget key: Streamlit drops / resets an unrendered widget's value)
+# and the Advanced-settings toggle that edits it.
 COUNT_IN_SETTING_KEY = "backing_count_in_on"
+COUNT_IN_WIDGET_KEY = "backing_count_in_widget"
 
 
 def count_in_enabled(session: Any) -> bool:
@@ -23,6 +26,11 @@ def count_in_enabled(session: Any) -> bool:
         return bool((session or {}).get(COUNT_IN_SETTING_KEY, True))
     except Exception:
         return True
+
+
+def set_count_in_enabled(session: Any, on: bool) -> None:
+    """The toggle's on_change: record the choice where no widget cleanup can reach it."""
+    session[COUNT_IN_SETTING_KEY] = bool(on)
 
 
 def count_in_spec(*, bpm: Any, time_signature: Any, bars: int = COUNT_IN_BARS) -> dict[str, Any] | None:

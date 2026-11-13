@@ -74,4 +74,17 @@ def test_lead_sheet_player_is_hooked_before_it_can_autoplay():
 
 
 def test_setting_in_advanced_playback_settings():
-    assert '"Count-in (2 bars)"' in APP and "key=_CI_KEY" in APP
+    assert '"Count-in (2 bars)"' in APP and "key=_CI_WIDGET" in APP
+
+
+def test_the_choice_survives_widget_cleanup():
+    """The choice is a plain key the toggle writes on change, never the widget key itself (the widget's value was
+    reset to Off once Play opened the Lead Sheet, and Stop -> Play stopped counting in)."""
+    from backing_count_in import COUNT_IN_WIDGET_KEY, set_count_in_enabled
+
+    assert COUNT_IN_WIDGET_KEY != COUNT_IN_SETTING_KEY
+    s = {COUNT_IN_WIDGET_KEY: False}          # a reset widget value must not switch it off
+    assert backing_count_in_for_card({**s, "backing_track_bpm": 100}, karaoke=False, cycle_active=False) is not None
+    set_count_in_enabled(s, False)
+    assert backing_count_in_for_card({**s, "backing_track_bpm": 100}, karaoke=False, cycle_active=False) is None
+    assert "on_change=lambda: _ci_set(" in APP

@@ -14902,13 +14902,21 @@ def _render_backing_step2_playback_action(
                 help="Adds a soft string section under the piano. Arrangement only: "
                 "song, key and tempo stay the same.",
             )
-            from backing_count_in import COUNT_IN_SETTING_KEY as _CI_KEY
+            from backing_count_in import (
+                COUNT_IN_WIDGET_KEY as _CI_WIDGET,
+                count_in_enabled as _ci_enabled,
+                set_count_in_enabled as _ci_set,
+            )
 
-            if _CI_KEY not in st.session_state:
-                st.session_state[_CI_KEY] = True
+            # Same shape as Strings: the choice lives in a plain session key; the widget is re-seeded from it,
+            # because Streamlit drops / resets an unrendered widget's value (measured: Off after Play opened the
+            # Lead Sheet, so Stop -> Play no longer counted in).
+            if _CI_WIDGET not in st.session_state:
+                st.session_state[_CI_WIDGET] = _ci_enabled(st.session_state)
             st.toggle(
                 "Count-in (2 bars)",
-                key=_CI_KEY,
+                key=_CI_WIDGET,
+                on_change=lambda: _ci_set(st.session_state, bool(st.session_state.get(_CI_WIDGET, True))),
                 help="Two bars of clicks at the track's tempo before Play starts the music. "
                 "Resume never counts in. Not used with Key Cycling or Karaoke.",
             )
