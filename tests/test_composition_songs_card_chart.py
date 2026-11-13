@@ -70,6 +70,17 @@ class CompositionSongCardChartTests(unittest.TestCase):
         self.assertIn("composed melody", m)
         self.assertNotIn("generated for this song", m)
 
+    def test_numbered_sections_read_as_plural_not_the_verse_use(self):
+        # Browser QA: "The verse use the same four chords ... (the verse and the verse)".
+        doc = _doc("Cmaj7 Fmaj7 D7 G7")
+        rec = composition_song_card_record(doc)
+        rec["extensions"]["composition_melody_sections"] = ["Verse 1", "Verse 2"]
+        g = _card(rec, level="Beginner")
+        self.assertNotIn("the verse and the verse", g["melody"])
+        self.assertNotIn("The verse use", g["harmony"])
+        self.assertIn("The verses use", g["harmony"])
+        self.assertIn("The verses share", _card(rec, level="Intermediate")["harmony"])
+
 
 if __name__ == "__main__":
     unittest.main()
