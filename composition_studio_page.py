@@ -688,10 +688,25 @@ body[data-studio-page="composer"] .block-container {
   margin-left: 0.35rem;
   vertical-align: middle;
 }
+.composer-suggestion-card {
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow-wrap: anywhere;
+}
 .composer-suggestion-card h4 {
   margin: 0 0 0.25rem 0;
   font-size: 0.95rem;
   color: #0f172a;
+  min-width: 0;
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+@media (max-width: 480px) {
+  .composer-suggestion-card { padding: 0.65rem 0.65rem; }
+  .composer-score-wrap { padding: 0.4rem 0.25rem 0.6rem; }
 }
 .composer-suggestion-chords {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
@@ -4899,7 +4914,7 @@ def _render_chords_lane(
                 )
         _ap, _cn = st.columns(2)
         if _ap.button(
-            "Apply split to draft",
+            action_label("accept", "Apply split to draft"),
             key=f"composer_split_apply_{sid}",
             use_container_width=True,
             disabled=not _second,
@@ -4909,7 +4924,7 @@ def _render_chords_lane(
             )
             session_state.pop(split_key, None)
             st.rerun()
-        if _cn.button("Cancel split", key=f"composer_split_cancel_{sid}", use_container_width=True):
+        if _cn.button(action_label("cancel", "Cancel split"), key=f"composer_split_cancel_{sid}", use_container_width=True):
             session_state.pop(split_key, None)
             st.rerun()
 
