@@ -74,7 +74,11 @@ def test_lead_sheet_player_is_hooked_before_it_can_autoplay():
 
 
 def test_setting_in_advanced_playback_settings():
-    assert '"Count-in (2 bars)"' in APP and "key=_CI_WIDGET" in APP
+    toggle = APP[APP.index('"Count-in (2 bars)"') - 80:APP.index('"Count-in (2 bars)"') + 400]
+    assert "value=_ci_now" in toggle
+    # No widget key and no on_change: a re-sent widget default can never switch the choice off.
+    assert "key=" not in toggle and "on_change" not in toggle
+    assert "if bool(_ci_pick) != _ci_now:" in toggle
 
 
 def test_the_choice_survives_widget_cleanup():
@@ -87,4 +91,4 @@ def test_the_choice_survives_widget_cleanup():
     assert backing_count_in_for_card({**s, "backing_track_bpm": 100}, karaoke=False, cycle_active=False) is not None
     set_count_in_enabled(s, False)
     assert backing_count_in_for_card({**s, "backing_track_bpm": 100}, karaoke=False, cycle_active=False) is None
-    assert "on_change=lambda: _ci_set(" in APP
+    assert "_ci_set(st.session_state, bool(_ci_pick))" in APP

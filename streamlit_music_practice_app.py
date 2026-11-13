@@ -14902,24 +14902,21 @@ def _render_backing_step2_playback_action(
                 help="Adds a soft string section under the piano. Arrangement only: "
                 "song, key and tempo stay the same.",
             )
-            from backing_count_in import (
-                COUNT_IN_WIDGET_KEY as _CI_WIDGET,
-                count_in_enabled as _ci_enabled,
-                set_count_in_enabled as _ci_set,
-            )
+            from backing_count_in import count_in_enabled as _ci_enabled, set_count_in_enabled as _ci_set
 
-            # Same shape as Strings: the choice lives in a plain session key; the widget is re-seeded from it,
-            # because Streamlit drops / resets an unrendered widget's value (measured: Off after Play opened the
-            # Lead Sheet, so Stop -> Play no longer counted in).
-            if _CI_WIDGET not in st.session_state:
-                st.session_state[_CI_WIDGET] = _ci_enabled(st.session_state)
-            st.toggle(
+            # The choice lives in a plain session key. The toggle has no key and starts from that choice, and only
+            # a real change of its value writes it. A keyed toggle seeded through session state was reset to Off
+            # without a click: when Play opened the Lead Sheet the browser re-sent the widget's own default
+            # (False) and its on_change fired (traced in the real app), so Stop -> Play stopped counting in.
+            _ci_now = _ci_enabled(st.session_state)
+            _ci_pick = st.toggle(
                 "Count-in (2 bars)",
-                key=_CI_WIDGET,
-                on_change=lambda: _ci_set(st.session_state, bool(st.session_state.get(_CI_WIDGET, True))),
+                value=_ci_now,
                 help="Two bars of clicks at the track's tempo before Play starts the music. "
                 "Resume never counts in. Not used with Key Cycling or Karaoke.",
             )
+            if bool(_ci_pick) != _ci_now:
+                _ci_set(st.session_state, bool(_ci_pick))
 
             if _developer_mode_enabled():
                 # Which recorded instruments this server actually plays (they follow its environment).
