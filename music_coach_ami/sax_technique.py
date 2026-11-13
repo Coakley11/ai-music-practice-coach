@@ -143,6 +143,9 @@ def response(plan,session,lead=''):
 def handle(question,session,ami_ctx=None):
     from music_coach_ami import flexible_single as fs
     if session is None:return None
+    from music_coach_ami.jazz_patterns import handle as jazz_handle
+    jazz_response=jazz_handle(question,session,ami_ctx)
+    if jazz_response is not None:return jazz_response
     from music_coach_ami.sax_conversation import handle as conversational_handle
     conversational = conversational_handle(question, session, ami_ctx)
     if conversational is not None: return conversational
