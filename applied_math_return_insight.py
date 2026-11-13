@@ -2153,16 +2153,27 @@ def render_applied_math_insight_panel(
                         from music_coach_ami.bass_tab_view import render_call
                         blocks_js.append(render_call(div_id,section,tab))
                     else:
-                        blocks_js.append(f'ABCJS.renderAbc("{div_id}", `{escaped}`, {{responsive:"resize", staffwidth:720}});')
+                        blocks_js.append(f'ABCJS.renderAbc("{div_id}", `{escaped}`, {{responsive:"resize", staffwidth:720}});' +
+                            f'(() => {{const p=document.getElementById("{div_id}"),svgs=Array.from(p.querySelectorAll("svg"));'
+                            'const widths=svgs.map(s=>s.viewBox.baseVal.width),bounds=svgs.map(s=>s.getBBox());'
+                            'p.parentElement.style.minWidth=Math.ceil(Math.max(720,...widths))+"px";'
+                            'const left=Math.ceil(Math.max(8,...bounds.map(b=>4-b.x))),right=Math.ceil(Math.max(8,...bounds.map((b,i)=>b.x+b.width-widths[i]+4)));'
+                            'p.parentElement.style.padding="8px "+right+"px 8px "+left+"px";'
+                            'p.style.overflow="visible";svgs.forEach(s=>s.style.overflow="visible");})();')
+                # Keep native score size readable; contain navigation inside the iframe.
+                # Bass TAB retains its own staff/TAB geometry and minimum width.
                 divs = "\n".join(
-                    (f'<div class="ami-score-scroll" style="overflow-x:auto;max-width:100%;margin-bottom:12px;"><div id="coach_abc_paper_{idx}" style="min-width:420px;"></div></div>'
-                     if data.get("bass_tab_sections") else f'<div id="coach_abc_paper_{idx}" style="margin-bottom:12px;"></div>')
+                    (f'<div class="ami-score-scroll" role="region" aria-label="Exercise score {idx + 1}" tabindex="0" style="overflow-x:auto;max-width:100%;margin-bottom:12px;"><div id="coach_abc_paper_{idx}" style="min-width:420px;"></div></div>'
+                     if data.get("bass_tab_sections") else
+                     f'<div class="ami-score-scroll" role="region" aria-label="Exercise score {idx + 1}" tabindex="0" style="overflow-x:auto;max-width:100%;margin-bottom:12px;"><div class="ami-score-paper" style="min-width:720px;"><div id="coach_abc_paper_{idx}"></div></div></div>')
                     for idx in range(len(abc_sections))
                 )
                 script = "\n".join(blocks_js)
                 panel_height = min(1100, (420 if data.get("bass_tab_sections") else 240) + 220 * len(abc_sections))
                 if data.get("bass_tab_sections"):
                     divs='<p style="font:13px Arial">Four-string TAB: G / D / A / E, top to bottom. Values below TAB are fractions of a whole note; rests and articulation follow the staff. Scroll the score horizontally if needed.</p>'+divs
+                else:
+                    divs='<p style="font:13px Arial">Scroll each score horizontally if needed. Focus a score and use the arrow keys to navigate.</p>'+divs
                 components.html(
                     f"""
                     <html><head>
