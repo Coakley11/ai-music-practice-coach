@@ -23,6 +23,8 @@ parser.add_argument("--technique-parser-only",action="store_true")
 parser.add_argument("--trumpet-only",action="store_true")
 parser.add_argument("--bass-only",action="store_true")
 parser.add_argument("--bass-context-only",action="store_true")
+parser.add_argument("--bass-tab-only",action="store_true")
+parser.add_argument("--mobile",action="store_true")
 args=parser.parse_args()
 OUT=args.out.resolve();OUT.mkdir(parents=True,exist_ok=True)
 ORIGIN=f"http://127.0.0.1:{args.port}"
@@ -113,6 +115,7 @@ def request(page,q,cue,tag):
     assert record["response"], "Request took the legacy fallback"
     # Rendering is inspected in the actual card iframe, not just parsed from stored ABC.
     staff=[]
+    panel.locator("iframe").first.wait_for(state="attached",timeout=45000)
     for iframe in panel.locator("iframe").all():
         frame=iframe.element_handle().content_frame()
         frame.locator("svg").first.wait_for(timeout=45000)
@@ -139,7 +142,10 @@ def request(page,q,cue,tag):
         assert actual["abc"]==abc
         assert len(actual["notes"])==len(read_abc(re.sub(r'"[^"\n]*"', "", abc))), "Drawn note count differs from independent ABC reading"
     if record.get("plan"):
-        for actual,row in zip(staff,record["plan"]["items"]):
+        view=record.get("history",{}).get("view",{})
+        visible_rows=record["plan"]["items"]
+        if view.get("mode")=="item":visible_rows=[visible_rows[view["index"]]]
+        for actual,row in zip(staff,visible_rows):
             if row.get("written_notes"):
                 expected_positions=[]
                 for name in row["written_notes"]:
@@ -176,10 +182,11 @@ try:
     (OUT/"server-identity.json").write_text(json.dumps({"run_id":RUN,"pid":server.pid,"origin":ORIGIN,"command":cmd,"python":sys.version},indent=2),encoding="utf-8")
     with sync_playwright() as pw:
         browser=pw.chromium.launch(channel="chrome",headless=True)
-        context=browser.new_context(viewport={"width":1440,"height":1000})
+        context=browser.new_context(viewport={"width":390 if args.mobile else 1440,"height":844 if args.mobile else 1000},is_mobile=args.mobile,has_touch=args.mobile)
         context.add_init_script("""(() => { let value;Object.defineProperty(window,'ABCJS',{configurable:true,get(){return value},set(v){value=v;if(v&&typeof v.renderAbc==='function'){const original=v.renderAbc;v.renderAbc=function(...args){const tunes=original.apply(this,args);(window.__amiActualRenders||(window.__amiActualRenders=[])).push({abc:args[1],tunes});return tunes}}}})})()""")
         page=context.new_page()
         page.on("websocket",watch_socket)
+        page.on("pageerror",lambda e:(OUT/"page-errors.txt").open("a",encoding="utf-8").write(getattr(e,"stack",str(e))+"\n"))
         try:
             page.goto(ORIGIN+"/?suite_workspace=guest",wait_until="domcontentloaded")
             page.get_by_role("heading",name="Daniel Cohen Music Practice Coach AI",exact=True).wait_for(timeout=120000)
@@ -190,7 +197,10 @@ try:
             page.get_by_test_id("stMainBlockContainer").get_by_role("textbox",name="Question",exact=True).wait_for(timeout=90000)
             idle(page)
             (OUT/"practice-start.txt").write_text(page.locator("body").inner_text(),encoding="utf-8")
-            if args.bass_only or args.bass_context_only:
+            if args.bass_tab_only:
+                from ami_bass_tab_browser_cases import run
+                run(page,request,select,OUT,mobile=args.mobile,probe=args.probe)
+            elif args.bass_only or args.bass_context_only:
                 from ami_bass_browser_cases import run
                 run(page,request,select,OUT,context_only=args.bass_context_only)
             elif args.trumpet_only:
@@ -277,6 +287,9 @@ try:
                     articulation,_=request(page,"Give me a warmup.","warmup","15-articulation-focus")
                     assert set(articulation["plan"]["spec"]["families"])=={"articulation","scale"}
         except Exception:
+            for i,frame in enumerate(page.frames):
+                try:(OUT/f"failure-frame-{i}.html").write_text(frame.content(),encoding="utf-8")
+                except Exception:pass
             page.screenshot(path=str(OUT/"failure.png"),full_page=True)
             (OUT/"failure-body.txt").write_text(page.locator("body").inner_text(),encoding="utf-8")
             raise

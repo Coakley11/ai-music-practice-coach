@@ -2147,15 +2147,22 @@ def render_applied_math_insight_panel(
                         .replace("${", "\\${")
                     )
                     div_id = f"coach_abc_paper_{idx}"
-                    blocks_js.append(
-                        f'ABCJS.renderAbc("{div_id}", `{escaped}`, {{responsive:"resize", staffwidth:720}});'
-                    )
+                    tabs=data.get("bass_tab_sections") or []
+                    tab=tabs[idx] if idx<len(tabs) else None
+                    if isinstance(tab,dict) and tab.get("abc")==section:
+                        from music_coach_ami.bass_tab_view import render_call
+                        blocks_js.append(render_call(div_id,section,tab))
+                    else:
+                        blocks_js.append(f'ABCJS.renderAbc("{div_id}", `{escaped}`, {{responsive:"resize", staffwidth:720}});')
                 divs = "\n".join(
-                    f'<div id="coach_abc_paper_{idx}" style="margin-bottom:12px;"></div>'
+                    (f'<div class="ami-score-scroll" style="overflow-x:auto;max-width:100%;margin-bottom:12px;"><div id="coach_abc_paper_{idx}" style="min-width:420px;"></div></div>'
+                     if data.get("bass_tab_sections") else f'<div id="coach_abc_paper_{idx}" style="margin-bottom:12px;"></div>')
                     for idx in range(len(abc_sections))
                 )
                 script = "\n".join(blocks_js)
-                panel_height = min(900, 240 + 220 * len(abc_sections))
+                panel_height = min(1100, (420 if data.get("bass_tab_sections") else 240) + 220 * len(abc_sections))
+                if data.get("bass_tab_sections"):
+                    divs='<p style="font:13px Arial">Four-string TAB: G / D / A / E, top to bottom. Values below TAB are fractions of a whole note; rests and articulation follow the staff. Scroll the score horizontally if needed.</p>'+divs
                 components.html(
                     f"""
                     <html><head>
@@ -2307,6 +2314,7 @@ def _render_warmup_nav(st: Any, data: dict, *, app: str) -> None:
             data["notation_abc"] = str(resp.notation_abc or "")
             data["notation_abc_sections"] = [str(x) for x in resp.notation_abc_sections if str(x).strip()]
             data["warmup_nav"] = dict(resp.diagnostics.get("warmup_nav") or {})
+            data["bass_tab_sections"]=list(resp.diagnostics.get("bass_tab_sections") or [])
             st.session_state[SESSION_PENDING_KEY] = data
             st.rerun()
 
