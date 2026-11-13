@@ -131,20 +131,31 @@ class TestOrder(unittest.TestCase):
     def secs(self, *names):
         return {n: [{"chord": "C", "bars": 1}] for n in names}
 
-    def test_default_form(self):
+    def test_default_order_plays_each_section_with_chords_once(self):
+        # Custom songs carry no repetition info, so nothing is repeated or invented.
         o = cpp.song_play_order(self.secs("Intro", "Verse", "Chorus", "Bridge", "Outro"))
-        self.assertEqual(o, ["Intro", "Verse", "Chorus", "Verse", "Chorus", "Bridge", "Chorus", "Outro"])
+        self.assertEqual(o, ["Intro", "Verse", "Chorus", "Bridge", "Outro"])
 
     def test_prechorus_and_solo(self):
         o = cpp.song_play_order(self.secs("Verse", "Pre-Chorus", "Chorus", "Solo", "Bridge"))
-        self.assertEqual(
-            o,
-            ["Verse", "Pre-Chorus", "Chorus", "Verse", "Pre-Chorus", "Chorus", "Solo", "Bridge", "Chorus"],
-        )
+        self.assertEqual(o, ["Verse", "Pre-Chorus", "Chorus", "Solo", "Bridge"])
 
-    def test_solo_without_bridge_precedes_final_chorus(self):
-        o = cpp.song_play_order(self.secs("Verse", "Chorus", "Solo"))
-        self.assertEqual(o, ["Verse", "Chorus", "Verse", "Chorus", "Solo", "Chorus"])
+    def test_only_sections_with_chords_are_used(self):
+        s = self.secs("Verse", "Chorus")
+        s["Bridge"] = []
+        self.assertEqual(cpp.song_play_order(s), ["Verse", "Chorus"])
+
+    def test_order_note_says_default_and_not_the_users_structure(self):
+        note = cpp.order_note(["Verse", "Chorus"])
+        self.assertIn("default order", note)
+        self.assertIn("Verse", note)
+        self.assertIn("not your song structure", note)
+        self.assertIn("once", note)
+
+    def test_order_note_for_a_user_arrangement(self):
+        note = cpp.order_note(["Chorus", "Verse", "Verse"], ["Chorus", "Verse", "Verse"])
+        self.assertIn("your song arrangement", note)
+        self.assertNotIn("default", note)
 
     def test_single_section_plays_once(self):
         self.assertEqual(cpp.song_play_order(self.secs("Verse")), ["Verse"])
@@ -162,9 +173,9 @@ class TestOrder(unittest.TestCase):
         s = {"Verse": [{"chord": "C", "bars": 1}], "Chorus": [{"chord": "F", "bars": 2}]}
         o = cpp.song_play_order(s)
         e = ev(tl(s, o))
-        self.assertEqual([x["section_label"] for x in e], ["Verse 1", "Chorus 1", "Verse 2", "Chorus 2"])
-        self.assertEqual([x["bar_index"] for x in e], [0, 1, 3, 4])
-        self.assertEqual(e[-1]["start_beat"], 4 + 8 + 4)
+        self.assertEqual([x["section_label"] for x in e], ["Verse", "Chorus"])
+        self.assertEqual([x["bar_index"] for x in e], [0, 1])
+        self.assertEqual(e[-1]["start_beat"], 4)
 
 
 class TestAudio(unittest.TestCase):
@@ -230,10 +241,19 @@ class TestPlayerHtml(unittest.TestCase):
         s = {"Verse": [{"chord": "C", "bars": 1}], "Chorus": [{"chord": "F", "bars": 1}]}
         html_doc, h, meta = cpp.build_player_html(self._inputs(s), "song", "", 1)
         heads = re.findall(r'class="cplay-sec" data-sec="\d+">([^<]+)<', html_doc)
-        self.assertEqual(heads, ["Verse 1", "Chorus 1", "Verse 2", "Chorus 2"])
+        # default order = each section with chords once (no invented repeats)
+        self.assertEqual(heads, ["Verse", "Chorus"])
         self.assertIn("max-height:220px", html_doc)
         self.assertIn('id="cplprev-song-1-now"', html_doc)
         self.assertLessEqual(h, 150 + 220)
+
+    def test_song_player_keeps_repeats_of_a_user_arrangement(self):
+        s = {"Verse": [{"chord": "C", "bars": 1}], "Chorus": [{"chord": "F", "bars": 1}]}
+        inp = self._inputs(s)
+        inp["arrangement"] = ["Verse", "Chorus", "Verse", "Chorus"]
+        html_doc, h, meta = cpp.build_player_html(inp, "song", "", 1)
+        heads = re.findall(r'class="cplay-sec" data-sec="\d+">([^<]+)<', html_doc)
+        self.assertEqual(heads, ["Verse 1", "Chorus 1", "Verse 2", "Chorus 2"])
 
     def test_empty_returns_no_html(self):
         self.assertEqual(cpp.build_player_html(self._inputs({"Verse": []}), "section", "Verse")[0], "")

@@ -34,9 +34,7 @@ _REST_TOKENS = {"n.c.", "n.c", "nc", "(n.c.)", "rest", "tacet", "-"}
 # Typical song form. Pre-Chorus precedes each Chorus, Solo precedes the Bridge
 # (or the final Chorus when there is no Bridge). Sections without chords are skipped.
 _FORM_TEMPLATE = (
-    "Intro", "Verse", "Pre-Chorus", "Chorus",
-    "Verse", "Pre-Chorus", "Chorus",
-    "Solo", "Bridge", "Chorus", "Outro",
+    "Intro", "Verse", "Pre-Chorus", "Chorus", "Solo", "Bridge", "Outro",
 )
 
 
@@ -56,34 +54,37 @@ def song_play_order(
     sections: dict[str, list[dict]] | None,
     arrangement: list[str] | None = None,
 ) -> list[str]:
-    """Section names in the order the full song is played (repeats included).
+    """Section names in the order the full song is played.
 
     ``arrangement`` (a user-defined order, e.g. ``active["section_arrangement"]``) wins
-    when given; entries naming an empty/unknown section are skipped. Otherwise the
-    default form is used, adjacent duplicates collapsed so a Verse-only song plays once.
+    when given - repeats the user wrote are kept; entries naming an empty/unknown
+    section are skipped. Custom songs carry no repetition information, so otherwise the
+    default order plays every section that has chords exactly ONCE (nothing is invented;
+    see ``order_note`` for what the user is told).
     """
     secs = sections or {}
     if arrangement:
         return [n for n in arrangement if _filled(secs.get(n))]
-    order = [n for n in _FORM_TEMPLATE if _filled(secs.get(n))]
-    if "Solo" in order and "Bridge" not in order:
-        # Solo had no Bridge to precede: keep it before the final Chorus.
-        order = [n for n in order if n != "Solo"]
-        if "Chorus" in order:
-            last = len(order) - 1 - order[::-1].index("Chorus")
-            order.insert(last, "Solo")
-        else:
-            order.append("Solo")
-    out: list[str] = []
-    for n in order:
-        if out and out[-1] == n:
-            continue
-        out.append(n)
+    out = [n for n in _FORM_TEMPLATE if _filled(secs.get(n))]
     # Sections that exist but are not in the template (should not happen) still play once.
     for n in secs:
         if _filled(secs.get(n)) and n not in out and n != "Full Song":
             out.append(n)
     return out
+
+
+def order_note(order: list[str], arrangement: list[str] | None = None) -> str:
+    """One visible sentence naming the order the whole-song preview will play and where it
+    comes from, so the default is never mistaken for the user's intended structure."""
+    if not order:
+        return ""
+    chain = " → ".join(order)
+    if arrangement:
+        return f"Plays your song arrangement: {chain}."
+    return (
+        f"Plays in default order: {chain}. This song has no saved arrangement, so each section "
+        "that has chords plays once — this is not your song structure."
+    )
 
 
 # ------------------------------------------------------------------------ timeline

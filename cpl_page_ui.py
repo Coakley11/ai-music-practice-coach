@@ -854,6 +854,16 @@ def render_custom_progression_lab_page() -> None:
         from custom_progression_preview import PREVIEW_KIND_SONG, mount_active_preview, render_preview_buttons
 
         render_preview_buttons(st, kind=PREVIEW_KIND_SONG, disabled=not has_song_chords)
+        if has_song_chords:
+            # Always say which order will play and where it comes from: Custom songs store no
+            # arrangement, so the default must never read as the user's intended structure.
+            try:
+                from custom_progression_preview import order_note, preview_inputs, song_play_order
+
+                _pi = preview_inputs(st.session_state)
+                st.caption(order_note(song_play_order(_pi["sections"], _pi.get("arrangement")), _pi.get("arrangement")))
+            except Exception:
+                pass
         mount_active_preview(st, PREVIEW_KIND_SONG)
 
     def _render_launch_in_studio(

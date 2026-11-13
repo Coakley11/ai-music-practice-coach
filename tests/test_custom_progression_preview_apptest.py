@@ -188,8 +188,13 @@ class TestPreviewSong(unittest.TestCase):
         frames = _frames(at)
         self.assertEqual(len(frames), 1)
         heads = re.findall(r'class="cplay-sec" data-sec="\d+">([^<]+)<', frames[0])
-        self.assertEqual(heads, ["Verse 1", "Chorus 1", "Verse 2", "Chorus 2"])
-        self.assertEqual(_chips(frames[0]), ["C", "F", "Am", "G", "F", "G"] * 2)
+        self.assertEqual(heads, ["Verse", "Chorus"])
+        self.assertEqual(_chips(frames[0]), ["C", "F", "Am", "G", "F", "G"])
+        # the order and its source are visible, and the default is not passed off as the user's structure
+        notes = [str(c.value) for c in at.caption if "default order" in str(c.value)]
+        self.assertEqual(len(notes), 1, notes)
+        self.assertIn("Verse → Chorus", notes[0])
+        self.assertIn("not your song structure", notes[0])
         self.assertIn("Entire song preview", frames[0])
         self.assertIn("cplay-now", frames[0])
 
@@ -212,7 +217,7 @@ class TestPreviewSong(unittest.TestCase):
         at.run()
         self.assertEqual(_frames(at), [])
         at.button(key="cpl_preview_song").click().run()
-        self.assertEqual(_chips(_frames(at)[0]).count("C"), 2 + 2)
+        self.assertEqual(_chips(_frames(at)[0]).count("C"), 1 + 1)
 
     def test_song_button_disabled_without_chords(self):
         blank = _song()
