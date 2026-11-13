@@ -805,7 +805,7 @@ def build_item(player: we.Player, spec: dict[str, Any], desc: dict[str, Any]) ->
         built = we.BUILDERS[fam](player, level, tonic, tonality, **kwargs)
     if player.key == "bass":
         from music_coach_ami.bass_technique import certify
-        certify(built, level)
+        certify(built, level, record=spec.get("bass_fingering",{}).get(desc["uid"],spec.get("bass_fingering",{}).get("*")))
     scale = float(spec.get("tempo_scale") or 1.0)
     bpm = int(desc.get("tempo") or round(built.bpm * scale))
     bpm = max(36, min(160, bpm))
@@ -813,6 +813,9 @@ def build_item(player: we.Player, spec: dict[str, Any], desc: dict[str, Any]) ->
     checks = (ws.verify(player, level, built, diag) if fam == "guide_tones" else wc.verify(player, level, built, diag) if fam in SONG_FAMILIES
               else we.verify(player, level, built, tonic, tonality, diag))
     seconds = we.pass_seconds(built, bpm)
+    if player.key=="bass":
+        from music_coach_ami.bass_tab import timeline
+        built.meta["bass_tab"]=timeline(built,level,bpm,abc)
     pitched = [n for n in built.notes if not n.rest]
     written = [n.midi for n in pitched]
     return {
@@ -935,6 +938,8 @@ def build_plan(player: we.Player, spec: dict[str, Any], *, replan: bool = True) 
                        "offset": player.offset, "semitones": player.semitones},
             "level": spec["level"], "minutes": spec["minutes"]}
     plan["id"] = "wu-" + hashlib.sha1(json.dumps([[r["uid"], r["abc"], r["reps"]] for r in rows], sort_keys=True).encode("utf-8")).hexdigest()[:10]
+    if player.key=="bass":
+        plan["id"]="wu-"+hashlib.sha1(json.dumps([plan["id"],[r["meta"]["bass_tab"] for r in rows]],sort_keys=True).encode()).hexdigest()[:10]
     return plan
 
 
@@ -1163,7 +1168,7 @@ def _plan_response(plan: dict[str, Any], *, lead: str = "", changed: list[str] |
            "“make the second exercise slower”, “change the interval exercise to fourths”, “undo that”.")
     if plan["spec"].get("single_song"):
         nxt = "Ask to make exercise 1 slower, explain the notes, change its starting chord tone, or undo the last change. Ask for a timed song warmup to set a duration."
-    return CoachResponse(
+    response = CoachResponse(
         intent=CoachIntent.SCALE_PRACTICE, direct_answer=direct, practice_steps=steps, what_to_listen_for=list(listen), suggested_next_action=nxt if view.get("mode") != "item" else
         "Say “next exercise” for the next one, “show the whole warmup” for the plan, or change it (“make this one slower”).",
         notation_abc=sections[0] if sections else "", notation_abc_sections=list(sections), source_solver="AdaptiveWarmup", confidence=0.9,
@@ -1173,6 +1178,13 @@ def _plan_response(plan: dict[str, Any], *, lead: str = "", changed: list[str] |
                      "warmup_nav": _nav(plan, view), "warmup_items": [_item_summary(r) for r in items],
                      "warmup_song_aware": bool(plan["spec"].get("song")), "warmup_view": dict(view),
                      "warmup_song": _song_summary(plan)})
+
+
+    if plan["player"]["key"]=="bass":
+        from music_coach_ami.bass_tab import sections as tab_sections
+        selected=[items[max(0,min(int(view.get("index") or 0),len(items)-1))]] if view.get("mode")=="item" and items else items
+        response.diagnostics["bass_tab_sections"]=tab_sections(selected)
+    return response
 
 
 def _song_summary(plan: dict[str, Any]) -> dict[str, Any]:
@@ -1510,6 +1522,8 @@ def create(question: str, session_ref: Any, ami_ctx: dict[str, Any] | None = Non
         "chord_start": (sinfo["chord_start"] if song is not None else ""), "approach_kind": (sinfo["approach_kind"] if song is not None else ""), "order_pref": order_pref,
         "family_caps": ({"scale": 1} if mixed_default else {}),
     }
+    if player.key=="bass" and req.get("bass_rules"):
+        spec["bass_fingering"]={"*":{"rules":req["bass_rules"]}}
     if single_song:
         spec["single_song"] = True
     if mixed_default:

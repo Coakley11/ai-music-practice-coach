@@ -14,7 +14,7 @@ from music_coach_ami import warmup_engine as we, warmup_plan as wp
 OPEN = ((4, "E", 28), (3, "A", 33), (2, "D", 38), (1, "G", 43))
 # maximum fret, hand-window width in semitones, maximum shift per attack
 POLICY = {"Beginner": (5, 2, 1), "Intermediate": (7, 3, 3), "Advanced": (12, 3, 5)}
-UNSUPPORTED = re.compile(r"slap|popp?ing|tapp?ing|harmonics?|fretless|double bass|upright|(?:five|six|5|6)[ -]strings?|alternate tuning|drop[ -]?[a-g]|capo|thumb|triplets?|swing|pentatonic|blues|dorian|melodic minor|harmonic minor", re.I)
+UNSUPPORTED = re.compile(r"slap|popp?ing|tapp?ing|harmonics?|ties?|tied|fretless|double bass|upright|(?:five|six|5|6)[ -]strings?|alternate tuning|drop[ -]?[a-g]|capo|thumb|triplets?|swing|pentatonic|blues|dorian|melodic minor|harmonic minor", re.I)
 
 
 def positions(sounding, level):
@@ -22,7 +22,7 @@ def positions(sounding, level):
     return [(s, name, sounding-o) for s, name, o in OPEN if 0 <= sounding-o <= cap]
 
 
-def assign(written, level, crossing=False):
+def assign(written, level, crossing=False, *, rules=None, previous=None, different=False):
     """Shortest feasible path through (string, fret, hand-window) states.
 
     Every fretted note must be covered by its hand window; open strings allow
@@ -31,37 +31,47 @@ def assign(written, level, crossing=False):
     """
     if level not in POLICY or not written:
         raise we.WarmupUnavailable("bass requires a supported level and nonempty notes")
+    rules=rules or {}
     cap, width, shift = POLICY[level]
+    if rules.get("position") and not 1<=rules["position"]<=cap-width:raise we.WarmupUnavailable("the requested hand window exceeds this level")
     paths = {}
     for i, w in enumerate(written):
         opts = positions(w-12, level)
         fresh = {}
         for string, name, fret in opts:
+            if rules.get("string") and string!=rules["string"]:continue
+            if rules.get("open_only") and fret:continue
             hands = range(max(1, fret-width), min(cap-width, fret)+1) if fret else range(1, cap-width+1)
             for hand in hands:
+                if rules.get("position") and hand!=rules["position"]:continue
+                delta=bool(previous and string!=previous[i]["string"])
+                bonus=(-30 if rules.get("prefer_open") and fret==0 else 0)
                 item = {"string": string, "name": name, "fret": fret, "hand_low": hand, "hand_high": hand+width,
                         "written_midi": w, "sounding_midi": w-12}
                 if not i:
-                    fresh[(string, fret, hand, False)] = (hand*.1+fret*.02, [item])
+                    fresh[(string, fret, hand, False, delta)] = (hand*.1+fret*.02+bonus, [item])
                     continue
-                for (ps, pf, ph, crossed), (cost, path) in paths.items():
+                for (ps, pf, ph, crossed, altered), (cost, path) in paths.items():
                     if abs(hand-ph) > shift: continue
                     did = crossed or string != ps
-                    key = (string, fret, hand, did)
-                    score = cost+4*abs(hand-ph)+abs(string-ps)+.05*abs(fret-pf)
+                    key = (string, fret, hand, did, altered or delta)
+                    score = cost+4*abs(hand-ph)+abs(string-ps)+.05*abs(fret-pf)+bonus-(30 if rules.get("crossings") and string!=ps else 0)
                     if key not in fresh or score < fresh[key][0]:fresh[key] = (score, path+[item])
         paths = fresh
         if not paths:raise we.WarmupUnavailable("no complete string/fret path fits this level's position and shift policy")
-    candidates = [v for k,v in paths.items() if not crossing or k[3]]
+    candidates = [v for k,v in paths.items() if (not crossing or k[3]) and (not different or k[4])]
     if not candidates:raise we.WarmupUnavailable("the passage cannot include a verified string crossing at this level")
     return min(candidates,key=lambda x:x[0])[1]
 
 
-def certify(built, level, crossing=False):
+def certify(built, level, crossing=False, record=None):
     written = [n.midi for n in built.notes if not n.rest]
     lo, hi = we.make_player("bass", "C").window(level)
     if not all(lo <= w <= hi for w in written):raise we.WarmupUnavailable("bass notes exceed the strict level window")
-    path = assign(written, level, crossing)
+    from music_coach_ami.bass_tab import valid_path
+    record=record or {};rules=record.get("rules",{})
+    previous=record.get("positions")
+    path = copy.deepcopy(previous) if valid_path(previous,written,level,rules) else assign(written,level,crossing,rules=rules)
     built.meta.update(positions=path, window=[lo,hi], bass_policy=list(POLICY[level]), tuning="E1 A1 D2 G2")
     guide = "; ".join(f"{i+1}: {p['name']} string ({p['string']}), fret {p['fret']}" for i,p in enumerate(path))
     built.how = [h for h in built.how if not h.startswith(("Note-by-note string/fret path", "Frets 0-"))]
@@ -96,8 +106,11 @@ def _material(spec, player, tonic, mode):
             # EACH standard string from the requested key, then alternate.
             by_pc={we.sph.pc_of(n):n for n in names}
             cells=[]
+            rules=spec.get("bass_fingering",{}).get("single",{}).get("rules",{})
+            start=rules.get("position",1);end=start+POLICY[spec["level"]][1] if rules.get("position") else 4
             for string,label,opened in OPEN:
-                options=[(opened+f+12,by_pc[(opened+f)%12]) for f in range(1,5) if (opened+f)%12 in by_pc]
+                if rules.get("string") and string!=rules["string"]:continue
+                options=[(opened+f+12,by_pc[(opened+f)%12]) for f in range(start,end+1) if (opened+f)%12 in by_pc]
                 if len(options)<2:raise we.WarmupUnavailable("two keyed coordination frets do not fit each string")
                 a,b=options[0],options[-1]
                 cells += [a,b,a,b]
@@ -139,7 +152,7 @@ def built_for(spec):
     built=we.Built(we._fill_bar(notes),spec["bpm"],title,
                   ["Play one note at a time with an even pluck; release or mute the previous string before the next attack. Keep rests silent.",
                    "Read the bass clef conventionally: sounding pitch is one octave below the printed note. String/fret numbers describe positions, not finger numbers."],[],{})
-    certify(built,spec["level"],bool(spec.get("crossing") or spec["family"] in ("octaves","coordination","buster")))
+    certify(built,spec["level"],bool(spec.get("crossing") or spec["family"] in ("octaves","coordination","buster")),spec.get("bass_fingering",{}).get("single"))
     return player,built,tonic,mode,{we.sph.pc_of(n) for n in names}
 
 
@@ -147,6 +160,8 @@ def build(spec):
     from music_coach_ami.flexible_single import package
     player,built,tonic,mode,pcs=built_for(spec)
     plan=package(spec,player,built,tonic,mode,allowed_pcs=pcs)
+    from music_coach_ami.bass_tab import timeline
+    built.meta["bass_tab"]=timeline(built,spec["level"],built.bpm,plan["items"][0]["abc"])
     plan["items"][0]["meta"]=copy.deepcopy(built.meta)
     return plan
 
@@ -194,10 +209,13 @@ def _spec(level,key,family,focus):
 def response(plan,session,lead=""):
     from music_coach_ami.flexible_single import _reply
     row=plan["items"][0]
-    return _reply(f"{lead}**{row['title']}** - standard four-string Bass Guitar, {plan['level']}, bass clef. "
+    result = _reply(f"{lead}**{row['title']}** - standard four-string Bass Guitar, {plan['level']}, bass clef. "
                   "Tuning E1 A1 D2 G2 (sounding). Written E2 sounds E1: written minus 12 semitones. "
                   f"Tempo {row['bpm']} BPM; play {row['reps']} time(s). "
                   f"Written notes: {', '.join(row['written_notes'])}.",plan,session)
+    from music_coach_ami.bass_tab import sections
+    result.diagnostics["bass_tab_sections"]=sections(plan["items"])
+    return result
 
 
 def handle(question,session,ami_ctx=None):
@@ -220,7 +238,8 @@ def handle(question,session,ami_ctx=None):
         if level not in POLICY:return fs._reply("Choose Beginner, Intermediate or Advanced.",plan,session,"level")
         from practice_focus_policy import category_for_focus
         focus=req['focus'] or category_for_focus(str(getattr(page,'practice_focus','') or ''))
-        req={**req,'instrument_word':'bass','unverified':''}
+        from music_coach_ami.bass_tab import rules_from
+        req={**req,'instrument_word':'bass','unverified':'','bass_rules':rules_from(q)}
         # The existing chart engine alone loads and validates the authoritative snapshot/timeline.
         if re.search(r"\bover\b|chord changes|these chords|this song",q):
             req['families']=['chord_tones'];return wp.create(question,session,ami_ctx,request=req)
@@ -236,6 +255,9 @@ def handle(question,session,ami_ctx=None):
         km=re.search(r'\b([A-G](?:#|b)?)\s+(minor|major)\b',question)
         key=req['key'] or (km[1]+('m' if km[2]=='minor' else '') if km else '') or getattr(page,'current_practice_key','') or 'C'
         spec=_spec(level,key,family,focus)
+        from music_coach_ami.bass_tab import rules_from
+        rules=rules_from(q)
+        if rules:spec["bass_fingering"]={"single":{"rules":rules}}
         if re.search(r'\b(?:high|upper|higher)[ -]register',q):spec['register']='high'
         if re.search(r'maj7|major seventh',q):spec['quality']='maj7'
         elif re.search(r'm7|minor seventh',q):spec['quality']='m7'

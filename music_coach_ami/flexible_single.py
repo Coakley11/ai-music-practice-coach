@@ -17,7 +17,7 @@ from music_coach_ami.types import CoachIntent, CoachResponse
 
 def _reply(text, plan=None, session=None, failed=""):
     row = plan["items"][0] if plan else None
-    return CoachResponse(
+    response=CoachResponse(
         intent=CoachIntent.SCALE_PRACTICE, direct_answer=text,
         source_solver="InstrumentExercise", confidence=0.95,
         notation_abc=row["abc"] if row else "",
@@ -26,6 +26,12 @@ def _reply(text, plan=None, session=None, failed=""):
                      "single_exercise_plan": copy.deepcopy(plan),
                      "single_exercise_history": wp.history(session) if session is not None else {}},
     )
+
+    if row and plan["player"]["key"]=="bass":
+        from music_coach_ami.bass_tab import sections
+        tabs=sections([row])
+        if tabs:response.diagnostics["bass_tab_sections"]=tabs
+    return response
 
 
 def _response(plan, session, lead=""):
@@ -195,6 +201,9 @@ def handle(question: str, session, ami_ctx: dict | None = None) -> CoachResponse
     # M1d owns explicit scale patterns, modes, bar counts and their revisions.
     if re.search(r"\bscale[ -]patterns?\b", q):
         return None
+    from music_coach_ami import bass_tab
+    tab_response=bass_tab.handle(question,session,ami_ctx)
+    if tab_response is not None:return tab_response
     from music_coach_ami import bass_technique
     bass_response = bass_technique.handle(question, session, ami_ctx)
     if bass_response is not None:
