@@ -26,6 +26,7 @@ parser.add_argument("--bass-context-only",action="store_true")
 parser.add_argument("--bass-tab-only",action="store_true")
 parser.add_argument("--sax-only",action="store_true")
 parser.add_argument("--sax-conversation-only",action="store_true")
+parser.add_argument("--jazz-only",action="store_true")
 parser.add_argument("--mobile",action="store_true")
 args=parser.parse_args()
 OUT=args.out.resolve();OUT.mkdir(parents=True,exist_ok=True)
@@ -199,7 +200,10 @@ try:
             page.get_by_test_id("stMainBlockContainer").get_by_role("textbox",name="Question",exact=True).wait_for(timeout=90000)
             idle(page)
             (OUT/"practice-start.txt").write_text(page.locator("body").inner_text(),encoding="utf-8")
-            if args.sax_conversation_only:
+            if args.jazz_only:
+                from ami_advanced_jazz_browser_cases import run
+                run(page,request,select,OUT)
+            elif args.sax_conversation_only:
                 from ami_sax_conversation_browser_cases import run
                 run(page,request,select,OUT)
             elif args.sax_only:
