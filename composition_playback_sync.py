@@ -638,10 +638,7 @@ def render_synced_score_playback_html(
   if (stopBtn && audio) {{
     stopBtn.addEventListener("click", function() {{
       audio.pause();
-      audio.currentTime = 0;
-      last = -1; lastLyric = -1;
-      clearMelody(); clearLyrics(); setChordChip(-1);
-      chordContext().forEach(el => el.classList.remove("is-soft"));
+      audio.currentTime = 0; resetAll();
       syncTransport();
     }});
   }}

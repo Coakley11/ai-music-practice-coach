@@ -70,7 +70,10 @@ class TestChordPlayerHtml(unittest.TestCase):
         stop = html_out.split('stopBtn.addEventListener("click"')[1].split("});")[0]
         self.assertIn("audio.pause()", stop)
         self.assertIn("audio.currentTime = 0", stop)
-        self.assertIn("setChordChip(-1)", stop)
+        self.assertIn("resetAll()", stop)
+        # resetAll clears the chord highlight (and melody/lyric highlights)
+        reset = html_out.split("function resetAll()")[1].split("}")[0]
+        self.assertIn("setChordChip(-1)", reset)
 
     def test_compact_frame_height(self) -> None:
         from unittest import mock
@@ -165,6 +168,15 @@ class TestSuggestionCardAppTest(unittest.TestCase):
             "id": "refine_x",
             "name": "More tension",
             "why": "test",
+            "available": True,
+            "intent": "more_tension",
+            "section_id": sec_id,
+            "key": "C",
+            "variant": 0,
+            "variant_count": 1,
+            "source_symbols": ["Cmaj7", "Am7", "Dm7", "G7"],
+            "proposed_symbols": ["Cmaj7", "Em7", "D7", "G7"],
+            "changes": [],
             "chords": symbols_to_entries(["Cmaj7", "Em7", "D7", "G7"]),
         }
         at.run()

@@ -6604,6 +6604,8 @@ def _render_chord_refinement_panel(
         in_player = _chord_row_lives_in_player(session_state, refine_slot, has_melody=_refine_has_mel)
         _opt = f" · option {int(proposal.get('variant', 0)) + 1} of {int(proposal.get('variant_count', 1))}"
         chords_inner = diff_card_html(proposal, show_after=not in_player)
+        if in_player:
+            chords_inner += '<div style="opacity:0.7"><em>→ proposed progression: see the player below</em></div>'
         roman_inner = "" if in_player else _refine_roman_html
         return f"""
 <div class="composer-suggestion-card">

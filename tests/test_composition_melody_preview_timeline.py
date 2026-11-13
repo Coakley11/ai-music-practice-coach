@@ -116,12 +116,12 @@ class TestHighlightTimeline(unittest.TestCase):
         self.assertIn("Pause", html)
         self.assertIn('addEventListener("ended", () => {{ resetAll(); }})'.replace("{{", "{").replace("}}", "}"), html)
         self.assertIn("audio.currentTime = 0; resetAll()", html)
-        # default transport is unchanged (native audio bar) for chord previews
-        native = render_synced_score_playback_html(
+        # one compact transport for every preview: the native audio bar is not shown
+        default = render_synced_score_playback_html(
             wav_bytes=b"RIFFxxxx", abc_text="X:1\nK:C\nCDEF|", bundle=rep["bundle"], dom_id="t",
         )
-        self.assertIn(" controls ", native)
-        self.assertNotIn("cplay-btn-play", native.split("</style>")[1])
+        self.assertNotIn(" controls ", default)
+        self.assertIn("cplay-btn is-primary", default)
 
 
 class TestSingleScoreCard(unittest.TestCase):
@@ -195,7 +195,7 @@ class TestCardAppTest(unittest.TestCase):
         self.assertEqual(at.session_state["n_static"], 1)
         self.assertEqual(at.session_state["n_synced"], 1)
         html = at.session_state["htmls"][-1]
-        self.assertIn("cplay-btn-play", html)  # Play / Pause / Stop transport
+        self.assertIn("cplay-btn is-primary", html)  # Play / Pause / Stop transport (compact player)
         self.assertEqual(html.count('class="cplay-paper"'), 1)  # one score in the frame
         # timeline in the frame covers every sounding note of the candidate
         import json
