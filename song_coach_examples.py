@@ -53,6 +53,8 @@ LIMIT_VAMP = "Examples need chord changes; a one-chord vamp isn't supported yet.
 LIMIT_PICKUP = "This moment is a pickup into a break, and examples can't notate pickups or anticipations yet — play the pickup yourself and land exactly on the bar line."
 LIMIT_EXPAND_RANGE = ("This idea already covers a wide range, so no developed version fits comfortably on the "
                       "staff — try a different example idea, or develop it yourself by repeating its rhythm higher.")
+LIMIT_MOMENT_NOTE = ("No example here features the special note cleanly — try landing on it yourself as the "
+                     "chord arrives.")
 LIMIT_ROADMAP = "The roadmap is the plan — play it in your own words. Examples for its individual steps are on the earlier challenges."
 
 
@@ -747,7 +749,7 @@ def _moment(plan: Any, ch: Any, stage: int, seed: dict[str, Any], link: Any, ins
                 if first else f"The idea carried here uses the special note over {target.chord}."
             )
             return Example(stage, ch.kind, caption, (_segment(link, motif, "Idea, carried", plan=plan),), continuity=continuity(seed, motif))
-    return Example(stage, ch.kind, "", limitation="No example here features the special note cleanly — try landing on it yourself as the chord arrives.")
+    return Example(stage, ch.kind, "", limitation=LIMIT_MOMENT_NOTE)
 
 
 def _roadmap(plan: Any, scope: Any, stage: int, seed: dict[str, Any] | None, seed_link: Any, instrument: str,
@@ -862,6 +864,7 @@ __all__ = [
     "EXAMPLE_VERSION",
     "Example",
     "LIMIT_EXPAND_RANGE",
+    "LIMIT_MOMENT_NOTE",
     "LIMIT_NO_WINDOW",
     "LIMIT_PICKUP",
     "LIMIT_ROADMAP",

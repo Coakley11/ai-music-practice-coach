@@ -114,9 +114,19 @@ class TestCasesValidate(unittest.TestCase):
                     self.assertEqual(plan.challenges[-1].kind, KIND_ROADMAP)
 
     def test_endings_follow_the_chart(self) -> None:
+        # "ipanema" was "open" while that chart was 24 bars with a single A section,
+        # so its A section was followed by the B Section's Gbmaj7 - no resolution,
+        # hence open. With the form corrected to 40 bars (A1 A2 Bridge A3) the A
+        # section is followed by A2's Fmaj7, and its last bar is Gb7: the bII7 - I
+        # tritone substitute, which classify_ending recognises through _resolves_to
+        # (a dominant dropping a 5th OR a half step). "leads_into_next" is therefore
+        # the chart's own reading of the corrected form, not a relaxed expectation -
+        # the chart changed, the classifier did not. The coaching text follows it
+        # correctly too: the roadmap now says "Gb7 leads into Fmaj7 right after these
+        # bars", which is the real turnaround that makes this tune loop.
         expected = {
             "perfect": "open_on_dominant",
-            "ipanema": "open",
+            "ipanema": "leads_into_next",
             "hotel": "open_on_dominant",
             "autumn": "authentic_cadence",
             "blues": "open_on_dominant",
@@ -397,7 +407,11 @@ class TestExamplesAgainstTheChart(unittest.TestCase):
 
     EXAMPLES = (
         ("Perfect", "Verse 1", 1, 8, "perfect", "Beginner", FOCUS_MELODIC, "open_on_dominant"),
-        ("The Girl from Ipanema", "A Section", 1, 8, "ipanema", "Advanced", FOCUS_CHORD_TONE, "open"),
+        # "open" -> "leads_into_next": see test_endings_follow_the_chart above. Every
+        # other expectation in this row is derived from the catalog bars rather than
+        # written down, and all of them still hold - the A section's harmony is
+        # unchanged by the form correction, only what follows it is.
+        ("The Girl from Ipanema", "A Section", 1, 8, "ipanema", "Advanced", FOCUS_CHORD_TONE, "leads_into_next"),
         ("Hotel California", "Verse 1a", 1, 8, "hotel", "Intermediate", FOCUS_MOTIF, "open_on_dominant"),
     )
 

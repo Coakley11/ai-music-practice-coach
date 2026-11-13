@@ -25,7 +25,7 @@ from music_coach_ami import scale_pattern_harmony as sph
 
 LEVELS = ("Beginner", "Intermediate", "Advanced")
 FAMILIES = ("long_tones", "scale", "intervals", "articulation")
-FAMILY_LABEL = {"long_tones": "Long tones", "scale": "Scale", "intervals": "Intervals", "articulation": "Articulation", "guide_tones": "Guide tones", "chord_tones": "Chord tones", "approach_notes": "Approach notes"}
+FAMILY_LABEL = {"bass_arpeggio": "Bass arpeggio", "long_tones": "Long tones", "scale": "Scale", "intervals": "Intervals", "articulation": "Articulation", "guide_tones": "Guide tones", "chord_tones": "Chord tones", "approach_notes": "Approach notes"}
 INTERVALS = {"seconds": 1, "thirds": 2, "fourths": 3, "fifths": 4, "sixths": 5, "sevenths": 6, "octaves": 7}   # scale steps
 INTERVAL_SINGULAR = {"seconds": "second", "thirds": "third", "fourths": "fourth", "fifths": "fifth", "sixths": "sixth", "sevenths": "seventh",
                      "octaves": "octave"}
@@ -41,6 +41,7 @@ _REST_PIECES = (("whole", Fraction(4)), ("half", Fraction(2)), ("quarter", Fract
 # Written MIDI window a line is built inside, per instrument family and level, then clamped to what the horn can play. Comfort windows, not
 # limits: a Beginner is kept in the easy middle of the instrument, an Advanced player gets the whole of it.
 _WINDOWS: dict[str, dict[str, tuple[int, int]]] = {
+    "bass": {"Beginner": (40, 60), "Intermediate": (40, 62), "Advanced": (40, 67)},
     "flute": {"Beginner": (67, 84), "Intermediate": (62, 91), "Advanced": (60, 96)},
     "sax": {"Beginner": (62, 79), "Intermediate": (60, 84), "Advanced": (58, 89)},
     "trumpet": {"Beginner": (58, 74), "Intermediate": (55, 79), "Advanced": (54, 84)},
@@ -77,7 +78,7 @@ class Player:
 
 
 def window_family(spec_key: str) -> str:
-    return {"flute": "flute", "piano": "piano", "trumpet": "trumpet", "clarinet": "clarinet"}.get(spec_key, "sax")
+    return {"bass": "bass", "flute": "flute", "piano": "piano", "trumpet": "trumpet", "clarinet": "clarinet"}.get(spec_key, "sax")
 
 
 def supports(player: Player, family: str) -> str:
@@ -534,6 +535,8 @@ def render(player: Player, built: Built, tonic: str, tonality: str, *, title: st
 
     events, bars = to_events(built.notes)
     profile = notation_profile_for_instrument(player.notation)
+    if player.family == "bass":
+        profile = replace(profile, midi_low=player.play_low, midi_high=player.play_high)
     if player.family == "piano":
         profile = replace(profile, clef="treble", midi_low=55, midi_high=88)
     comp = MusicalIdeaComposition(events=events, reference_key=key_token(tonic, tonality), meter=METER, bars=bars, object_type="pattern", style="warmup",
@@ -584,6 +587,9 @@ def make_player(spec_key: str, concert_key: str) -> Player:
     from music_coach_ami.written_music_context import build_written_music_context
 
     spec = SPECS.get(spec_key)
+    if spec_key == "bass":
+        from music_coach_ami.exercise_adapt import InstrumentSpec
+        spec = InstrumentSpec("bass", "Bass Guitar", "Bass Guitar", "Bass Guitar", "")
     if spec is None:
         raise WarmupUnavailable(f"I don't have a verified pitch table for “{spec_key}”")
     iso = {SELECTED_TRANSPOSING_INSTRUMENT_KEY: spec.ttype} if spec.ttype else {}
@@ -597,4 +603,4 @@ def make_player(spec_key: str, concert_key: str) -> Player:
         raise WarmupUnavailable(f"the written/sounding pitch relationship for {spec.label} can't be verified")
     return Player(key=spec.key, label=spec.label, notation=spec.notation, family=window_family(spec.key), ttype=spec.ttype, offset=int(offset),
                   play_low=int(rng[0]), play_high=int(rng[1]), written_key=str(ctx.written_key or concert), concert_key=concert, semitones=semis,
-                  clef="treble")
+                  clef="bass" if spec_key == "bass" else "treble")

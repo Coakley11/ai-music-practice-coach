@@ -7659,25 +7659,112 @@ def _core_chart_overrides() -> dict[tuple[str, str], dict[str, Any]]:
         ("Hotel California", "Eagles"): _hotel_california_chart_pack(),
         ("California Dreamin'", "The Mamas & the Papas"): _california_dreamin_chart_pack(),
         ("Shallow", "Lady Gaga / Bradley Cooper"): _shallow_chart_pack(),
+        # The Girl from Ipanema: the complete 40-bar A-A-Bridge-A form.
+        #
+        # The chart was 24 bars - a 4-bar intro, ONE 8-bar A, an 8-bar "B
+        # Section" and a 4-bar "Final A / Outro" - and all three levels were
+        # equally short, so there was no complete Advanced form anywhere. The
+        # shortening was undocumented: arrangement_notes was empty and
+        # chart_confidence unset.
+        #
+        # What was missing, bar by bar. The bridge is SIXTEEN bars. The old one
+        # had bars 17-21 right (Gbmaj7 x2, B7 x2, F#m7) and then collapsed: it
+        # put B7 where the second F#m7 belongs and jumped straight to Gm7-C7, a
+        # ii-V back to F. Absent entirely were the D7 pair that turns F#m7
+        # toward G minor, the second Gm7, the Eb7 pair, and the closing
+        # Am7 - D7#5 - Gm7 - C7#5 walk home. So the bridge never made its
+        # journey: the reference marks the key centres F -> Db (bar 17) ->
+        # E (bar 21) -> F (bar 25), and the old chart reached Db and E but
+        # short-circuited the return.
+        #
+        # Reference, named and used throughout: the bar-by-bar text list at
+        # jazzchanges.app/the-girl-from-ipanema. That page carries three
+        # presentations which disagree on spellings - its text list gives G7,
+        # Gb7, D7#5 and C7#5; its iReal Pro chart graphic gives G7#11, Gb7#11,
+        # F#maj7 (the same pitches as Gbmaj7) and D7b9b5 / C7b9b5; a Learn Jazz
+        # Standards analysis it summarises gives G7#11 / Gb7#11 and allows 7#5.
+        # The TEXT LIST is used for placement and quality, and nothing is taken
+        # from the other two.
+        #
+        # The A section was already correct and is untouched - its roots and
+        # functions match the reference bar for bar. A2 differs from A1 only in
+        # bar 16, where the reference holds Fmaj7 instead of turning on Gb7.
+        # Nothing is duplicated to pad the count: every added bar is the
+        # reference's own content.
+        #
+        # Section NAMES are kept (and "A2" added) because other suites address
+        # this song's sections by name - tests/test_ami_warmup_songs.py asks for
+        # its "B Section" specifically. "Final A / Outro" is now the complete
+        # 8-bar A3; the 4-bar ii-V-I tag it used to end on (Gm C7 F F6add9) is
+        # gone, because the reference's bar 40 is Gb7, the turnaround that makes
+        # the chorus loop. A resolving tag would have to be its own section.
+        #
+        # Advanced keeps this song's existing house style for extensions -
+        # 13ths on dominants, 9ths on minors and majors, which its A section
+        # already used - so placement is the reference's and voicing is the
+        # chart's own. The reference's two named altered dominants (D7#5, C7#5)
+        # are kept as it spells them.
         ("The Girl from Ipanema", "Antonio Carlos Jobim"): pack("F",
             {
                 "Intro": ["Gm", "C7", "Gm", "C7"],
                 "A Section": ["F", "F", "G7", "G7", "Gm", "Gb7", "F", "Gb7"],
-                "B Section": ["Gb", "Gb", "B7", "B7", "F#m", "B7", "Gm", "C7"],
-                "Final A / Outro": ["Gm", "C7", "F", "F"],
+                "A2": ["F", "F", "G7", "G7", "Gm", "Gb7", "F", "F"],
+                "B Section": ["Gb", "Gb", "B7", "B7", "F#m", "F#m", "D7", "D7",
+                              "Gm", "Gm", "Eb7", "Eb7", "Am", "D7", "Gm", "C7"],
+                "Final A / Outro": ["F", "F", "G7", "G7", "Gm", "Gb7", "F", "Gb7"],
             },
             {
                 "Intro": ["Gm7", "C7", "Gm7", "C7"],
                 "A Section": ["Fmaj7", "Fmaj7", "G7", "G7", "Gm7", "Gb7", "Fmaj7", "Gb7"],
-                "B Section": ["Gbmaj7", "Gbmaj7", "B7", "B7", "F#m7", "B7", "Gm7", "C7"],
-                "Final A / Outro": ["Gm7", "C7", "Fmaj7", "Fmaj7"],
+                "A2": ["Fmaj7", "Fmaj7", "G7", "G7", "Gm7", "Gb7", "Fmaj7", "Fmaj7"],
+                "B Section": ["Gbmaj7", "Gbmaj7", "B7", "B7", "F#m7", "F#m7", "D7", "D7",
+                              "Gm7", "Gm7", "Eb7", "Eb7", "Am7", "D7", "Gm7", "C7"],
+                "Final A / Outro": ["Fmaj7", "Fmaj7", "G7", "G7", "Gm7", "Gb7", "Fmaj7", "Gb7"],
             },
             {
                 "Intro": ["Gm9", "C13", "Gm9", "C13"],
                 "A Section": ["Fmaj9", "Fmaj9", "G13", "G13", "Gm9", "Gb13", "Fmaj9", "Gb13"],
-                "B Section": ["Gbmaj9", "Gbmaj9", "B13", "B13", "F#m9", "B13", "Gm9", "C13"],
-                "Final A / Outro": ["Gm9", "C13", "Fmaj9", "F6add9"],
+                "A2": ["Fmaj9", "Fmaj9", "G13", "G13", "Gm9", "Gb13", "Fmaj9", "Fmaj9"],
+                "B Section": ["Gbmaj9", "Gbmaj9", "B13", "B13", "F#m9", "F#m9", "D13", "D13",
+                              "Gm9", "Gm9", "Eb13", "Eb13", "Am9", "D7#5", "Gm9", "C7#5"],
+                "Final A / Outro": ["Fmaj9", "Fmaj9", "G13", "G13", "Gm9", "Gb13", "Fmaj9", "Gb13"],
             },
+            section_order=["Intro", "A Section", "A2", "B Section", "Final A / Outro"],
+            extensions=_ext(
+                # Keep all 40 form bars at every level. The levels differ by
+                # chord quality only, so a shorter Beginner would be a different
+                # song rather than an easier one.
+                full_form_levels=["Beginner", "Intermediate"],
+                arrangement_notes=(
+                    "**The Girl from Ipanema** - Antonio Carlos Jobim, 1962. "
+                    "**F major** (Brazilian players often take the whole tune in "
+                    "Db; the Getz/Gilberto record is in Db, so following it means "
+                    "transposing). **40-bar A-A-Bridge-A**: A1 bars 1-8, A2 bars "
+                    "9-16, **Bridge bars 17-32 (sixteen bars)**, A3 bars 33-40, "
+                    "plus a 4-bar intro vamp that is a practice lead-in and not "
+                    "part of the 40. The intro is PRE-EXISTING (it was in the "
+                    "24-bar chart) and its **source provenance is unverified** - "
+                    "the reference's 40 bars contain no intro, so it is kept as a "
+                    "lead-in rather than claimed as the arrangement. "
+                    "FORM CORRECTED (W22): the chart was 24 bars with a "
+                    "**half-length 8-bar bridge** and only one A section. The "
+                    "bridge was missing the D7 pair that turns F#m7 toward G "
+                    "minor, the second Gm7, the Eb7 pair and the closing "
+                    "Am7-D7#5-Gm7-C7#5, so it reached the Db and E key areas but "
+                    "short-circuited the return to F. The reference marks the "
+                    "path **F - Db (bar 17) - E (bar 21) - F (bar 25)**. "
+                    "Reference: the bar-by-bar text list at "
+                    "jazzchanges.app/the-girl-from-ipanema, used throughout. That "
+                    "page shows three presentations which disagree on spellings "
+                    "(its iReal chart graphic prints G7#11 / Gb7#11 and "
+                    "D7b9b5 / C7b9b5); **nothing is taken from the other two**. "
+                    "The A section was already correct and is unchanged. "
+                    "**Tempo, meter and groove remain unset** and are not "
+                    "verified here. No melody is reproduced; not checked by ear."
+                ),
+                chart_confidence={"chords": "medium-high", "timing": "medium",
+                                  "tempo": "unset"},
+            ),
         ),
         ("Wave", "Antonio Carlos Jobim"): _wave_chart_pack(),
         ("Blue Bossa", "Kenny Dorham"): _blue_bossa_chart_pack(),

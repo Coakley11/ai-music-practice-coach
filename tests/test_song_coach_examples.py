@@ -19,6 +19,7 @@ from song_coach_examples import (
     EXAMPLE_VERSION,
     EXPAND_DENSITY_CAP,
     LIMIT_EXPAND_RANGE,
+    LIMIT_MOMENT_NOTE,
     LIMIT_UNAVAILABLE,
     SAX_OCTAVE_NOTE,
     SAX_WRITTEN_RANGE,
@@ -538,8 +539,21 @@ class TestNotation(unittest.TestCase):
                     self.assertEqual(bool(n.tab), instrument == "Guitar")
             self.assertEqual(seg.motif, before, "display projection never changes the concert example")
 
-    def test_tenor_reads_a_major_ninth_above_concert(self) -> None:
-        """Ipanema's idea sits low enough that the tenor reads it at the true written octave."""
+    def test_tenor_reads_a_major_ninth_above_concert_or_a_whole_octave_down(self) -> None:
+        """A tenor reads a major ninth above concert, dropped by whole octaves to stay in range.
+
+        Renamed from test_tenor_reads_a_major_ninth_above_concert, which asserted a bare
+        shift == 14 and a docstring claiming "Ipanema's idea sits low enough". Correcting
+        Ipanema's form to 40 bars redraws that idea - the example seed is derived from the
+        chart (ctx.fingerprint -> scope_id -> plan_id -> seed), by design, so any chart edit
+        reseeds it - and the redrawn idea reaches G5. Written a major ninth above, that is
+        MIDI 93, over the saxophone's written ceiling of 90, so segment_notation drops the
+        WHOLE phrase one octave and says so in n.note. That is the documented rule it has
+        always applied, not a regression, and the old literal only ever described one seed.
+
+        So this asserts the rule and still pins the concrete outcome, which keeps it
+        covering both branches rather than one draw of one song.
+        """
         from effective_practice_context import musician_facing_chord
 
         plan = _plan("ipanema")
@@ -547,8 +561,22 @@ class TestNotation(unittest.TestCase):
         n = segment_notation(seg, concert_key="F", chart_key="G", transposing_type="Tenor saxophone (Bb)",
                              instrument="Saxophone",
                              project_chord=lambda c: musician_facing_chord(c, concert_key="F", chart_key="G"))
-        self.assertEqual(n.shift, 14)
-        self.assertEqual(decode_abc_midis(n.abc), [int(m) + 14 for m in seg.motif["midi"]])
+        concert = [int(m) for m in seg.motif["midi"]]
+        lo, hi = SAX_WRITTEN_RANGE
+        dropped, expected = 0, 14
+        while max(concert) + expected > hi and min(concert) + expected - 12 >= lo:
+            expected -= 12
+            dropped += 1
+        self.assertEqual(n.shift, expected)
+        self.assertEqual(n.shift % 12, 2, "a tenor still reads a major 2nd of pitch class above concert")
+        self.assertEqual(decode_abc_midis(n.abc), [m + n.shift for m in concert],
+                         "one shift for the whole phrase, never note by note")
+        written = [m + n.shift for m in concert]
+        self.assertGreaterEqual(min(written), lo, written)
+        self.assertLessEqual(max(written), hi, written)
+        self.assertEqual(n.note, SAX_OCTAVE_NOTE if dropped else "")
+        # the concrete outcome for this chart, so the assertions above cannot go vacuous
+        self.assertEqual((dropped, n.shift), (1, 2), "this idea reaches G5, so the tenor reads it an octave down")
         self.assertEqual(n.chords, ("Gmaj7", "A7"))
         self.assertEqual(plan.key, "F")
 
@@ -621,6 +649,20 @@ class TestPhrasing(unittest.TestCase):
                 self.assertEqual(first["midi"], second["midi"], (name, level))
                 self.assertNotEqual(_onsets(first), _onsets(second), (name, level))
 
+    # The limitations a generated example may honestly fall back to. Still a closed
+    # set - three of the module's eight LIMIT_* constants - so an unexplained or
+    # ad-hoc failure message still fails this test.
+    #
+    # LIMIT_MOMENT_NOTE joined the set when Ipanema's form was corrected to 40 bars.
+    # It is not new behaviour: _moment() has always ended on it when the carried
+    # idea cannot place the special note cleanly in its slot. It was unreachable by
+    # this assertion only because it was written as an inline string literal rather
+    # than a named constant, so no song in this fixture set had ever hit it. It is
+    # now named and exported alongside its siblings. The message names the exact
+    # reason and tells the player what to do instead, which is what "honest" means
+    # here, and the failure-rate ceiling below is unchanged and still binding.
+    HONEST_LIMITATIONS = (LIMIT_UNAVAILABLE, LIMIT_EXPAND_RANGE, LIMIT_MOMENT_NOTE)
+
     def test_failure_rate_and_honest_limitations(self) -> None:
         failed = total = 0
         for name in SONGS:
@@ -630,8 +672,29 @@ class TestPhrasing(unittest.TestCase):
                         total += 1
                         if not ex.available:
                             failed += 1
-                            self.assertIn(ex.limitation, (LIMIT_UNAVAILABLE, LIMIT_EXPAND_RANGE), (name, level, focus, ex.kind))
+                            self.assertIn(ex.limitation, self.HONEST_LIMITATIONS, (name, level, focus, ex.kind))
         self.assertLessEqual(failed / total, 0.015, (failed, total))
+
+    def test_an_unavailable_example_never_invents_its_own_message(self) -> None:
+        """Every limitation an example falls back to is one of the module's constants.
+
+        Added alongside LIMIT_MOMENT_NOTE. What hid that path from the test above was
+        an unnamed string literal in _moment(), so this closes the gap itself: a new
+        limitation written inline rather than named would now fail here.
+        """
+        import song_coach_examples as mod
+
+        named = {v for k, v in vars(mod).items() if k.startswith("LIMIT_") and isinstance(v, str)}
+        self.assertEqual(len(named), 8, sorted(named))
+        seen = set()
+        for name in SONGS:
+            for level in LEVELS:
+                for focus in FOCUS_LABELS:
+                    for ex in _examples(name, level, focus):
+                        if not ex.available:
+                            self.assertIn(ex.limitation, named, (name, level, focus, ex.kind))
+                            seen.add(ex.limitation)
+        self.assertTrue(seen, "no unavailable example to check")
 
 
 # --------------------------------------------------------------------------- limitations and honesty
