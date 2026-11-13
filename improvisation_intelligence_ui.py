@@ -892,6 +892,7 @@ def _render_composition_melody_in_creative(st: Any, session_state: dict, practic
                     bpm=int(_gl.get("bpm") or session_state.get("bpm") or 120),
                     lyrics_alignment=alignment,
                     clef=clef,
+                    title="",  # the section label above is the heading; no generic "Melody" title
                 )
                 abc_str = score.get("abc") or ""
                 if abc_str:
