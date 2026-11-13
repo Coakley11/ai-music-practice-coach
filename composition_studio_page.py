@@ -6549,6 +6549,27 @@ def _manual_draft_key(section_id: str) -> str:
     return draft_key(section_id)
 
 
+def _manual_chord_editor_needs_attention(session_state: dict, section: dict[str, Any]) -> bool:
+    """True while the manual editor holds work the user still has to review/accept.
+
+    After "Apply paste to draft" (or any in-place edit) the draft differs from the
+    saved progression; collapsing the editor then would hide Accept/Cancel, the next
+    required action. Also stays open mid Edit / Insert / Split.
+    """
+    sid = str((section or {}).get("id") or "")
+    if not sid:
+        return False
+    if any(session_state.get(f"composer_chord_{k}_{sid}") is not None for k in ("edit_idx", "insert_at", "split_idx")):
+        return True
+    draft = session_state.get(_manual_draft_key(sid))
+    if not isinstance(draft, list):
+        return False
+    live = list((section or {}).get("chords") or [])
+    return [str((d or {}).get("chord") or "") for d in draft] != [
+        str((e or {}).get("chord") or "") for e in live
+    ]
+
+
 def _render_chord_refinement_panel(
     session_state: dict,
     doc: dict[str, Any],
@@ -6903,7 +6924,10 @@ def _render_phase_chords(session_state: dict, doc: dict[str, Any], *, host_side_
                     _save_doc(session_state, doc)
                     st.rerun()
                 _render_chord_refinement_panel(session_state, doc, target_id, edit_section or section)
-                with st.expander("🧱 Manual / advanced chord editor", expanded=False):
+                with st.expander(
+                    "🧱 Manual / advanced chord editor",
+                    expanded=_manual_chord_editor_needs_attention(session_state, edit_section or section),
+                ):
                     if edit_section:
                         _render_chords_lane(session_state, doc, edit_section, owner_id=target_id)
 
