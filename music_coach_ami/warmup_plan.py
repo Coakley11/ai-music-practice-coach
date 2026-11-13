@@ -798,11 +798,25 @@ def build_item(player: we.Player, spec: dict[str, Any], desc: dict[str, Any]) ->
         kind, target = _approach_combo(spec, int(params.get("variant") or 0), level)
         built = wc.build_approach(player, level, spec["song"], sel["section"], tuple(sel["bars"]) if sel.get("bars") else None, kind=kind, target=target,
                                   smooth=bool(spec.get("smooth")))
+    elif player.key in ("soprano","alto","tenor","baritone") and spec.get("sax"):
+        from music_coach_ami import sax_technique
+        sax_options=copy.deepcopy(spec["sax"])
+        if sax_options.get("intervals_from_plan"):
+            sax_options["interval"]=params["interval"]
+        built=sax_technique.built(player,level,tonic,tonality,sax_options,variant=kwargs["variant"])
+        params["sax_recipe"]=sax_options["recipe"]
+        if fam=="articulation":params["pattern"]=sax_options["pattern"]
+        elif sax_options["recipe"]=="intervals":params["interval"]=sax_options["interval"]
+        else:params.pop("interval",None)
     elif player.key == "bass":
         from music_coach_ami.bass_technique import warmup_built
         built = warmup_built(player, level, tonic, tonality, fam, **kwargs)
     else:
         built = we.BUILDERS[fam](player, level, tonic, tonality, **kwargs)
+    if player.key in ("soprano","alto","tenor","baritone") and spec.get("sax"):
+        from music_coach_ami import sax_technique
+        if fam in SONG_FAMILIES:
+            built=sax_technique.decorate(built,spec["sax"])
     if player.key == "bass":
         from music_coach_ami.bass_technique import certify
         certify(built, level, record=spec.get("bass_fingering",{}).get(desc["uid"],spec.get("bass_fingering",{}).get("*")))
@@ -811,7 +825,7 @@ def build_item(player: we.Player, spec: dict[str, Any], desc: dict[str, Any]) ->
     bpm = max(36, min(160, bpm))
     abc, diag = we.render(player, built, tonic, tonality, title=built.title, bpm=bpm)
     checks = (ws.verify(player, level, built, diag) if fam == "guide_tones" else wc.verify(player, level, built, diag) if fam in SONG_FAMILIES
-              else we.verify(player, level, built, tonic, tonality, diag))
+              else we.verify(player, level, built, tonic, tonality, diag, allowed_pcs=(sax_technique.allowed_pcs(spec["sax"]["recipe"]) if player.key in ("soprano","alto","tenor","baritone") and spec.get("sax") else None)))
     seconds = we.pass_seconds(built, bpm)
     if player.key=="bass":
         from music_coach_ami.bass_tab import timeline
@@ -1422,7 +1436,7 @@ def create(question: str, session_ref: Any, ami_ctx: dict[str, Any] | None = Non
         if song is not None and req["families"] and not set(req["families"]) & set(SONG_FAMILIES):
             song_fallback, song, sel = "song-aware exercises (guide tones, arpeggios, approach notes) are included only when you ask for them", None, None
     # A plain song arpeggio request is one chart pass, not a default timed routine.
-    single_song = bool(song is not None and req["minutes"] is None and req["families"] == ["chord_tones"]
+    single_song = bool(song is not None and req["minutes"] is None and (req["families"] == ["chord_tones"] or req.get("sax_single_song") and len(req["families"])==1)
                        and not _WARM.search(question) and not re.search(r"\bwarm\s+(?:me|us)\s+up\b", question, re.I))
     # length
     minutes = req["minutes"]
@@ -1522,6 +1536,8 @@ def create(question: str, session_ref: Any, ami_ctx: dict[str, Any] | None = Non
         "chord_start": (sinfo["chord_start"] if song is not None else ""), "approach_kind": (sinfo["approach_kind"] if song is not None else ""), "order_pref": order_pref,
         "family_caps": ({"scale": 1} if mixed_default else {}),
     }
+    if player.key in ("soprano","alto","tenor","baritone") and req.get("sax_settings"):
+        spec["sax"]=copy.deepcopy(req["sax_settings"])
     if player.key=="bass" and req.get("bass_rules"):
         spec["bass_fingering"]={"*":{"rules":req["bass_rules"]}}
     if single_song:
