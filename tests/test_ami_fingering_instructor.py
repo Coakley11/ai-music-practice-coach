@@ -50,7 +50,7 @@ def test_identify_model_before_note_and_never_interpret_article_a_as_a_note():
     assert 'Which saxophone model' in r.direct_answer and not fi.context(s) and wp.current(s) is None
     r=ask(s,'I play a Yamaha YAS-280.');assert fi.context(s)['note']=='' and not r.notation_abc
 
-@pytest.mark.parametrize('q',['Show the fingering for C4.','Show the fingering for Bb4.','Show the fingering for A5.','Show the fingering for high G.','Show the fingering for concert A4.','Show the fingering for A on YAS-26.','Show the fingering for A on Selmer.','Show the fingering for A on modified YAS-280.','Show me the fingering for A on tenor saxophone.','Show me the fingering for G on flute.','Show me another fingering for A.'])
+@pytest.mark.parametrize('q',['Show the fingering for C4.','Show the fingering for Bb4.','Show the fingering for A6.','Show the fingering for G6.','Show the fingering for concert A4.','Show the fingering for A on YAS-26.','Show the fingering for A on Selmer.','Show the fingering for A on modified YAS-280.','Show me the fingering for A on tenor saxophone.','Show me the fingering for G on flute.','Show me another fingering for A.'])
 def test_unsupported_requests_preserve_note_exercise_and_history(q):
     s=ready();ask(s,'Show the fingering for A4.');ask(s,'Give me a short exercise using it.')
     c=fi.context(s);p=copy.deepcopy(wp.current(s));h=copy.deepcopy(wp.history(s));r=ask(s,q)
