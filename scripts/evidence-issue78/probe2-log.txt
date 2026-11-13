@@ -1,0 +1,27 @@
+probe audio in C:\Users\danie\AppData\Local\Temp\issue78-probe2-s8hqoqbc
+fake capture device fed C:\Users\danie\AppData\Local\Temp\issue78-probe-vjfhtwr5\transient.wav (6.0s, full-scale transient at 0.5s, looping)
+picked Let It Be dropdown=True landed=True sidebar_song='SONG\n\nSONG\nLet It Be — The Beatles\n\n🎼 Songs\n\nLet It Be · Rock\n\n📜 Song Original Key: C\n\n🗝️ '
+on the Multitrack page
+  Prepare backing -> clicked
+  layers staged for the headroom test: ['guitar', 'sax / winds', 'extra layer']
+
+== LEG E: Count-in = None, so the transport has no decode headroom ==
+  Count-in reads 'Count-in' before the change
+  Count-in reads 'Count-in' after the change
+  !! could not set Count-in to None - this leg is not valid, skipping
+
+== LEG D/F: a real microphone take, and what the app stores for it ==
+  arm recorder on vocals: clicked:Record
+  pressed Play with count-in while the recorder was already running
+  stop recorder: clicked:Stop recording
+  MediaRecorder.start at wall 1794572181902.2
+  transport AudioContext built at wall 1794572206171.5, currentTime 0.0000
+  musical beat 1 scheduled at ctx 0.0000 -> wall 1794572206171.5
+  >> MEASURED offset from capture start to musical beat 1: 24269.3 ms
+     (a lower bound: it excludes device capture latency, the gap between MediaRecorder.start and its first encoded sample, and output latency)
+  recovered 1520684 bytes the app stored for vocals
+  STORED FORMAT: 1 ch @ 48000 Hz, 2 bytes/sample, 15.84s  (Nyquist 24000 Hz)
+  level: peak -1.5 dBFS, rms -14.22 dBFS
+  transients recovered: 3 at [0.4772, 6.4772, 12.4772]
+  gaps between transients: [6.0, 6.0] (the capture file repeats every 6.0s)
+  can this stored format hold anything above 8 kHz? True
