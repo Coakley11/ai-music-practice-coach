@@ -145,6 +145,7 @@ from composition_document import (
     sync_linked_chord_sections,
     touch_composition,
 )
+from composition_melody_preview import expanded_section_chords
 from composition_preview import (
     composer_preview_slot,
     generate_preview_wav,
@@ -1755,6 +1756,7 @@ def _attach_synced_score_preview(
     dom_id: str = "",
     height: int = 260,
     lyrics_alignment: dict[str, Any] | None = None,
+    transport: str = "native",
 ) -> bool:
     """Mount synced notation/chord highlight for the armed preview slot."""
     from composition_playback_sync import build_playback_bundle, mount_synced_score_playback
@@ -1843,6 +1845,7 @@ def _attach_synced_score_preview(
         dom_id=dom_id or slot.replace(":", "_")[:40],
         height=height,
         chord_roman_labels=chord_romans,
+        transport=transport,
     )
     return True
 
@@ -3988,22 +3991,14 @@ def _render_melody_concept_card(
         """,
         unsafe_allow_html=True,
     )
-    if events:
-        n_ev = len(events)
-        staff_h = 220 if n_ev <= 12 else (260 if n_ev <= 24 else 300)
-        _render_melody_staff(
-            events,
-            key=str(pg.get("key_center") or "C"),
-            meter=str(pg.get("time_signature") or "4/4"),
-            bpm=int(pg.get("bpm") or 96),
-            title=name,
-            height=staff_h,
-            chords=chords,
-            lyrics_text=lyrics_text if is_active else "",
-        )
+    # ONE score per candidate.  The score lives in a placeholder rendered above the Preview
+    # control; once this candidate's preview is armed the placeholder shows the *same* score
+    # as the synced (highlighting) version instead of a second copy underneath.
+    concept_slot = f"melody:{section_id}:{cid}"
+    chord_syms = expanded_section_chords(doc, section_id) if chords else []
+    score_box = st.container()
     p1, p2 = st.columns(2)
     with p1:
-        concept_slot = f"melody:{section_id}:{cid}"
         preview_label = "▶ Preview with chords" if chords else "▶ Preview melody"
         if st.button(preview_label, key=f"{prefix}_preview_{cid}", use_container_width=True):
             result = play_composer_preview(
@@ -4015,7 +4010,7 @@ def _render_melody_concept_card(
                 loops=1,
                 melody_gain=float(session_state.get("composer_melody_mix_gain") or 0.45),
                 backing_gain=float(session_state.get("composer_backing_mix_gain") or 0.85),
-                chord_override=[str(c.get("chord") or c) for c in chords] if chords else [],
+                chord_override=list(chord_syms),
                 slot=concept_slot,
                 label=(
                     f"Playing melody + chords · {name}"
@@ -4025,19 +4020,39 @@ def _render_melody_concept_card(
             )
             if not result.get("ok"):
                 st.warning(str(result.get("reason") or "Could not generate preview."))
-        _attach_synced_score_preview(
-            session_state,
-            doc,
-            slot=concept_slot,
-            events=events or None,
-            chord_syms=[str(c.get("chord") or c) for c in chords] if chords else None,
-            caption=(
-                "Follow the highlighted melody note"
-                if events
-                else "Preview"
-            ),
-            dom_id=f"mel_{cid[:16]}",
-        )
+    with score_box:
+        mounted = False
+        if events:
+            _align = get_alignment(sec) if is_active else None
+            mounted = _attach_synced_score_preview(
+                session_state,
+                doc,
+                slot=concept_slot,
+                events=events,
+                chord_syms=chord_syms or None,
+                caption="Follow the highlighted note and chord",
+                dom_id=f"mel_{cid[:16]}",
+                lyrics_alignment=_align if (_align and str(_align.get("status") or "") != "unaligned") else None,
+                transport="custom",
+            )
+        if events and not mounted:
+            n_ev = len(events)
+            staff_h = 220 if n_ev <= 12 else (260 if n_ev <= 24 else 300)
+            _render_melody_staff(
+                events,
+                key=str(pg.get("key_center") or "C"),
+                meter=str(pg.get("time_signature") or "4/4"),
+                bpm=int(pg.get("bpm") or 96),
+                title=name,
+                height=staff_h,
+                chords=chords,
+                lyrics_text=lyrics_text if is_active else "",
+            )
+        elif not events:
+            _attach_synced_score_preview(
+                session_state, doc, slot=concept_slot, events=None,
+                chord_syms=chord_syms or None, caption="Preview", dom_id=f"mel_{cid[:16]}",
+            )
     with p2:
         if is_active:
             st.caption("In use — preview other ideas freely.")
@@ -4281,7 +4296,7 @@ def _render_active_melody_phrase_editor(session_state: dict, doc: dict[str, Any]
                 loops=1,
                 melody_gain=float(session_state.get("composer_melody_mix_gain") or 0.45),
                 backing_gain=float(session_state.get("composer_backing_mix_gain") or 0.85),
-                chord_override=[str(c.get("chord") or c) for c in chords] if chords else [],
+                chord_override=expanded_section_chords(doc, section_id) if chords else [],
                 slot=ed_slot,
                 label="Playing · editor proposal",
             )
@@ -4290,7 +4305,7 @@ def _render_active_melody_phrase_editor(session_state: dict, doc: dict[str, Any]
             doc,
             slot=ed_slot,
             events=draft,
-            chord_syms=[str(c.get("chord") or c) for c in chords] if chords else None,
+            chord_syms=expanded_section_chords(doc, section_id) if chords else None,
             caption="Follow the highlighted note (proposal)",
             dom_id=f"ed_{section_id[:8]}",
         )

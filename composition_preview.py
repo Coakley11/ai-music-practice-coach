@@ -210,6 +210,19 @@ def _mix_melody_onto_backing(
     bg = max(0.05, min(1.0, float(backing_gain)))
     mg = max(0.05, min(1.2, float(melody_gain)))
     out = [s * bg for s in mono]
+    # Never truncate the melody: if it outlasts the backing bed (e.g. a bed built from fewer
+    # bars than the melody spans) extend the audio with silence plus a release/reverb tail so
+    # the final notes sound in full and the audio timeline matches the event timeline.
+    _span_beats = 0.0
+    for _ev in events:
+        try:
+            _span_beats = max(_span_beats, float(_ev.get("beat") or 0.0) + float(_ev.get("duration_beats") or 1.0))
+        except (TypeError, ValueError):
+            continue
+    _needed = count_in_offset_samples + int(_span_beats * seconds_per_beat * sr) + int(0.35 * sr)
+    if _needed > len(out):
+        out.extend([0.0] * (_needed - len(out)))
+        total_beats = max(total_beats, _span_beats)
     melody_buf = [0.0] * len(out)
     for loop_i in range(max(1, int(loops))):
         loop_offset = loop_i * max(bpb, sum(float(e.get("duration_beats") or 1.0) for e in events))

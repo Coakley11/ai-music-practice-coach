@@ -263,6 +263,7 @@ def render_synced_score_playback_html(
     dom_id: str = "cplay",
     height: int = 220,
     chord_roman_labels: list[str] | None = None,
+    transport: str = "native",
 ) -> str:
     """Self-contained HTML: audio + optional staff + chord strip + synced highlight.
 
@@ -344,6 +345,16 @@ def render_synced_score_playback_html(
         "Follow the highlighted note"
         if primary == "melody"
         else ("Follow the highlighted chord" if primary == "chords" else "Playback")
+    )
+
+    custom_transport = str(transport or "native") == "custom"
+    transport_html = (
+        f'<div class="cplay-transport">'
+        f'<button type="button" id="{safe_id}-play" class="cplay-btn cplay-btn-play">&#9654; Play</button>'
+        f'<button type="button" id="{safe_id}-stop" class="cplay-btn">&#9632; Stop</button>'
+        f"</div>"
+        if custom_transport
+        else ""
     )
 
     abc_script = ""
@@ -593,6 +604,11 @@ def render_synced_score_playback_html(
     if (mode === "combined") softChordAt(t);
     setLyricAt(t);
   }}
+  function resetAll() {{
+    last = -1; lastLyric = -1; lastChord = -1;
+    clearMelody(); clearLyrics(); setChordChip(-1);
+    chordContext().forEach(el => el.classList.remove("is-soft"));
+  }}
   const playBtn = document.getElementById("{safe_id}-play");
   const stopBtn = document.getElementById("{safe_id}-stop");
   const fillEl = document.getElementById("{safe_id}-fill");
@@ -640,7 +656,7 @@ def render_synced_score_playback_html(
     }});
     audio.addEventListener("seeked", tick);
     audio.addEventListener("pause", tick);
-    audio.addEventListener("ended", () => {{ clearMelody(); clearLyrics(); setChordChip(-1); }});
+    audio.addEventListener("ended", () => {{ resetAll(); }});
     setInterval(function() {{
       tick();
       try {{
@@ -671,6 +687,7 @@ def mount_synced_score_playback(
     dom_id: str = "cplay",
     height: int = 280,
     chord_roman_labels: list[str] | None = None,
+    transport: str = "native",
 ) -> None:
     """Streamlit components.html mount for synced score playback."""
     html_doc = render_synced_score_playback_html(
@@ -682,6 +699,7 @@ def mount_synced_score_playback(
         dom_id=dom_id,
         height=height,
         chord_roman_labels=chord_roman_labels,
+        transport=transport,
     )
     if not html_doc:
         return
