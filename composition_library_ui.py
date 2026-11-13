@@ -5,6 +5,15 @@ import html
 from typing import Any
 
 SCROLL_ROW_THRESHOLD = 5
+PENDING_DELETE_KEY = "composer_library_pending_delete_id"
+
+
+def _set_pending_delete(session_state: dict, rid: str) -> None:
+    """Delete needs a second, explicit confirmation; Cancel just clears the pending id."""
+    if rid:
+        session_state[PENDING_DELETE_KEY] = rid
+    else:
+        session_state.pop(PENDING_DELETE_KEY, None)
 
 
 def render_library_rows(st: Any, session_state: dict, active_song_id: str) -> str:
@@ -52,9 +61,27 @@ def render_library_rows(st: Any, session_state: dict, active_song_id: str) -> st
                     st.error(msg)
                 else:
                     action = rid
-            if st.button("🗑 Delete", key=f"composer_lib_del_{rid}", use_container_width=True):
-                delete_library_document(session_state, rid)
-                action = f"deleted:{rid}"
+            if session_state.get(PENDING_DELETE_KEY) == rid:
+                st.warning(f"Delete “{row['title']}” permanently? This cannot be undone.")
+                if st.button("Yes, delete permanently", key=f"composer_lib_delyes_{rid}", type="primary", use_container_width=True):
+                    session_state.pop(PENDING_DELETE_KEY, None)
+                    delete_library_document(session_state, rid)
+                    action = f"deleted:{rid}"
+                st.button(
+                    "Cancel",
+                    key=f"composer_lib_delcancel_{rid}",
+                    use_container_width=True,
+                    on_click=_set_pending_delete,
+                    args=(session_state, ""),
+                )
+            else:
+                st.button(
+                    "🗑 Delete",
+                    key=f"composer_lib_del_{rid}",
+                    use_container_width=True,
+                    on_click=_set_pending_delete,
+                    args=(session_state, rid),
+                )
     return action
 
 
