@@ -83,6 +83,13 @@ def _find_scale_degree(
     scale = _MAJOR_SCALE_SEMITONES if mode == "major" else _MINOR_SCALE_SEMITONES
     if interval in scale:
         return scale.index(interval), 0
+    if mode == "minor":
+        # Minor keys borrow the raised 6th/7th (melodic/harmonic minor): the root a major
+        # 6th / major 7th above the tonic is a raised degree, never a "flattened" 7th/tonic.
+        if interval == 11:
+            return 6, +1
+        if interval == 9:
+            return 5, +1
     flat_match: tuple[int, int] | None = None
     sharp_match: tuple[int, int] | None = None
     for deg, semi in enumerate(scale):
@@ -267,6 +274,13 @@ def chord_to_roman(chord: str | Any, key: str) -> str:
     elif ext and qual_suffix == "sus":
         qual_suffix = "sus" + ext.replace("sus", "")
 
+    if (
+        mode == "minor"
+        and deg == 6
+        and alt == 1
+        and quality in {"dim", "half-dim"}
+    ):
+        prefix = ""  # harmonic-minor leading-tone chord: vii° / viiø7, not ♯vii°
     result = prefix + roman + qual_suffix
     if slash_bass:
         result += "/" + slash_bass
@@ -413,6 +427,15 @@ def analyze_progression_detailed(
         ):
             tgt_pc = (p["root_pc"] + 5) % 12
             tgt = _target_numeral(tgt_pc, p, next_spell if resolves_down_fifth else "")
+            if (
+                tgt is not None
+                and mode == "minor"
+                and tgt[1] == 4
+                and resolves_down_fifth
+                and nxt is not None
+                and nxt["quality"] in {"major", "dom"}
+            ):
+                tgt = ("V", 4)  # B7 -> E(7) in a minor key: V7/V (harmonic-minor V), not V7/v
             if tgt is not None and tgt[1] != 0:
                 if is_dom:
                     eligible = resolves_down_fifth or (diatonic_root and not major_diatonic_root)

@@ -3322,7 +3322,9 @@ def _render_hum_sing_panel(
     )
     # Full accepted Chords progression plays once — no separate Melody repeat control.
     hum_loops = 1
-    session_state["composer_play_loops"] = 1
+    # NOTE: do not write "composer_play_loops" here - it is the Chords transport slider's widget
+    # key (assigning it after that slider exists in a run raises StreamlitAPIException, and it
+    # would silently reset the user's chosen loops). Hum playback is always one pass.
     session_state[f"composer_hum_loops_{active_id}"] = 1
     count_in_bars = int(count_in_bars)
     cin_sec = count_in_seconds(bpm=bpm, meter=meter, bars=count_in_bars)
@@ -4050,7 +4052,7 @@ def _render_melody_concept_card(
                 key=str(pg.get("key_center") or "C"),
                 meter=str(pg.get("time_signature") or "4/4"),
                 bpm=int(pg.get("bpm") or 96),
-                title=name,
+                title="",  # the card's <h4> already names the idea; avoid a second title
                 height=staff_h,
                 chords=chords,
                 lyrics_text=lyrics_text if is_active else "",
@@ -4117,16 +4119,9 @@ def _render_active_melody_phrase_editor(session_state: dict, doc: dict[str, Any]
         st.markdown(
             format_full_progression_display(list(chords or flat), pattern_len=None).replace("\n", "  ")
         )
-    _render_melody_staff(
-        draft,
-        key=key,
-        meter=meter,
-        bpm=bpm,
-        title="Edited melody proposal",
-        height=220,
-        chords=chords,
-        lyrics_text=_section_lyrics_text(sec),
-    )
+    # One score only (same design as the melody candidate card): the static staff and the
+    # synced player share this slot; Preview arms the player, which then replaces the staff.
+    score_box = st.container()
 
     # Compact note markers — select one note (not a form per note).
     labels = []
@@ -4307,7 +4302,8 @@ def _render_active_melody_phrase_editor(session_state: dict, doc: dict[str, Any]
                 slot=ed_slot,
                 label="Playing · editor proposal",
             )
-        _attach_synced_score_preview(
+    with score_box:
+        if not _attach_synced_score_preview(
             session_state,
             doc,
             slot=ed_slot,
@@ -4315,7 +4311,18 @@ def _render_active_melody_phrase_editor(session_state: dict, doc: dict[str, Any]
             chord_syms=expanded_section_chords(doc, section_id) if chords else None,
             caption="Follow the highlighted note (proposal)",
             dom_id=f"ed_{section_id[:8]}",
-        )
+            transport="custom",
+        ):
+            _render_melody_staff(
+                draft,
+                key=key,
+                meter=meter,
+                bpm=bpm,
+                title="Edited melody proposal",
+                height=220,
+                chords=chords,
+                lyrics_text=_section_lyrics_text(sec),
+            )
     with e2:
         if st.button("✔️ Accept changes", key=f"composer_melody_ed_accept_{section_id}", type="primary", use_container_width=True):
             before = list(active_events)
@@ -4352,6 +4359,16 @@ def _render_active_melody_phrase_editor(session_state: dict, doc: dict[str, Any]
 def _render_melody_phrases_editor(session_state: dict, doc: dict[str, Any], section_id: str) -> None:
     """Legacy phrase list helper — prefer `_render_active_melody_phrase_editor`."""
     _render_active_melody_phrase_editor(session_state, doc, section_id)
+
+
+def _selected_instrument_concert_range(session_state: dict) -> tuple[int, int] | None:
+    """Concert-pitch window for the instrument chosen in Practice (None: engine default)."""
+    try:
+        from composition_melody_projection import concert_melody_range
+
+        return concert_melody_range(str(session_state.get("instrument") or ""), session_state)
+    except Exception:
+        return None
 
 
 def _render_phase_melody(session_state: dict, doc: dict[str, Any], *, host_side_panel: bool = True) -> None:
@@ -4510,6 +4527,7 @@ def _render_phase_melody(session_state: dict, doc: dict[str, Any], *, host_side_
                 limit=3,
                 remember=str(intent.get("remember") or remember or ""),
                 notes=str(intent.get("hum_notes") or hum or ""),
+                range_midi=_selected_instrument_concert_range(session_state),
             )
             # In-place active: highlight the matching suggestion card; tools sit beneath it.
             # Hum-sourced active is handled inside the hum panel (not duplicated here).
