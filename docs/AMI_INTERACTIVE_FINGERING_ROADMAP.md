@@ -82,3 +82,14 @@ written/concert pitches and a licensed method/prerequisite reference. Require
 instrument/setup-specific response and intonation observations, independent
 notation checks and explicit user approval before generation. This foundation
 must not infer readiness merely from Advanced level or optional high keywork.
+
+
+## Stage A local implementation follow-up
+
+AMI_FINGERING_STAGE_A_20261113.md records the subsequently authorized local
+three-note Yamaha YAS-280 pilot. It is explicitly manufacturer/reference-supported,
+not teacher-reviewed or instrument-performance validated. This distinction was
+authorized in the Stage A assignment; the earlier proposal does not turn the
+current source cross-check into a qualified teacher review. Advanced specialized
+techniques retain the separate expert/evidence gates. Staff-click selection and
+other instruments remain future work.

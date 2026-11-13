@@ -2168,8 +2168,14 @@ def render_applied_math_insight_panel(
                      f'<div class="ami-score-scroll" role="region" aria-label="Exercise score {idx + 1}" tabindex="0" style="overflow-x:auto;max-width:100%;margin-bottom:12px;"><div class="ami-score-paper" style="min-width:720px;"><div id="coach_abc_paper_{idx}"></div></div></div>')
                     for idx in range(len(abc_sections))
                 )
+                fingerings = data.get("fingering_instruction") or []
+                if fingerings:
+                    from music_coach_ami.fingering_view import html as fingering_html
+                    divs += fingering_html(fingerings)
                 script = "\n".join(blocks_js)
                 panel_height = min(1100, (420 if data.get("bass_tab_sections") else 240) + 220 * len(abc_sections))
+                if fingerings:
+                    panel_height = min(1100, panel_height + 520 * len(fingerings))
                 if data.get("bass_tab_sections"):
                     divs='<p style="font:13px Arial">Four-string TAB: G / D / A / E, top to bottom. Values below TAB are fractions of a whole note; rests and articulation follow the staff. Scroll the score horizontally if needed.</p>'+divs
                 else:
@@ -2326,6 +2332,7 @@ def _render_warmup_nav(st: Any, data: dict, *, app: str) -> None:
             data["notation_abc_sections"] = [str(x) for x in resp.notation_abc_sections if str(x).strip()]
             data["warmup_nav"] = dict(resp.diagnostics.get("warmup_nav") or {})
             data["bass_tab_sections"]=list(resp.diagnostics.get("bass_tab_sections") or [])
+            data["fingering_instruction"]=list(resp.diagnostics.get("fingering_instruction") or [])
             st.session_state[SESSION_PENDING_KEY] = data
             st.rerun()
 

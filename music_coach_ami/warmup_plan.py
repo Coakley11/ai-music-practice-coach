@@ -1190,6 +1190,9 @@ def _nav(plan: dict[str, Any], view: dict[str, Any]) -> dict[str, Any]:
 
 def _plan_response(plan: dict[str, Any], *, lead: str = "", changed: list[str] | None = None, kept: str = "", view: dict[str, Any] | None = None,
                    session_ref: Any = None, assumptions: list[str] | None = None, history_info: dict[str, Any] | None = None) -> CoachResponse:
+    if plan['spec'].get('fingering'):
+        from music_coach_ami.fingering_instructor import practice_response
+        return practice_response(plan, session_ref, lead)
     view = view or {"mode": "plan", "index": 0}
     gap = plan["gap_seconds"]
     steps: list[str] = ["**Practice**"]

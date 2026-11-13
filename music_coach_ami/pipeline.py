@@ -33,6 +33,13 @@ def run_coach_submit(
         _conv.record_turn(session_state, question, specialized.direct_answer)
         return req, specialized
 
+    from music_coach_ami.fingering_instructor import handle as fingering_request
+    fingering = fingering_request(question, session_state, ami_ctx)
+    if fingering is not None:
+        req = route_question(question, session_state, ami_ctx=ami_ctx)
+        _conv.record_turn(session_state, question, fingering.direct_answer)
+        return req, fingering
+
     from music_coach_ami import flexible_single
     single = flexible_single.handle(question, session_state, ami_ctx)
     if single is not None:

@@ -1,0 +1,11 @@
+{
+  "source": "Yamaha VDZ0080 POCP-C0 (03/2022) chart and WFG first-octave G4/A4/B4 rows, independently inspected 2026-11-13",
+  "notes": {
+    "G4": {"written": 67, "sounding": 58, "pressed": ["L1", "L2", "L3"]},
+    "A4": {"written": 69, "sounding": 60, "pressed": ["L1", "L2"]},
+    "B4": {"written": 71, "sounding": 62, "pressed": ["L1"]}
+  },
+  "released_common": ["R1", "R2", "R3", "O"],
+  "auxiliary_finger_controls": "released",
+  "teacher_reviewed": false
+}
