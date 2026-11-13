@@ -23,6 +23,9 @@ from music_theory import (
 # --- Session / widget keys (stable, never a nonce) ---
 
 BACKING_KEY_CYCLE_SESSIONS_KEY = "_backing_key_cycle_sessions"
+# Key Cycling bar Pause / Resume icons (Material, like the Backing card's buttons).
+KC_PAUSE_ICON = ":material/pause:"
+KC_RESUME_ICON = ":material/play_arrow:"
 BACKING_KEY_CYCLE_STEP_KEY = "backing_key_cycle_step"
 BACKING_KEY_CYCLE_DIRECTION_KEY = "backing_key_cycle_direction"
 BACKING_KEY_SPELLING_PREFS_KEY = "backing_key_spelling_prefs"
@@ -8315,6 +8318,10 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         const labelEl = btn.querySelector('p') || btn;
         const cur = String(labelEl.textContent || '').replace(/\\s+/g, ' ').trim();
         if (cur !== want) labelEl.textContent = want;
+        // The Material icon beside the label follows it: play on Resume, pause on Pause.
+        const iconEl = btn.querySelector('[data-testid="stIconMaterial"]');
+        const wantIcon = paused ? 'play_arrow' : 'pause';
+        if (iconEl && String(iconEl.textContent || '').trim() !== wantIcon) iconEl.textContent = wantIcon;
       }}
       // Live Follow-Along: Stop while playing, Resume when held (not Pause).
       try {{
@@ -13710,10 +13717,13 @@ def render_backing_key_cycle_playback_bar(st: Any, session: dict[str, Any]) -> N
         unsafe_allow_html=True,
     )
     b1, b2, b3, b4 = st.columns(4)
+    # Icons beside unchanged labels (the labels are what the bridge and the tests read). Material icons, as the
+    # Backing card's own buttons use; the browser swaps play / pause with the label (see the 'Resume' writer).
     with b1:
         st.button(
             pause_label,
             key="backing_key_cycle_pause_btn",
+            icon=KC_PAUSE_ICON if pause_label != "Resume" else KC_RESUME_ICON,
             use_container_width=True,
             on_click=_toggle_key_cycle_pause_resume,
             args=(session,),
@@ -13727,6 +13737,7 @@ def render_backing_key_cycle_playback_bar(st: Any, session: dict[str, Any]) -> N
         st.button(
             "Previous key",
             key="backing_key_cycle_prev_btn",
+            icon=":material/skip_previous:",
             use_container_width=True,
             disabled=transport_stopped,
             on_click=_step_key_cycle_from_button,
@@ -13736,6 +13747,7 @@ def render_backing_key_cycle_playback_bar(st: Any, session: dict[str, Any]) -> N
         st.button(
             "Next key",
             key="backing_key_cycle_advance_btn",
+            icon=":material/skip_next:",
             use_container_width=True,
             disabled=transport_stopped,
             on_click=_step_key_cycle_from_button,
@@ -13745,6 +13757,7 @@ def render_backing_key_cycle_playback_bar(st: Any, session: dict[str, Any]) -> N
         if st.button(
             "Turn off cycling",
             key="backing_key_cycle_stop_btn",
+            icon=":material/sync_disabled:",  # the 🔄 of "Key Cycling", crossed out
             use_container_width=True,
         ):
             stop_key_cycle(session)

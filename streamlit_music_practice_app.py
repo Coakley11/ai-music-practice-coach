@@ -25602,9 +25602,11 @@ elif _studio_page == "backing":
 
         with _ls_col_a:
             if _leadsheet_open:
+                # Same open / closed book as the card's "Lead sheet: On / Off" (_render_backing_art_actions).
                 st.button(
                     "Close lead sheet",
                     key="backing_leadsheet_hide_btn",
+                    icon=":material/book:",
                     use_container_width=True,
                     on_click=_set_backing_lead_sheet_open,
                     args=(False,),
@@ -25613,6 +25615,7 @@ elif _studio_page == "backing":
                 st.button(
                     "Open lead sheet",
                     key="backing_leadsheet_show_btn",
+                    icon=":material/menu_book:",
                     type="secondary",
                     use_container_width=True,
                     on_click=_set_backing_lead_sheet_open,
