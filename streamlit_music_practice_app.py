@@ -8767,17 +8767,13 @@ def mix_multitrack(backing_y, track_items, sr=44100):
 
         y = y * float(item.get("volume", 1.0))
 
-        delay = float(item.get("delay", 0.0))
+        # One shared Align rule, so the exported file lands where the transport preview
+        # said it would. Issue 78: this used to trim the head for a negative offset while
+        # the preview ignored negatives entirely, so one slider position produced two
+        # different performances. The stored take is untouched - only this mix copy.
+        from multitrack_align_contract import apply_to_samples
 
-        ds = int(delay * sr)
-
-        if ds > 0:
-
-            y = np.concatenate([np.zeros(ds, dtype=y.dtype), y])
-
-        elif ds < 0:
-
-            y = y[-ds:]
+        y = apply_to_samples(y, item.get("delay", 0.0), sr)
 
         segs.append(y)
 
@@ -8826,6 +8822,8 @@ def ensure_multitrack_track_controls(session_state, track_names=None):
 
 
 def multitrack_studio_track_payloads(track_items, controls):
+    from multitrack_align_contract import transport_payload
+
     payloads = []
     for item in track_items:
         name = item["name"]
@@ -8840,6 +8838,7 @@ def multitrack_studio_track_payloads(track_items, controls):
         else:
             mime = "audio/wav"
         b64 = base64.b64encode(item["audio_bytes"]).decode("ascii")
+        _align_delay = float(ctrl.get("delay", item.get("delay", 0.0)))
         payloads.append(
             {
                 "id": track_id,
@@ -8848,7 +8847,10 @@ def multitrack_studio_track_payloads(track_items, controls):
                 "volume": float(ctrl.get("volume", item.get("volume", 1.0))),
                 "mute": bool(ctrl.get("mute", item.get("mute", False))),
                 "solo": bool(ctrl.get("solo", item.get("solo", False))),
-                "delay": float(ctrl.get("delay", item.get("delay", 0.0))),
+                "delay": _align_delay,
+                # The Align offset resolved once, here, so the transport applies the same
+                # rule the export mixer does instead of its own Math.max(0, delay).
+                **transport_payload(_align_delay),
             }
         )
     return payloads
@@ -9299,6 +9301,19 @@ def multitrack_studio_html(
     let backingGain = null;
     let masterGain = null;
     let sessionDuration = 8;
+    // Every Play gets a token. A decode that resolves after a Stop, or after another
+    // Play, belongs to a run that no longer owns the transport and must not schedule
+    // anything - which is how a second Play used to leave the first run's sources
+    // playing underneath it.
+    let generation = 0;
+    // Nothing may be scheduled at the clock's current value: by the time start() is
+    // actually called that instant has passed, and Web Audio then plays immediately.
+    // Issue 78 measured the first count-in click scheduled ~32 ms behind the clock for
+    // exactly this reason. Everything is placed this far into the future instead.
+    const SCHEDULE_LEAD_MIN_SEC = 0.12;
+    // A take shorter than its own negative Align offset would disappear. Same floor as
+    // multitrack_align_contract.MIN_AUDIBLE_SEC, so preview and export agree here too.
+    const MIN_AUDIBLE_SEC = 0.05;
 
     {clock_script}
     function barDuration() {{ return cfg.barDuration; }}
@@ -9335,6 +9350,11 @@ def multitrack_studio_html(
           solo: !!meta.solo,
           volume: Number(meta.volume || 1),
           delay: Number(meta.delay || 0),
+          // The resolved Align schedule has to travel with the layer. This function
+          // rebuilds a fresh object per row, so a field it does not copy is simply
+          // absent downstream - which silently flattened every Align offset to zero.
+          startDelaySec: Number(meta.startDelaySec || 0),
+          bufferOffsetSec: Number(meta.bufferOffsetSec || 0),
         }};
       }});
     }}
@@ -9345,10 +9365,19 @@ def multitrack_studio_html(
       return state.filter((t) => !t.mute);
     }}
 
-    async function decodeTrack(track) {{
-      const res = await fetch(track.b64);
+    async function decodeInto(ctx, url) {{
+      const res = await fetch(url);
       const buf = await res.arrayBuffer();
-      return await audioCtx.decodeAudioData(buf);
+      return await ctx.decodeAudioData(buf);
+    }}
+
+    function scheduleLead(ctx) {{
+      // Give the hardware at least one full output buffer of warning, and more when the
+      // device reports a long latency, so the scheduled instant is still in the future
+      // when the audio thread reaches it.
+      const base = Number(ctx.baseLatency) || 0;
+      const out = Number(ctx.outputLatency) || 0;
+      return Math.max(SCHEDULE_LEAD_MIN_SEC, (base + out) * 2);
     }}
 
     function playClick(when, accent) {{
@@ -9363,17 +9392,42 @@ def multitrack_studio_html(
       osc.stop(when + 0.08);
     }}
 
+    function countInBeats() {{
+      return Math.max(0, Number(cfg.countInBars) || 0) * cfg.beatsPerBar;
+    }}
+
     function scheduleCountIn(startTime) {{
-      const beats = Math.max(0, cfg.countInBars) * cfg.beatsPerBar;
+      const beats = countInBeats();
       for (let i = 0; i < beats; i++) {{
         playClick(startTime + i * beatDuration(), i % cfg.beatsPerBar === 0);
       }}
       return startTime + beats * beatDuration();
     }}
 
+    function startMetronome(ctx, fromTime, run) {{
+      // Scheduled on the audio clock with a lookahead rather than from setInterval +
+      // currentTime, which drifted against the music it was supposed to be marking.
+      const beat = beatDuration();
+      const HORIZON = 0.5;
+      let next = fromTime;
+      const tick = () => {{
+        if (run !== generation || audioCtx !== ctx) return;
+        while (next < ctx.currentTime + HORIZON) {{
+          const n = Math.round((next - fromTime) / beat);
+          if (next > ctx.currentTime) playClick(next, n % cfg.beatsPerBar === 0);
+          next += beat;
+        }}
+        metroTimer = setTimeout(tick, 150);
+      }};
+      tick();
+    }}
+
     function stopAll() {{
+      // Retire the current run first: an in-flight decode checks this token before it
+      // schedules anything, so Stop cannot be undone by audio that was still loading.
+      generation += 1;
       if (rafId) cancelAnimationFrame(rafId);
-      if (metroTimer) clearInterval(metroTimer);
+      if (metroTimer) {{ clearTimeout(metroTimer); clearInterval(metroTimer); }}
       rafId = null;
       metroTimer = null;
       trackNodes.forEach((node) => {{
@@ -9408,23 +9462,54 @@ def multitrack_studio_html(
 
     async function playSession() {{
       stopAll();
+      const run = ++generation;
       audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-      masterGain = audioCtx.createGain();
+      const ctx = audioCtx;
+      masterGain = ctx.createGain();
       masterGain.gain.value = 0.95;
-      masterGain.connect(audioCtx.destination);
+      masterGain.connect(ctx.destination);
 
       const state = trackStateFromUI();
       const playTracks = audibleTracks(state);
-      const countInStart = audioCtx.currentTime;
+
+      // ---- Decode everything BEFORE choosing when the music starts. ----
+      // musicStart used to be fixed from currentTime up here, before these awaits. By
+      // the time start(musicStart) ran, that instant had passed, so each source began at
+      // its own decode-completion time instead: Issue 78 measured the layers starting
+      // 160 ms apart and the worst 800 ms behind the beat whenever the count-in was not
+      // long enough to hide the decode. Deciding the start afterwards removes the race
+      // rather than widening the window it needs.
+      labelEl.textContent = "Preparing audio\u2026";
+      const wantBacking = !!(cfg.hasBacking && cfg.backingMonitorEnabled && backingEl.src);
+      let backingBuf = null;
+      const layerBufs = [];
+      try {{
+        if (ctx.state === "suspended") await ctx.resume();
+        if (wantBacking) backingBuf = await decodeInto(ctx, backingEl.src);
+        for (const track of playTracks) {{
+          const meta = tracks.find((t) => t.id === track.id);
+          if (!meta || !meta.b64) continue;
+          layerBufs.push({{ track: track, buffer: await decodeInto(ctx, meta.b64) }});
+        }}
+      }} catch (e) {{
+        if (run === generation) {{
+          labelEl.textContent = "Could not prepare this audio for playback.";
+        }}
+        return;
+      }}
+      // Stopped, or Play pressed again, while that was loading.
+      if (run !== generation || audioCtx !== ctx) return;
+
+      // ---- One authoritative start, now that nothing else has to be awaited. ----
+      const countInStart = ctx.currentTime + scheduleLead(ctx);
       const musicStart = scheduleCountIn(countInStart);
       startedAt = musicStart;
       countInStartedAt = countInStart;
 
       let maxEnd = musicStart;
 
-      if (cfg.hasBacking && cfg.backingMonitorEnabled && backingEl.src) {{
-        const backingBuf = await decodeTrack({{ b64: backingEl.src }});
-        const src = audioCtx.createBufferSource();
+      if (backingBuf) {{
+        const src = ctx.createBufferSource();
         src.buffer = backingBuf;
         src.loop = cfg.loopBacking;
         // The rendered buffer ends with the last chord's decay sitting inside a
@@ -9437,7 +9522,7 @@ def multitrack_studio_html(
           src.loopStart = 0;
           src.loopEnd = musicalEnd;
         }}
-        backingGain = audioCtx.createGain();
+        backingGain = ctx.createGain();
         backingGain.gain.value = cfg.backingMonitorVolume;
         src.connect(backingGain);
         backingGain.connect(masterGain);
@@ -9448,19 +9533,27 @@ def multitrack_studio_html(
         trackNodes.push({{ source: src }});
       }}
 
-      for (const track of playTracks) {{
-        const meta = tracks.find((t) => t.id === track.id);
-        if (!meta || !meta.b64) continue;
-        const buf = await decodeTrack(meta);
-        const src = audioCtx.createBufferSource();
+      for (const entry of layerBufs) {{
+        const track = entry.track;
+        const buf = entry.buffer;
+        const src = ctx.createBufferSource();
         src.buffer = buf;
-        const gain = audioCtx.createGain();
+        const gain = ctx.createGain();
         gain.gain.value = track.volume;
         src.connect(gain);
         gain.connect(masterGain);
-        const when = musicStart + Math.max(0, track.delay);
-        src.start(when);
-        maxEnd = Math.max(maxEnd, when + buf.duration);
+        // The shared Align contract (multitrack_align_contract), resolved in Python and
+        // handed over as two numbers. A positive offset delays the start; a negative one
+        // begins part-way into the take, which is what the export mixer has always done
+        // and what the preview used to throw away with Math.max(0, delay).
+        const startDelay = Math.max(0, Number(track.startDelaySec) || 0);
+        let bufferOffset = Math.max(0, Number(track.bufferOffsetSec) || 0);
+        if (bufferOffset > 0 && buf.duration - bufferOffset < MIN_AUDIBLE_SEC) {{
+          bufferOffset = Math.max(0, buf.duration - MIN_AUDIBLE_SEC);
+        }}
+        const when = musicStart + startDelay;
+        src.start(when, bufferOffset);
+        maxEnd = Math.max(maxEnd, when + Math.max(0, buf.duration - bufferOffset));
         trackNodes.push({{ source: src }});
       }}
 
@@ -9469,17 +9562,12 @@ def multitrack_studio_html(
         cfg.backingDurationSec || 0,
         maxEnd - musicStart
       );
-      labelEl.textContent = "Playing. Count-in finished — music started on beat 1.";
+      labelEl.textContent = countInBeats() > 0
+        ? "Counting you in \u2014 everything starts together on beat 1."
+        : "Playing \u2014 everything started together on beat 1.";
       updateTransport();
 
-      if (cfg.metronomeDuringPlayback) {{
-        let beat = 0;
-        metroTimer = setInterval(() => {{
-          if (!audioCtx) return;
-          beat += 1;
-          playClick(audioCtx.currentTime, beat % cfg.beatsPerBar === 1);
-        }}, beatDuration() * 1000);
-      }}
+      if (cfg.metronomeDuringPlayback) startMetronome(ctx, musicStart, run);
     }}
 
     renderTracks();
@@ -28487,10 +28575,19 @@ elif _studio_page == "multitrack":
                             key=f"mt_delay_{slot}",
                             help="Move this layer earlier or later to line it up with the backing.",
                         )
-                        st.caption(
-                            "Negative = earlier. Positive = later. "
-                            "Use this if the layer sounds ahead of or behind the backing."
-                        )
+                        # One sentence about what THIS setting does, from the shared
+                        # contract, so the caption cannot drift from the behaviour. The
+                        # old wording said "Negative = earlier", which the transport did
+                        # not do at all and the export did by dropping the opening.
+                        try:
+                            from multitrack_align_contract import describe as _align_says
+
+                            st.caption(_align_says(st.session_state.get(f"mt_delay_{slot}", 0.0)))
+                        except Exception:
+                            st.caption(
+                                "Positive starts the layer later than bar 1. Negative "
+                                "starts further into the recording."
+                            )
 
                     with c3:
                         st.checkbox(
@@ -28549,6 +28646,15 @@ elif _studio_page == "multitrack":
                     saved_audio = st.session_state.mt_tracks.get(slot)
                     if saved_audio:
                         st.audio(saved_audio)
+                        # Deliberately the dry recording, with no Align applied: this is
+                        # the only place the untouched take can be heard, which is what
+                        # makes a negative Align recoverable. Alignment is what the
+                        # transport and the export do.
+                        st.caption(
+                            "This is your original recording, exactly as it was captured. "
+                            "Align timing is applied when you press Play with count-in "
+                            "and when you export."
+                        )
                         track_items_for_mix.append(
                             {
                                 "slot": slot,
