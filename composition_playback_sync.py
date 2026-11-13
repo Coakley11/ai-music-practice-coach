@@ -613,6 +613,8 @@ def render_synced_score_playback_html(
   function tick() {{
     if (!audio) return;
     const t = audio.currentTime || 0;
+    // Finished playback: nothing is sounding, so nothing may stay highlighted.
+    if (audio.ended) {{ resetAll(); return; }}
     if (audio.paused && t <= 0.02) {{
       last = -1;
       lastLyric = -1;
