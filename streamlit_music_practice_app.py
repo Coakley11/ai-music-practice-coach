@@ -2722,6 +2722,9 @@ def render_abc(abc_text, *, measure_sync=None):
 
         sync_json = _json.dumps(measure_sync)
         _pm_debug = "true" if _os.environ.get("PM_SYNC_DEBUG") else "false"
+        from lead_sheet_page_follow import page_follow_controller_js as _pm_follow_ctl
+
+        _pm_follow_js = _pm_follow_ctl()
         sync_script = f"""
     <style>
       .pm-current-measure .abcjs-notehead {{ fill: #e11d48; }}
@@ -2739,6 +2742,7 @@ def render_abc(abc_text, *, measure_sync=None):
       }}
       #pm-debug-readout {{ font: 11px monospace; background: #111; color: #0f0; padding: 4px; white-space: pre-wrap; }}
     </style>
+    <script>{_pm_follow_js}</script>
     <script>
     (function() {{
       const DEBUG = {_pm_debug};
@@ -2876,8 +2880,20 @@ def render_abc(abc_text, *, measure_sync=None):
         positionBoxFor(current);
         highlightNote(match, t);
         const firstCurrent = document.querySelector('.pm-current-measure');
-        if (firstCurrent && firstCurrent.scrollIntoView) {{
-          firstCurrent.scrollIntoView({{block: 'nearest', inline: 'nearest'}});
+        if (firstCurrent) {{
+          // M4: scrollIntoView here also scrolled the PAGE, pulling it back every measure (even over a
+          // manual scroll). This frame now only scrolls itself; the page moves through the one page
+          // controller, which honours the six-second manual hold and lets an open Lead Sheet lead.
+          try {{
+            const de = document.scrollingElement || document.documentElement;
+            if (de.scrollHeight > de.clientHeight + 4) {{
+              const r = firstCurrent.getBoundingClientRect();
+              if (r.top < 0 || r.bottom > window.innerHeight) de.scrollTop += r.top - window.innerHeight * 0.3;
+            }}
+          }} catch (eIn) {{}}
+          try {{
+            if (window.top.__lsFollow) window.top.__lsFollow.request('practice-melody', firstCurrent, {{why: 'measure'}});
+          }} catch (ePf) {{}}
         }}
         return 'NEW-HIGHLIGHT key=' + match.key + ' notes=' + (match.note_end - match.note_start);
       }}
@@ -5480,8 +5496,17 @@ def live_follow_along_component_html(
     display_semitones: int = 0,
     reading_key: str = "",
     chord_tone_hints_switch: bool = False,
+    page_follow: bool = False,
 ):
     audio_b64 = audio_b64 or base64.b64encode(wav_bytes).decode("ascii")
+    # M4: the sheet at its full height on the page, the page following the music (lead_sheet_page_follow).
+    if page_follow:
+        from lead_sheet_page_follow import page_follow_controller_js
+
+        page_follow_js = page_follow_controller_js()
+    else:
+        page_follow_js = ""
+    page_follow_flag_js = "true" if page_follow else "false"
     # Opened over a live take: start the native autoplay at the handed-over playhead.
     sheet_open_handoff_js = "true" if sheet_open_handoff else "false"
     timeline_json = json.dumps(timeline)
@@ -5656,6 +5681,18 @@ def live_follow_along_component_html(
     .live-stop-hint {{
       flex: 1 1 180px;
       margin-top: 0;
+      /* Both hints share one cell, so Pause / Resume never changes the header's height and the chart below
+         (now on the page itself) does not jump. */
+      display: grid;
+    }}
+    .live-stop-hint > span {{
+      grid-area: 1 / 1;
+    }}
+    .live-stop-hint > .hint-off {{
+      visibility: hidden;
+    }}
+    .live-stop-btn {{
+      min-width: 11.5em;
     }}
     .live-follow-shell .chord-cell.current-chord {{
       background: #86efac !important;
@@ -6225,7 +6262,7 @@ def live_follow_along_component_html(
     <div class="live-player-toolbar">
       <button type="button" class="live-stop-btn" id="live-stop-btn" data-state="stop">⏸ Pause playback</button>
       <button type="button" class="live-loop-start-btn" id="live-loop-start-btn" title="Seek to the first chord of the current loop and play">↺ Back to loop start</button>
-      <span class="live-help live-stop-hint" id="live-stop-hint">Stop keeps your place. Resume continues from there. Back to loop start seeks the current repetition’s first chord and plays.</span>
+      <span class="live-help live-stop-hint" id="live-stop-hint"><span class="hint-play">Pause keeps your place. Resume continues from there. Back to loop start restarts the current loop and plays.</span><span class="hint-pause hint-off">Paused — Resume continues from this place. Back to loop start seeks the current repetition’s first chord and plays.</span></span>
     </div>
     <div class="live-status-grid">
       <div class="live-status-card">
@@ -6279,6 +6316,8 @@ def live_follow_along_component_html(
     // Expose the timeline so the karaoke lyric-panel snippet can peek
     // at upcoming events to compute the "Next: ..." section label.
     window.__karaokeTimeline = timeline;
+    // M4 full-height sheet + page follow (set before anything can call updateHighlight).
+    const PAGE_FOLLOW = {page_follow_flag_js};
     const audio = document.getElementById("live-audio");
     // Created while the Backing transport is paused or stopped (a rerun that
     // re-renders the sheet): it must not start by itself -- only Resume / Play
@@ -6483,9 +6522,11 @@ def live_follow_along_component_html(
       // Loop-start always available — seeks current-rep first chord and plays.
       if (loopStartBtn) loopStartBtn.disabled = false;
       if (stopHint) {{
-        stopHint.textContent = paused
-          ? "Paused — Resume continues from this place. Back to loop start seeks the current repetition’s first chord and plays."
-          : "Pause keeps your place. Resume continues from there. Back to loop start restarts the current loop and plays.";
+        const hp = stopHint.querySelector(".hint-play"), hz = stopHint.querySelector(".hint-pause");
+        if (hp && hz) {{
+          hp.classList.toggle("hint-off", paused);
+          hz.classList.toggle("hint-off", !paused);
+        }}
       }}
     }}
     // Parent dual-buffer pushes pause/play state so both surfaces stay aligned.
@@ -6922,7 +6963,13 @@ def live_follow_along_component_html(
           const label = labels[labels.length - 1];
           if (label) label.textContent = "Now Playing";
         }}
-        if (eventChanged && clock && !clock.paused) {{
+        if (eventChanged && PAGE_FOLLOW) {{
+          // Full-height sheet: the page follows, through the one page controller (6 s manual hold,
+          // never while paused or stopped). It only scrolls; audio and highlight are untouched.
+          try {{
+            if (sheetIsPlaying() && window.top.__lsFollow) window.top.__lsFollow.request("lead-sheet", currentCell, {{ why: "chord" }});
+          }} catch (ePf) {{}}
+        }} else if (eventChanged && clock && !clock.paused) {{
           // Keep scroll inside the follow shell so the parent page does not
           // bury cycle Pause/Resume above the viewport.
           try {{
@@ -7130,7 +7177,7 @@ def live_follow_along_component_html(
         {key_cycle_pass_js}
       }});
     }}
-    window.setInterval(() => {{
+    function sheetIsPlaying() {{
       let playing = false;
       try {{
         const clock = followClockAudio();
@@ -7146,6 +7193,49 @@ def live_follow_along_component_html(
           }} catch (eK) {{}}
         }}
       }} catch (eP) {{}}
+      return playing;
+    }}
+    // M4: the whole chart at its own height on the page (no inner scroll box), and this sheet as the page
+    // controller's main follow surface (it outranks the Practice Melody staff).
+    if (PAGE_FOLLOW) {{
+      try {{
+        const fe = window.frameElement;
+        const shellEl = document.querySelector(".live-follow-shell");
+        if (fe && shellEl) {{
+          document.documentElement.style.overflow = "hidden";
+          document.body.style.overflow = "hidden";
+          fe.setAttribute("scrolling", "no");
+          const fit = () => {{
+            try {{
+              const h = Math.ceil(shellEl.getBoundingClientRect().bottom + (window.scrollY || 0) + 18);
+              if (h > 100 && Math.abs((parseFloat(fe.style.height) || 0) - h) > 2) {{
+                fe.style.height = h + "px";
+                fe.setAttribute("height", String(h));
+              }}
+            }} catch (eFit) {{}}
+          }};
+          fit();
+          try {{ new ResizeObserver(fit).observe(shellEl); }} catch (eRo) {{}}
+          window.setInterval(fit, 1000);
+          window.addEventListener("load", fit);
+        }}
+        {page_follow_js}
+        const reg = () => {{
+          const ctl = window.top.__lsFollow;
+          if (!ctl || !fe) return false;
+          ctl.register({{
+            id: "lead-sheet", priority: 10, frame: fe, transport: true,
+            playing: sheetIsPlaying,
+            current: () => document.querySelector(".live-chart-cell.current-chord, .chord-cell.current-chord"),
+            pauseButton: () => document.getElementById("live-stop-btn"),
+          }});
+          return true;
+        }};
+        if (!reg()) window.setTimeout(reg, 300);
+      }} catch (ePfI) {{}}
+    }}
+    window.setInterval(() => {{
+      const playing = sheetIsPlaying();
       // Always tick while cycle owns audio — dual-buffer can be playing while
       // the iframe clock reports paused (that froze highlight mid-pass).
       if (playing || cycleOwnsAudio()) updateHighlight(false);
@@ -25638,7 +25728,24 @@ elif _studio_page == "backing":
         # One always-present element, shown or not: Resume hid this caption, the sheet
         # moved up one place, Streamlit re-created it and the resumed take stopped.
         with st.container(key="backing_leadsheet_play_hint_slot"):
-            if not st.session_state.get(BACKING_AUTOPLAY, False):
+            # M4: the sheet is on the page itself now, so this line must never change height: Pause showed it
+            # (38 px) and Resume removed it, and the whole chart jumped each time. One line, always present;
+            # only its words follow the transport (and Pause no longer says "Play").
+            st.markdown(
+                "<style>.st-key-backing_leadsheet_play_hint_slot [data-testid='stCaptionContainer'] p,"
+                ".st-key-backing_leadsheet_play_hint_slot [data-testid='stCaptionContainer']"
+                "{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}"
+                # The blank caption collapses (measured: slot 16 px playing, 38 px paused), so the slot keeps
+                # the one-line height itself.
+                ".st-key-backing_leadsheet_play_hint_slot{min-height:38px;}</style>",
+                unsafe_allow_html=True,
+            )
+            _hint_intent = str(transport_intent(st.session_state) or "")
+            if st.session_state.get(BACKING_AUTOPLAY, False):
+                st.caption(" ")
+            elif _hint_intent == "paused":
+                st.caption("Paused — Resume on the song card continues from here.")
+            else:
                 # Not "stopped": the open click carries the current playhead over.
                 st.caption("▶ Play Backing Track on the song card plays the track with this chart.")
         _karaoke_active = km.is_karaoke_session_active(st.session_state)
@@ -25969,6 +26076,9 @@ elif _studio_page == "backing":
                 display_semitones=_fa_display_semis,
                 reading_key=_fa_reading_key,
                 chord_tone_hints_switch=not km.is_karaoke_session_active(st.session_state),
+                # Backing (not Karaoke, whose lyric panel keeps its own box): the whole chart on the page,
+                # the page following the music with a six-second hold after any manual scroll or touch.
+                page_follow=not (_karaoke_engaged or km.is_karaoke_session_active(st.session_state)),
         )
         if _karaoke_engaged:
             try:
