@@ -262,8 +262,13 @@ def render_synced_score_playback_html(
     caption: str = "",
     dom_id: str = "cplay",
     height: int = 220,
+    transport: str = "native",
 ) -> str:
-    """Self-contained HTML: audio + optional staff + chord strip + synced highlight."""
+    """Self-contained HTML: audio + optional staff + chord strip + synced highlight.
+
+    ``transport="custom"`` replaces the browser audio bar with Play / Pause-Resume / Stop
+    buttons (Stop rewinds and clears the highlight); default keeps the native audio control.
+    """
     if not wav_bytes:
         return ""
     mode = str(bundle.get("mode") or "none")
@@ -331,6 +336,16 @@ def render_synced_score_playback_html(
         else ("Follow the highlighted chord" if primary == "chords" else "Playback")
     )
 
+    custom_transport = str(transport or "native") == "custom"
+    transport_html = (
+        f'<div class="cplay-transport">'
+        f'<button type="button" id="{safe_id}-play" class="cplay-btn cplay-btn-play">&#9654; Play</button>'
+        f'<button type="button" id="{safe_id}-stop" class="cplay-btn">&#9632; Stop</button>'
+        f"</div>"
+        if custom_transport
+        else ""
+    )
+
     abc_script = ""
     if abc_text and mode in {"melody", "combined"}:
         abc_script = f"""
@@ -384,6 +399,13 @@ def render_synced_score_playback_html(
     box-shadow: 0 0 0 2px rgba(14,165,233,0.35);
   }}
   .cplay-audio {{ width: 100%; margin-top: 8px; }}
+  .cplay-audio:not([controls]) {{ display: none; }}
+  .cplay-transport {{ display: flex; gap: 8px; margin: 6px 0 2px; }}
+  .cplay-btn {{
+    flex: 1; min-height: 40px; border-radius: 8px; border: 1px solid #cbd5e1;
+    background: #f8fafc; color: #0f172a; font-weight: 700; font-size: 0.95rem; cursor: pointer;
+  }}
+  .cplay-btn-play {{ background: #0ea5e9; border-color: #0284c7; color: #fff; }}
   .cplay-lyrics {{
     display: flex; flex-wrap: wrap; gap: 2px 4px; margin: 8px 0 4px;
     line-height: 1.6; font-size: 0.95rem; color: #334155;
@@ -408,7 +430,8 @@ def render_synced_score_playback_html(
   {chord_strip}
   {staff_block}
   {lyric_strip}
-  <audio id="{safe_id}-audio" class="cplay-audio" controls preload="auto" autoplay>
+  {transport_html}
+  <audio id="{safe_id}-audio" class="cplay-audio" {"" if custom_transport else "controls"} preload="auto" autoplay>
     <source src="data:audio/wav;base64,{b64}" type="audio/wav"/>
   </audio>
 </div>
@@ -557,7 +580,36 @@ def render_synced_score_playback_html(
     if (mode === "combined") softChordAt(t);
     setLyricAt(t);
   }}
+  function resetAll() {{
+    last = -1; lastLyric = -1; lastChord = -1;
+    clearMelody(); clearLyrics(); setChordChip(-1);
+    chordContext().forEach(el => el.classList.remove("is-soft"));
+  }}
+  const playBtn = document.getElementById("{safe_id}-play");
+  const stopBtn = document.getElementById("{safe_id}-stop");
+  function syncLabel() {{
+    if (!playBtn || !audio) return;
+    if (!audio.paused && !audio.ended) playBtn.innerHTML = "&#10074;&#10074; Pause";
+    else if (audio.currentTime > 0.02 && !audio.ended) playBtn.innerHTML = "&#9654; Resume";
+    else playBtn.innerHTML = "&#9654; Play";
+  }}
+  if (playBtn && audio) {{
+    playBtn.addEventListener("click", function() {{
+      if (audio.ended || (audio.duration && audio.currentTime >= audio.duration - 0.02)) {{
+        audio.currentTime = 0;
+      }}
+      if (audio.paused) {{ audio.play(); }} else {{ audio.pause(); }}
+      syncLabel();
+    }});
+  }}
+  if (stopBtn && audio) {{
+    stopBtn.addEventListener("click", function() {{
+      audio.pause(); audio.currentTime = 0; resetAll(); syncLabel();
+    }});
+  }}
   if (audio) {{
+    ["play", "pause", "ended", "seeked", "loadedmetadata"].forEach(
+      ev => audio.addEventListener(ev, syncLabel));
     audio.addEventListener("timeupdate", tick);
     audio.addEventListener("play", function() {{
       tick();
@@ -565,7 +617,7 @@ def render_synced_score_playback_html(
     }});
     audio.addEventListener("seeked", tick);
     audio.addEventListener("pause", tick);
-    audio.addEventListener("ended", () => {{ clearMelody(); clearLyrics(); setChordChip(-1); }});
+    audio.addEventListener("ended", () => {{ resetAll(); }});
     setInterval(function() {{
       tick();
       try {{
@@ -595,6 +647,7 @@ def mount_synced_score_playback(
     caption: str = "",
     dom_id: str = "cplay",
     height: int = 280,
+    transport: str = "native",
 ) -> None:
     """Streamlit components.html mount for synced score playback."""
     html_doc = render_synced_score_playback_html(
@@ -605,6 +658,7 @@ def mount_synced_score_playback(
         caption=caption,
         dom_id=dom_id,
         height=height,
+        transport=transport,
     )
     if not html_doc:
         return
@@ -617,7 +671,7 @@ def mount_synced_score_playback(
             systems = -(-bars // 2)  # two measures per system on a phone
             per_system = 165 if "\nw:" in str(abc_text) else 130
             # caption + score + audio control
-            frame_height = 40 + systems * per_system + 80
+            frame_height = 40 + systems * per_system + (70 if transport == "custom" else 80)
         components.html(html_doc, height=min(2600, frame_height), scrolling=False)
     except Exception:
         st_module.audio(wav_bytes, format="audio/wav")
