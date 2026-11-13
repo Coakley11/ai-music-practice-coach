@@ -478,12 +478,20 @@ def gate_first_layer(page: Page) -> None:
     mark("a 1-bar count-in was heard", len(cl) == 4, f"{len(cl)} clicks scheduled")
     mark("nothing was played along with, there being no other layer",
          len(buffers(r["sched"])) == 0, f"{len(buffers(r['sched']))} sources")
+    # The take arrives, the page reruns, and only then is the measurement drawn beside the take.
+    # Wait for it rather than assuming one settle() was enough on a loaded machine.
     body = layer_body(page, SLOT_GUITAR)
+    waited_line = 0.0
+    while waited_line < 30.0 and "measured on the recording clock" not in body:
+        page.wait_for_timeout(2000)
+        waited_line += 2.0
+        body = layer_body(page, SLOT_GUITAR)
     (OUT / "layer-body-guitar.txt").write_text(body, encoding="utf-8")
     mark("the take landed in the layer", layer_has_audio(page, SLOT_GUITAR),
          body[:200].replace("\n", " | "))
     mark("the measured timing is shown with the take", "measured on the recording clock" in body,
-         [ln for ln in body.split("\n") if "measured on the recording" in ln][:1])
+         f"after {waited_line:.0f}s: "
+         + json.dumps([ln for ln in body.split("\n") if "measured on the recording" in ln][:1]))
     mark("the take is captured at a music rate, not a speech rate",
          "48.0 khz" in body or "44.1 khz" in body,
          [ln for ln in body.split("\n") if "khz" in ln][:1])
@@ -550,6 +558,121 @@ def gate_count_in_choices(page: Page) -> None:
         MEASURED[f"count-in {label}"] = len(cl)
 
 
+def gate_one_record_control(page: Page) -> None:
+    """One Record, named for what it does - and the old Record-then-Play pair not on offer."""
+    log("\n== one Record control, named for what it does ==")
+    expand_layer(page, SLOT_GUITAR)
+    settle(page, 2)
+    sel = recorder_selector(page, SLOT_GUITAR, timeout_s=25.0)
+    if sel is None:
+        mark("the synchronized recorder is the control the player is given", False, "no recorder iframe")
+        return
+    label = page.evaluate(
+        """(s) => { const f = document.querySelector(s);
+                    const b = f && f.contentDocument && f.contentDocument.getElementById('rec');
+                    return b ? {text: b.textContent.trim(), aria: b.getAttribute('aria-label')} : null; }""",
+        sel,
+    )
+    mark("the synchronized recorder is the control the player is given", bool(label), json.dumps(label))
+    if label:
+        says = "count-in" in low(label["text"])
+        mark("Record names the count-in it will play", says, json.dumps(label))
+        mark("and its accessible name says the same", "count-in" in low(label["aria"] or ""),
+             json.dumps(label["aria"]))
+    # The old route was: press Record on a plain microphone widget, then press Play. If that widget
+    # is still rendered next to the real one, it is still the apparent recommended method.
+    basic = page.locator('[data-testid="stAudioInput"]').count()
+    mark("the old two-step microphone control is not offered as well", basic == 0,
+         f"{basic} st.audio_input widgets on the page")
+    body = low(page.locator("body").inner_text())
+    mark("and nothing tells the player to use a compatibility recorder",
+         "compatibility" not in body,
+         f"occurrences of the word 'compatibility' in the page: {body.count('compatibility')}")
+
+
+def transport_readout(page: Page) -> dict:
+    """Position / bar / beat / cursor width from the Multitrack studio transport."""
+    return page.evaluate(
+        """() => {
+            for (const f of document.querySelectorAll('iframe')) {
+                let d = null; try { d = f.contentDocument; } catch (e) {}
+                if (!d || !d.getElementById('mt-time')) continue;
+                const cur = d.getElementById('mt-cursor');
+                return {time: (d.getElementById('mt-time').textContent || '').trim(),
+                        bar: (d.getElementById('mt-bar').textContent || '').trim(),
+                        beat: (d.getElementById('mt-beat').textContent || '').trim(),
+                        cursor: cur ? cur.style.width || '0%' : null};
+            }
+            return null;
+        }"""
+    )
+
+
+def start_transport(page: Page) -> bool:
+    return bool(page.evaluate(
+        """() => {
+            for (const f of document.querySelectorAll('iframe')) {
+                let d = null; try { d = f.contentDocument; } catch (e) {}
+                if (!d || !d.getElementById('mt-play')) continue;
+                d.getElementById('mt-play').click();
+                return true;
+            }
+            return false;
+        }"""
+    ))
+
+
+def gate_discard_resets_the_transport(page: Page) -> None:
+    """A discarded take must not leave the playhead and the chord cursor mid-song."""
+    log("\n== discarding a take returns the transport to the beginning ==")
+    before = transport_readout(page)
+    if before is None:
+        mark("the transport readout can be read", False, "no mt-studio transport found")
+        return
+    mark("the transport readout can be read", True, json.dumps(before))
+    if not start_transport(page):
+        mark("the transport can be started", False)
+        return
+    # Play begins with the transport's own count-in, during which the position legitimately stays
+    # at zero. Poll until it moves rather than guessing how long that takes.
+    running = None
+    moved = False
+    waited_play = 0.0
+    while waited_play < 18.0:
+        page.wait_for_timeout(1000)
+        waited_play += 1.0
+        running = transport_readout(page)
+        if running and running["time"] not in ("0.0s", "0s", "", None):
+            moved = True
+            break
+    mark("the transport really was running before the discard", moved,
+         f"after {waited_play:.0f}s: {json.dumps(running)}")
+    got = click_in_layer(page, SLOT_EXTRA, "discard")
+    waited = 0.0
+    while waited < 60.0 and layer_has_audio(page, SLOT_EXTRA):
+        page.wait_for_timeout(1500)
+        waited += 1.5
+    settle(page, 3)
+    after = transport_readout(page)
+    mark("the take was discarded", got == "clicked" and not layer_has_audio(page, SLOT_EXTRA),
+         f"click={got} after {waited:.1f}s")
+    if after is None:
+        mark("the transport is back at the beginning after a discard", False, "no readout")
+        return
+    at_start = (
+        after["time"] in ("0.0s", "0s")
+        and after["bar"] == "1"
+        and after["beat"] == "1"
+    )
+    mark("the transport is back at the beginning after a discard", at_start, json.dumps(after))
+    zeroed = after["cursor"] in ("0%", "", None) or str(after["cursor"]).startswith("0%")
+    mark("and the chord cursor is back at the first bar", zeroed, json.dumps(after["cursor"]))
+    # Put the layer back, so the gates after this one see the three-layer project they expect.
+    again = record_in_slot(page, SLOT_EXTRA, 2.0)
+    mark("the discarded layer can be recorded again", not again.get("err"),
+         str(again.get("err") or ""))
+
+
 def gate_discard_and_rerecord(page: Page) -> None:
     log("\n== discard one take and record it again ==")
     expand_layer(page, SLOT_SAX)
@@ -558,14 +681,15 @@ def gate_discard_and_rerecord(page: Page) -> None:
     had_timing = "measured on the recording clock" in before
     got = click_in_layer(page, SLOT_SAX, "discard")
     # Discarding reruns the page; wait for the slot to actually empty rather than for a fixed time.
+    # Generously: under load this took 25.5 s where an unloaded machine needed 4.5 s.
     waited = 0.0
-    while waited < 25.0 and layer_has_audio(page, SLOT_SAX):
+    while waited < 60.0 and layer_has_audio(page, SLOT_SAX):
         page.wait_for_timeout(1500)
         waited += 1.5
     log(f"  the slot emptied after {waited:.1f}s")
     after = layer_body(page, SLOT_SAX)
     mark("the take can be discarded", got == "clicked" and not layer_has_audio(page, SLOT_SAX),
-         f"click={got}, still holds audio={layer_has_audio(page, SLOT_SAX)}")
+         f"click={got}, emptied after {waited:.1f}s, still holds audio={layer_has_audio(page, SLOT_SAX)}")
     mark("discarding one layer leaves the others alone",
          layer_has_audio(page, SLOT_GUITAR) and layer_has_audio(page, SLOT_EXTRA),
          f"guitar={layer_has_audio(page, SLOT_GUITAR)} flute={layer_has_audio(page, SLOT_EXTRA)}")
@@ -603,14 +727,36 @@ def gate_save_reload_export(page: Page) -> None:
         kept = [s for s in (SLOT_GUITAR, SLOT_SAX, SLOT_EXTRA) if layer_has_audio(page, s)]
         mark("the saved layers survive the reload", len(kept) >= 2,
              f"{len(kept)} layers still hold audio: {kept}")
+        # The audio coming back is not enough: a reloaded layer whose measurement was lost could
+        # no longer be placed, and nothing on screen would say so.
+        measured = []
+        for slot in kept:
+            expand_layer(page, slot)
+            settle(page, 2)
+            body = layer_body(page, slot)
+            if "measured on the recording clock" in body:
+                measured.append(slot)
+        mark("the measured timing survives the save and the reload", len(measured) >= 1,
+             f"{len(measured)} of {len(kept)} reloaded layers still show their measurement: {measured}")
+        contradictory = [s for s in measured if "not time-aligned" in layer_body(page, s)]
+        mark("and no reloaded layer claims a measurement it does not have",
+             not contradictory,
+             f"layers showing both a measurement and a not-aligned notice: {contradictory}")
 
     click_text_button(page, "Create mix")
-    settle(page, 14)
+    settle(page, 8)
+    # Mixing three layers and rendering the panel takes as long as it takes.
     raw = export_bytes(page)
+    waited_mix = 0.0
+    while raw is None and waited_mix < 90.0:
+        page.wait_for_timeout(3000)
+        waited_mix += 3.0
+        raw = export_bytes(page)
     if raw is None:
-        mark("a mix can be exported", False, "no audio in the export panel")
+        mark("a mix can be exported", False, f"no audio in the export panel after {waited_mix:.0f}s")
         return
     info = wav_info(raw)
+    info["waited_s"] = waited_mix
     MEASURED["export"] = info
     mark("a mix can be exported", True, json.dumps(info))
     mark("the exported mix is not silent", info["peak"] > 0.001, f"peak={info['peak']:.4f}")
@@ -671,6 +817,8 @@ def main() -> int:
             gate_overdub(page, SLOT_SAX, 1, "the saxophone overdub")
             gate_overdub(page, SLOT_EXTRA, 2, "the flute overdub")
             gate_count_in_choices(page)
+            gate_one_record_control(page)
+            gate_discard_resets_the_transport(page)
             gate_discard_and_rerecord(page)
             gate_save_reload_export(page)
             for w in (390, 360):

@@ -269,6 +269,15 @@
 
       async function start() {
         const tClick = performance.now();
+        // Parts were asked for but none decoded: refuse. Recording here would capture the player
+        // alone while the take was aligned as if they had heard the rest, which is worse than not
+        // recording at all. The button is disabled in this state too - this is the guarantee.
+        const wantedNow = requestFp();
+        if (wantedNow && !(armed.length && bk.state === "ready" && bk.fp === wantedNow)) {
+          status("Not recording yet: the parts to play along with are not loaded. " + (bk.error || ""));
+          render();
+          return;
+        }
         $("rec").disabled = true;
         try {
           const c = await ensureContext();
@@ -287,7 +296,8 @@
           const mute = c.createGain(); mute.gain.value = 0;
           const take = { stream, src, node, mute, chunks: [], frames: 0, firstFrame: null, peak: 0, settings, tClick, tGum,
                          label: track ? track.label : "", source: null, sources: [], clicks: [], musicFrame: null,
-                         backingFrame: null, countInFrame: null, countInSec: 0, monitors: 0, t0Perf: null };
+                         backingFrame: null, countInFrame: null, countInSec: 0, monitors: 0,
+                         monitorsExpected: requestAssets().length, t0Perf: null };
           rec = take;
           // Bound to this take (not the module-level `rec`): stop() clears `rec` and then waits for the
           // last render quanta, which must still land in this take.
@@ -392,6 +402,9 @@
           scheduled_music_offset_sec: musicOffset,
           music_offset_sec: musicOffset === null ? null : musicOffset + outLat + inLat,
           monitor_count: r.monitors,
+          // How many were MEANT to play. Python refuses to call a take synchronized when these
+          // disagree, because then the player did not hear what the take is aligned against.
+          monitors_expected: r.monitorsExpected,
           dry_duration_sec: r.frames / sr,
           wall_sec: (tStopClick - r.tClick) / 1000,
           backing_fp: r.backingFrame !== null ? bk.fp : "",
@@ -425,7 +438,12 @@
           status(what + "\u2026");
           return;
         }
-        btn.textContent = "\u25cf Record"; btn.className = ""; btn.setAttribute("aria-label", "Record");
+        // With a count-in configured the button says so: pressing it plays the clicks and
+        // then starts everything together. "Record" alone hides the one thing the player
+        // has to expect before their first note.
+        const withCountIn = countInSeconds() > 0;
+        const recLabel = withCountIn ? "Record with count-in" : "Record";
+        btn.textContent = "\u25cf " + recLabel; btn.className = ""; btn.setAttribute("aria-label", recLabel);
         const needBacking = !!args.require_backing;
         const wanted = requestFp();
         const assetsReady = !!backingBuf && bk.state === "ready" && bk.fp === wanted;

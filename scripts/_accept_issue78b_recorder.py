@@ -192,6 +192,27 @@ def decode_wav(b64: str) -> tuple[int, list[float]]:
     return sr, [v / 32768.0 for v in vals]
 
 
+COMPONENT_SRC = (ROOT / "mission_recorder_component" / "index.html").read_text(encoding="utf-8")
+
+
+def tone_energy(samples, sr: int, hz: float) -> float:
+    """How much of ``hz`` is in these samples (Goertzel), normalised by length.
+
+    A plain band-pass answer: it is the amplitude of that one frequency, so a full-scale tone that
+    leaked into the capture would read near 0.5 and a tone that never touched it reads near zero.
+    """
+    if not samples:
+        return 0.0
+    n = len(samples)
+    w = 2.0 * math.cos(2.0 * math.pi * hz / sr)
+    s1 = s2 = 0.0
+    for v in samples:
+        s0 = v + w * s1 - s2
+        s2, s1 = s1, s0
+    power = s1 * s1 + s2 * s2 - w * s1 * s2
+    return math.sqrt(max(0.0, power)) * 2.0 / n
+
+
 def rms(values) -> float:
     if not values:
         return 0.0
@@ -458,6 +479,58 @@ def run(keep_open: bool = False) -> int:
                     "echo cancellation is not on", f"echoCancellation={s11.get('echoCancellation')}")
             g.check(r11["take"]["timing"]["sample_rate"] >= 44100,
                     "the capture rate is a music rate", f"{r11['take']['timing']['sample_rate']} Hz")
+            # -------------------------------------------- 12. the take holds the microphone only
+            print("\n[12] What plays along with the player does NOT get into the take")
+            # Two frequencies well away from the count-in's own 880 Hz and 1320 Hz, so each can be
+            # attributed. Full volume, because the question is whether any of it is routed in.
+            loud = [h.monitor("/m/loudA.wav", 6.0, hz=523.0), h.monitor("/m/loudB.wav", 6.0, hz=1600.0)]
+            h.render(monitors=loud, count_in_beats=4, count_in_bpm=240, load_nonce=20)
+            h.wait_ready()
+            r12 = h.record(2.5)
+            sr12, with_parts = decode_wav(r12["take"]["wav_b64"])
+            g.check(len(buffers(r12["sched"])) == 2 and len(clicks(r12["sched"])) == 4,
+                    "both parts and the count-in really were playing during this take",
+                    f"{len(buffers(r12['sched']))} parts, {len(clicks(r12['sched']))} clicks")
+            h.render(monitors=[], count_in_beats=0, count_in_bpm=0, load_nonce=21)
+            h.wait_ready()
+            r12b = h.record(2.5)
+            _, mic_only = decode_wav(r12b["take"]["wav_b64"])
+            for hz, what in ((523.0, "the first part"), (1600.0, "the second part"),
+                             (880.0, "the count-in click"), (1320.0, "the accented click")):
+                a = tone_energy(with_parts, sr12, hz)
+                b = tone_energy(mic_only, sr12, hz)
+                # Leakage of an audible part would be overwhelming, not marginal: a full-scale tone
+                # routed into the capture reads hundreds of times the microphone's own content at
+                # that frequency. Anything within a factor of three is the fake device itself.
+                g.check(a <= max(b * 3.0, 1e-3),
+                        f"{what} is not in the recorded audio",
+                        f"{hz:.0f} Hz: with={a:.6f} without={b:.6f}")
+            g.check(rms(with_parts) > 1e-4, "and the microphone itself was still captured",
+                    f"rms={rms(with_parts):.5f}")
+            graph = COMPONENT_SRC.count(".connect(node)")
+            g.check(graph == 1, "only the microphone is connected into the capture node",
+                    f"{graph} connections into the worklet")
+
+            # ------------------------------------------------- 13. Record refuses when not armed
+            print("\n[13] Record refuses outright when the parts are not loaded")
+            h.render(monitors=[{"id": "gone", "fp": "gone2", "url": "/m/missing2.wav",
+                                "start_delay_sec": 0.0, "buffer_offset_sec": 0.0, "volume": 1.0}],
+                     load_nonce=22)
+            h.page.wait_for_function("() => window.__recorderState().bk.state === 'failed'", timeout=30000)
+            h.clear_probe()
+            # Force the button back on, the way a stale render or a stray script could, and press it.
+            h.page.evaluate("() => { const b = document.getElementById('rec'); b.disabled = false; b.click(); }")
+            h.page.wait_for_timeout(1200)
+            g.check(h.page.evaluate("() => window.__sent.filter((v) => v && v.take_id).length") == 0,
+                    "no take was produced")
+            g.check(len(buffers(h.page.evaluate("() => window.__sched"))) == 0,
+                    "and nothing was scheduled to play")
+            text13 = h.page.locator("#status").inner_text()
+            g.check("Not recording yet" in text13 or "could not be loaded" in text13,
+                    "and the player is told why", json.dumps(text13[:90]))
+            g.check(h.page.locator("#rec").inner_text().strip().startswith("\u25cf"),
+                    "the button is still Record, not Stop",
+                    json.dumps(h.page.locator("#rec").inner_text()[:30]))
         finally:
             if not keep_open:
                 h.close()

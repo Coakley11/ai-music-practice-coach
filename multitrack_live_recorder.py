@@ -26,6 +26,11 @@ from multitrack_align_contract import transport_payload
 
 LAST_TAKE_ID_PREFIX = "_mt_live_take_id_"
 TAKE_TIMING_KEY = "mt_take_timing"
+# How a take arrived. Only the first of these is on the recording clock; the other two are honest
+# about having no measurement rather than quietly looking like one.
+SOURCE_SHARED_CLOCK = "shared-clock"
+SOURCE_BASIC_RECORDER = "basic-recorder"
+SOURCE_UPLOAD = "upload"
 # A monitor the player can barely hear is worse than no monitor: it reads as a fault in the take.
 MIN_MONITOR_VOLUME = 0.05
 
@@ -188,11 +193,20 @@ def normalize_timing(timing: Mapping[str, Any] | None) -> dict[str, Any]:
         value = _f(src.get(key))
         if value is not None:
             out[key] = value
-    for key in ("capture_first_frame", "music_start_frame", "count_in_start_frame", "backing_start_frame", "monitor_count"):
+    for key in (
+        "capture_first_frame",
+        "music_start_frame",
+        "count_in_start_frame",
+        "backing_start_frame",
+        "monitor_count",
+        # What the recorder was ASKED to play along with. If fewer parts actually started, the
+        # player did not hear what this take was aligned against, and the take is not trustworthy.
+        "monitors_expected",
+    ):
         value = _f(src.get(key))
         if value is not None:
             out[key] = int(value)
-    for key in ("backing_fp", "request_fp", "device"):
+    for key in ("backing_fp", "request_fp", "device", "source", "unsynchronized_reason"):
         text = src.get(key)
         if text:
             out[key] = str(text)[:160]
@@ -202,19 +216,105 @@ def normalize_timing(timing: Mapping[str, Any] | None) -> dict[str, Any]:
     return out
 
 
+def sync_state(timing: Mapping[str, Any] | None) -> dict[str, Any]:
+    """Was this take measured on the recording clock? With the reason when it was not.
+
+    A take is synchronized only when every part of the measurement needed to place bar 1 beat 1
+    inside the audio is present AND every part the recorder was asked to play along with actually
+    started. Anything else is reported as unsynchronized with a reason, because a take that is
+    silently assumed to be aligned is worse than one the player knows to align by hand.
+    """
+    data = timing if isinstance(timing, Mapping) else {}
+    source = str(data.get("source") or "")
+    if not data:
+        return {"synchronized": False, "source": source, "reason": "nothing was measured"}
+    if source and source != SOURCE_SHARED_CLOCK:
+        reason = str(data.get("unsynchronized_reason") or "")
+        if not reason:
+            reason = (
+                "uploaded audio, not recorded here"
+                if source == SOURCE_UPLOAD
+                else "recorded with the compatibility recorder, which is not on the shared clock"
+            )
+        return {"synchronized": False, "source": source, "reason": reason}
+    missing = [
+        name
+        for name in ("sample_rate", "capture_first_frame", "music_start_frame", "music_offset_sec")
+        if _f(data.get(name)) is None
+    ]
+    if missing:
+        return {
+            "synchronized": False,
+            "source": source or SOURCE_SHARED_CLOCK,
+            "reason": "the recorder did not report " + ", ".join(missing),
+        }
+    if (_f(data.get("sample_rate")) or 0.0) <= 0:
+        return {
+            "synchronized": False,
+            "source": source or SOURCE_SHARED_CLOCK,
+            "reason": "the capture reported no sample rate",
+        }
+    if (_f(data.get("music_offset_sec")) or 0.0) < 0:
+        return {
+            "synchronized": False,
+            "source": source or SOURCE_SHARED_CLOCK,
+            "reason": "bar 1 beat 1 was measured before the recording started",
+        }
+    expected = _f(data.get("monitors_expected"))
+    if expected is not None:
+        started = _f(data.get("monitor_count")) or 0.0
+        if int(started) != int(expected):
+            return {
+                "synchronized": False,
+                "source": source or SOURCE_SHARED_CLOCK,
+                "reason": (
+                    f"{int(expected)} part(s) should have played along but {int(started)} did"
+                ),
+            }
+    return {"synchronized": True, "source": source or SOURCE_SHARED_CLOCK, "reason": ""}
+
+
 def record_take_timing(
     session_state: MutableMapping[str, Any],
     slot: str,
     timing: Mapping[str, Any] | None,
+    *,
+    source: str = SOURCE_SHARED_CLOCK,
 ) -> dict[str, Any]:
-    """Keep this take's measured timing beside the take, for the slot it belongs to."""
+    """Keep this take's measured timing beside the take, with its verdict, for its own slot."""
     store = session_state.get(TAKE_TIMING_KEY)
     if not isinstance(store, dict):
         store = {}
         session_state[TAKE_TIMING_KEY] = store
     clean = normalize_timing(timing)
+    clean["source"] = str(source or SOURCE_SHARED_CLOCK)
+    verdict = sync_state(clean)
+    clean["synchronized"] = bool(verdict["synchronized"])
+    if not clean["synchronized"]:
+        clean["unsynchronized_reason"] = verdict["reason"]
     store[slot] = clean
     return clean
+
+
+def record_unsynchronized_take(
+    session_state: MutableMapping[str, Any],
+    slot: str,
+    *,
+    source: str,
+    reason: str = "",
+) -> dict[str, Any]:
+    """Record that this slot's audio was NOT measured on the recording clock, and why.
+
+    An upload and a compatibility-recorder take both have no measurement. Storing nothing would
+    leave them indistinguishable from a take whose timing simply has not loaded yet, and would let
+    the player believe the mix can place them. This states it instead.
+    """
+    return record_take_timing(
+        session_state,
+        slot,
+        {"source": str(source), "unsynchronized_reason": str(reason or "")},
+        source=str(source),
+    )
 
 
 def take_timing(session_state: Mapping[str, Any], slot: str) -> dict[str, Any]:
@@ -237,6 +337,25 @@ def timing_caption(timing: Mapping[str, Any] | None) -> str:
     data = timing if isinstance(timing, Mapping) else {}
     if not data:
         return ""
+    verdict = sync_state(data)
+    if not verdict["synchronized"]:
+        source = verdict["source"]
+        reason = verdict["reason"]
+        if source == SOURCE_UPLOAD:
+            return (
+                "Uploaded audio - nothing was measured on the recording clock, so where bar 1 "
+                "beat 1 sits in it is not known. Line it up with this layer's Align control."
+            )
+        if source == SOURCE_BASIC_RECORDER:
+            return (
+                "Recorded with the compatibility recorder, NOT on the shared clock: no count-in "
+                "was played and bar 1 beat 1 was not measured, so this take has to be lined up by "
+                "hand with the Align control."
+            )
+        return (
+            "This take is NOT time-aligned: " + (reason or "its timing could not be measured")
+            + ". Line it up with the Align control, or record it again."
+        )
     bits: list[str] = []
     rate = _f(data.get("sample_rate"))
     if rate:
@@ -337,6 +456,9 @@ def render_layer_recorder(
 
 
 __all__ = [
+    "SOURCE_BASIC_RECORDER",
+    "SOURCE_SHARED_CLOCK",
+    "SOURCE_UPLOAD",
     "TAKE_TIMING_KEY",
     "build_monitors",
     "count_in_beats",
@@ -346,7 +468,9 @@ __all__ = [
     "normalize_timing",
     "ready_text",
     "record_take_timing",
+    "record_unsynchronized_take",
     "render_layer_recorder",
+    "sync_state",
     "take_filename",
     "take_timing",
     "timing_caption",

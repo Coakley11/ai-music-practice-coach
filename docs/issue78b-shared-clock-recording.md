@@ -137,6 +137,78 @@ layer; Solo narrows), the Align payload matching the contract's own answer for e
 beats per meter, the ready text, the timing record and its disposal, the generated filename's safety
 as a storage path, and the component's own ordering guarantees.
 
+## The review round: a take now says whether it was measured
+
+The first implementation had one recorder and one measurement, and that was the whole story it
+could tell. If anything went wrong - the component could not render, the timing came back
+incomplete, a monitor failed to arm - the take still landed, and nothing on screen distinguished it
+from a take that had been measured properly. A take nobody can place is worse than no take, because
+the musician does not know to align it.
+
+So a take now carries a verdict, not just numbers:
+
+* `multitrack_live_recorder.sync_state(timing)` answers one question - was this measured on the
+  recording clock? - and says why not when the answer is no. A take is synchronized only when the
+  sample rate, the first captured frame, musical zero's frame and its offset are all present, the
+  offset is not negative, and **every part the recorder was asked to play along with actually
+  started**. The component now reports `monitors_expected` beside `monitor_count` so that last
+  check is possible at all: a take aligned against three layers when only two played is not the
+  take it claims to be.
+* every stored take records its `source`: `shared-clock`, `basic-recorder` or `upload`. An upload
+  and a compatibility take are stored as explicitly unsynchronized rather than stored with nothing,
+  because an absent measurement reads exactly like one that has not arrived yet.
+* the take's own line says it. A measured take keeps its quiet caption; an unmeasured one gets a
+  notice the musician cannot miss, naming the Align control as the way to place it by hand.
+* the compatibility recorder is labelled as one - in the widget's own label and in a standing
+  warning that explains what it cannot do and how to get the real recorder back. It appears only
+  when the shared-clock recorder could not render at all; the normal path does not offer it, and an
+  acceptance gate asserts there is no second microphone control on the page.
+* `start()` refuses outright when parts were asked for and none are armed. The button is disabled in
+  that state as well, but a disabled button is a UI fact, not a guarantee.
+* an empty or truncated capture can no longer replace a saved layer: anything at or below a bare
+  WAV header is reported as a failed recording, and the audio already in the layer is left alone.
+* Record reads **"Record with count-in"** whenever a count-in is configured, in its label and its
+  accessible name, so the one thing to expect before the first note is on the button.
+
+### The measurement had to be made to travel
+
+`mt_take_timing` was not in the Multitrack page snapshot, so a reloaded project came back with its
+audio and without the only record of how that audio lines up. It is now persisted with the rest of
+the page. A project saved before this existed simply has no entry, and claims nothing either way -
+which is the right answer for a layer whose timing never could have been measured.
+
+### Measured in the review round
+
+| | |
+|---|---|
+| component harness | **75/75** (was 64) |
+| real-app acceptance | **65/65** (was 52) |
+| deterministic tests | **81** (was 58) |
+| Mission recorder compatibility | **52/52, unmodified** |
+| Multitrack project / export / persistence / align / capture suites | **387 passed, 37 subtests** |
+
+The new component gates measure the question the review asked directly: with two full-volume
+monitors at 523 Hz and 1600 Hz and a count-in playing, the *same* recording is made again with
+neither, and the energy at 523, 1600, 880 and 1320 Hz is compared between the two takes. None of it
+is in the capture - the monitored take reads at or below the unmonitored one at every frequency -
+and only one node connects into the capture worklet. That is a measurement of the digital path:
+**acoustic bleed through a room is a different question, and headphones remain the answer to it.**
+
+The new app gates cover one Record control named for what it does, the old two-step microphone
+control being absent, the transport and chord cursor returning to bar 1 beat 1 after a discard, and
+the measurement surviving a save and a full page reload on all three layers.
+
+### A trap this round added to the list
+
+Five app gates failed on the first run of the combined tree, and none of them was a product defect:
+each was a **fixed wait that had been long enough on an idle machine**. The other agent's session
+had the CPU at 74% and free memory at 1.7 GB; the slot that had emptied in 4.5 s took 25.5 s, and
+the first layer's measurement had simply not been drawn yet when the gate read the page. The server
+log held no application exception, which is what pointed at time rather than behaviour. Those gates
+now poll and print how long they needed - 0 s, 10.5 s and 3 s on the rerun - so a slow run is
+visible instead of fatal. **A fixed wait that is sometimes long enough is not a measurement: it
+fails the product for being slow and passes it for being lucky.**
+
 ## Not verified
 
 * **Physical microphone, real instrument and listening acceptance — PENDING.** Every number above

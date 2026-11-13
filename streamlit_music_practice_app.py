@@ -9178,7 +9178,9 @@ def _render_multitrack_session_setup_panel(
                 st.warning("Monitor backing ready locally — catalog update failed.")
         except ImportError:
             st.session_state.multitrack_backing_music_wav = monitor_wav
-            st.success("Monitor backing ready — use Step 3 transport while recording.")
+            st.success(
+                "Monitor backing ready — Record in Step 2 plays it for you while it captures."
+            )
         try:
             from studio_page_persistence import flush_current_page_snapshot
 
@@ -28313,7 +28315,11 @@ elif _studio_page == "multitrack":
                 '<p class="ui-multitrack-step-kicker">Step 2 · Layers</p>',
                 unsafe_allow_html=True,
             )
-            st.caption("Record or upload each instrument slot, then adjust volume, mute, and solo.")
+            st.caption(
+                "Record or upload each instrument slot, then adjust volume, mute, and solo. "
+                "One Record plays your count-in, the backing and the layers you have already "
+                "saved, and captures your playing against them on the same clock."
+            )
             try:
                 from upload_media import upload_format_labels, upload_max_size_caption
 
@@ -28485,11 +28491,15 @@ elif _studio_page == "multitrack":
                                 # way. Say so, and keep the reason for diagnosis.
                                 _mt_live_ok = False
                                 st.session_state["_mt_live_recorder_error"] = str(_mt_live_err)[:300]
-                                st.caption(
-                                    "The shared-clock recorder could not start on this device, so "
-                                    "the basic recorder is being used instead. Takes recorded that "
-                                    "way carry no measured timing, and the count-in will not be "
-                                    "part of the recording."
+                                st.warning(
+                                    "**The synchronized recorder could not start on this device.** "
+                                    "Below is the compatibility recorder: it captures your playing, "
+                                    "but it is **not on the shared clock** - it plays no count-in, "
+                                    "nothing plays along with you, and where bar 1 beat 1 sits in "
+                                    "the take is not measured, so you would line it up by hand with "
+                                    "this layer's Align control. Reloading the page, or allowing "
+                                    "microphone access, usually brings the synchronized recorder "
+                                    "back."
                                 )
 
                         recorded = None
@@ -28499,7 +28509,7 @@ elif _studio_page == "multitrack":
                                 # st.audio_input defaults to sample_rate=16000 — a speech rate
                                 # that discards everything above 8 kHz, so high flute notes and
                                 # guitar attacks lose the partials that define their tone.
-                                _mt_rec_label = f"Record — {slot}"
+                                _mt_rec_label = f"Record — {slot} (compatibility, not time-aligned)"
                                 _mt_rec_key = recorder_widget_key(st.session_state, slot, "record")
                                 try:
                                     recorded = st.audio_input(
@@ -28517,8 +28527,12 @@ elif _studio_page == "multitrack":
                                 st.caption("Recording unavailable in this build — upload still works.")
 
                         _mt_audio_obj = recorded if recorded is not None else uploaded
+                        # Which recorder produced this, so the take can say so for the rest of its
+                        # life. Only the first of these was measured on the recording clock.
+                        _mt_landed_source = ""
                         if _mt_live_take is not None:
                             _mt_landed_bytes = _mt_live_take["wav"]
+                            _mt_landed_source = "shared-clock"
                             try:
                                 from multitrack_live_recorder import take_filename
 
@@ -28528,9 +28542,23 @@ elif _studio_page == "multitrack":
                         elif _mt_audio_obj is not None:
                             _mt_landed_bytes = _mt_audio_obj.getvalue()
                             _mt_landed_name = getattr(_mt_audio_obj, "name", f"{slot}.wav")
+                            _mt_landed_source = (
+                                "basic-recorder" if recorded is not None else "upload"
+                            )
                         else:
                             _mt_landed_bytes = None
                             _mt_landed_name = ""
+                        # A recording that produced no usable audio must never replace a layer the
+                        # musician has already kept. A WAV header alone is 44 bytes, so anything
+                        # this small is a failed capture, not a take.
+                        if _mt_landed_bytes is not None and len(_mt_landed_bytes) < 512:
+                            st.warning(
+                                "That recording came back empty, so nothing was changed - the audio "
+                                "already in this layer is untouched. Please try recording again."
+                            )
+                            _mt_landed_bytes = None
+                            _mt_landed_name = ""
+                            _mt_landed_source = ""
                         if _mt_landed_bytes is not None:
                             _mt_bytes = _mt_landed_bytes
                             if st.session_state.mt_tracks.get(slot) != _mt_bytes:
@@ -28553,16 +28581,40 @@ elif _studio_page == "multitrack":
                                 # that would describe a different performance as if it were this one.
                                 try:
                                     from multitrack_live_recorder import (
-                                        forget_take_timing,
+                                        SOURCE_SHARED_CLOCK,
                                         record_take_timing,
+                                        record_unsynchronized_take,
+                                        sync_state,
                                     )
 
                                     if _mt_live_take is not None:
-                                        record_take_timing(
-                                            st.session_state, slot, _mt_live_take.get("timing")
+                                        _mt_stored_timing = record_take_timing(
+                                            st.session_state,
+                                            slot,
+                                            _mt_live_take.get("timing"),
+                                            source=SOURCE_SHARED_CLOCK,
                                         )
+                                        _mt_verdict = sync_state(_mt_stored_timing)
+                                        if not _mt_verdict["synchronized"]:
+                                            # The take is kept - the playing is real - but it is
+                                            # labelled for what it is rather than presented as an
+                                            # aligned take.
+                                            st.warning(
+                                                "This take was captured, but its timing could not "
+                                                "be measured ("
+                                                + str(_mt_verdict["reason"])
+                                                + "), so it is **not time-aligned**. Line it up "
+                                                "with the Align control, or record it again."
+                                            )
                                     else:
-                                        forget_take_timing(st.session_state, slot)
+                                        # An upload or a compatibility take has no measurement.
+                                        # Saying so is the point: storing nothing would read the
+                                        # same as a measurement that simply has not arrived.
+                                        record_unsynchronized_take(
+                                            st.session_state,
+                                            slot,
+                                            source=_mt_landed_source or "upload",
+                                        )
                                 except Exception:
                                     pass
                                 mark_take_unsaved(st.session_state, slot)
@@ -28750,15 +28802,25 @@ elif _studio_page == "multitrack":
                             "**Exported WAV** both apply your Align timing, Volume, Mute "
                             "and Solo, and they match each other."
                         )
-                        # What was actually measured while this take was captured, when the
-                        # shared-clock recorder captured it. An uploaded take has nothing to show
-                        # here and says nothing, rather than implying a measurement it never made.
+                        # What was actually measured while this take was captured - and, when it
+                        # was not measured at all, a notice the musician cannot miss. A take that
+                        # cannot be placed on the clock must not sit here looking like one that can.
+                        # A layer restored from a project saved before this existed has no record
+                        # either way, and says nothing rather than guessing about it.
                         try:
-                            from multitrack_live_recorder import take_timing, timing_caption
+                            from multitrack_live_recorder import (
+                                sync_state,
+                                take_timing,
+                                timing_caption,
+                            )
 
-                            _mt_timing_line = timing_caption(take_timing(st.session_state, slot))
+                            _mt_take_timing = take_timing(st.session_state, slot)
+                            _mt_timing_line = timing_caption(_mt_take_timing)
                             if _mt_timing_line:
-                                st.caption(_mt_timing_line)
+                                if sync_state(_mt_take_timing)["synchronized"]:
+                                    st.caption(_mt_timing_line)
+                                else:
+                                    st.warning(_mt_timing_line)
                         except Exception:
                             pass
                         track_items_for_mix.append(

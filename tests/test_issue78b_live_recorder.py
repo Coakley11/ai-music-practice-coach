@@ -18,6 +18,9 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from multitrack_live_recorder import (  # noqa: E402
+    SOURCE_BASIC_RECORDER,
+    SOURCE_SHARED_CLOCK,
+    SOURCE_UPLOAD,
     TAKE_TIMING_KEY,
     build_monitors,
     count_in_beats,
@@ -27,10 +30,14 @@ from multitrack_live_recorder import (  # noqa: E402
     normalize_timing,
     ready_text,
     record_take_timing,
+    record_unsynchronized_take,
+    sync_state,
     take_filename,
     take_timing,
     timing_caption,
 )
+
+APP = (ROOT / "streamlit_music_practice_app.py").read_text(encoding="utf-8")
 
 COMPONENT = (ROOT / "mission_recorder_component" / "index.html").read_text(encoding="utf-8")
 SLOTS = ["Layer 1", "Layer 2", "Layer 3"]
@@ -388,6 +395,157 @@ class TheSharedRecorderIsReusedNotReimplemented(unittest.TestCase):
             MUSIC_CAPTURE_CONSTRAINTS,
             {"echoCancellation": False, "noiseSuppression": False, "autoGainControl": False},
         )
+
+
+class ATakeSaysWhetherItWasMeasured(unittest.TestCase):
+    """A take that cannot be placed on the clock must never look like one that can."""
+
+    def measured(self, **over) -> dict:
+        base = {
+            "source": SOURCE_SHARED_CLOCK,
+            "sample_rate": 48000,
+            "capture_first_frame": 0,
+            "music_start_frame": 115200,
+            "music_offset_sec": 2.401,
+            "count_in_sec": 2.4,
+            "monitor_count": 2,
+            "monitors_expected": 2,
+        }
+        base.update(over)
+        return base
+
+    def test_a_complete_measurement_is_synchronized(self) -> None:
+        verdict = sync_state(self.measured())
+        self.assertTrue(verdict["synchronized"])
+        self.assertEqual(verdict["reason"], "")
+
+    def test_fewer_parts_started_than_the_take_was_aligned_against(self) -> None:
+        verdict = sync_state(self.measured(monitor_count=1))
+        self.assertFalse(verdict["synchronized"])
+        self.assertIn("2", verdict["reason"])
+        self.assertIn("1", verdict["reason"])
+
+    def test_a_missing_musical_zero_is_not_synchronized(self) -> None:
+        verdict = sync_state(self.measured(music_start_frame=None, music_offset_sec=None))
+        self.assertFalse(verdict["synchronized"])
+        self.assertIn("music_start_frame", verdict["reason"])
+
+    def test_a_capture_with_no_sample_rate_is_not_synchronized(self) -> None:
+        self.assertFalse(sync_state(self.measured(sample_rate=0))["synchronized"])
+
+    def test_a_musical_zero_before_the_recording_started_is_not_synchronized(self) -> None:
+        verdict = sync_state(self.measured(music_offset_sec=-0.5))
+        self.assertFalse(verdict["synchronized"])
+        self.assertIn("before", verdict["reason"])
+
+    def test_an_upload_is_never_synchronized_and_says_why(self) -> None:
+        verdict = sync_state({"source": SOURCE_UPLOAD})
+        self.assertFalse(verdict["synchronized"])
+        self.assertEqual(verdict["source"], SOURCE_UPLOAD)
+
+    def test_a_restored_legacy_layer_claims_nothing_either_way(self) -> None:
+        # A project saved before any of this existed has no record. It must not be called
+        # synchronized, and it must not nag about a measurement that was never possible.
+        self.assertFalse(sync_state({})["synchronized"])
+        self.assertEqual(timing_caption({}), "")
+
+    def test_an_incomplete_live_take_never_shows_the_measured_line(self) -> None:
+        line = timing_caption(self.measured(music_start_frame=None, music_offset_sec=None))
+        self.assertNotIn("Measured on the recording clock", line)
+        self.assertIn("NOT time-aligned", line)
+
+    def test_the_compatibility_recorder_is_named_in_the_takes_own_line(self) -> None:
+        state: dict = {}
+        record_unsynchronized_take(state, "Layer 1", source=SOURCE_BASIC_RECORDER)
+        line = timing_caption(take_timing(state, "Layer 1"))
+        self.assertIn("compatibility recorder", line)
+        self.assertIn("not on the shared clock", line.lower())
+        self.assertIn("Align", line)
+
+    def test_an_uploaded_take_is_told_to_use_align(self) -> None:
+        state: dict = {}
+        record_unsynchronized_take(state, "Layer 2", source=SOURCE_UPLOAD)
+        line = timing_caption(take_timing(state, "Layer 2"))
+        self.assertIn("Uploaded audio", line)
+        self.assertIn("Align", line)
+
+    def test_every_stored_take_carries_its_source_and_verdict(self) -> None:
+        state: dict = {}
+        record_take_timing(state, "Layer 1", self.measured())
+        stored = take_timing(state, "Layer 1")
+        self.assertEqual(stored["source"], SOURCE_SHARED_CLOCK)
+        self.assertTrue(stored["synchronized"])
+        self.assertNotIn("unsynchronized_reason", stored)
+
+    def test_an_unmeasured_take_keeps_the_reason_with_it(self) -> None:
+        state: dict = {}
+        record_take_timing(state, "Layer 1", {"sample_rate": 48000})
+        stored = take_timing(state, "Layer 1")
+        self.assertFalse(stored["synchronized"])
+        self.assertTrue(stored["unsynchronized_reason"])
+
+    def test_discarding_still_takes_the_verdict_with_it(self) -> None:
+        state: dict = {}
+        record_unsynchronized_take(state, "Layer 1", source=SOURCE_UPLOAD)
+        forget_take_timing(state, "Layer 1")
+        self.assertEqual(take_timing(state, "Layer 1"), {})
+
+    def test_the_source_survives_normalisation(self) -> None:
+        out = normalize_timing({"source": SOURCE_UPLOAD, "monitors_expected": 3.0})
+        self.assertEqual(out["source"], SOURCE_UPLOAD)
+        self.assertEqual(out["monitors_expected"], 3)
+
+
+class TheRecorderNeverFallsBackSilently(unittest.TestCase):
+    """If the synchronized recorder cannot run, the player is told - not quietly downgraded."""
+
+    def test_the_component_refuses_to_record_when_the_parts_are_not_armed(self) -> None:
+        block = COMPONENT[COMPONENT.index("async function start()"):COMPONENT.index("function tick()")]
+        guard = block.index("const wantedNow = requestFp();")
+        arming = block.index("src.connect(node)")
+        self.assertLess(guard, arming, "the refusal must come before anything is armed")
+        self.assertIn("Not recording yet", block)
+
+    def test_the_component_reports_how_many_parts_were_meant_to_play(self) -> None:
+        self.assertIn("monitors_expected: r.monitorsExpected", COMPONENT)
+        self.assertIn("monitorsExpected: requestAssets().length", COMPONENT)
+
+    def test_the_fallback_recorder_is_labelled_as_a_compatibility_option(self) -> None:
+        self.assertIn("(compatibility, not time-aligned)", APP)
+        self.assertIn("The synchronized recorder could not start on this device", APP)
+
+    def test_a_fallback_or_uploaded_take_is_recorded_as_unsynchronized(self) -> None:
+        self.assertIn("record_unsynchronized_take(", APP)
+        # And the live path still stores the real measurement with its source.
+        self.assertIn("source=SOURCE_SHARED_CLOCK", APP)
+
+    def test_an_empty_recording_never_replaces_a_saved_layer(self) -> None:
+        self.assertIn("len(_mt_landed_bytes) < 512", APP)
+        self.assertIn("already in this layer is untouched", APP)
+
+    def test_the_record_button_names_the_count_in_it_will_play(self) -> None:
+        block = COMPONENT[COMPONENT.index("const withCountIn = countInSeconds() > 0;"):]
+        self.assertIn('"Record with count-in" : "Record"', block)
+        self.assertIn('setAttribute("aria-label", recLabel)', block)
+
+    def test_the_app_and_the_module_agree_on_what_a_source_is_called(self) -> None:
+        # The app stamps these names where the take lands, as plain strings in deeply nested code.
+        # If a constant were renamed and that call site were not, a perfectly good take would be
+        # reported as unsynchronized - silently, and only for real users. So pin the names.
+        self.assertEqual(SOURCE_SHARED_CLOCK, "shared-clock")
+        self.assertEqual(SOURCE_BASIC_RECORDER, "basic-recorder")
+        self.assertEqual(SOURCE_UPLOAD, "upload")
+        self.assertIn('_mt_landed_source = "shared-clock"', APP)
+        self.assertIn('"basic-recorder" if recorded is not None else "upload"', APP)
+
+    def test_the_measurement_travels_with_the_saved_project(self) -> None:
+        from studio_page_persistence import _PAGE_LOCAL_KEYS
+
+        self.assertIn(TAKE_TIMING_KEY, _PAGE_LOCAL_KEYS["multitrack"])
+
+    def test_an_unmeasured_live_take_is_flagged_where_the_player_will_see_it(self) -> None:
+        self.assertIn('if not _mt_verdict["synchronized"]:', APP)
+        self.assertIn("not time-aligned", APP)
 
 
 if __name__ == "__main__":
