@@ -468,7 +468,8 @@ def render_synced_score_playback_html(
   const chordSpans = {chord_spans_json};
   const lyricSpans = {lyric_spans_json};
   const audio = document.getElementById("{safe_id}-audio");
-  {abc_script}
+  {abc_script}
+
   // Fit the frame to the drawn score (a fixed height clipped the last system on phones).
   function fitFrame() {{
     try {{
