@@ -28648,12 +28648,17 @@ elif _studio_page == "multitrack":
                         st.audio(saved_audio)
                         # Deliberately the dry recording, with no Align applied: this is
                         # the only place the untouched take can be heard, which is what
-                        # makes a negative Align recoverable. Alignment is what the
-                        # transport and the export do.
+                        # makes a negative Align recoverable. Naming the three surfaces
+                        # explicitly, because this one SHOULD sound different from the
+                        # other two whenever Align is not zero - without the label that
+                        # difference reads as a bug.
                         st.caption(
-                            "This is your original recording, exactly as it was captured. "
-                            "Align timing is applied when you press Play with count-in "
-                            "and when you export."
+                            "**Original Take Preview** — your recording exactly as it was "
+                            "captured, with no alignment or mixing applied. It is never "
+                            "altered, so it may sound different from the mix. "
+                            "**Multitrack Playback** (Play with count-in) and the "
+                            "**Exported WAV** both apply your Align timing, Volume, Mute "
+                            "and Solo, and they match each other."
                         )
                         track_items_for_mix.append(
                             {

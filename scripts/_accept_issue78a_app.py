@@ -187,13 +187,29 @@ def slider_report(page: Page, slot: str) -> dict:
     )
 
 
-def set_align(page: Page, slot: str, steps_left: int) -> dict:
-    """Nudge the Align slider with the keyboard, then read it back.
+ALIGN_MIN, ALIGN_MAX, ALIGN_STEP = -3.0, 3.0, 0.05
 
-    Several strategies because the markup differs by Streamlit build; the read-back is
-    what decides whether it worked, never the strategy's own return value.
+
+def align_value(page: Page, slot: str) -> float | None:
+    rep = slider_report(page, slot)
+    shown = rep.get("roleNow") or rep.get("rangeNow") or rep.get("thumbText")
+    try:
+        return float(str(shown))
+    except Exception:
+        return None
+
+
+def set_align(page: Page, slot: str, target: float) -> dict:
+    """Put the Align slider on ``target``, then read it back.
+
+    A real mouse press on the track first, because this build renders no
+    ``[role="slider"]`` thumb for keyboard focus to land on, and BaseWeb ignores
+    synthetic events. Arrow keys then close the remaining gap a step at a time. The
+    read-back is what decides whether it worked - never the setter's own return value,
+    which is the trap that made an earlier probe report a control it had moved as
+    unmoved.
     """
-    focused = page.evaluate(
+    box = page.evaluate(
         """(slot) => {
           const s = slot.toLowerCase();
           const all = [...document.querySelectorAll('details')];
@@ -202,30 +218,41 @@ def set_align(page: Page, slot: str, steps_left: int) -> dict:
             const t = ((sum && sum.innerText) || '').toLowerCase();
             return t.includes('layer controls') && t.includes(s);
           });
-          if (!el) return 'layer-not-found';
+          if (!el) return null;
           const sliders = [...el.querySelectorAll('[data-testid="stSlider"]')];
           const sl = sliders.find((x) => (x.innerText || '').toLowerCase()
                                    .includes('align'));
-          if (!sl) return 'align-slider-not-found';
-          const target = sl.querySelector('[role="slider"]')
-                      || sl.querySelector('input[type="range"]')
-                      || sl.querySelector('[data-testid="stSliderThumbValue"]')
-                      || sl.querySelector('div[data-baseweb="slider"] div');
-          if (!target) return 'no-focusable-thumb';
-          target.scrollIntoView({block: 'center'});
-          if (target.focus) target.focus();
-          return 'focused:' + (target.tagName || '?')
-                 + ':' + (target.getAttribute('role') || '-');
+          if (!sl) return null;
+          const track = sl.querySelector('div[data-baseweb="slider"]') || sl;
+          track.scrollIntoView({block: 'center'});
+          const r = track.getBoundingClientRect();
+          return {x: r.x, y: r.y, w: r.width, h: r.height};
         }""",
         slot,
     )
-    log(f"    align focus -> {focused}")
-    if not str(focused).startswith("focused"):
-        return {"ok": False, "focus": focused}
-    for _ in range(abs(steps_left)):
-        page.keyboard.press("ArrowLeft" if steps_left > 0 else "ArrowRight")
+    if not box or not box.get("w"):
+        return {"ok": False, "why": "align slider track not found", "box": box}
+    frac = (target - ALIGN_MIN) / (ALIGN_MAX - ALIGN_MIN)
+    px = box["x"] + box["w"] * frac
+    py = box["y"] + box["h"] / 2
+    page.mouse.move(px, py)
+    page.mouse.down()
+    page.mouse.move(px, py)
+    page.mouse.up()
     settle(page, 8)
-    return {"ok": True, "focus": focused, "after": slider_report(page, slot)}
+    got = align_value(page, slot)
+    log(f"    mouse set Align to about {target:+.2f}, slider reads {got}")
+    # Close the last step or two with the keyboard; the thumb has focus after a drag.
+    for _ in range(40):
+        if got is None or abs(got - target) < ALIGN_STEP / 2:
+            break
+        page.keyboard.press("ArrowRight" if got < target else "ArrowLeft")
+        settle(page, 4)
+        nxt = align_value(page, slot)
+        if nxt is None or nxt == got:
+            break
+        got = nxt
+    return {"ok": True, "value": got, "after": slider_report(page, slot)}
 
 
 # ---------------------------------------------------------------------- app driving
@@ -323,29 +350,26 @@ def gate_three_layers_start_together(page: Page, layers: dict) -> None:
          len(res.get("whens") or []) == 1, f"instants {res.get('whens')}")
 
 
-def gate_preview_matches_export(page: Page, slot: str, align_steps: int,
-                                expect_delay: float) -> None:
+def gate_preview_matches_export(page: Page, slot: str, expect_delay: float) -> None:
     """The Phase B measurement: one offset, two surfaces, same position."""
     log(f"\n== preview vs export at Align {expect_delay:+.2f}s on {slot} ==")
     expand_layer(page, slot)
     settle(page, 3)
     log(f"  slider before: {json.dumps(slider_report(page, slot))}")
-    res = set_align(page, slot, align_steps)
+    res = set_align(page, slot, expect_delay)
     if not res.get("ok"):
         mark(f"Align {expect_delay:+.2f} can be set", False, str(res))
         return
-    rep = res.get("after") or {}
-    log(f"  slider after:  {json.dumps(rep)}")
-    shown = rep.get("roleNow") or rep.get("rangeNow") or rep.get("thumbText")
-    try:
-        actual = float(str(shown))
-    except Exception:
-        mark(f"Align {expect_delay:+.2f} can be read back", False, f"shown {shown!r}")
+    log(f"  slider after:  {json.dumps(res.get('after'))}")
+    actual = res.get("value")
+    if actual is None:
+        mark(f"Align {expect_delay:+.2f} can be read back", False, "unreadable")
         return
-    mark(f"Align reads back as {expect_delay:+.2f}", abs(actual - expect_delay) < 1e-6,
-         f"slider shows {actual}")
-    if abs(actual - expect_delay) >= 1e-6:
+    mark(f"Align reads back as {expect_delay:+.2f}",
+         abs(actual - expect_delay) < ALIGN_STEP / 2, f"slider shows {actual}")
+    if abs(actual - expect_delay) >= ALIGN_STEP / 2:
         return
+    expect_delay = round(float(actual), 4)
 
     play = play_transport(page)
     MEASURED[f"transport_at_{expect_delay}"] = {k: v for k, v in play.items()
@@ -420,8 +444,12 @@ def gate_dry_take_is_unchanged(page: Page, slot: str, original: Path) -> None:
          abs((desc.get("peak_sec") or -9) - TRANSIENT_AT) < 0.02,
          f"at {desc.get('peak_sec')}s, recorded at {TRANSIENT_AT}s")
     body = page.inner_text("body") or ""
-    mark("the panel says this preview is the original recording",
-         "original recording, exactly as it was captured" in body)
+    mark("the panel names this the Original Take Preview",
+         "Original Take Preview" in body)
+    mark("the panel says the preview is never altered",
+         "no alignment or mixing applied" in body)
+    mark("the panel says playback and export match each other",
+         "they match each other" in body)
 
 
 def gate_responsive(page: Page, width: int) -> None:
@@ -494,10 +522,9 @@ def main() -> int:
                 settle(page, 6)
             log("  muted the other two layers so the exported transient is unambiguous")
 
-            gate_preview_matches_export(page, "guitar", align_steps=-10,
-                                        expect_delay=0.5)
-            gate_preview_matches_export(page, "guitar", align_steps=20,
-                                        expect_delay=-0.5)
+            gate_preview_matches_export(page, "guitar", expect_delay=0.5)
+            gate_preview_matches_export(page, "guitar", expect_delay=-0.5)
+            gate_preview_matches_export(page, "guitar", expect_delay=0.0)
             gate_dry_take_is_unchanged(page, "guitar", layers["guitar"])
             for w in (390, 360):
                 gate_responsive(page, w)
