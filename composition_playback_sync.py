@@ -468,7 +468,24 @@ def render_synced_score_playback_html(
   const chordSpans = {chord_spans_json};
   const lyricSpans = {lyric_spans_json};
   const audio = document.getElementById("{safe_id}-audio");
-  {abc_script}
+  {abc_script}
+  // Fit the frame to the drawn score (a fixed height clipped the last system on phones).
+  function fitFrame() {{
+    try {{
+      const fe = window.frameElement;
+      if (!fe) return;
+      const h = Math.ceil(document.body.getBoundingClientRect().height) + 8;
+      if (h > 60) {{
+        fe.style.height = h + "px"; fe.setAttribute("height", String(h));
+        const box = fe.parentElement;
+        if (box && box.getAttribute("data-testid") === "stElementContainer") box.style.height = h + "px";
+      }}
+    }} catch (e) {{}}
+  }}
+  fitFrame();
+  window.addEventListener("load", fitFrame);
+  window.addEventListener("resize", fitFrame);
+  setTimeout(fitFrame, 250);
   let last = -1;
   let lastChord = -1;
   let lastLyric = -1;
