@@ -24,17 +24,19 @@ AnthropicTransport.complete=forbidden
 if args.evidence_dir:
     from music_coach_ami import pipeline, warmup_plan
     from instrument_transposition import SELECTED_TRANSPOSING_INSTRUMENT_KEY
+    settings_keys=("instrument","level","focus",SELECTED_TRANSPOSING_INSTRUMENT_KEY,"_suite_active_workspace_id","display_key","concert_key","backing_track_bpm")
     original=pipeline.run_coach_submit
     @functools.wraps(original)
     def observed(question,session_state=None,*,ami_ctx=None):
+        before_settings={k:session_state.get(k) for k in settings_keys} if session_state is not None else {}
         result=original(question,session_state,ami_ctx=ami_ctx)
         # Context-only probes use an empty mapping; only capture the real app session.
         if session_state is not None and session_state.get("_suite_active_workspace_id"):
             plan=warmup_plan.current(session_state)
             record={"run_id":args.run_id,"time_ns":time.time_ns(),"question":question,
                     "response":asdict(result[1]) if result[1] else None,
-                    "plan":copy.deepcopy(plan),"history":warmup_plan.history(session_state),
-                    "settings":{k:session_state.get(k) for k in ("instrument","level","focus",SELECTED_TRANSPOSING_INSTRUMENT_KEY,"_suite_active_workspace_id")}}
+                    "plan":copy.deepcopy(plan),"history":warmup_plan.history(session_state),"before_settings":before_settings,
+                    "settings":{k:session_state.get(k) for k in settings_keys}}
             args.evidence_dir.mkdir(parents=True,exist_ok=True)
             (args.evidence_dir/"last-submit.json").write_text(json.dumps(record,default=str,indent=2),encoding="utf-8")
             with (args.evidence_dir/"submits.jsonl").open("a",encoding="utf-8") as f: f.write(json.dumps(record,default=str)+"\n")

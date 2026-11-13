@@ -764,6 +764,13 @@ def _shift_key(tonic: str, tonality: str, k: int) -> tuple[str, str]:
 
 def build_item(player: we.Player, spec: dict[str, Any], desc: dict[str, Any]) -> dict[str, Any]:
     """One rendered exercise: notes, staff, tempo and the time one play takes. Raises ``WarmupUnavailable`` if it can't be built correctly."""
+    if spec.get("sax"):
+        spec = copy.deepcopy(spec)
+        spec["sax"] = copy.deepcopy(desc.get("sax_options", spec["sax"]))
+        player = we.make_player(desc.get("sax_instrument", player.key), spec["concert_key"])
+        spec["level"] = desc.get("sax_level", spec["level"])
+        if desc.get("sax_song_sel"):
+            spec["song_sel"] = copy.deepcopy(desc["sax_song_sel"])
     level = (desc.get("level") if desc["family"] in SONG_FAMILIES else None) or spec["level"]
     fam = desc["family"]
     params = dict(desc["params"])
@@ -783,7 +790,14 @@ def build_item(player: we.Player, spec: dict[str, Any], desc: dict[str, Any]) ->
         kwargs["interval"] = params["interval"]
     if fam == "articulation":
         kwargs["pattern"] = params["pattern"]
-    if fam == "guide_tones":
+    if spec.get("sax") and desc.get("sax_snapshot"):
+        from music_coach_ami.sax_conversation import restore
+        built = restore(desc["sax_snapshot"])
+    elif spec.get("sax", {}).get("chart_intervals") and fam in SONG_FAMILIES:
+        from music_coach_ami import sax_chart_intervals as sci
+        sel = spec["song_sel"]
+        built = sci.build(player, level, spec["song"], sel["section"], tuple(sel["bars"]) if sel.get("bars") else None, spec["sax"])
+    elif fam == "guide_tones":
         sel = spec["song_sel"]
         tones, first, style = _guide_combo(spec, int(params.get("variant") or 0))
         built = ws.build(player, level, spec["song"], sel["section"], tuple(sel["bars"]) if sel.get("bars") else None, tones=tones, first=first, style=style,
@@ -815,24 +829,38 @@ def build_item(player: we.Player, spec: dict[str, Any], desc: dict[str, Any]) ->
         built = we.BUILDERS[fam](player, level, tonic, tonality, **kwargs)
     if player.key in ("soprano","alto","tenor","baritone") and spec.get("sax"):
         from music_coach_ami import sax_technique
-        if fam in SONG_FAMILIES:
+        if fam in SONG_FAMILIES and not desc.get("sax_snapshot"):
             built=sax_technique.decorate(built,spec["sax"])
     if player.key == "bass":
         from music_coach_ami.bass_technique import certify
         certify(built, level, record=spec.get("bass_fingering",{}).get(desc["uid"],spec.get("bass_fingering",{}).get("*")))
+    if spec.get("sax") and desc.get("sax_snapshot"):
+        params["sax_recipe"] = spec["sax"]["recipe"]
+        if fam == "intervals" and spec["sax"]["recipe"] != "intervals":
+            params.pop("interval", None)
     scale = float(spec.get("tempo_scale") or 1.0)
     bpm = int(desc.get("tempo") or round(built.bpm * scale))
     bpm = max(36, min(160, bpm))
     abc, diag = we.render(player, built, tonic, tonality, title=built.title, bpm=bpm)
-    checks = (ws.verify(player, level, built, diag) if fam == "guide_tones" else wc.verify(player, level, built, diag) if fam in SONG_FAMILIES
-              else we.verify(player, level, built, tonic, tonality, diag, allowed_pcs=(sax_technique.allowed_pcs(spec["sax"]["recipe"]) if player.key in ("soprano","alto","tenor","baritone") and spec.get("sax") else None)))
+    if built.meta.get("sax_chart"):
+        from music_coach_ami import sax_chart_intervals as sci
+        checks = sci.verify(player, level, built, diag, spec["song"])
+    else:
+        checks = (ws.verify(player, level, built, diag) if fam == "guide_tones" else wc.verify(player, level, built, diag) if fam in SONG_FAMILIES
+                  else we.verify(player, level, built, tonic, tonality, diag, allowed_pcs=(sax_technique.allowed_pcs(spec["sax"]["recipe"]) if player.key in ("soprano","alto","tenor","baritone") and spec.get("sax") else None)))
     seconds = we.pass_seconds(built, bpm)
     if player.key=="bass":
         from music_coach_ami.bass_tab import timeline
         built.meta["bass_tab"]=timeline(built,level,bpm,abc)
     pitched = [n for n in built.notes if not n.rest]
     written = [n.midi for n in pitched]
+    sax_data = {}
+    if spec.get("sax"):
+        from music_coach_ami.sax_conversation import snapshot
+        sax_data = {"sax_snapshot": snapshot(built), "instrument": player.key, "instrument_label": player.label, "offset": player.offset,
+                    "sax_options": copy.deepcopy(built.meta.get("sax_options", spec["sax"]))}
     return {
+        **sax_data,
         "uid": desc["uid"], "family": fam, "params": params, "item_level": level, "title": built.title, "abc": abc, "bpm": bpm, "base_bpm": built.bpm,
         "tempo_override": desc.get("tempo"), "size": desc.get("size") or "full", "key": we.key_text(tonic, tonality), "tonic": tonic, "tonality": tonality,
         "bars": int(round(float(we.total_beats(built.notes) / we.BEATS_PER_BAR))), "pass_seconds": round(seconds, 2), "how": list(built.how),
@@ -899,6 +927,8 @@ def build_plan(player: we.Player, spec: dict[str, Any], *, replan: bool = True) 
             spec["items"] = [d for d in spec["items"] if d["uid"] != desc["uid"]]
             notes.append(f"Left out {we.FAMILY_LABEL[desc['family']].lower()} exercise ({why}).")
         if bad:
+            if spec.get("sax", {}).get("chart_intervals"):
+                raise we.WarmupUnavailable("; ".join(why for _, why in bad))
             continue
         if not rows:
             raise we.WarmupUnavailable("none of the requested exercises can be built correctly for this instrument and key")
@@ -1132,6 +1162,10 @@ def _header(plan: dict[str, Any], label: str) -> str:
         where = sel["section"] if len(parts) == 1 else f"the whole form ({' + '.join(x[0] for x in parts)}, {parts[-1][2]} bars)"
         head += (f"\n\n**Built from “{song['title'] or 'the active song'}”** — {bars}{where}, in the song's Practice Key ({we.key_text(*we.split_key(song['practice_key']))}, concert pitch); "
                  f"the chord symbols above each staff are written for your instrument. One play is one pass through that part of the chart (chart revision `{song['hash']}`).")
+    if plan["spec"].get("sax"):
+        settings = [f"exercise {i+1}: {r.get('instrument_label',p['label'])}, {r['item_level']}, {r['bpm']} BPM" +
+                    (f", {r['meta']['chart_section']}" if r.get('meta',{}).get('sax_chart') else "") for i,r in enumerate(plan["items"])]
+        head += "\n\nItem settings: " + "; ".join(settings) + "."
     return head
 
 
