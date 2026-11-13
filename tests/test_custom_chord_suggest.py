@@ -96,7 +96,7 @@ class TestStyles(unittest.TestCase):
     def test_rock_modal_movement(self) -> None:
         r = sug("C", "major", "Rock", "Verse", ["C", "Bb"])
         self.assertEqual(r["chord"], "F")
-        self.assertIn("I–bVII–IV", r["reason"])
+        self.assertIn("I–♭VII–IV", r["reason"])
 
     def test_ballad_prefers_stepwise_movement(self) -> None:
         self.assertEqual(_c("C", "major", "Ballad", "Verse", ["C", "Em"]), "F")
@@ -192,6 +192,27 @@ class TestStructure(unittest.TestCase):
 
         r = sug("C", "major", "Pop", "Verse", ["C", "G", "Am"])
         self.assertIn(analyze_progression(["C", "G", "Am", r["chord"]], "C")[-1], r["reason"])
+
+
+class TestRomanSpelling(unittest.TestCase):
+    """Loop names in the reason are spelled like the Roman labels shown beside the chords."""
+
+    def test_flat_uses_the_flat_glyph_not_ascii_b(self) -> None:
+        r = sug("C", "major", "Rock", "Verse", ["C", "Bb"])
+        self.assertIn("♭VII", r["reason"])
+        self.assertNotRegex(r["reason"], r"[–\s]b[IViv]")
+
+    def test_minor_key_loop_uses_natural_minor_degrees(self) -> None:
+        r = sug("A", "minor", "Pop", "Verse", ["Am", "F"])
+        self.assertEqual(r["chord"], "C")
+        self.assertEqual(r["roman"], "III")
+        self.assertIn("i–VI–III–VII", r["reason"])
+        self.assertNotIn("♭VI", r["reason"])
+
+    def test_secondary_dominant_chain_labels(self) -> None:
+        r = sug("C", "major", "Jazz", "Verse", ["Cmaj7", "A7"])
+        self.assertEqual((r["chord"], r["roman"]), ("D7", "V7/V"))
+        self.assertIn("A7 (V7/ii)", r["reason"])
 
 
 if __name__ == "__main__":

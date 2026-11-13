@@ -722,4 +722,16 @@ def _explain(best, tail, key, mode, st, role, pos, prev, blues_note, has_chords,
 
 
 def _template_roman_name(name: str, key: str, mode: str, st: str) -> str:
-    return "–".join(name.replace("M7", "maj7").split())
+    """Loop name spelled like the Roman labels shown beside the chords: ``♭`` glyph (never an
+    ASCII ``b``), and in a minor key the natural-minor degrees VI / III / VII carry no flat."""
+    out = []
+    for tok in name.replace("M7", "maj7").split():
+        if tok.startswith("b"):
+            body = tok[1:]
+            base = body.rstrip("0123456789maj°ø")  # numeral letters only
+            if mode == "minor" and base in ("VI", "III", "VII", "vi", "iii", "vii"):
+                tok = body
+            else:
+                tok = "♭" + body
+        out.append(tok)
+    return "–".join(out)
