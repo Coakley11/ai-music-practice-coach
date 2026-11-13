@@ -45,7 +45,10 @@ class TestSuggestedNextChordArea(unittest.TestCase):
     def test_area_shows_a_reasoned_suggestion_for_an_empty_section(self) -> None:
         at = _run()
         self.assertEqual(_use(at).label, "Use C")
-        self.assertIn("🎼 Suggested Next Chord", [e.label for e in at.expander])
+        # collapsed by default, with the answer in the label (compact on phones)
+        exp = [e for e in at.expander if e.label.startswith("🎼 Suggested Next Chord")]
+        self.assertEqual([e.label for e in exp], ["🎼 Suggested Next Chord: C"])
+        self.assertFalse(exp[0].proto.expanded)
         self.assertTrue(any("establishes C major" in str(c.value) for c in at.caption))
         self.assertEqual(_chords(at), [])
 

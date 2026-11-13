@@ -48,6 +48,10 @@ def compute_suggestion(active: dict, practice_key: str, edit_section: str, style
     )
 
 
+def suggest_label(chord: Any) -> str:
+    return f"🎼 Suggested Next Chord: {chord}" if chord else "🎼 Suggested Next Chord"
+
+
 def render_next_chord_suggestion(st: Any, *, active: dict, practice_key: str, edit_section: str,
                                  style: str, pending_chord: str | None) -> dict[str, Any] | None:
     """Render the suggestion area; returns the suggestion dict (None if the engine fails)."""
@@ -58,8 +62,10 @@ def render_next_chord_suggestion(st: Any, *, active: dict, practice_key: str, ed
     except Exception:  # never break the editor over an assistance widget
         return None
     with st.container(key="cpl_suggest_next"):
-        with st.expander("🎼 Suggested Next Chord", expanded=True):
-            chord = sug.get("chord")
+        chord = sug.get("chord")
+        # Collapsed by default (compact on phones); the label carries the answer so the
+        # explanation and the insert controls are one tap away, not on screen all the time.
+        with st.expander(suggest_label(chord), expanded=False):
             if pending_chord:
                 st.caption(
                     f"Pending chord **{html.escape(str(pending_chord))}** is waiting for a duration "
