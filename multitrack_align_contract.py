@@ -119,11 +119,16 @@ def apply_to_samples(y: Any, delay: Any, sr: int) -> Any:
             # Dragged past the end of the take: keep the last sliver rather than nothing,
             # so the layer is still audible and the cause is obvious.
             skip = max(0, samples.size - floor)
-        samples = samples[skip:]
+        # A slice is a view onto the caller's buffer, and this function promises a new
+        # array - a caller that wrote into the result would otherwise be writing into
+        # the take it was told was untouched.
+        samples = samples[skip:].copy()
 
     pad = int(round(sched.start_delay_sec * rate))
     if pad > 0:
         samples = np.concatenate([np.zeros(pad, dtype=samples.dtype), samples])
+    elif samples is y or samples.base is not None:
+        samples = np.array(samples, copy=True)
     return samples
 
 

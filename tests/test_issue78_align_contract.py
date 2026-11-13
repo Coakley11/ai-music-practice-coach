@@ -131,6 +131,12 @@ class TheSamplesMoveTheWayTheContractSays(unittest.TestCase):
             align.apply_to_samples(self.y, d, 1000)
         np.testing.assert_array_equal(self.y, before)
 
+    def test_the_result_is_a_new_array_not_a_view_of_the_take(self):
+        """A view would let a caller write into the recording it was told was safe."""
+        for d in (-0.25, 0.0, 0.25):
+            out = align.apply_to_samples(self.y, d, 1000)
+            self.assertFalse(np.shares_memory(out, self.y), f"delay {d} returned a view")
+
     def test_dragged_past_the_end_leaves_a_sliver_not_silence(self):
         out = align.apply_to_samples(self.y, -5.0, 1000)
         self.assertGreater(out.size, 0)
