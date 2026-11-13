@@ -10,7 +10,10 @@ from composition_document import (  # noqa: E402
     apply_melody_events, apply_section_chords, apply_structure_template,
     bootstrap_from_vision, ordered_sections, parse_chord_paste,
 )
+import importlib  # noqa: E402
 import composition_studio_page as csp  # noqa: E402
+
+csp = importlib.reload(csp)  # other tests monkeypatch module functions; start from the real ones
 
 st.session_state["_html_calls"] = []
 

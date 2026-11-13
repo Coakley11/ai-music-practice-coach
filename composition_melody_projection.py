@@ -172,3 +172,36 @@ def melody_range_notice(
             f"{label} (down to {midi_to_note_token(low_ok)}). The notation shows the melody as composed."
         )
     return ""
+
+
+# Generation window the Composition engine uses when no instrument narrows it (sounding MIDI).
+_DEFAULT_GENERATION_RANGE = (55, 79)
+
+
+def concert_melody_range(
+    instrument: str,
+    session_state: dict[str, Any] | None = None,
+) -> tuple[int, int] | None:
+    """Sounding (concert) MIDI window a generated melody should stay inside for *instrument*.
+
+    Compositions are stored at concert pitch; the tabulated display range is written pitch for
+    transposing instruments, so the instrument's written-pitch offset is subtracted. The result
+    is intersected with the engine's comfortable default window. None when the instrument has no
+    tabulated range (piano, voice, unknown): the default window then applies unchanged.
+    """
+    family = _range_family(instrument)
+    if not family or family == "bass":
+        return None
+    from composition_songs_bridge import composition_written_pitch_semitones
+
+    lo, hi, _label = _DISPLAY_RANGES[family]
+    if family == "guitar":
+        lo, hi = lo, hi  # tabulated in sounding pitch already
+    else:
+        shift = int(composition_written_pitch_semitones(instrument, session_state) or 0)
+        lo, hi = lo - shift, hi - shift
+    d_lo, d_hi = _DEFAULT_GENERATION_RANGE
+    n_lo, n_hi = max(lo, d_lo), min(hi, d_hi)
+    if n_hi - n_lo < 12:  # instrument window too narrow to intersect: use it as is
+        n_lo, n_hi = lo, hi
+    return int(n_lo), int(n_hi)

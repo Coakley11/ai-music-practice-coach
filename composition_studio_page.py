@@ -4354,6 +4354,16 @@ def _render_melody_phrases_editor(session_state: dict, doc: dict[str, Any], sect
     _render_active_melody_phrase_editor(session_state, doc, section_id)
 
 
+def _selected_instrument_concert_range(session_state: dict) -> tuple[int, int] | None:
+    """Concert-pitch window for the instrument chosen in Practice (None: engine default)."""
+    try:
+        from composition_melody_projection import concert_melody_range
+
+        return concert_melody_range(str(session_state.get("instrument") or ""), session_state)
+    except Exception:
+        return None
+
+
 def _render_phase_melody(session_state: dict, doc: dict[str, Any], *, host_side_panel: bool = True) -> None:
     _ensure_active_section(session_state, doc)
     sections = ordered_sections(doc)
@@ -4510,6 +4520,7 @@ def _render_phase_melody(session_state: dict, doc: dict[str, Any], *, host_side_
                 limit=3,
                 remember=str(intent.get("remember") or remember or ""),
                 notes=str(intent.get("hum_notes") or hum or ""),
+                range_midi=_selected_instrument_concert_range(session_state),
             )
             # In-place active: highlight the matching suggestion card; tools sit beneath it.
             # Hum-sourced active is handled inside the hum panel (not duplicated here).
