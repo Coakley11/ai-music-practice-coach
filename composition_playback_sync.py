@@ -322,13 +322,24 @@ def render_synced_score_playback_html(
         for i, sp in enumerate(chord_spans):
             rn = str(romans[i % len(romans)] or "") if romans else ""
             rn_html = f'<span class="cplay-chip-rn">{html.escape(rn)}</span>' if rn else ""
+            sec_key = str(sp.get("section_key") or "")
+            if sp.get("section_start") and sp.get("section_label"):
+                # Optional section header (Custom song preview); highlighted with its chips.
+                chip_cells.append(
+                    f'<div class="cplay-sec" data-sec="{html.escape(sec_key)}">'
+                    f'{html.escape(str(sp.get("section_label")))}</div>'
+                )
             chip_cells.append(
-                f'<div class="cplay-chord-chip" data-i="{i}">'
-                f'<span class="cplay-chip-sym">{html.escape(str(sp.get("chord") or ""))}</span>'
+                f'<div class="cplay-chord-chip" data-i="{i}" data-sec="{html.escape(sec_key)}"'
+                f' data-now="{html.escape(str(sp.get("now_label") or ""))}">'
+                f'<span class="cplay-chip-sym">{html.escape(str(sp.get("label") or sp.get("chord") or ""))}</span>'
                 f"{rn_html}</div>"
             )
         chips = "".join(chip_cells)
-        staff_block = f'<div class="cplay-chord-chips" id="{safe_id}-chips">{chips}</div>'
+        chips_cls = "cplay-chord-chips" + (" is-grid" if bundle.get("chips_per_row") else "")
+        scroll_px = int(bundle.get("chips_scroll_px") or 0)
+        chips_style = f' style="max-height:{scroll_px}px;overflow-y:auto"' if scroll_px else ""
+        staff_block = f'<div class="{chips_cls}" id="{safe_id}-chips"{chips_style}>{chips}</div>'
 
     lyric_strip = ""
     lyric_spans_json = "[]"
@@ -347,6 +358,11 @@ def render_synced_score_playback_html(
         else ("Follow the highlighted chord" if primary == "chords" else "Playback")
     )
 
+    now_line = (
+        f'<p class="cplay-now" id="{safe_id}-now" aria-live="polite"></p>'
+        if any(sp.get("now_label") for sp in chord_spans) and mode == "chords"
+        else ""
+    )
     custom_transport = str(transport or "native") == "custom"
     transport_html = (
         f'<div class="cplay-transport">'
@@ -417,6 +433,15 @@ def render_synced_score_playback_html(
     box-shadow: 0 0 0 2px rgba(14,165,233,0.35);
   }}
   .cplay-chord-chip.is-active .cplay-chip-rn {{ color: #e0f2fe; }}
+  .cplay-chord-chips.is-grid {{ display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }}
+  .cplay-chord-chips.is-grid .cplay-chord-chip {{ min-width: 0; }}
+  @media (min-width: 640px) {{ .cplay-chord-chips.is-grid {{ grid-template-columns: repeat(8, minmax(0, 1fr)); }} }}
+  .cplay-sec {{
+    grid-column: 1 / -1; flex-basis: 100%; font-size: 0.78rem; font-weight: 700;
+    color: #475569; padding: 3px 4px 0; border-bottom: 1px solid #e2e8f0;
+  }}
+  .cplay-sec.is-active {{ color: #0369a1; border-bottom-color: #0ea5e9; }}
+  .cplay-now {{ margin: 0 0 6px; font-size: 0.85rem; font-weight: 700; color: #0369a1; min-height: 1.2em; }}
   .cplay-audio {{ display: none; }}
   .cplay-transport {{ display: flex; align-items: center; gap: 6px; margin-top: 4px; }}
   .cplay-btn {{
@@ -447,6 +472,7 @@ def render_synced_score_playback_html(
 <body>
 <div class="cplay-wrap" data-cplay-root="{html.escape(safe_id)}" data-mode="{html.escape(mode)}">
   <p class="cplay-caption">{html.escape(cap)}</p>
+  {now_line}
   {chord_strip}
   {staff_block}
   {lyric_strip}
@@ -560,7 +586,14 @@ def render_synced_score_playback_html(
     }}
   }}
   function setChordChip(i) {{
-    chordChips().forEach((b, idx) => b.classList.toggle("is-active", idx === i));
+    const chips = chordChips();
+    chips.forEach((b, idx) => b.classList.toggle("is-active", idx === i));
+    const cur = i >= 0 ? chips[i] : null;
+    const sec = cur ? cur.getAttribute("data-sec") : null;
+    root.querySelectorAll(".cplay-sec").forEach(h => h.classList.toggle("is-active", sec !== null && h.getAttribute("data-sec") === sec));
+    const now = document.getElementById("{safe_id}-now");
+    if (now) now.textContent = cur ? (cur.getAttribute("data-now") || "") : "";
+    if (cur && cur.scrollIntoView) {{ try {{ cur.scrollIntoView({{block: "nearest"}}); }} catch (e) {{}} }}
   }}
   function softChordAt(t) {{
     // Soft context only — never a competing cursor. Index = sounding chord span.

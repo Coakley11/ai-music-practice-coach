@@ -842,6 +842,20 @@ def render_custom_progression_lab_page() -> None:
         navigate_studio_page(st.session_state, "practice")
         st.rerun()
 
+    def _render_section_preview(section_name: str, has_section_chords: bool) -> None:
+        from custom_progression_preview import PREVIEW_KIND_SECTION, mount_active_preview, render_preview_buttons
+
+        render_preview_buttons(
+            st, kind=PREVIEW_KIND_SECTION, section=section_name, disabled=not has_section_chords
+        )
+        mount_active_preview(st, PREVIEW_KIND_SECTION, section_name)
+
+    def _render_song_preview(has_song_chords: bool) -> None:
+        from custom_progression_preview import PREVIEW_KIND_SONG, mount_active_preview, render_preview_buttons
+
+        render_preview_buttons(st, kind=PREVIEW_KIND_SONG, disabled=not has_song_chords)
+        mount_active_preview(st, PREVIEW_KIND_SONG)
+
     def _render_launch_in_studio(
         *,
         has_chords: bool,
@@ -1191,6 +1205,7 @@ def render_custom_progression_lab_page() -> None:
             )
             if map_html:
                 st.markdown(f'<div class="cpl-finish-panel">{map_html}</div>', unsafe_allow_html=True)
+            _render_song_preview(has_chords)
 
             st.markdown("**Open**")
             if library_saved or has_chords:
@@ -1470,6 +1485,8 @@ def render_custom_progression_lab_page() -> None:
         progression_view = _render_section_progression(pending=pending_chord)
         section_has_chords = progression_view["has_chords"]
         section_display = progression_view["section_display"]
+
+        _render_section_preview(edit_section, section_has_chords)
 
         with st.container(key="cpl_bar_duration_row"):
             bq, bh, b1, b2, b4 = st.columns(5)
@@ -2186,6 +2203,8 @@ def render_custom_progression_lab_page() -> None:
         if map_html:
             st.markdown("**Song structure**")
             st.markdown(map_html, unsafe_allow_html=True)
+
+        _render_song_preview(has_chords)
 
         _render_launch_in_studio(has_chords=has_chords, include_workspace_nav=True)
 
