@@ -9438,6 +9438,11 @@ def multitrack_studio_html(
       audioCtx = null;
       cursorEl.style.width = "0%";
       timeEl.textContent = "0.0s";
+      // Bar and beat were left showing wherever the transport happened to stop, so the
+      // readout said "0.0s ... Bar 2 Beat 2" at the same time. Stop means back to the
+      // start, and all three parts of the readout have to say so.
+      barEl.textContent = "1";
+      beatEl.textContent = "1";
       labelEl.textContent = "Stopped.";
       // Layer chord strips follow this clock; a stopped transport must never advance them.
       mtPublishClock(0, false);

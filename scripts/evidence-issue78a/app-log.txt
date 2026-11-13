@@ -1,0 +1,82 @@
+[PASS] app boots  
+picked Let It Be dropdown=True landed=True sidebar_song='SONG\n\nSONG\nLet It Be — The Beatles\n\n🎼 Songs\n\nLet It Be · Rock\n\n📜 Song Original Key: C\n\n🗝️ '
+[PASS] Multitrack page opens  
+  Prepare backing -> clicked
+
+== three layers, one scheduled instant ==
+  staged ['guitar', 'sax / winds', 'extra layer']
+[PASS] three layers staged  ['guitar', 'sax / winds', 'extra layer']
+  sources=4 clicks=4 margin=+2520.0 ms instants=[3.42133]
+  transport says: 'Counting you in — everything starts together on beat 1.'
+[PASS] no layer scheduled in the past  worst -2520.0 ms late
+[PASS] every layer shares one scheduled instant  instants [3.42133]
+[PASS] sax / winds can be muted  mute reads True
+[PASS] extra layer can be muted  mute reads True
+  the other two layers are muted and carry no transient, so the exported peak can only be the guitar's
+
+== preview vs export at Align +0.50s on guitar ==
+  slider before: {"found": true, "hasRole": false, "hasRange": true, "hasThumbValue": true, "roleNow": null, "rangeNow": "0", "thumbText": "0.00", "inner": "Align timing |  | 0.00 |  | -3.00 |  | 3.00"}
+    mouse set Align to about +0.50, slider reads 0.55
+  slider after:  {"found": true, "hasRole": false, "hasRange": true, "hasThumbValue": true, "roleNow": null, "rangeNow": "0.5", "thumbText": "0.50", "inner": "Align timing |  | 0.50 |  | -3.00 |  | 3.00"}
+[PASS] Align reads back as +0.50  slider shows 0.5
+  transport buffer offsets = [0.0]
+[PASS] transport applies buffer offset 0.00s  offsets [0.0]
+  layer source: when-bar1=+0.5000s, buffer offset=0.0000s, buffer=6s
+  preview puts the transient 1.5s after bar 1
+  Create mixed WAV -> clicked
+  exported WAV: 1ch @ 44100Hz 6.5s, transient at 1.5s
+[PASS] exported mix can be read back  
+[PASS] exported transient is at 1.50s as the contract says  measured 1.5000s, expected 1.50s (difference 0.0 ms)
+[PASS] preview and export agree on the position  preview 1.5000s vs export 1.5000s = 0.0 ms apart
+
+== preview vs export at Align -0.50s on guitar ==
+  slider before: {"found": true, "hasRole": false, "hasRange": true, "hasThumbValue": true, "roleNow": null, "rangeNow": "0.5", "thumbText": "0.50", "inner": "Align timing |  | 0.50 |  | -3.00 |  | 3.00"}
+    mouse set Align to about -0.50, slider reads -0.55
+  slider after:  {"found": true, "hasRole": false, "hasRange": true, "hasThumbValue": true, "roleNow": null, "rangeNow": "-0.5", "thumbText": "-0.50", "inner": "Align timing |  | -0.50 |  | -3.00 |  | 3.00"}
+[PASS] Align reads back as -0.50  slider shows -0.5
+  transport buffer offsets = [0.0, 0.5]
+[PASS] transport applies buffer offset 0.50s  offsets [0.0, 0.5]
+  layer source: when-bar1=+0.0000s, buffer offset=0.5000s, buffer=6s
+  preview puts the transient 0.5000033333333329s after bar 1
+  Create mixed WAV -> clicked
+  exported WAV: 1ch @ 44100Hz 5.5s, transient at 0.5s
+[PASS] exported mix can be read back  
+[PASS] exported transient is at 0.50s as the contract says  measured 0.5000s, expected 0.50s (difference 0.0 ms)
+[PASS] preview and export agree on the position  preview 0.5000s vs export 0.5000s = 0.0 ms apart
+
+== preview vs export at Align +0.00s on guitar ==
+  slider before: {"found": true, "hasRole": false, "hasRange": true, "hasThumbValue": true, "roleNow": null, "rangeNow": "-0.5", "thumbText": "-0.50", "inner": "Align timing |  | -0.50 |  | -3.00 |  | 3.00"}
+    mouse set Align to about +0.00, slider reads 0.0
+  slider after:  {"found": true, "hasRole": false, "hasRange": true, "hasThumbValue": true, "roleNow": null, "rangeNow": "0", "thumbText": "0.00", "inner": "Align timing |  | 0.00 |  | -3.00 |  | 3.00"}
+[PASS] Align reads back as +0.00  slider shows 0.0
+  transport buffer offsets = [0.0]
+[PASS] transport applies buffer offset 0.00s  offsets [0.0]
+  layer source: when-bar1=-0.0000s, buffer offset=0.0000s, buffer=6s
+  preview puts the transient 0.9999966666666666s after bar 1
+  Create mixed WAV -> clicked
+  exported WAV: 1ch @ 44100Hz 6.0s, transient at 1.0s
+[PASS] exported mix can be read back  
+[PASS] exported transient is at 1.00s as the contract says  measured 1.0000s, expected 1.00s (difference 0.0 ms)
+[PASS] preview and export agree on the position  preview 1.0000s vs export 1.0000s = 0.0 ms apart
+
+== the stored recording is still the recording ==
+[PASS] the layer's own audio can be read back  
+  stored take: 6.0s @ 44100Hz, transient at 1.0s
+[PASS] the stored take still has its full length  6.0s vs 6.0s
+[PASS] the stored take's transient is where it was recorded  at 1.0s, recorded at 1.0s
+[PASS] the panel names this the Original Take Preview  
+[PASS] the panel says the preview is never altered  
+[PASS] the panel says playback and export match each other  
+
+== 390px ==
+  scrollWidth=390 clientWidth=390 text=5693 chars
+[PASS] 390px :: no horizontal page scroll  390 vs 390
+[PASS] 390px :: the page still renders  5693 chars
+[PASS] 390px :: the Align wording is present  
+
+== 360px ==
+  scrollWidth=360 clientWidth=360 text=5693 chars
+[PASS] 360px :: no horizontal page scroll  360 vs 360
+[PASS] 360px :: the page still renders  5693 chars
+[PASS] 360px :: the Align wording is present  
+[PASS] no uncaught JS errors on the page  []

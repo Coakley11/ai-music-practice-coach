@@ -183,11 +183,18 @@ INSTRUMENT = r"""
 
   if (W.AudioBufferSourceNode) {
     const S = W.AudioBufferSourceNode.prototype.start;
-    W.AudioBufferSourceNode.prototype.start = function (when) {
+    // `offset` is start()'s SECOND argument - how far into the buffer playback begins.
+    // This hook originally captured only `when`, so every reader saw offset 0 and the
+    // app acceptance reported a 500 ms preview/export disagreement that did not exist:
+    // the payload probe showed the transport had been handed bufferOffsetSec 0.5 and
+    // was using it. Record both, or a correct negative Align is indistinguishable from
+    // a discarded one.
+    W.AudioBufferSourceNode.prototype.start = function (when, offset) {
       const ct = this.context ? this.context.currentTime : null;
       const w = (when === undefined) ? null : Number(when);
       push({kind: 'bufsrc_start', when: w, ctx_now: ct,
             late_by: (w !== null && ct !== null) ? (ct - w) : null,
+            offset: (offset === undefined) ? 0 : Number(offset),
             buffer_sec: this.buffer ? this.buffer.duration : null,
             buffer_sr: this.buffer ? this.buffer.sampleRate : null,
             loop: !!this.loop});

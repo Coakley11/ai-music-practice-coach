@@ -83,10 +83,16 @@ def low(s: str) -> str:
     return (s or "").lower()
 
 
-def make_layer(path: Path, *, freq: float, click_at: float) -> Path:
+def make_layer(path: Path, *, freq: float, click_at: float | None) -> Path:
+    """A tone, with a full-scale transient only where one is asked for.
+
+    Only the measured layer carries a transient. An earlier version gave all three the
+    same one, so the exported peak could be any of them and a correctly aligned guitar
+    was masked by an unaligned sax still sitting at 1.0 s.
+    """
     n = int(SR * LAYER_SEC)
     body = bytearray()
-    ci = int(SR * click_at)
+    ci = int(SR * click_at) if click_at is not None else -1
     for i in range(n):
         v = 32000 if i == ci else int(3000 * math.sin(2 * math.pi * freq * i / SR))
         body += struct.pack("<h", v)
@@ -341,6 +347,58 @@ def play_transport(page: Page, wait_ms: int = 11000) -> dict:
     }
 
 
+def set_mute(page: Page, slot: str, want: bool) -> bool | None:
+    """Put this layer's Mute into ``want``, then read it back.
+
+    Clicking blindly TOGGLES. A previous run's state persists in the data directory, so
+    a blind click un-muted layers that were already muted - which put two unaligned
+    layers into the mix and masked the aligned one being measured. Set, then verify.
+    """
+    find = """(slot) => {
+      const s = slot.toLowerCase();
+      const all = [...document.querySelectorAll('details')];
+      const el = all.find((d) => {
+        const sum = d.querySelector('summary');
+        const t = ((sum && sum.innerText) || '').toLowerCase();
+        return t.includes('layer controls') && t.includes(s);
+      });
+      if (!el) return null;
+      const cbs = [...el.querySelectorAll('[data-testid="stCheckbox"]')];
+      const m = cbs.find((c) => (c.innerText || '').toLowerCase().includes('mute'));
+      const i = m && m.querySelector('input');
+      return i ? !!i.checked : null;
+    }"""
+    for _ in range(3):
+        expand_layer(page, slot)
+        settle(page, 2)
+        now = page.evaluate(find, slot)
+        if now is want:
+            return now
+        if now is None:
+            log(f"    set_mute({slot}): checkbox not found")
+            continue
+        page.evaluate(
+            """(slot) => {
+              const s = slot.toLowerCase();
+              const all = [...document.querySelectorAll('details')];
+              const el = all.find((d) => {
+                const sum = d.querySelector('summary');
+                const t = ((sum && sum.innerText) || '').toLowerCase();
+                return t.includes('layer controls') && t.includes(s);
+              });
+              if (!el) return;
+              const cbs = [...el.querySelectorAll('[data-testid="stCheckbox"]')];
+              const m = cbs.find((c) => (c.innerText || '').toLowerCase()
+                                  .includes('mute'));
+              const i = m && m.querySelector('input');
+              if (i) i.click();
+            }""",
+            slot,
+        )
+        settle(page, 7)
+    return page.evaluate(find, slot)
+
+
 # ----------------------------------------------------------------------------- legs
 def gate_setup(page: Page) -> bool:
     if not boot(page):
@@ -530,8 +588,9 @@ def gate_responsive(page: Page, width: int) -> None:
 def main() -> int:
     layers = {
         "guitar": make_layer(WORK / "guitar.wav", freq=196.0, click_at=TRANSIENT_AT),
-        "sax / winds": make_layer(WORK / "sax.wav", freq=311.0, click_at=TRANSIENT_AT),
-        "extra layer": make_layer(WORK / "flute.wav", freq=587.0, click_at=TRANSIENT_AT),
+        # No transient: only the guitar is measured, so only the guitar carries one.
+        "sax / winds": make_layer(WORK / "sax.wav", freq=311.0, click_at=None),
+        "extra layer": make_layer(WORK / "flute.wav", freq=587.0, click_at=None),
     }
     with sync_playwright() as pw:
         browser = pw.chromium.launch(
@@ -550,27 +609,10 @@ def main() -> int:
             # Only the guitar keeps its layer in the mix, so the exported transient is
             # unambiguous; the backing is excluded for the same reason.
             for slot in ("sax / winds", "extra layer"):
-                expand_layer(page, slot)
-                settle(page, 2)
-                page.evaluate(
-                    """(slot) => {
-                      const s = slot.toLowerCase();
-                      const all = [...document.querySelectorAll('details')];
-                      const el = all.find((d) => {
-                        const sum = d.querySelector('summary');
-                        const t = ((sum && sum.innerText) || '').toLowerCase();
-                        return t.includes('layer controls') && t.includes(s);
-                      });
-                      if (!el) return;
-                      const cbs = [...el.querySelectorAll('[data-testid="stCheckbox"]')];
-                      const m = cbs.find((c) => (c.innerText || '').toLowerCase()
-                                          .includes('mute'));
-                      if (m) { const i = m.querySelector('input'); if (i) i.click(); }
-                    }""",
-                    slot,
-                )
-                settle(page, 6)
-            log("  muted the other two layers so the exported transient is unambiguous")
+                got = set_mute(page, slot, True)
+                mark(f"{slot} can be muted", got is True, f"mute reads {got}")
+            log("  the other two layers are muted and carry no transient, so the "
+                "exported peak can only be the guitar's")
 
             gate_preview_matches_export(page, "guitar", expect_delay=0.5)
             gate_preview_matches_export(page, "guitar", expect_delay=-0.5)
