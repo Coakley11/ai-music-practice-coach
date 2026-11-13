@@ -1,9 +1,15 @@
 """Phrase editor shows ONE score: static staff until armed, then the synced player only."""
 import unittest
 
+import streamlit.components.v1 as _components
 
 
 class TestPhraseEditorSingleScore(unittest.TestCase):
+    def setUp(self) -> None:
+        # The AppTest harness replaces components.html with a capture fake in-process; restore the
+        # real function afterwards so later tests that count real iframes are not affected.
+        self.addCleanup(setattr, _components, "html", _components.html)
+
     def _run(self, arm: bool):
         from streamlit.testing.v1 import AppTest
 

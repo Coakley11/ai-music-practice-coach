@@ -10,10 +10,15 @@ from composition_document import (  # noqa: E402
     apply_melody_events, apply_section_chords, apply_structure_template,
     bootstrap_from_vision, ordered_sections, parse_chord_paste,
 )
-import importlib  # noqa: E402
-import composition_studio_page as csp  # noqa: E402
+import importlib.util  # noqa: E402
+import os  # noqa: E402
 
-csp = importlib.reload(csp)  # other tests monkeypatch module functions; start from the real ones
+# Other tests monkeypatch module functions: start from the real ones by loading a PRIVATE copy of the
+# page module. (importlib.reload on the shared module replaced its globals in place and broke later
+# AppTests in the same pytest process.)
+_spec = importlib.util.spec_from_file_location("_cs_fa_csp_fresh", os.path.join(os.getcwd(), "composition_studio_page.py"))
+csp = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(csp)
 
 st.session_state["_html_calls"] = []
 
