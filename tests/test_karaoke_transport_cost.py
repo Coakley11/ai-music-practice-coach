@@ -161,8 +161,9 @@ class DestinationShownOnClickTests(unittest.TestCase):
         self.assertIn('a.dataset.autoplayNudged = "nudged";', fn)
         stop = _between(js, "function silenceBackingAudio()", "function startMissedAutoplay()")
         self.assertIn('a.dataset.autoplayNudged = "stopped";', stop)
-        # Only while the transport intent is Play: a paused or stopped take is never nudged.
-        self.assertIn('if (!playing && now > stoppingUntil && intent === "playing") startMissedAutoplay();', js)
+        # Only while the transport intent is Play: a paused or stopped take is never nudged. Nor during the
+        # M3 count-in, when the take is held at 0:00 on purpose (backing_count_in.py).
+        self.assertIn('if (!ciRun && !playing && now > stoppingUntil && intent === "playing") startMissedAutoplay();', js)
 
     def test_a_take_mounted_to_play_is_started_when_streamlit_drops_autoplay(self) -> None:
         # Measured on a phone: the entry run sent autoplay, one <audio> mounted

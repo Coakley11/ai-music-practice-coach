@@ -6318,6 +6318,10 @@ def live_follow_along_component_html(
     window.__karaokeTimeline = timeline;
     // M4 full-height sheet + page follow (set before anything can call updateHighlight).
     const PAGE_FOLLOW = {page_follow_flag_js};
+    // M3: a fresh Play counts in -- the count-in engine (card transport) must see this player start.
+    try {{
+      if (window.parent.__backingCountIn) window.parent.__backingCountIn.watchDoc(document);
+    }} catch (eCi) {{}}
     const audio = document.getElementById("live-audio");
     // Created while the Backing transport is paused or stopped (a rerun that
     // re-renders the sheet): it must not start by itself -- only Resume / Play
@@ -10738,6 +10742,15 @@ def render_backing_card_transport_control(*, enabled: bool) -> None:
             _now_singing = km.now_singing_entry_id(st.session_state)
     except Exception:
         _now_singing = ""
+    _count_in = None
+    try:
+        from backing_count_in import backing_count_in_for_card
+
+        _count_in = backing_count_in_for_card(
+            st.session_state, karaoke=km.is_karaoke_session_active(st.session_state), cycle_active=_cycle_on,
+        )
+    except Exception:
+        _count_in = None
     with st.container(key="backing_card_transport_row"):
         render_backing_card_transport(
             st.session_state,
@@ -10749,6 +10762,7 @@ def render_backing_card_transport_control(*, enabled: bool) -> None:
             restart_on_resume=restart_on_resume(st.session_state),
             cycle_active=_cycle_on,
             theme=_backing_art_play_theme(),
+            count_in=_count_in,
         )
 
 
@@ -14986,6 +15000,21 @@ def _render_backing_step2_playback_action(
                 help="Adds a soft string section under the piano. Arrangement only: "
                 "song, key and tempo stay the same.",
             )
+            from backing_count_in import count_in_enabled as _ci_enabled, set_count_in_enabled as _ci_set
+
+            # The choice lives in a plain session key. The toggle has no key and starts from that choice, and only
+            # a real change of its value writes it. A keyed toggle seeded through session state was reset to Off
+            # without a click: when Play opened the Lead Sheet the browser re-sent the widget's own default
+            # (False) and its on_change fired (traced in the real app), so Stop -> Play stopped counting in.
+            _ci_now = _ci_enabled(st.session_state)
+            _ci_pick = st.toggle(
+                "Count-in (2 bars)",
+                value=_ci_now,
+                help="Two bars of clicks at the track's tempo before Play starts the music. "
+                "Resume never counts in. Not used with Key Cycling or Karaoke.",
+            )
+            if bool(_ci_pick) != _ci_now:
+                _ci_set(st.session_state, bool(_ci_pick))
 
             if _developer_mode_enabled():
                 # Which recorded instruments this server actually plays (they follow its environment).
