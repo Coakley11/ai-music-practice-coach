@@ -258,6 +258,14 @@ def _roman_base(roman: str) -> str:
     return m.group(0) if m else ""
 
 
+def _loop_next(res: list[str], i: int) -> str | None:
+    """The chord after bar i; the last chord wraps to the first (progressions loop),
+    so a closing A7 in Dm7 G7 Cmaj7 A7 is V7/ii, matching the Roman line shown."""
+    if i + 1 < len(res):
+        return res[i + 1]
+    return res[0] if len(res) > 1 else None
+
+
 def functional_label(sym: str, key: str, next_sym: str | None = None) -> str:
     """Roman numeral, upgraded to a secondary-dominant label (V7/V) when the chord
     is a dominant resolving down a fifth to a non-tonic diatonic chord."""
@@ -533,7 +541,7 @@ def _target_name(res: list[str], i: int) -> str:
 def _reason(kind: str, old: str, new: str, key: str, before_res: list[str], after_res: list[str], i: int) -> str:
     from roman_numeral_analysis import chord_to_roman
 
-    fn_old = functional_label(before_res[i], key, before_res[i + 1] if i + 1 < len(before_res) else None)
+    fn_old = functional_label(before_res[i], key, _loop_next(before_res, i))
     rn_new = chord_to_roman(after_res[i], key)
     tgt = _target_name(after_res, i)
     old_part = f"{old} ({fn_old})" if fn_old else old
@@ -606,8 +614,8 @@ def _build_changes(
     for i, (a, b) in enumerate(zip(syms, proposed)):
         if a == b:
             continue
-        nxt_b = before_res[i + 1] if i + 1 < len(before_res) else None
-        nxt_a = after_res[i + 1] if i + 1 < len(after_res) else None
+        nxt_b = _loop_next(before_res, i)
+        nxt_a = _loop_next(after_res, i)
         changes.append(
             {
                 "index": i,
