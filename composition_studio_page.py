@@ -621,6 +621,13 @@ body[data-studio-page="composer"] .block-container {
   margin-bottom: 0.55rem;
   box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04);
 }
+.composer-library-item h4 {
+  font-size: 1rem;
+  line-height: 1.3;
+  margin: 0.35rem 0 0.25rem 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
 .composer-library-item.is-active {
   border: 2px solid #dc2626 !important;
   background: #dc2626 !important;

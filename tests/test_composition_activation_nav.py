@@ -174,5 +174,16 @@ class TestActiveSongSnapshotIgnoresEditedDocument(unittest.TestCase):
         self.assertEqual(ctx["composition_title"], "Song A")
 
 
+class TestLibraryRowsFitPhones(unittest.TestCase):
+    def test_rows_are_stacked_so_delete_stays_reachable(self) -> None:
+        from pathlib import Path
+
+        src = Path("composition_library_ui.py").read_text(encoding="utf-8")
+        body = src.split("def render_library_rows", 1)[1].split("def render_save_recovery", 1)[0]
+        self.assertNotIn("st.columns", body)  # side-by-side columns overflowed the list at 390 px
+        self.assertIn('key=f"composer_lib_del_{rid}"', body)
+        self.assertIn('key=f"composer_lib_open_{rid}"', body)
+
+
 if __name__ == "__main__":
     unittest.main()
