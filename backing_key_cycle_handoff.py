@@ -148,7 +148,16 @@ def build_cycle_lead_sheet_html(
             capo_fret=int(capo["capo_fret"]) if capo else 0,
             capo_shape_key=display if capo else "",
         )
-        if display != key and html and not capo:
+        _respelled_only = False
+        try:
+            from backing_key_cycle import _keys_equivalent
+
+            # Concert mode renamed by Key Spelling (Db read as C#): same pitch,
+            # so there is no separate reading / sounding key to point out.
+            _respelled_only = display != key and _keys_equivalent(display, key)
+        except Exception:
+            _respelled_only = False
+        if display != key and html and not capo and not _respelled_only:
             # Keep concert audio identity visible on projected charts.
             tag = (
                 f"<div class='meta-row' style='margin:.25rem 0 .5rem'>"

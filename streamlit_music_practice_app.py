@@ -21593,7 +21593,7 @@ elif _studio_page == "backing":
             except Exception:
                 pass
         _backing_written_key = (
-            _backing_musical.chart_badge_value if _backing_musical.show_chart_badge else ""
+            _backing_musical.card_chart_badge_value if _backing_musical.card_show_chart_badge else ""
         )
         if _developer_mode_enabled():
             render_backing_key_state_diagnostics(st, st.session_state, _backing_musical)
@@ -21687,7 +21687,7 @@ elif _studio_page == "backing":
                     )
                     _backing_practice_key = _backing_musical.practice_concert_key
                     _backing_written_key = (
-                        _backing_musical.chart_badge_value if _backing_musical.show_chart_badge else ""
+                        _backing_musical.card_chart_badge_value if _backing_musical.card_show_chart_badge else ""
                     )
                 except Exception:
                     pass
@@ -21701,7 +21701,7 @@ elif _studio_page == "backing":
                 )
                 _backing_practice_key = _backing_musical.practice_concert_key
                 _backing_written_key = (
-                    _backing_musical.chart_badge_value if _backing_musical.show_chart_badge else ""
+                    _backing_musical.card_chart_badge_value if _backing_musical.card_show_chart_badge else ""
                 )
             try:
                 from h3_live_key_trace import emit
@@ -23401,7 +23401,22 @@ elif _studio_page == "backing":
     # Do not clear settings_pending on a bare Play click — only when the
     # installed arrangement matches the selection (after generate / ready).
     # Explicit Play must leave Held/Pause and start the new (or ready) arrangement.
-    if _play_clicked or _play_needs_generate:
+    _kc_paused_build = False
+    try:
+        from backing_key_cycle import STATUS_HELD as _KC_HELD, get_owner_cycle_session as _kc_bag
+
+        # A Key Cycling take finished building (Next / Previous to a cold key)
+        # after the musician pressed Pause: install it, stay paused. Arming it as
+        # an explicit Play resumed the cycle behind the Pause.
+        _kc_paused_build = bool(
+            not _play_clicked
+            and _async_wav_ready
+            and str((_kc_bag(st.session_state) or {}).get("status") or "") == _KC_HELD
+            and (_kc_bag(st.session_state) or {}).get("enabled")
+        )
+    except Exception:
+        _kc_paused_build = False
+    if (_play_clicked or _play_needs_generate) and not _kc_paused_build:
         try:
             from backing_key_cycle import arm_key_cycle_for_explicit_play
 
