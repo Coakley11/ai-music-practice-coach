@@ -37,9 +37,14 @@ def test_play_hint_above_the_sheet_is_always_present() -> None:
     assert APP.count(slot) == 1
     before, after = APP.split(slot, 1)
     assert before.endswith("\n        ")
-    head = after.split("\n")
-    assert head[0].strip() == "if not st.session_state.get(BACKING_AUTOPLAY, False):"
-    assert "▶ Play Backing Track on the song card plays the track with this chart." in after.split("_karaoke_active", 1)[0]
+    body = after.split("_karaoke_active", 1)[0]
+    # M4: the slot always holds exactly one caption line (a blank one while playing), so Pause / Resume never
+    # change its height and the on-page chart below does not jump; only the words follow the transport.
+    assert body.count("st.caption(") == 3
+    assert "if st.session_state.get(BACKING_AUTOPLAY, False):" in body
+    assert 'elif _hint_intent == "paused":' in body
+    assert "white-space:nowrap" in body
+    assert "▶ Play Backing Track on the song card plays the track with this chart." in body
     # No second, unwrapped copy of the caption.
     assert APP.count("▶ Play Backing Track on the song card plays the track with this chart.") == 1
 

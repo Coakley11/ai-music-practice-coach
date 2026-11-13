@@ -25705,7 +25705,21 @@ elif _studio_page == "backing":
         # One always-present element, shown or not: Resume hid this caption, the sheet
         # moved up one place, Streamlit re-created it and the resumed take stopped.
         with st.container(key="backing_leadsheet_play_hint_slot"):
-            if not st.session_state.get(BACKING_AUTOPLAY, False):
+            # M4: the sheet is on the page itself now, so this line must never change height: Pause showed it
+            # (38 px) and Resume removed it, and the whole chart jumped each time. One line, always present;
+            # only its words follow the transport (and Pause no longer says "Play").
+            st.markdown(
+                "<style>.st-key-backing_leadsheet_play_hint_slot [data-testid='stCaptionContainer'] p,"
+                ".st-key-backing_leadsheet_play_hint_slot [data-testid='stCaptionContainer']"
+                "{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}</style>",
+                unsafe_allow_html=True,
+            )
+            _hint_intent = str(transport_intent(st.session_state) or "")
+            if st.session_state.get(BACKING_AUTOPLAY, False):
+                st.caption(" ")
+            elif _hint_intent == "paused":
+                st.caption("Paused — Resume on the song card continues from here.")
+            else:
                 # Not "stopped": the open click carries the current playhead over.
                 st.caption("▶ Play Backing Track on the song card plays the track with this chart.")
         _karaoke_active = km.is_karaoke_session_active(st.session_state)
