@@ -21,6 +21,9 @@ from roman_numeral_analysis import (
 
 _DOMINANT_TYPE = {"secondary_dominant", "dominant"}
 
+# Chord quality -> scale-degree quality family (dominant-quality chords are classified elsewhere).
+_QUALITY_FAMILY = {"major": "major", "maj7": "major", "minor": "minor", "m7": "minor", "dim": "dim", "half-dim": "dim"}
+
 
 def _key_name(key: str) -> str:
     tonic, mode = split_key_center(str(key or "C").strip() or "C")
@@ -122,10 +125,26 @@ def _borrowed_phrase(row: dict[str, Any], mode: str) -> str:
 def progression_roles(chords: list[str], key: str) -> list[dict[str, Any]]:
     """Analysis rows with root pitch classes attached (used by the explainer and tests)."""
     rows = analyze_progression_detailed(chords, key)
+    _, key_mode = split_key_center(str(key or "C").strip() or "C")
+    table = _DIATONIC_QUALITY_MINOR if key_mode == "minor" else _DIATONIC_QUALITY_MAJOR
     for r in rows:
         p = _parse_for_analysis(r["chord"], key)
         r["root_pc"] = p["root_pc"] if p else None
         r["tonic_pc"] = p["tonic_pc"] if p else None
+        # The analysis labels a seventh chord on a diatonic root "diatonic" whatever its
+        # quality (Cm7 / Gm7 / Fm7 in C major, Dmaj7 ...). Only the key's own quality on that
+        # degree is diatonic; anything else is a colour chord, never "diatonic v7".
+        fam = _QUALITY_FAMILY.get(str(r.get("quality") or ""))
+        if (
+            r.get("role") == "diatonic"
+            and r.get("alt") == 0
+            and fam is not None
+            and (
+                fam != table.get(int(r.get("degree") or 0))
+                or (r.get("quality") == "maj7" and r.get("degree") == 4 and key_mode != "minor")  # Vmaj7 is not the key's V7
+            )
+        ):
+            r["role"] = "borrowed"
     return rows
 
 
