@@ -3796,7 +3796,17 @@ def owned_backing_chart_identity(
 
     artist = ""
     genre = str(getattr(ctx, "style", "") or getattr(ctx, "groove", "") or "").strip()
-    original_key = str(getattr(ctx, "key", "") or getattr(ctx, "concert_key", "") or "C").strip() or "C"
+    # The key this owner's material *sounds* in. For every source handled here
+    # that is the working (Practice) key -- a Mission sets key == concert_key ==
+    # practice -- so it names the chart and the coaching sentence, and it is
+    # emphatically **not** the song's Original Key. ``owner_original`` below
+    # resolves that from the owner's own identity.
+    working_key = str(getattr(ctx, "key", "") or getattr(ctx, "concert_key", "") or "C").strip() or "C"
+    original_key = working_key
+    #: An authoritative home key a branch below establishes from the live
+    #: material itself (the Custom progression's saved original). Used only when
+    #: the owner's pick identity cannot be resolved.
+    branch_original = ""
     bpm = int(getattr(ctx, "bpm", 0) or 0) or 100
     meter = str(getattr(ctx, "meter", "") or "4/4").strip() or "4/4"
     coaching = ""
@@ -3869,13 +3879,19 @@ def owned_backing_chart_identity(
                 try:
                     from creative_source_ownership_contract import resolve_custom_saved_original_key
 
-                    home = str(
+                    saved_home = str(
                         resolve_custom_saved_original_key(session, active)
                         or active.get("original_key_center")
-                        or original_key
+                        or ""
                     ).strip()
                 except ImportError:
-                    home = str(active.get("original_key_center") or original_key).strip()
+                    saved_home = str(active.get("original_key_center") or "").strip()
+                # The live Custom progression's own saved home key. Kept apart
+                # from the working-key fallback so it can stand in for the
+                # owner's Original Key when the pick itself cannot be resolved.
+                home = saved_home or original_key
+                if saved_home:
+                    branch_original = saved_home
                 if home:
                     original_key = home
                 bpm = int(active.get("bpm") or bpm or 100)
@@ -3920,12 +3936,43 @@ def owned_backing_chart_identity(
     except NameError:
         show_orig_always = source == "custom_progression"
 
+    # The Original Key comes from the owner's own authoritative metadata -- the
+    # Catalog row behind its pick, the saved Custom progression, the Composition
+    # document -- never from the key the musician happens to be practising in.
+    # An owner whose metadata cannot be established reports no Original Key at
+    # all; the card then says so instead of naming the Practice Key.
+    owner_original = ""
+    owner_original_reason = "resolver_unavailable"
+    try:
+        from backing_owner_original_key import resolve_owner_original_key
+
+        _resolved = resolve_owner_original_key(session, ctx)
+        owner_original_reason = _resolved.reason
+        if _resolved.resolved:
+            owner_original = _resolved.key
+    except Exception:
+        owner_original = ""
+    if not owner_original and branch_original:
+        owner_original = branch_original
+        owner_original_reason = f"{owner_original_reason}|branch_saved_home"
+    if not owner_original and show_orig_always:
+        # The musician's own Custom material. There is no external song whose
+        # Original Key could differ, and a progression that is simply not in
+        # session has no other key to offer: a saved Blues in F minor whose blob
+        # could not be read must keep reading F minor, not go blank and not
+        # become a generic C. Catalog and Composition owners -- songs with
+        # authoritative metadata elsewhere -- stay strict: unknown is unknown.
+        owner_original = working_key
+        owner_original_reason = f"{owner_original_reason}|own_material_working_key"
+
     song_data = {
         "title": song_name,
         "artist": artist,
         "genre": genre,
+        # ``key`` stays the key this material sounds in: the card's coaching and
+        # chart text read it as the practice key when no explicit one is passed.
         "key": original_key,
-        "original_key": original_key,
+        "original_key": owner_original,
         "bpm": bpm,
         "time_signature": meter,
         "id": str(getattr(ctx, "source_signature", "") or getattr(ctx, "active_song_id", "") or source),
@@ -3935,7 +3982,10 @@ def owned_backing_chart_identity(
     return {
         "song_name": song_name,
         "song_data": song_data,
-        "original_key": original_key,
+        "original_key": owner_original,
+        "original_key_resolved": bool(owner_original),
+        "original_key_reason": owner_original_reason,
+        "working_key": working_key,
         "bpm": bpm,
         "meter": meter,
         "coaching": coaching,

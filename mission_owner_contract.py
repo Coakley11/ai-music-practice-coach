@@ -25,6 +25,10 @@ HANDOFF_ORIGINAL_KEY = "_mission_backing_handoff_original_key"
 HANDOFF_PRACTICE_KEY = "_mission_backing_handoff_practice_key"
 HANDOFF_SOUNDING_KEY = "_mission_backing_handoff_sounding_key"
 HANDOFF_WRITTEN_KEY = "_mission_backing_handoff_written_key"
+#: The pick identity the sealed Original Key was read from, so a later run can
+#: tell whose Original it is. A seal left behind by another song would otherwise
+#: look like this one's; the envelope is cleared with the rest on release.
+HANDOFF_SOURCE_IDENTITY = "_mission_backing_handoff_source_identity"
 HANDOFF_DIAG_PATH = Path(__file__).resolve().parent / "scripts" / "evidence-creative-backing" / "_mission_backing_handoff_diag.jsonl"
 
 
@@ -478,13 +482,36 @@ def stamp_mission_backing_handoff(
 ) -> None:
     """Explicit Mission → Backing owner. Outranks leftover entry_jam / SBI / Catalog.
 
-    Seals four distinct key fields — Original, Practice/Concert, Sounding, Written.
+    Seals five distinct fields — Original, Practice/Concert, Sounding, Written,
+    and the source identity the Original was read from.
     Written / display / chart must never be written into Practice or sounding.
     Opening Mission Backing must not create a new ``_pk_user_commit_token``.
     """
     commit_before = str(session.get("_pk_user_commit_token") or "")
     cpl_pk, cpl_orig = _cpl_practice_and_original(session)
     original = _tok(session.get("original_key") or "") or cpl_orig
+    # Issue 74: the generic ``session["original_key"]`` is empty for a Catalog
+    # song, so a Catalog Mission sealed no Original at all and the Backing card
+    # fell back to the Practice Key. The owner's own metadata answers it — the
+    # Catalog row behind its pick, the saved Custom progression, the Composition
+    # document — resolved from a stable identity, never fuzzy-matched. An
+    # unresolvable owner leaves the field as it was rather than borrowing the
+    # Practice Key.
+    source_identity = ""
+    try:
+        from backing_owner_original_key import resolve_original_key_for_pick
+
+        _owner_ident = resolve_mission_owner_context(session)
+        source_identity = str(_owner_ident.underlying_pick or "").strip()
+        _owned_original = resolve_original_key_for_pick(
+            session,
+            source_identity,
+            expected_title=str(_owner_ident.underlying_title or ""),
+        )
+        if _owned_original.resolved:
+            original = _tok(_owned_original.key) or original
+    except Exception:
+        pass
     practice = ""
     written = ""
     try:
@@ -522,6 +549,7 @@ def stamp_mission_backing_handoff(
         "stamp_mission_backing_handoff_before_seal",
         {
             "original": original,
+            "source_identity": source_identity,
             "practice_resolved": practice,
             "written_resolved": written,
             "explicit_concert": _tok(concert_practice_key),
@@ -537,6 +565,7 @@ def stamp_mission_backing_handoff(
     if practice:
         # Seal explicit envelope — distinct fields, no overloaded generic key.
         session[HANDOFF_ORIGINAL_KEY] = original
+        session[HANDOFF_SOURCE_IDENTITY] = source_identity
         session[HANDOFF_PRACTICE_KEY] = practice
         session[HANDOFF_SOUNDING_KEY] = practice
         session[HANDOFF_WRITTEN_KEY] = written or practice
@@ -623,6 +652,7 @@ def stamp_mission_backing_handoff(
         "stamp_mission_backing_handoff_after_seal",
         {
             "original": session.get(HANDOFF_ORIGINAL_KEY),
+            "source_identity": session.get(HANDOFF_SOURCE_IDENTITY),
             "practice": session.get(HANDOFF_PRACTICE_KEY),
             "sounding": session.get(HANDOFF_SOUNDING_KEY),
             "written": session.get(HANDOFF_WRITTEN_KEY),
@@ -667,6 +697,7 @@ def clear_mission_return_eligibility(session: dict[str, Any]) -> None:
         session.pop(BACKING_HANDOFF_SOURCE_KEY, None)
     session.pop("improv_mission_backing_handoff", None)
     session.pop(HANDOFF_ORIGINAL_KEY, None)
+    session.pop(HANDOFF_SOURCE_IDENTITY, None)
     session.pop(HANDOFF_PRACTICE_KEY, None)
     session.pop(HANDOFF_SOUNDING_KEY, None)
     session.pop(HANDOFF_WRITTEN_KEY, None)
@@ -728,6 +759,7 @@ __all__ = (
     "BACKING_HANDOFF_SOURCE_KEY",
     "MISSION_RETURN_DESTINATION_KEY",
     "HANDOFF_ORIGINAL_KEY",
+    "HANDOFF_SOURCE_IDENTITY",
     "HANDOFF_PRACTICE_KEY",
     "HANDOFF_SOUNDING_KEY",
     "HANDOFF_WRITTEN_KEY",

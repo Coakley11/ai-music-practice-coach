@@ -10518,11 +10518,19 @@ def _render_backing_card_practice_key(original_key: str, practice_key: str) -> N
     # Every run of this card, both branches: "Eb" / "F#" find E♭ / F♯ in the dropdown.
     render_key_search_alias(st)
 
-    orig_name = pretty_key_name(original_key) or str(original_key or "")
+    # An owner whose authoritative Original Key could not be established says so.
+    # Naming the Practice Key here, or defaulting to C, is the Issue 74 defect:
+    # the panel would claim the song's home key is wherever the musician is now.
+    orig_known = bool(str(original_key or "").strip())
+    orig_name = (
+        (pretty_key_name(original_key) or str(original_key or ""))
+        if orig_known
+        else "Not known"
+    )
     orig_cell = (
         '<p class="ui-skp-label">Original key</p>'
         f'<div class="ui-skp-value">{html.escape(orig_name)}</div>'
-        '<p class="ui-skp-cap">Concert pitch</p>'
+        + ('<p class="ui-skp-cap">Concert pitch</p>' if orig_known else "")
     )
     pk_label = '<p class="ui-skp-label">Practice key</p>'
     if _backing_art_identity is not None:
@@ -21735,8 +21743,15 @@ elif _studio_page == "backing":
                 if isinstance(_owned_chart, dict) and _owned_chart.get("song_name"):
                     song = str(_owned_chart["song_name"])
                     song_data = dict(_owned_chart.get("song_data") or {})
-                    original_key = str(_owned_chart.get("original_key") or original_key)
-                    _backing_orig_key = original_key
+                    # The owner's own authoritative Original Key, or nothing.
+                    # When it cannot be resolved the card shows "Not known"
+                    # rather than this page's global original (a Mission may be
+                    # built on a different song than the global Active one) and
+                    # never the Practice Key.
+                    _owned_orig = str(_owned_chart.get("original_key") or "").strip()
+                    if _owned_orig:
+                        original_key = _owned_orig
+                    _backing_orig_key = _owned_orig
                     _backing_card_record = dict(song_data)
             except Exception:
                 pass
