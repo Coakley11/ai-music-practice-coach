@@ -48,7 +48,18 @@ def _song() -> dict:
     }
 
 
+def _restore_real_components_html() -> None:
+    """Earlier AppTest harnesses replace streamlit.components.v1.html in-process and never restore it;
+    these tests count the real iframes the player mounts, so start from the real function."""
+    import importlib
+
+    import streamlit.components.v1 as _components
+
+    importlib.reload(_components)
+
+
 def _boot(song: dict | None = None) -> AppTest:
+    _restore_real_components_html()
     at = AppTest.from_function(_page, default_timeout=180)
     at.session_state[CPL_ACTIVE_KEY] = copy.deepcopy(song or _song())
     at.session_state["cpl_edit_section"] = "Verse"
