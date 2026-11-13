@@ -449,6 +449,58 @@ class TheMissionHandoffSealsEveryKeySeparately(unittest.TestCase):
         self.assertEqual(s[HANDOFF_SOURCE_IDENTITY], other_pick)
 
 
+class ReadingAKeyChangesNothing(unittest.TestCase):
+    """Resolving an Original Key must not write to the session or the catalog.
+
+    ``ensure_song_picker_catalog`` stamps catalog handles onto the session, and
+    hydrating a catalog as a side effect of reading one key moved a staged
+    Mission session's resolved concert key from C to the song's own F. The
+    resolver reads a session-cached catalog if one is there and otherwise uses
+    the module-cached loader, which touches no session.
+    """
+
+    def test_an_empty_session_stays_empty(self) -> None:
+        session: dict = {}
+        pick = pick_for(catalog_session(), "Jazz", "Blue Bossa")
+        resolved = resolve_owner_original_key(session, mission_ctx(pick=pick))
+        self.assertTrue(resolved.resolved, resolved.reason)
+        self.assertEqual(resolved.key, "Cm")
+        self.assertEqual(session, {}, f"resolver wrote {sorted(session)}")
+
+    def test_a_populated_session_is_untouched(self) -> None:
+        import copy
+
+        pick = pick_for(catalog_session(), "Jazz", "Blue Bossa")
+        session = {
+            "instrument": "Trumpet",
+            "display_key": "Am",
+            "concert_key": "Am",
+            "active_catalog_pick_key": pick,
+            "selected_song": {"pick_key": pick, "title": "Blue Bossa", "key": "Cm"},
+        }
+        before = copy.deepcopy(session)
+        resolve_owner_original_key(session, mission_ctx(pick=pick))
+        resolve_original_key_for_pick(session, pick, expected_title="Blue Bossa")
+        self.assertEqual(session, before)
+
+    def test_the_card_identity_does_not_mutate_the_session_either(self) -> None:
+        session: dict = {}
+        pick = pick_for(catalog_session(), "Jazz", "Blue Bossa")
+        ident = owned_backing_chart_identity(session, mission_ctx(pick=pick))
+        self.assertEqual(ident["original_key"], "Cm")
+        self.assertEqual(session, {}, f"identity wrote {sorted(session)}")
+
+    def test_the_catalog_row_is_not_edited(self) -> None:
+        session = catalog_session()
+        catalog = _catalog_picker_from_session(session) or {}
+        labels = catalog.get("Jazz") or {}
+        label = next(l for l, r in labels.items() if str(r.get("title")) == "Blue Bossa")
+        before = dict(labels[label])
+        resolve_owner_original_key(session, mission_ctx(pick=format_pick_key("Jazz", label)))
+        self.assertEqual(dict(labels[label]), before)
+        self.assertEqual(before.get("key"), "Cm")
+
+
 class EveryCatalogSongResolvesToItsOwnMetadata(unittest.TestCase):
     """The catalog-wide check: resolved Original vs the song's canonical key.
 
