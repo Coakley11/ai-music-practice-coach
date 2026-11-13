@@ -140,7 +140,12 @@ class TestHarmonyPreviewAndCompare(unittest.TestCase):
         self.assertNotIn("Comparing ✓", src)
         self.assertIn("▶ Preview", src)
         self.assertIn("Use this", src)
-        self.assertIn("_attach_synced_score_preview", src)
+        # Cluster B: the synced player is mounted full-width by a shared helper that
+        # calls _attach_synced_score_preview (was inline in a half-width column).
+        from composition_studio_page import _mount_candidate_preview
+
+        self.assertIn("_mount_candidate_preview", src)
+        self.assertIn("_attach_synced_score_preview", inspect.getsource(_mount_candidate_preview))
         self.assertNotIn("st.rerun()", src.split("▶ Preview")[1].split("Use this")[0])
 
     def test_play_composer_preview_does_not_commit_chords(self) -> None:
