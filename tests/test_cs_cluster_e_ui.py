@@ -55,6 +55,19 @@ class NarrowViewportNotation(unittest.TestCase):
         self.assertIn("overflow-wrap: anywhere", h)
         self.assertNotIn("T:Rhythmic", h)
 
+    def test_removing_title_leaves_no_blank_line(self):
+        # A blank line ends the ABC tune header in abcjs: the staff rendered with zero notes.
+        _title, body = split_abc_title("X:1\nT:Take\nM:4/4\nK:C\nCDEF|")
+        self.assertEqual(body, "X:1\nM:4/4\nK:C\nCDEF|")
+        h = render_abc_html("X:1\nT:Take\nM:4/4\nK:C\nCDEF|")
+        self.assertNotIn("\n\n", h.split("renderAbc")[1].split("`")[1])
+
+    def test_frame_fits_the_drawn_score(self):
+        # Fixed 220 px frames hid the second system of every 4-bar melody card.
+        h = render_abc_html(self.ABC)
+        self.assertIn("window.frameElement", h)
+        self.assertIn("fe.style.height", h)
+
     def test_title_is_escaped(self):
         h = render_abc_html("X:1\nT:Q & A <b>\nK:C\nC|")
         self.assertIn("Q &amp; A &lt;b&gt;", h)

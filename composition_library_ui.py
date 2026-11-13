@@ -26,36 +26,35 @@ def render_library_rows(st: Any, session_state: dict, active_song_id: str) -> st
     with host:
         for row in rows:
             rid = row["id"]
-            c1, c2 = st.columns([3, 1])
-            with c1:
-                badges = status_badges(row)
-                attrs = ""
-                if row["now_editing"]:
-                    attrs += ' data-composer-active="1"'
-                if row["active_song"]:
-                    attrs += ' data-composer-active-song="1"'
-                chips = "".join(f'<span class="composer-active-badge">{html.escape(b)}</span>' for b in badges)
-                st.markdown(
-                    f'<div class="composer-library-item{" is-active" if row["now_editing"] else ""}"{attrs}>'
-                    f'<h4>{html.escape(row["title"])}{chips}</h4></div>',
-                    unsafe_allow_html=True,
-                )
-                if st.button(
-                    "Editing now" if row["now_editing"] else "Open for editing",
-                    key=f"composer_lib_open_{rid}",
-                    use_container_width=True,
-                    type="primary" if row["now_editing"] else "secondary",
-                    disabled=row["now_editing"],
-                ):
-                    ok, msg = switch_to_composition(session_state, rid)
-                    if not ok:
-                        st.error(msg)
-                    else:
-                        action = rid
-            with c2:
-                if st.button("🗑", key=f"composer_lib_del_{rid}"):
-                    delete_library_document(session_state, rid)
-                    action = f"deleted:{rid}"
+            # Stacked, not side-by-side: at 375/390 px two side-by-side columns overflowed the
+            # scrolling list (600 px of content in 330 px) and pushed the delete button out of reach.
+            badges = status_badges(row)
+            attrs = ""
+            if row["now_editing"]:
+                attrs += ' data-composer-active="1"'
+            if row["active_song"]:
+                attrs += ' data-composer-active-song="1"'
+            chips = "".join(f'<span class="composer-active-badge">{html.escape(b)}</span>' for b in badges)
+            st.markdown(
+                f'<div class="composer-library-item{" is-active" if row["now_editing"] else ""}"{attrs}>'
+                f'<h4>{html.escape(row["title"])}{chips}</h4></div>',
+                unsafe_allow_html=True,
+            )
+            if st.button(
+                "Editing now" if row["now_editing"] else "Open for editing",
+                key=f"composer_lib_open_{rid}",
+                use_container_width=True,
+                type="primary" if row["now_editing"] else "secondary",
+                disabled=row["now_editing"],
+            ):
+                ok, msg = switch_to_composition(session_state, rid)
+                if not ok:
+                    st.error(msg)
+                else:
+                    action = rid
+            if st.button("🗑 Delete", key=f"composer_lib_del_{rid}", use_container_width=True):
+                delete_library_document(session_state, rid)
+                action = f"deleted:{rid}"
     return action
 
 

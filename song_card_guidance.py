@@ -708,6 +708,13 @@ def _section_base(name: str) -> str:
     return raw or str(name or "").strip()
 
 
+def _plural_phrase(phrase: str) -> str:
+    """"the verse" -> "the verses", "the chorus" -> "the choruses"."""
+    if phrase.endswith(("s", "x", "ch", "sh")):
+        return phrase + "es"
+    return phrase + "s"
+
+
 def _section_list(names: Sequence[str]) -> str:
     """"the verse and chorus" from the section names that share a progression."""
     phrases: list[str] = []
@@ -715,6 +722,9 @@ def _section_list(names: Sequence[str]) -> str:
         phrase = section_phrase(_section_base(name))
         if phrase and phrase not in phrases:
             phrases.append(phrase)
+    if len(phrases) == 1 and len(names) >= 2:
+        # "Verse 1" + "Verse 2" -> "the verses" (callers pair this with a plural verb).
+        phrases = [_plural_phrase(phrases[0])]
     if len(phrases) > 3:
         phrases = phrases[:3]
     # "the verse and the chorus" -> "the verse and chorus".
@@ -1007,7 +1017,7 @@ def melody_text(ctx: CardContext) -> str:
         return f"Once the song has a chord chart, {where} can generate practice phrases for it."
     composed = list((ctx.record.get("extensions") or {}).get("composition_melody_sections") or [])
     if composed:
-        return (f"Your composed melody ({_join([section_phrase(_section_base(n)) for n in composed[:3]])}) "
+        return (f"Your composed melody ({_join(list(dict.fromkeys(section_phrase(_section_base(n)) for n in composed[:3])))}) "
                 "is saved with this chart — play or sing it over these chords; it is your own melody, "
                 "not a generated one.")
     form = f.form

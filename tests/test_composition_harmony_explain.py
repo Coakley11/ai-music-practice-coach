@@ -242,3 +242,24 @@ class TestSuggestionSetDistinct(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestNonDiatonicSeventhQuality(unittest.TestCase):
+    """Browser QA: 'Gm7 is diatonic v7' was printed for a C major progression."""
+
+    def test_minor_sevenths_on_major_degrees_are_not_called_diatonic(self) -> None:
+        text = explain_progression(["Cm7", "Em7", "Dm7", "Gm7"], "C")
+        self.assertNotIn("Gm7 is diatonic", text)
+        self.assertNotIn("Cm7 is diatonic", text)
+        self.assertIn("Em7 is diatonic iii7", text)
+        self.assertIn("Dm7 is diatonic ii7", text)
+        self.assertIn("quality differs from the key's own scale", text)
+
+    def test_true_diatonic_sevenths_unchanged(self) -> None:
+        text = explain_progression(["Dm7", "G7", "Cmaj7", "Am7"], "C")
+        self.assertIn("diatonic ii", text)
+        self.assertIn("Am7 is diatonic vi7", text)
+        self.assertIn("Fmaj7 is diatonic IVmaj7", explain_progression(["Cmaj7", "Fmaj7", "G7"], "C"))
+
+    def test_vmaj7_is_not_the_keys_dominant(self) -> None:
+        self.assertNotIn("Gmaj7 is diatonic", explain_progression(["Cmaj7", "Em7", "Dm7", "Gmaj7"], "C"))
