@@ -90,7 +90,9 @@ def prepare_music_conditional_write(
     state: dict[str, Any],
 ) -> dict[str, Any]:
     """Pre-flight for music CAS cloud write. Does not mutate cloud."""
-    ss = session if isinstance(session, dict) else {}
+    from music_session_mapping import as_session_mapping
+
+    ss = as_session_mapping(session)
     applied_before = device_applied_revision(ss)
     candidate = candidate_revision_from_state(state)
     cloud_rev = authoritative_cloud_revision(ss)

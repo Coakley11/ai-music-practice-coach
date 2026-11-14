@@ -607,6 +607,42 @@ def load_cloud_full_session(app_id: str, *, force: bool = False) -> tuple[dict[s
         return {}, None
 
 
+WRITER_SESSION_KEY = "writer_session"
+_WRITER_TOKEN_SESSION_KEY = "_music_cloud_writer_token"
+
+
+def _music_writer_token(ss: Any) -> str:
+    """Random per-Streamlit-session id stamped on every music workspace write (not a secret)."""
+    if ss is None:
+        return ""
+    try:
+        token = str(ss.get(_WRITER_TOKEN_SESSION_KEY) or "")
+        if not token:
+            import uuid
+
+            token = uuid.uuid4().hex
+            ss[_WRITER_TOKEN_SESSION_KEY] = token
+        return token
+    except Exception:
+        return ""
+
+
+def _own_write_revision(storage: Any, storage_app_key: str, token: str) -> int:
+    """Stored workspace revision if the cloud row was last written by this session, else 0."""
+    try:
+        loader = getattr(storage, "_load_state_row_metrics", None)
+        if loader is None:
+            from suite_storage_supabase import _load_state_row_metrics as loader
+        metrics = loader(storage_app_key) or {}
+        if str(metrics.get(WRITER_SESSION_KEY) or "") != token:
+            return 0
+        from suite_storage_supabase import metrics_workspace_revision
+
+        return int(metrics_workspace_revision(metrics))
+    except Exception:
+        return 0
+
+
 def save_cloud_full_session(
     app_id: str,
     state: dict[str, Any],
@@ -770,14 +806,54 @@ def save_cloud_full_session(
                 )
                 _record_cloud_save_result(ss, result)
                 return result
+            writer_token = _music_writer_token(ss)
+            cas_metrics = {FULL_SESSION_KEY: copy.deepcopy(state)}
+            if writer_token:
+                cas_metrics[WRITER_SESSION_KEY] = writer_token
             cas = storage.save_current_state_conditional_cas(
                 storage_app_key,
                 page=page or "",
                 summary=summary or "Last session",
-                metrics={FULL_SESSION_KEY: copy.deepcopy(state)},
+                metrics=cas_metrics,
                 expected_workspace_revision=expected,
                 candidate_workspace_revision=candidate,
             )
+            if not cas.get("accepted") and writer_token:
+                own_rev = _own_write_revision(storage, storage_app_key, writer_token)
+                if 0 < own_rev < candidate and own_rev != expected:
+                    # The cloud row was last written by THIS session, so the mismatch is our own bookkeeping,
+                    # not another device: either two overlapping script runs wrote from the same base
+                    # (cloud ahead of us), or an earlier attempt advanced the applied revision to its
+                    # candidate and then failed or was interrupted (cloud behind us). Adopt our own stored
+                    # revision as the base and write once more on top of it. A row last written by anyone
+                    # else is never adopted, so a genuine foreign write is still a refused conflict.
+                    try:
+                        from music_device_applied_revision import (
+                            set_device_applied_revision_from_authoritative_hydrate,
+                        )
+
+                        set_device_applied_revision_from_authoritative_hydrate(
+                            ss, own_rev, stage="own_write_conflict_recovery", source="own_write_readback",
+                        )
+                    except ImportError:
+                        pass
+                    expected = own_rev
+                    prep = dict(
+                        prep,
+                        expected_revision=own_rev,
+                        precondition_expected_revision=own_rev,
+                        device_applied_revision=own_rev,
+                        applied_revision_before_prep=own_rev,
+                        own_write_recovered=True,
+                    )
+                    cas = storage.save_current_state_conditional_cas(
+                        storage_app_key,
+                        page=page or "",
+                        summary=summary or "Last session",
+                        metrics=cas_metrics,
+                        expected_workspace_revision=own_rev,
+                        candidate_workspace_revision=candidate,
+                    )
             accepted = bool(cas.get("accepted"))
             record_conditional_write_result(ss or {}, prep=prep, cas=cas, saved=accepted)
             if not accepted:
@@ -941,6 +1017,26 @@ def pick_restore_session(
             disk_state,
             "disk",
             "local unsaved edits",
+            cloud_ts,
+            disk_ts,
+        )
+
+    # Revision order is authoritative over wall-clock timestamps: a disk copy that carries an OLDER
+    # workspace revision than the cloud is a stale cache, however fresh its timestamp looks (clock
+    # skew, an earlier session's disk write). Re-applying it would roll back confirmed cloud saves
+    # and desynchronise the device's applied revision.
+    try:
+        from workspace_revision import workspace_revision_from_blob
+
+        _cloud_rev = int(workspace_revision_from_blob(cloud_state))
+        _disk_rev = int(workspace_revision_from_blob(disk_state))
+    except Exception:
+        _cloud_rev = _disk_rev = 0
+    if disk_state and cloud_state and _cloud_rev > 0 and _disk_rev < _cloud_rev:
+        return RestorePickResult(
+            cloud_state,
+            "cloud",
+            "cloud revision ahead of disk",
             cloud_ts,
             disk_ts,
         )

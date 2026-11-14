@@ -7,7 +7,7 @@ from __future__ import annotations
 import copy
 import json
 from activity_time import normalize_timestamp_iso, utc_now_iso
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from suite_storage_config import SuiteCloudConfig, get_auth_api_key, get_cloud_config, reset_cloud_config_cache
@@ -197,7 +197,9 @@ def _merge_state_metrics(scoped_app_key: str, incoming: dict[str, Any] | None) -
 
 
 def _now_iso() -> str:
-    return datetime.now().isoformat(timespec="seconds")
+    # UTC with an explicit offset. Naive local time was stored in timestamptz columns (read back as UTC),
+    # skewing every cloud timestamp by the server's UTC offset and breaking cloud-vs-disk freshness.
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat(timespec="seconds")
 
 
 def _headers(cfg: SuiteCloudConfig, *, prefer: str = "return=minimal") -> dict[str, str]:
