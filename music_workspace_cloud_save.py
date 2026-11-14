@@ -798,6 +798,14 @@ def force_music_workspace_save(
 
         next_rev = reserve_workspace_revision_for_canonical_fp(ss, state, canonical_fp)
         state = stamp_workspace_revision_into_state(state, next_rev)
+        try:
+            from workspace_revision import CLOUD_BASE_REVISION_KEY
+
+            # lets a later restore of this LOCAL copy tell "cloud unchanged since my last confirmed
+            # write" from "cloud moved on" without trusting inflated local revision counters
+            state["cloud_confirmed_revision"] = int(ss.get(CLOUD_BASE_REVISION_KEY) or 0)
+        except Exception:
+            pass
         record_save_transaction(
             ss,
             envelope_revision_after=next_rev,

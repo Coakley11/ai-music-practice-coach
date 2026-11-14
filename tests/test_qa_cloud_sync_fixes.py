@@ -96,5 +96,14 @@ class TestOwnWriteRecognition(unittest.TestCase):
         self.assertEqual(scs._own_write_revision(st, "music", "tok"), 0)
 
 
+
+class TestLocalAheadOfUnchangedCloud(unittest.TestCase):
+    def test_confirmed_base_key_is_set_only_by_confirmed_writes(self) -> None:
+        from workspace_revision import CLOUD_BASE_REVISION_KEY, note_confirmed_workspace_revision
+
+        ss: dict = {}
+        note_confirmed_workspace_revision(ss, {"workspace_revision": 9, "music_workspace_state": {"workspace_revision": 9}})
+        self.assertEqual(ss[CLOUD_BASE_REVISION_KEY], 9)
+
 if __name__ == "__main__":
     unittest.main()
