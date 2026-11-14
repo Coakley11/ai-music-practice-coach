@@ -246,5 +246,22 @@ class TestResolveMode(unittest.TestCase):
         self.assertEqual(resolve_highlight_mode(has_melody=False, has_chords=False), "none")
 
 
+class TestSyncedPlayerFitsFrame(unittest.TestCase):
+    def test_player_frame_fits_the_drawn_score(self) -> None:
+        # Browser QA: a 15-note melody needed 547 px in a 380 px frame on a 390 px phone.
+        from composition_playback_sync import render_synced_score_playback_html
+
+        bundle = build_playback_bundle(
+            events=[{"pitch": "C4", "duration_beats": 4.0, "beat": 0.0, "measure": 1}],
+            chord_syms=["C"], bpm=100, meter="4/4", loops=1, count_in_bars=0,
+        )
+        ABC = "\n".join(["X:1", "M:4/4", "K:C", '"C"C4|'])
+        html_doc = render_synced_score_playback_html(
+            wav_bytes=b"RIFF", abc_text=ABC, chord_labels=["C"], bundle=bundle
+        )
+        self.assertIn("function fitFrame", html_doc)
+        self.assertIn("window.frameElement", html_doc)
+
+
 if __name__ == "__main__":
     unittest.main()

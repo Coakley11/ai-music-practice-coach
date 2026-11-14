@@ -45,7 +45,13 @@ class TestMelodyFullProgression(unittest.TestCase):
         concepts = suggest_melody_concepts(doc, verse, "lyrical", limit=2)
         events = list(concepts[0].get("events") or [])
         self.assertEqual(concepts[0].get("chord_span"), 8)
-        self.assertEqual([e.get("chord") for e in events], chords)
+        # Candidates now write several notes per bar; what must hold is that every chord
+        # occurrence, in order, carries melody (chord_index covers 0..n-1 and names match).
+        covered = sorted({int(e["chord_index"]) for e in events})
+        self.assertEqual(covered, list(range(len(chords))))
+        self.assertEqual([chords[i] for i in covered], chords)
+        for e in events:
+            self.assertEqual(e.get("chord"), chords[int(e["chord_index"])])
 
     def test_later_pass_uses_edited_harmony(self) -> None:
         doc = self._song()

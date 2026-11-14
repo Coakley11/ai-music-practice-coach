@@ -274,6 +274,33 @@ def _continuity_recipe(
     }
 
 
+def _chord_sequence(suggestion: dict[str, Any]) -> tuple[str, ...]:
+    """Chord symbols of a suggestion, in order (for uniqueness checks)."""
+    return tuple(
+        str(c.get("chord") or "").strip() if isinstance(c, dict) else str(c).strip()
+        for c in (suggestion.get("chords") or [])
+    )
+
+
+def _sequence_is_distinct(
+    symbols: list[str],
+    others: list[tuple[str, ...]],
+    min_diff: int,
+) -> bool:
+    """True when *symbols* differs from every other sequence in at least *min_diff* positions.
+
+    Different lengths always count as distinct; an identical sequence never does.
+    """
+    mine = tuple(str(s).strip() for s in symbols)
+    for other in others:
+        if len(other) != len(mine):
+            continue
+        diff = sum(1 for a, b in zip(mine, other) if a != b)
+        if diff < max(1, int(min_diff)):
+            return False
+    return True
+
+
 def suggest_progressions(
     doc: dict[str, Any],
     section: dict[str, Any],
@@ -380,7 +407,11 @@ def suggest_progressions(
             )
         )
         if harms:
-            return harms[: max(1, int(limit))]
+            uniq: list[dict[str, Any]] = []
+            for h in harms:
+                if all(_chord_sequence(h) != _chord_sequence(u) for u in uniq):
+                    uniq.append(h)
+            return uniq[: max(1, int(limit))]
 
     # Continuity from prior accepted harmony — all styles benefit from song coherence.
     continuity = _continuity_recipe(doc, section, target_key)
@@ -406,7 +437,12 @@ def suggest_progressions(
         out.append(continuity)
         seen.add(str(continuity.get("id") or ""))
 
-    def _emit(recipe: dict[str, Any], *, allow_mode_mismatch: bool = False) -> bool:
+    def _emit(
+        recipe: dict[str, Any],
+        *,
+        allow_mode_mismatch: bool = False,
+        min_diff: int = 2,
+    ) -> bool:
         nonlocal variant_i
         rid = str(recipe.get("id") or "")
         if not rid or rid in seen:
@@ -414,12 +450,14 @@ def suggest_progressions(
         recipe_ref = str(recipe.get("ref_key") or "C")
         if not allow_mode_mismatch and key_is_minor(target_key) != key_is_minor(recipe_ref):
             return False
-        seen.add(rid)
         ref_key = _pick_ref_key(target_key, recipe_ref)
         symbols = _transpose_symbols(list(recipe.get("chords") or []), ref_key, target_key)
         symbols = apply_style_chord_color(symbols, profile, variant=variant_i)
         symbols = apply_feeling_chord_bias(symbols, profile, feeling=feeling, variant=variant_i)
         symbols = expand_harmonic_rhythm(symbols, profile)
+        if not _sequence_is_distinct(symbols, [_chord_sequence(x) for x in out], min_diff):
+            return False
+        seen.add(rid)
         # Concept: harmonic surprise on bridge variant
         if flags.get("harmonic_surprise") and str(profile.get("section_goal")) == "contrast" and len(symbols) >= 2:
             # Raise color on second chord if still plain triad.
@@ -472,6 +510,13 @@ def suggest_progressions(
     if len(out) < limit:
         for recipe in recipes:
             if _emit(recipe, allow_mode_mismatch=True):
+                if len(out) >= limit:
+                    break
+    # Last resort: accept candidates that differ from every other by a single chord
+    # (never an identical chord sequence).
+    if len(out) < limit:
+        for recipe in recipes:
+            if _emit(recipe, allow_mode_mismatch=True, min_diff=1):
                 if len(out) >= limit:
                     break
     return out

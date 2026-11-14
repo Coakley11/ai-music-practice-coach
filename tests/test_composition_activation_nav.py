@@ -127,11 +127,12 @@ class TestNavButtonKeys(unittest.TestCase):
 
     def test_library_item_shows_active_song_badge(self) -> None:
         src = Path("composition_studio_page.py").read_text(encoding="utf-8")
-        lib_block_start = src.index("My compositions")
-        lib_block_end = src.index("Start new song")
-        block = src[lib_block_start:lib_block_end]
+        # Library rows moved to composition_library_ui/composition_library (P9): the
+        # statuses are now independent "Now Editing" and "Active Song" badges.
+        self.assertIn("render_library_rows", src)
+        block = Path("composition_library.py").read_text(encoding="utf-8")
         self.assertIn("Active Song", block)
-        self.assertIn("Currently editing", block)
+        self.assertIn("Now Editing", block)
 
 
 class TestActivationPipeline(unittest.TestCase):
@@ -149,6 +150,39 @@ class TestActivationPipeline(unittest.TestCase):
         save_pos = block.index("save_document_to_library(")
         activate_pos = block.index("activate_composition_song_from_library(st,")
         self.assertLess(save_pos, activate_pos, "Save should happen before activation")
+
+
+class TestActiveSongSnapshotIgnoresEditedDocument(unittest.TestCase):
+    """Browser QA: opening another composition for editing re-pointed the saved Active Song."""
+
+    def test_snapshot_uses_live_pick_not_the_document_being_edited(self) -> None:
+        from composition_document import bootstrap_from_vision
+        from composition_session_state import save_document_to_library, set_active_document
+        from composition_songs_bridge import composition_pick_key_for
+        from songs.state import ACTIVE_CATALOG_PICK_KEY
+        import active_song_state
+
+        song_a = bootstrap_from_vision(genre="Pop", song_idea="x", title="Song A", key="C major", bpm=100)
+        song_b = bootstrap_from_vision(genre="Pop", song_idea="y", title="Song B", key="G major", bpm=90)
+        ss: dict = {}
+        save_document_to_library(ss, song_a)
+        set_active_document(ss, song_b)  # Studio is editing B ...
+        ss[ACTIVE_CATALOG_PICK_KEY] = composition_pick_key_for(song_a)  # ... but A is the Active Song
+        with mock.patch("songs.music_source.composition_song_is_active", return_value=True):
+            ctx = active_song_state.gather_active_song_context(ss)
+        self.assertEqual(ctx["pick_key"], composition_pick_key_for(song_a))
+        self.assertEqual(ctx["composition_title"], "Song A")
+
+
+class TestLibraryRowsFitPhones(unittest.TestCase):
+    def test_rows_are_stacked_so_delete_stays_reachable(self) -> None:
+        from pathlib import Path
+
+        src = Path("composition_library_ui.py").read_text(encoding="utf-8")
+        body = src.split("def render_library_rows", 1)[1].split("def render_save_recovery", 1)[0]
+        self.assertNotIn("st.columns", body)  # side-by-side columns overflowed the list at 390 px
+        self.assertIn('key=f"composer_lib_del_{rid}"', body)
+        self.assertIn('key=f"composer_lib_open_{rid}"', body)
 
 
 if __name__ == "__main__":

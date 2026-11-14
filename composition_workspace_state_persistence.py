@@ -361,6 +361,14 @@ def apply_composition_workspace_from_payload(
 ) -> bool:
     if is_composition_workspace_locally_dirty(session) and not authoritative:
         session[COMPOSITION_WORKSPACE_LAST_SKIP_KEY] = "local_dirty"
+        # Pending local edits win, but earlier compositions from storage must not stay
+        # hidden behind a fresh local document: add missing ids only (never overwrite).
+        remote = _composition_workspace_from_payload(payload)
+        if remote:
+            from composition_library import merge_missing_library_documents
+
+            if merge_missing_library_documents(session, remote):
+                session["_composition_library_merged_while_dirty"] = True
         return False
     blob = _composition_workspace_from_payload(payload)
     if blob:

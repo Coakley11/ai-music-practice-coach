@@ -691,43 +691,12 @@ def describe_harmony_from_events(
     if not symbols:
         return "No chords to describe yet."
 
-    parts: list[str] = [f"Moves {' → '.join(symbols)}"]
-    has_dom = any(s.endswith("7") and "maj7" not in s and "m7" not in s for s in symbols)
-    has_7 = any(("7" in s or "9" in s or "6" in s) for s in symbols)
-    has_bvii = any(s.startswith(("Bb", "Ab", "Eb")) for s in symbols)
-    ii_v = False
-    for i in range(len(symbols) - 1):
-        a, b = symbols[i], symbols[i + 1]
-        if ("m7" in a or (a.endswith("m") and "maj" not in a)) and (
-            b.endswith("7") and "maj7" not in b and "m7" not in b
-        ):
-            ii_v = True
-            break
-    if ii_v:
-        parts.append("includes ii–V motion")
-    if has_dom and not ii_v:
-        parts.append("uses dominant seventh color")
-    if has_7 and not has_dom:
-        parts.append("leans on seventh / extended color")
-    if has_bvii:
-        parts.append("brings in bVII rock/modal color")
-    if len(set(symbols)) < len(symbols):
-        parts.append("repeats a short harmonic cell")
-    if profile:
-        fam = str(profile.get("style_family") or "")
-        goal = str(profile.get("section_goal") or "")
-        if fam:
-            parts.append(f"shaped for a {fam.replace('_', ' ')} feel")
-        if goal == "hook_peak":
-            parts.append("aimed at a chorus-style arrival")
-        elif goal == "build":
-            parts.append("builds pressure toward the next section")
-        elif goal == "contrast":
-            parts.append("opens a contrasting bridge color")
-    text = parts[0]
-    for p in parts[1:]:
-        text = f"{text}; {p}"
-    return text[0].upper() + text[1:] + "."
+    # Explanation is derived from the chords and key only (Roman numerals, secondary
+    # dominants, cadences) so it always agrees with the card's chord symbols.
+    from composition_harmony_explain import explain_progression
+
+    key = str((profile or {}).get("key_center") or "")
+    return explain_progression(symbols, key)
 
 
 def style_melody_bias(profile: dict[str, Any]) -> dict[str, Any]:

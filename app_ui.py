@@ -1406,13 +1406,15 @@ div[data-testid="stTabs"] [data-baseweb="tab-list"] { flex-wrap: wrap; gap: 0.25
 /* Source CTAs wear their own page colour (SSOT: STUDIO_PAGE_ACCENTS in app_ui.py).
    Custom = green #059669, Composition = black #0f172a. */
 .st-key-picker_card_edit_chart_custom button[kind="primary"],
-.st-key-backing_use_custom_btn button {
+.st-key-backing_use_custom_btn button,
+.st-key-backing_choose_custom_btn button {
   background: #059669 !important;
   border-color: #047857 !important;
   color: #ffffff !important;
 }
 .st-key-picker_card_edit_chart_custom button[kind="primary"] *,
-.st-key-backing_use_custom_btn button * {
+.st-key-backing_use_custom_btn button *,
+.st-key-backing_choose_custom_btn button * {
   color: #ffffff !important;
 }
 .st-key-picker_card_edit_chart_composition button[kind="primary"] {

@@ -1,0 +1,251 @@
+{
+  "staged": [
+    "guitar",
+    "sax / winds",
+    "extra layer"
+  ],
+  "count_in_value": "None",
+  "zero_headroom_valid": true,
+  "zero_headroom": {
+    "tag": "count_in_none",
+    "sources": 5,
+    "clicks": 0,
+    "late_by": [
+      0.64,
+      0.672,
+      0.7306666666666667,
+      0.76,
+      0.8
+    ],
+    "spread_sec": 0.16000000000000003,
+    "worst_late_sec": 0.8
+  },
+  "negative_align_value": "no-thumb",
+  "negative_align_valid": false,
+  "iframe_survives_arming": true,
+  "record_then_play_events": [
+    {
+      "wall": 1794573169691.8,
+      "href": "http://127.0.0.1:8590/",
+      "kind": "gum_request",
+      "constraints": {
+        "audio": {
+          "sampleRate": {
+            "ideal": 48000
+          },
+          "echoCancellation": false,
+          "noiseSuppression": false,
+          "autoGainControl": false,
+          "voiceIsolation": false
+        }
+      },
+      "_frame": "main"
+    },
+    {
+      "wall": 1794573169996.3,
+      "href": "http://127.0.0.1:8590/",
+      "kind": "gum_settings",
+      "settings": {
+        "autoGainControl": false,
+        "channelCount": 2,
+        "deviceId": "default",
+        "echoCancellation": false,
+        "groupId": "bb29d7f4a9759154b6b196c6c951cd1b739887cb7f70021338325b263620211e",
+        "latency": 0.01,
+        "noiseSuppression": false,
+        "sampleRate": 44100,
+        "sampleSize": 16,
+        "voiceIsolation": false
+      },
+      "_frame": "main"
+    },
+    {
+      "wall": 1794573170014.9,
+      "href": "http://127.0.0.1:8590/",
+      "kind": "audioctx_new",
+      "label": "AudioContext",
+      "sampleRate": 48000,
+      "baseLatency": 0.01,
+      "outputLatency": 0,
+      "currentTime": 0,
+      "_frame": "main"
+    },
+    {
+      "wall": 1794573170018.9,
+      "href": "http://127.0.0.1:8590/",
+      "kind": "mediarecorder_start",
+      "mimeType": "audio/webm",
+      "audioBitsPerSecond": 128000,
+      "_frame": "main"
+    },
+    {
+      "wall": 1794573170540.9001,
+      "href": "about:srcdoc",
+      "kind": "audioctx_new",
+      "label": "AudioContext",
+      "sampleRate": 48000,
+      "baseLatency": 0.01,
+      "outputLatency": 0,
+      "currentTime": 0,
+      "_frame": "iframe"
+    },
+    {
+      "wall": 1794573170543.8,
+      "href": "about:srcdoc",
+      "kind": "osc_start",
+      "when": 0,
+      "ctx_now": 0,
+      "freq": 1180,
+      "_frame": "iframe"
+    },
+    {
+      "wall": 1794573170543.9001,
+      "href": "about:srcdoc",
+      "kind": "osc_start",
+      "when": 0.6,
+      "ctx_now": 0,
+      "freq": 760,
+      "_frame": "iframe"
+    },
+    {
+      "wall": 1794573170543.9001,
+      "href": "about:srcdoc",
+      "kind": "osc_start",
+      "when": 1.2,
+      "ctx_now": 0,
+      "freq": 760,
+      "_frame": "iframe"
+    },
+    {
+      "wall": 1794573170543.9001,
+      "href": "about:srcdoc",
+      "kind": "osc_start",
+      "when": 1.7999999999999998,
+      "ctx_now": 0,
+      "freq": 760,
+      "_frame": "iframe"
+    },
+    {
+      "wall": 1794573171650.7,
+      "href": "about:srcdoc",
+      "kind": "decode",
+      "bytes": 15329204,
+      "wall_ms": 506.900146484375,
+      "ctx_before": 0.472,
+      "ctx_after": 0.9813333333333333,
+      "buffer_sec": 173.8,
+      "buffer_sr": 48000,
+      "_frame": "iframe"
+    },
+    {
+      "wall": 1794573171650.9001,
+      "href": "about:srcdoc",
+      "kind": "bufsrc_start",
+      "when": 2.4,
+      "ctx_now": 0.9813333333333333,
+      "late_by": -1.4186666666666667,
+      "buffer_sec": 173.8,
+      "buffer_sr": 48000,
+      "loop": true,
+      "_frame": "iframe"
+    },
+    {
+      "wall": 1794573171704.9001,
+      "href": "about:srcdoc",
+      "kind": "decode",
+      "bytes": 529244,
+      "wall_ms": 25.10009765625,
+      "ctx_before": 1.0106666666666666,
+      "ctx_after": 1.032,
+      "buffer_sec": 6,
+      "buffer_sr": 48000,
+      "_frame": "iframe"
+    },
+    {
+      "wall": 1794573171705,
+      "href": "about:srcdoc",
+      "kind": "bufsrc_start",
+      "when": 2.4,
+      "ctx_now": 1.032,
+      "late_by": -1.3679999999999999,
+      "buffer_sec": 6,
+      "buffer_sr": 48000,
+      "loop": false,
+      "_frame": "iframe"
+    },
+    {
+      "wall": 1794573171766.1,
+      "href": "about:srcdoc",
+      "kind": "decode",
+      "bytes": 1347884,
+      "wall_ms": 6.10009765625,
+      "ctx_before": 1.0906666666666667,
+      "ctx_after": 1.0906666666666667,
+      "buffer_sec": 14.04,
+      "buffer_sr": 48000,
+      "_frame": "iframe"
+    },
+    {
+      "wall": 1794573171766.3,
+      "href": "about:srcdoc",
+      "kind": "bufsrc_start",
+      "when": 2.4,
+      "ctx_now": 1.0906666666666667,
+      "late_by": -1.3093333333333332,
+      "buffer_sec": 14.04,
+      "buffer_sr": 48000,
+      "loop": false,
+      "_frame": "iframe"
+    },
+    {
+      "wall": 1794573171809.3,
+      "href": "about:srcdoc",
+      "kind": "decode",
+      "bytes": 529244,
+      "wall_ms": 16.800048828125,
+      "ctx_before": 1.12,
+      "ctx_after": 1.1413333333333333,
+      "buffer_sec": 6,
+      "buffer_sr": 48000,
+      "_frame": "iframe"
+    },
+    {
+      "wall": 1794573171809.4001,
+      "href": "about:srcdoc",
+      "kind": "bufsrc_start",
+      "when": 2.4,
+      "ctx_now": 1.1413333333333333,
+      "late_by": -1.2586666666666666,
+      "buffer_sec": 6,
+      "buffer_sr": 48000,
+      "loop": false,
+      "_frame": "iframe"
+    },
+    {
+      "wall": 1794573171843.1,
+      "href": "about:srcdoc",
+      "kind": "decode",
+      "bytes": 529244,
+      "wall_ms": 14,
+      "ctx_before": 1.16,
+      "ctx_after": 1.1706666666666667,
+      "buffer_sec": 6,
+      "buffer_sr": 48000,
+      "_frame": "iframe"
+    },
+    {
+      "wall": 1794573171843.3,
+      "href": "about:srcdoc",
+      "kind": "bufsrc_start",
+      "when": 2.4,
+      "ctx_now": 1.1706666666666667,
+      "late_by": -1.2293333333333332,
+      "buffer_sec": 6,
+      "buffer_sr": 48000,
+      "loop": false,
+      "_frame": "iframe"
+    }
+  ],
+  "capture_to_first_click_ms": 522.000244140625,
+  "capture_to_beat1_ms": 2922.000244140625
+}

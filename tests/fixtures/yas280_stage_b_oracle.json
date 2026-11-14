@@ -1,0 +1,130 @@
+{
+  "model": "Yamaha YAS-280 standard factory keywork",
+  "manual": "https://usa.yamaha.com/files/download/other_assets/6/335916/saxophones_en_om_c0.pdf",
+  "manual_locator": "Printed pp.10-11 basic unshaded diagrams, filled/open legend",
+  "manual_sha256": "e7930888afe47f103483161245d360bcb98c42c4dcba97deaaa8037fa990f770",
+  "references": [
+    "https://www.wfg.woodwind.org/sax/sax_bas_1.html",
+    "https://www.wfg.woodwind.org/sax/sax_bas_2.html"
+  ],
+  "notes": {
+    "D4": {
+      "written": 62,
+      "sounding": 53,
+      "pressed": [
+        "L1",
+        "L2",
+        "L3",
+        "R1",
+        "R2",
+        "R3"
+      ],
+      "gif": 7
+    },
+    "E4": {
+      "written": 64,
+      "sounding": 55,
+      "pressed": [
+        "L1",
+        "L2",
+        "L3",
+        "R1",
+        "R2"
+      ],
+      "gif": 10
+    },
+    "F4": {
+      "written": 65,
+      "sounding": 56,
+      "pressed": [
+        "L1",
+        "L2",
+        "L3",
+        "R1"
+      ],
+      "gif": 11
+    },
+    "C5": {
+      "written": 72,
+      "sounding": 63,
+      "pressed": [
+        "L2"
+      ],
+      "gif": 21
+    },
+    "D5": {
+      "written": 74,
+      "sounding": 65,
+      "pressed": [
+        "L1",
+        "L2",
+        "L3",
+        "R1",
+        "R2",
+        "R3",
+        "O"
+      ],
+      "gif": 24
+    },
+    "E5": {
+      "written": 76,
+      "sounding": 67,
+      "pressed": [
+        "L1",
+        "L2",
+        "L3",
+        "R1",
+        "R2",
+        "O"
+      ],
+      "gif": 27
+    },
+    "F5": {
+      "written": 77,
+      "sounding": 68,
+      "pressed": [
+        "L1",
+        "L2",
+        "L3",
+        "R1",
+        "O"
+      ],
+      "gif": 28
+    },
+    "G5": {
+      "written": 79,
+      "sounding": 70,
+      "pressed": [
+        "L1",
+        "L2",
+        "L3",
+        "O"
+      ],
+      "gif": 31
+    },
+    "A5": {
+      "written": 81,
+      "sounding": 72,
+      "pressed": [
+        "L1",
+        "L2",
+        "O"
+      ],
+      "gif": 34
+    }
+  },
+  "common": "Auxiliary controls released; finger-control states, not linked pad positions",
+  "status": "manufacturer/reference-supported; not teacher-reviewed or instrument-tested",
+  "verification": "Manual pages and all nine Yamaha basic GIF diagrams visually inspected, independent authored reference rows corroborated",
+  "source_images_sha256": {
+    "D4": "c7da6c6a32023b151eb0193870f7e79c41187eb8ee41c9aa6307b5bbb09a6a04",
+    "E4": "86fa6eaa886dcb2c6a4e0282b6fc4c2c28abcce2abeb13523760d879de3ee494",
+    "F4": "468efc982463c794d09cd3d934db80669bf461f8d0d7cbf4bd7213db045a02d0",
+    "C5": "dc2c8f00ef37659dd1c75a789a1ce25537993bcfc4c88cd7df9d2cc1518406cd",
+    "D5": "9d5a8be24bf73b6019bf71226f66af985ddc4f8a71030e3d353750a4f1e7a2f0",
+    "E5": "e147a32119490885c9919fb9a214f0584cb0d4ca512d8d1f62374dddcf59ff2b",
+    "F5": "e324d8699b3b6318434b4371c8ebfa515c9ee1391e557f694e2c2826ad55355a",
+    "G5": "623bb1e27703bc58823fd9e4adfddf5c1cf4f813901a67005e55188662c2e621",
+    "A5": "7c00300ff0de9ca36cb07e4e57ff1d7472fb001a56b9fb37c18395346175c7a8"
+  }
+}

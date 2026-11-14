@@ -26,6 +26,27 @@ def run_coach_submit(
     from music_coach_ami import warmup_plan as _warmup
     from music_coach_ami.exercise_revision import stale_song_response
 
+    from music_coach_ami.sax_specialized_requests import handle as specialized_request
+    specialized = specialized_request(question, session_state, ami_ctx)
+    if specialized is not None:
+        req = route_question(question, session_state, ami_ctx=ami_ctx)
+        _conv.record_turn(session_state, question, specialized.direct_answer)
+        return req, specialized
+
+    from music_coach_ami.trumpet_fingering_instructor import handle as trumpet_fingering_request
+    trumpet_fingering = trumpet_fingering_request(question, session_state, ami_ctx)
+    if trumpet_fingering is not None:
+        req = route_question(question, session_state, ami_ctx=ami_ctx)
+        _conv.record_turn(session_state, question, trumpet_fingering.direct_answer)
+        return req, trumpet_fingering
+
+    from music_coach_ami.fingering_instructor import handle as fingering_request
+    fingering = fingering_request(question, session_state, ami_ctx)
+    if fingering is not None:
+        req = route_question(question, session_state, ami_ctx=ami_ctx)
+        _conv.record_turn(session_state, question, fingering.direct_answer)
+        return req, fingering
+
     from music_coach_ami import flexible_single
     single = flexible_single.handle(question, session_state, ami_ctx)
     if single is not None:

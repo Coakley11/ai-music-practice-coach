@@ -24,6 +24,14 @@ parser.add_argument("--trumpet-only",action="store_true")
 parser.add_argument("--bass-only",action="store_true")
 parser.add_argument("--bass-context-only",action="store_true")
 parser.add_argument("--bass-tab-only",action="store_true")
+parser.add_argument("--sax-only",action="store_true")
+parser.add_argument("--sax-conversation-only",action="store_true")
+parser.add_argument("--jazz-only",action="store_true")
+parser.add_argument("--score-layout-only",action="store_true")
+parser.add_argument("--capability-only",action="store_true")
+parser.add_argument("--fingering-only",action="store_true")
+parser.add_argument("--fingering-b-only",action="store_true")
+parser.add_argument("--trumpet-fingering-only",action="store_true")
 parser.add_argument("--mobile",action="store_true")
 args=parser.parse_args()
 OUT=args.out.resolve();OUT.mkdir(parents=True,exist_ok=True)
@@ -114,34 +122,35 @@ def request(page,q,cue,tag):
     address(page)
     assert record["response"], "Request took the legacy fallback"
     # Rendering is inspected in the actual card iframe, not just parsed from stored ABC.
+    expected=[s for s in (record["response"].get("notation_abc_sections") or [record["response"].get("notation_abc", "")]) if s and s.strip()]
     staff=[]
-    panel.locator("iframe").first.wait_for(state="attached",timeout=45000)
-    for iframe in panel.locator("iframe").all():
-        frame=iframe.element_handle().content_frame()
-        frame.locator("svg").first.wait_for(timeout=45000)
-        frame.wait_for_function("window.__amiActualRenders && window.__amiActualRenders.length",timeout=45000)
-        staff.extend(frame.evaluate("""() => {
-            const out=[];
-            for (const r of window.__amiActualRenders) {
-                const notes=[];
-                for (const tune of r.tunes) for (const line of (tune.lines||[]))
-                for (const st of (line.staff||[])) for (const voice of (st.voices||[]))
-                for (const e of voice) {
-                    if (e.el_type!=='note' || !e.pitches || !e.pitches.length) continue;
-                    notes.push({startSlur:e.startSlur,endSlur:e.endSlur,pitches:e.pitches.map(p=>({pitch:p.pitch,verticalPos:p.verticalPos,accidental:p.accidental,startSlur:p.startSlur,endSlur:p.endSlur})),
-                                headPitches:((e.abselem&&e.abselem.heads)||[]).map(h=>h.pitch)});
+    if expected:
+        panel.locator("iframe").first.wait_for(state="attached",timeout=45000)
+        for iframe in panel.locator("iframe").all():
+            frame=iframe.element_handle().content_frame()
+            frame.locator("svg").first.wait_for(timeout=45000)
+            frame.wait_for_function("window.__amiActualRenders && window.__amiActualRenders.length",timeout=45000)
+            staff.extend(frame.evaluate("""() => {
+                const out=[];
+                for (const r of window.__amiActualRenders) {
+                    const notes=[];
+                    for (const tune of r.tunes) for (const line of (tune.lines||[]))
+                    for (const st of (line.staff||[])) for (const voice of (st.voices||[]))
+                    for (const e of voice) {
+                        if (e.el_type!=='note' || !e.pitches || !e.pitches.length) continue;
+                        notes.push({duration:e.duration,decoration:e.decoration,startSlur:e.startSlur,endSlur:e.endSlur,pitches:e.pitches.map(p=>({pitch:p.pitch,verticalPos:p.verticalPos,accidental:p.accidental,startSlur:p.startSlur,endSlur:p.endSlur})),
+                                    headPitches:((e.abselem&&e.abselem.heads)||[]).map(h=>h.pitch)});
+                    }
+                    out.push({abc:r.abc,notes});
                 }
-                out.push({abc:r.abc,notes});
-            }
-            return out;
-        }"""))
+                return out;
+            }"""))
     (OUT/(tag+"-render-observed.json")).write_text(json.dumps(staff,indent=2),encoding="utf-8")
-    expected=record["response"].get("notation_abc_sections") or [record["response"]["notation_abc"]]
     assert len(staff)==len(expected), "Rendered score count differs from the response"
     for actual,abc in zip(staff,expected):
         assert actual["abc"]==abc
         assert len(actual["notes"])==len(read_abc(re.sub(r'"[^"\n]*"', "", abc))), "Drawn note count differs from independent ABC reading"
-    if record.get("plan"):
+    if record.get("plan") and not record["response"].get("diagnostics",{}).get("fingering_lookup"):
         view=record.get("history",{}).get("view",{})
         visible_rows=record["plan"]["items"]
         if view.get("mode")=="item":visible_rows=[visible_rows[view["index"]]]
@@ -197,7 +206,31 @@ try:
             page.get_by_test_id("stMainBlockContainer").get_by_role("textbox",name="Question",exact=True).wait_for(timeout=90000)
             idle(page)
             (OUT/"practice-start.txt").write_text(page.locator("body").inner_text(),encoding="utf-8")
-            if args.bass_tab_only:
+            if args.trumpet_fingering_only:
+                from ami_trumpet_fingering_browser_cases import run
+                run(page,request,select,OUT)
+            elif args.fingering_b_only:
+                from ami_fingering_stage_b_browser_cases import run
+                run(page,request,select,OUT,probe=args.probe)
+            elif args.fingering_only:
+                from ami_fingering_browser_cases import run
+                run(page,request,select,OUT)
+            elif args.capability_only:
+                from ami_sax_capability_browser_cases import run
+                run(page,request,select,OUT)
+            elif args.score_layout_only:
+                from ami_score_layout_browser_cases import run
+                run(page,request,select,OUT)
+            elif args.jazz_only:
+                from ami_advanced_jazz_browser_cases import run
+                run(page,request,select,OUT)
+            elif args.sax_conversation_only:
+                from ami_sax_conversation_browser_cases import run
+                run(page,request,select,OUT)
+            elif args.sax_only:
+                from ami_sax_browser_cases import run
+                run(page,request,select,OUT,probe=args.probe)
+            elif args.bass_tab_only:
                 from ami_bass_tab_browser_cases import run
                 run(page,request,select,OUT,mobile=args.mobile,probe=args.probe)
             elif args.bass_only or args.bass_context_only:

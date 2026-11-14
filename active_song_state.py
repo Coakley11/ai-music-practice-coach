@@ -682,12 +682,17 @@ def gather_active_song_context(session: dict[str, Any]) -> dict[str, Any]:
         except ImportError:
             pass
         else:
-            doc = get_active_document(session)
+            # The ACTIVE SONG is the composition named by the live pick key; the document
+            # open in the Studio ("Now Editing") may be a different one. Persisting the
+            # edited document here re-pointed the Active Song at reload (browser QA).
+            doc = None
+            live_pick = str(session.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
+            if live_pick.startswith("composition::"):
+                doc = find_composition_document(session, live_pick)
             if not isinstance(doc, dict):
-                doc = find_composition_document(
-                    session,
-                    str(session.get(ACTIVE_CATALOG_PICK_KEY) or ""),
-                )
+                doc = get_active_document(session)
+            if not isinstance(doc, dict):
+                doc = find_composition_document(session, live_pick)
             if isinstance(doc, dict):
                 selected = composition_selected_song_record(doc)
                 home_key = composition_home_key(doc)

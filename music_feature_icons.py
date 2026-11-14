@@ -166,6 +166,7 @@ ACTION_ICONS: dict[str, str] = {
     # ("✔️ Accept changes", "Continue →"); the map follows that rather than introducing a
     # second check mark or a second arrow.
     "accept": "✔️",           # heavy check mark
+    "cancel": "❌",           # cross mark, as the chord editor's "❌ Cancel" already reads
     "reset": "↩️",            # undo arrow
     "continue": "→",        # trailing arrow, as the Continue buttons already use
     "feel": "✨",            # same glyph as the style / groove field badge

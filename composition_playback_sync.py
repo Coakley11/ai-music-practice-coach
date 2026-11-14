@@ -262,8 +262,17 @@ def render_synced_score_playback_html(
     caption: str = "",
     dom_id: str = "cplay",
     height: int = 220,
+    chord_roman_labels: list[str] | None = None,
+    transport: str = "native",
 ) -> str:
-    """Self-contained HTML: audio + optional staff + chord strip + synced highlight."""
+    """Self-contained HTML: audio + optional staff + chord strip + synced highlight.
+
+    The audio element has no native controls: a compact Play / Pause-Resume / Stop
+    transport drives it, and the same ``tick`` drives every highlight, so the visible
+    chord/note always follows the audible position (single authoritative timeline).
+    In chords-only mode the chord chips ARE the suggestion's chord row (symbol plus
+    optional Roman numeral underneath) - there is no second chord row.
+    """
     if not wav_bytes:
         return ""
     mode = str(bundle.get("mode") or "none")
@@ -296,7 +305,8 @@ def render_synced_score_playback_html(
     abc_has_lyrics = bool(abc_text) and ("\nw:" in abc_text)
 
     chord_strip = ""
-    if labels and mode in {"combined", "melody", "chords"} and not abc_has_chords:
+    # chords-only mode renders the highlightable chips below instead (one chord row).
+    if labels and mode in {"combined", "melody"} and not abc_has_chords:
         cells = "".join(
             f'<div class="cplay-chord" data-ci="{i}">{html.escape(lab)}</div>'
             for i, lab in enumerate(labels)
@@ -307,12 +317,29 @@ def render_synced_score_playback_html(
     if abc_text and mode in {"melody", "combined"}:
         staff_block = f'<div id="{safe_id}-paper" class="cplay-paper"></div>'
     elif mode == "chords":
-        chips = "".join(
-            f'<button type="button" class="cplay-chord-chip" data-i="{i}" disabled>'
-            f"{html.escape(str(s.get('chord') or ''))}</button>"
-            for i, s in enumerate(chord_spans)
-        )
-        staff_block = f'<div class="cplay-chord-chips" id="{safe_id}-chips">{chips}</div>'
+        romans = list(chord_roman_labels or [])
+        chip_cells = []
+        for i, sp in enumerate(chord_spans):
+            rn = str(romans[i % len(romans)] or "") if romans else ""
+            rn_html = f'<span class="cplay-chip-rn">{html.escape(rn)}</span>' if rn else ""
+            sec_key = str(sp.get("section_key") or "")
+            if sp.get("section_start") and sp.get("section_label"):
+                # Optional section header (Custom song preview); highlighted with its chips.
+                chip_cells.append(
+                    f'<div class="cplay-sec" data-sec="{html.escape(sec_key)}">'
+                    f'{html.escape(str(sp.get("section_label")))}</div>'
+                )
+            chip_cells.append(
+                f'<div class="cplay-chord-chip" data-i="{i}" data-sec="{html.escape(sec_key)}"'
+                f' data-now="{html.escape(str(sp.get("now_label") or ""))}">'
+                f'<span class="cplay-chip-sym">{html.escape(str(sp.get("label") or sp.get("chord") or ""))}</span>'
+                f"{rn_html}</div>"
+            )
+        chips = "".join(chip_cells)
+        chips_cls = "cplay-chord-chips" + (" is-grid" if bundle.get("chips_per_row") else "")
+        scroll_px = int(bundle.get("chips_scroll_px") or 0)
+        chips_style = f' style="max-height:{scroll_px}px;overflow-y:auto"' if scroll_px else ""
+        staff_block = f'<div class="{chips_cls}" id="{safe_id}-chips"{chips_style}>{chips}</div>'
 
     lyric_strip = ""
     lyric_spans_json = "[]"
@@ -329,6 +356,21 @@ def render_synced_score_playback_html(
         "Follow the highlighted note"
         if primary == "melody"
         else ("Follow the highlighted chord" if primary == "chords" else "Playback")
+    )
+
+    now_line = (
+        f'<p class="cplay-now" id="{safe_id}-now" aria-live="polite"></p>'
+        if any(sp.get("now_label") for sp in chord_spans) and mode == "chords"
+        else ""
+    )
+    custom_transport = str(transport or "native") == "custom"
+    transport_html = (
+        f'<div class="cplay-transport">'
+        f'<button type="button" id="{safe_id}-play" class="cplay-btn cplay-btn-play">&#9654; Play</button>'
+        f'<button type="button" id="{safe_id}-stop" class="cplay-btn">&#9632; Stop</button>'
+        f"</div>"
+        if custom_transport
+        else ""
     )
 
     abc_script = ""
@@ -365,7 +407,7 @@ def render_synced_score_playback_html(
   .cplay-chord.is-soft {{
     background: #e0f2fe; border-color: #7dd3fc; color: #0c4a6e;
   }}
-  .cplay-paper {{ min-height: {int(height * 0.55)}px; }}
+  .cplay-paper:empty {{ min-height: {int(height * 0.55)}px; }}
   .cplay-paper svg .abcjs-note.cplay-active,
   .cplay-paper svg .abcjs-note.cplay-active * {{
     fill: #0284c7 !important; stroke: #0284c7 !important;
@@ -374,16 +416,41 @@ def render_synced_score_playback_html(
   .cplay-paper svg .cplay-active-lyric tspan,
   .cplay-paper svg .cplay-active-chord,
   .cplay-paper svg .cplay-active-chord tspan {{ fill: #0284c7 !important; font-weight: 800; }}
-  .cplay-chord-chips {{ display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }}
+  .cplay-chord-chips {{ display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 6px; }}
   .cplay-chord-chip {{
+    display: flex; flex-direction: column; align-items: center; min-width: 3.3rem;
     border: 1px solid #cbd5e1; background: #f8fafc; color: #0f172a;
-    border-radius: 8px; padding: 6px 10px; font-weight: 700; font-size: 0.95rem;
+    border-radius: 8px; padding: 4px 8px; line-height: 1.15;
+    transition: background 0.1s ease, color 0.1s ease;
   }}
+  .cplay-chip-sym {{
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-weight: 700; font-size: 0.95rem;
+  }}
+  .cplay-chip-rn {{ font-size: 0.7rem; font-weight: 600; color: #6366f1; }}
   .cplay-chord-chip.is-active {{
     background: #0ea5e9; color: #fff; border-color: #0284c7;
     box-shadow: 0 0 0 2px rgba(14,165,233,0.35);
   }}
-  .cplay-audio {{ width: 100%; margin-top: 8px; }}
+  .cplay-chord-chip.is-active .cplay-chip-rn {{ color: #e0f2fe; }}
+  .cplay-chord-chips.is-grid {{ display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }}
+  .cplay-chord-chips.is-grid .cplay-chord-chip {{ min-width: 0; }}
+  @media (min-width: 640px) {{ .cplay-chord-chips.is-grid {{ grid-template-columns: repeat(8, minmax(0, 1fr)); }} }}
+  .cplay-sec {{
+    grid-column: 1 / -1; flex-basis: 100%; font-size: 0.78rem; font-weight: 700;
+    color: #475569; padding: 3px 4px 0; border-bottom: 1px solid #e2e8f0;
+  }}
+  .cplay-sec.is-active {{ color: #0369a1; border-bottom-color: #0ea5e9; }}
+  .cplay-now {{ margin: 0 0 6px; font-size: 0.85rem; font-weight: 700; color: #0369a1; min-height: 1.2em; }}
+  .cplay-audio {{ display: none; }}
+  .cplay-transport {{ display: flex; align-items: center; gap: 6px; margin-top: 4px; }}
+  .cplay-btn {{
+    border: 1px solid #cbd5e1; background: #fff; color: #0f172a; border-radius: 8px;
+    padding: 4px 10px; font-size: 0.85rem; font-weight: 600; min-height: 32px; cursor: pointer;
+  }}
+  .cplay-btn.is-primary {{ background: #0ea5e9; border-color: #0284c7; color: #fff; }}
+  .cplay-bar {{ flex: 1; height: 5px; background: #e2e8f0; border-radius: 3px; overflow: hidden; }}
+  .cplay-bar-fill {{ height: 100%; width: 0; background: #0ea5e9; }}
   .cplay-lyrics {{
     display: flex; flex-wrap: wrap; gap: 2px 4px; margin: 8px 0 4px;
     line-height: 1.6; font-size: 0.95rem; color: #334155;
@@ -405,10 +472,16 @@ def render_synced_score_playback_html(
 <body>
 <div class="cplay-wrap" data-cplay-root="{html.escape(safe_id)}" data-mode="{html.escape(mode)}">
   <p class="cplay-caption">{html.escape(cap)}</p>
+  {now_line}
   {chord_strip}
   {staff_block}
   {lyric_strip}
-  <audio id="{safe_id}-audio" class="cplay-audio" controls preload="auto" autoplay>
+  <div class="cplay-transport">
+    <button type="button" class="cplay-btn is-primary" id="{safe_id}-play" aria-label="Play or pause">&#9654; Play</button>
+    <button type="button" class="cplay-btn" id="{safe_id}-stop" aria-label="Stop and reset">&#9632; Stop</button>
+    <div class="cplay-bar"><div class="cplay-bar-fill" id="{safe_id}-fill"></div></div>
+  </div>
+  <audio id="{safe_id}-audio" class="cplay-audio" preload="auto" autoplay>
     <source src="data:audio/wav;base64,{b64}" type="audio/wav"/>
   </audio>
 </div>
@@ -422,6 +495,29 @@ def render_synced_score_playback_html(
   const lyricSpans = {lyric_spans_json};
   const audio = document.getElementById("{safe_id}-audio");
   {abc_script}
+
+  // Fit the frame to the drawn score (a fixed height clipped the last system on phones).
+  function fitFrame() {{
+    try {{
+      const fe = window.frameElement;
+      if (!fe) return;
+      const pp = document.getElementById("{safe_id}-paper"), sv = pp && pp.querySelector("svg");
+      if (pp && sv) {{
+        pp.style.paddingBottom = "0"; pp.style.minHeight = "0";
+        pp.style.height = Math.ceil(sv.getBoundingClientRect().height) + "px";
+      }}
+      const h = Math.ceil(document.body.getBoundingClientRect().height) + 8;
+      if (h > 60) {{
+        fe.style.height = h + "px"; fe.setAttribute("height", String(h));
+        const box = fe.parentElement;
+        if (box && box.getAttribute("data-testid") === "stElementContainer") box.style.height = h + "px";
+      }}
+    }} catch (e) {{}}
+  }}
+  fitFrame();
+  window.addEventListener("load", fitFrame);
+  window.addEventListener("resize", fitFrame);
+  setTimeout(fitFrame, 250);
   let last = -1;
   let lastChord = -1;
   let lastLyric = -1;
@@ -495,7 +591,14 @@ def render_synced_score_playback_html(
     }}
   }}
   function setChordChip(i) {{
-    chordChips().forEach((b, idx) => b.classList.toggle("is-active", idx === i));
+    const chips = chordChips();
+    chips.forEach((b, idx) => b.classList.toggle("is-active", idx === i));
+    const cur = i >= 0 ? chips[i] : null;
+    const sec = cur ? cur.getAttribute("data-sec") : null;
+    root.querySelectorAll(".cplay-sec").forEach(h => h.classList.toggle("is-active", sec !== null && h.getAttribute("data-sec") === sec));
+    const now = document.getElementById("{safe_id}-now");
+    if (now) now.textContent = cur ? (cur.getAttribute("data-now") || "") : "";
+    if (cur && cur.scrollIntoView) {{ try {{ cur.scrollIntoView({{block: "nearest"}}); }} catch (e) {{}} }}
   }}
   function softChordAt(t) {{
     // Soft context only — never a competing cursor. Index = sounding chord span.
@@ -515,6 +618,8 @@ def render_synced_score_playback_html(
   function tick() {{
     if (!audio) return;
     const t = audio.currentTime || 0;
+    // Finished playback: nothing is sounding, so nothing may stay highlighted.
+    if (audio.ended) {{ resetAll(); return; }}
     if (audio.paused && t <= 0.02) {{
       last = -1;
       lastLyric = -1;
@@ -557,7 +662,48 @@ def render_synced_score_playback_html(
     if (mode === "combined") softChordAt(t);
     setLyricAt(t);
   }}
+  function resetAll() {{
+    last = -1; lastLyric = -1; lastChord = -1;
+    clearMelody(); clearLyrics(); setChordChip(-1);
+    chordContext().forEach(el => el.classList.remove("is-soft"));
+  }}
+  const playBtn = document.getElementById("{safe_id}-play");
+  const stopBtn = document.getElementById("{safe_id}-stop");
+  const fillEl = document.getElementById("{safe_id}-fill");
+  function syncTransport() {{
+    if (!audio) return;
+    const t = audio.currentTime || 0;
+    if (playBtn) {{
+      playBtn.innerHTML = !audio.paused ? "&#10074;&#10074; Pause"
+        : (t > 0.05 && !audio.ended ? "&#9654; Resume" : "&#9654; Play");
+    }}
+    if (fillEl) {{
+      const d = audio.duration || 0;
+      fillEl.style.width = d > 0 ? Math.min(100, (t / d) * 100) + "%" : "0%";
+    }}
+  }}
+  if (playBtn && audio) {{
+    playBtn.addEventListener("click", function() {{
+      if (audio.paused) {{
+        if (audio.ended) audio.currentTime = 0;
+        const pr = audio.play();
+        if (pr && pr.catch) pr.catch(function() {{}});
+      }} else {{
+        audio.pause();
+      }}
+    }});
+  }}
+  if (stopBtn && audio) {{
+    stopBtn.addEventListener("click", function() {{
+      audio.pause();
+      audio.currentTime = 0; resetAll();
+      syncTransport();
+    }});
+  }}
   if (audio) {{
+    ["play", "pause", "ended", "timeupdate", "seeked", "loadedmetadata"].forEach(function(ev) {{
+      audio.addEventListener(ev, syncTransport);
+    }});
     audio.addEventListener("timeupdate", tick);
     audio.addEventListener("play", function() {{
       tick();
@@ -565,7 +711,7 @@ def render_synced_score_playback_html(
     }});
     audio.addEventListener("seeked", tick);
     audio.addEventListener("pause", tick);
-    audio.addEventListener("ended", () => {{ clearMelody(); clearLyrics(); setChordChip(-1); }});
+    audio.addEventListener("ended", () => {{ resetAll(); }});
     setInterval(function() {{
       tick();
       try {{
@@ -595,6 +741,8 @@ def mount_synced_score_playback(
     caption: str = "",
     dom_id: str = "cplay",
     height: int = 280,
+    chord_roman_labels: list[str] | None = None,
+    transport: str = "native",
 ) -> None:
     """Streamlit components.html mount for synced score playback."""
     html_doc = render_synced_score_playback_html(
@@ -605,6 +753,8 @@ def mount_synced_score_playback(
         caption=caption,
         dom_id=dom_id,
         height=height,
+        chord_roman_labels=chord_roman_labels,
+        transport=transport,
     )
     if not html_doc:
         return
@@ -618,6 +768,10 @@ def mount_synced_score_playback(
             per_system = 165 if "\nw:" in str(abc_text) else 130
             # caption + score + audio control
             frame_height = 40 + systems * per_system + 80
+        elif str(bundle.get("mode") or "") == "chords":
+            # Compact chord-chip row + transport (4 chips per phone row), no score.
+            n_chords = len([s for s in (bundle.get("chord_spans") or []) if int(s.get("loop") or 0) == 0]) or 1
+            frame_height = 92 + 52 * (-(-n_chords // 4))
         components.html(html_doc, height=min(2600, frame_height), scrolling=False)
     except Exception:
         st_module.audio(wav_bytes, format="audio/wav")

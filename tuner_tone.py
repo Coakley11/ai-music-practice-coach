@@ -6,7 +6,7 @@ import io
 import math
 import tempfile
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
@@ -14,6 +14,9 @@ try:
     import librosa
 except ImportError:
     librosa = None  # type: ignore[assignment]
+
+if TYPE_CHECKING:  # pragma: no cover - typing only
+    from tone_sustain_analysis import ToneFrames
 
 NOTE_NAMES = ("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")
 
@@ -32,19 +35,59 @@ class PitchReading:
 
 @dataclass
 class TonePracticeResult:
-    """Sustain / tone consistency analysis from a recorded clip."""
+    """Sustain / tone consistency analysis from a recorded clip.
+
+    The first nine fields are the original contract and still mean what they meant, with one
+    deliberate change: ``pitch_stability_score`` and ``volume_stability_score`` are ``None`` when
+    the recording could not be measured, because reporting 0% for "unknown" is what made a steady
+    note with silence around it look like a failure. ``mean_cents`` is now the tuning offset with
+    whole octaves taken out, so a flute E5 against an E4 reference reads as the 31 cents it is
+    rather than the 1169 cents it was.
+
+    Everything after ``status`` is new and separated on purpose: steadiness, tuning, octave,
+    loudness shape and detection confidence are five different questions.
+    """
 
     duration_sec: float
     median_note: str
     target_note: str | None
     mean_cents: float
     max_cents_drift: float
-    pitch_stability_score: float  # 0–100
-    volume_stability_score: float
+    pitch_stability_score: float | None  # 0–100, or None when it could not be measured
+    volume_stability_score: float | None
     sustain_seconds: float
     feedback: list[str] = field(default_factory=list)
     pitch_trace_hz: list[float] = field(default_factory=list)
     time_trace_sec: list[float] = field(default_factory=list)
+
+    status: str = "measured"  # "measured" | "insufficient"
+    reason: str = ""
+    scoring_version: str = ""
+    detected_note: str = ""
+    detected_hz: float = 0.0
+    tuning_offset_cents: float | None = None
+    raw_offset_cents: float | None = None
+    octave_offset_semitones: int = 0
+    target_is_pitch_class_only: bool = False
+    pitch_spread_cents: float = 0.0
+    pitch_drift_cents: float = 0.0
+    pitch_centre_drift_cents: float = 0.0
+    largest_step_cents: float = 0.0
+    note_change_detected: bool = False
+    vibrato_rate_hz: float = 0.0
+    vibrato_depth_cents: float = 0.0
+    volume_fluctuation_db: float = 0.0
+    volume_trend_db: float = 0.0
+    confidence: float = 0.0
+    snr_db: float = 0.0
+    peak_dbfs: float = 0.0
+    voiced_seconds: float = 0.0
+    frames_used: int = 0
+    measurement: dict[str, Any] = field(default_factory=dict)
+
+    @property
+    def measured(self) -> bool:
+        return self.status == "measured"
 
 
 @dataclass
@@ -228,6 +271,63 @@ def detect_pitch_from_audio(
     )
 
 
+def tone_frames_from_audio(
+    audio_bytes: bytes,
+    *,
+    sr: int = 22050,
+    fmin_note: str = "E2",
+    fmax_note: str = "C7",
+) -> "ToneFrames | None":
+    """Per-frame pitch and loudness for a recorded clip, on one shared frame grid.
+
+    The pitch frames and the loudness frames must describe the *same* instants, or the sustained
+    portion chosen from one cannot be applied to the other. Both therefore use the same
+    ``frame_length`` and ``hop_length`` and are truncated to the shorter of the two.
+
+    The peak level is taken before any normalisation, so "too quiet to measure" stays answerable:
+    peak-normalising first is what let a tone 40 dB down score a confident 100%.
+    """
+    from tone_sustain_analysis import frames_from_arrays
+
+    y, out_sr = load_audio_mono(audio_bytes, sr=sr)
+    if librosa is None or y.size == 0:
+        return None
+    peak_abs = float(np.max(np.abs(y)))
+    peak_dbfs = 20.0 * math.log10(peak_abs) if peak_abs > 0 else -120.0
+    duration = len(y) / out_sr
+    frame_length = 2048
+    hop_length = 512
+    # Pitch tracking is scale invariant, and normalising keeps pyin's thresholds in their usual
+    # range; the absolute level is already recorded above.
+    y_norm = y / (peak_abs + 1e-9)
+    f0, voiced_flag, voiced_prob = librosa.pyin(
+        y_norm,
+        fmin=librosa.note_to_hz(fmin_note),
+        fmax=librosa.note_to_hz(fmax_note),
+        sr=out_sr,
+        frame_length=frame_length,
+        hop_length=hop_length,
+    )
+    rms = librosa.feature.rms(y=y_norm, frame_length=frame_length, hop_length=hop_length)[0]
+    n = int(min(len(f0), len(rms)))
+    if n < 2:
+        return None
+    times = librosa.times_like(f0, sr=out_sr, hop_length=hop_length)[:n]
+    flags = voiced_flag if voiced_flag is not None else ~np.isnan(f0)
+    probs = voiced_prob if voiced_prob is not None else np.where(np.isnan(f0), 0.0, 1.0)
+    return frames_from_arrays(
+        times_sec=times,
+        hz=np.nan_to_num(f0[:n], nan=0.0),
+        voiced=np.asarray(flags[:n], dtype=bool),
+        voiced_prob=np.nan_to_num(np.asarray(probs[:n], dtype=float), nan=0.0),
+        rms=np.asarray(rms[:n], dtype=float),
+        hop_sec=float(hop_length) / float(out_sr),
+        sample_rate=int(out_sr),
+        duration_sec=float(duration),
+        peak_dbfs=float(peak_dbfs),
+    )
+
+
 def analyze_tone_practice(
     audio_bytes: bytes,
     *,
@@ -235,7 +335,76 @@ def analyze_tone_practice(
     min_sustain_sec: float = 3.0,
     sr: int = 22050,
 ) -> TonePracticeResult | None:
-    """Analyze sustain, pitch drift, and volume consistency."""
+    """Measure a long tone: steadiness, loudness evenness, sustain, tuning and octave.
+
+    Returns ``None`` only when there is no audio to look at. A recording that *is* there but cannot
+    be measured comes back with ``status="insufficient"``, no scores, and a reason to show the
+    musician - never 0%.
+    """
+    from tone_sustain_analysis import explain, measure_tone, measurement_as_dict
+
+    frames = tone_frames_from_audio(audio_bytes, sr=sr)
+    if frames is None:
+        return None
+    m = measure_tone(frames, target_note=target_note)
+    feedback = explain(m)
+    if m.measured and m.sustain_seconds >= min_sustain_sec and (
+        (m.pitch_stability_score or 0) >= 85 and (m.volume_consistency_score or 0) >= 80
+    ):
+        feedback.append(
+            f"Strong **{min_sustain_sec:.0f}s+ hold** — ready to apply this to the song."
+        )
+    return TonePracticeResult(
+        duration_sec=m.duration_sec,
+        median_note=m.detected_note,
+        target_note=m.target_note,
+        mean_cents=float(m.tuning_offset_cents if m.tuning_offset_cents is not None else 0.0),
+        max_cents_drift=float(m.max_deviation_cents),
+        pitch_stability_score=m.pitch_stability_score,
+        volume_stability_score=m.volume_consistency_score,
+        sustain_seconds=m.sustain_seconds,
+        feedback=feedback,
+        pitch_trace_hz=list(m.pitch_trace_hz),
+        time_trace_sec=list(m.time_trace_sec),
+        status=m.status,
+        reason=m.reason,
+        scoring_version=m.scoring_version,
+        detected_note=m.detected_note,
+        detected_hz=m.detected_hz,
+        tuning_offset_cents=m.tuning_offset_cents,
+        raw_offset_cents=m.raw_offset_cents,
+        octave_offset_semitones=m.octave_offset_semitones,
+        target_is_pitch_class_only=m.target_is_pitch_class_only,
+        pitch_spread_cents=m.pitch_spread_cents,
+        pitch_drift_cents=m.pitch_drift_cents,
+        pitch_centre_drift_cents=m.pitch_centre_drift_cents,
+        largest_step_cents=m.largest_step_cents,
+        note_change_detected=m.note_change_detected,
+        vibrato_rate_hz=m.vibrato_rate_hz,
+        vibrato_depth_cents=m.vibrato_depth_cents,
+        volume_fluctuation_db=m.volume_fluctuation_db,
+        volume_trend_db=m.volume_trend_db,
+        confidence=m.confidence,
+        snr_db=m.snr_db,
+        peak_dbfs=m.peak_dbfs,
+        voiced_seconds=m.voiced_seconds,
+        frames_used=m.frames_used,
+        measurement=measurement_as_dict(m),
+    )
+
+
+def _legacy_analyze_tone_practice(
+    audio_bytes: bytes,
+    *,
+    target_note: str | None = None,
+    min_sustain_sec: float = 3.0,
+    sr: int = 22050,
+) -> TonePracticeResult | None:
+    """The pre-Issue-79 analysis, kept only so its numbers can be reproduced in evidence.
+
+    Not called by the app. It is here because a report that says "this was 4% and is now 95%" has
+    to be able to produce the 4% on demand rather than quoting it from memory.
+    """
     y, out_sr = load_audio_mono(audio_bytes, sr=sr)
     dur = len(y) / out_sr
     if dur < 0.5 or librosa is None:

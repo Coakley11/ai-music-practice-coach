@@ -8,6 +8,7 @@ aligned by measure, optional lyrics beneath — derived from canonical events
 from __future__ import annotations
 
 import html
+import re
 from typing import Any
 
 from music_theory import (
@@ -530,10 +531,37 @@ def build_section_score_model(
     }
 
 
+_ABC_TITLE_RE = re.compile(r"^T:(.*)$", re.M)
+_ABC_TITLE_LINE_RE = re.compile(r"^T:[^\r\n]*(?:\r?\n)?", re.M)
+
+
+def split_abc_title(abc_text: str) -> tuple[str, str]:
+    """(title, abc without its T: lines).
+
+    abcjs draws ``T:`` as one unwrapped line of SVG text centred on the staff, so a long
+    take name such as "Rhythmic take - Off-beat accent" is cut at the staff edge on a phone.
+    The title is shown as wrapping HTML above the score instead; the staff carries none.
+    """
+    text = str(abc_text or "")
+    titles = [t.strip() for t in _ABC_TITLE_RE.findall(text) if t.strip()]
+    # Drop the whole line including its newline: a leftover blank line ends the tune header
+    # for abcjs ("X:1" blank "M:4/4"...) and the staff then renders with no notes at all.
+    return (titles[0] if titles else ""), _ABC_TITLE_LINE_RE.sub("", text)
+
+
 def render_abc_html(abc_text: str, *, height: int = 280, add_classes: bool = True) -> str:
-    """HTML document for Streamlit components.html abcjs render."""
+    """HTML document for Streamlit components.html abcjs render.
+
+    Narrow viewports: the staff is sized from the real viewport (never wider than it), the
+    title wraps in HTML, and anything still wider than the frame scrolls inside ``#paper``
+    (overflow-x: auto) instead of being cropped.
+    """
+    title, abc_body = split_abc_title(abc_text)
+    title_html = (
+        f'<div id="score-title">{html.escape(title)}</div>' if title else ""
+    )
     escaped = (
-        str(abc_text or "")
+        abc_body
         .replace("\\", "\\\\")
         .replace("`", "\\`")
         .replace("${", "\\${")
@@ -542,9 +570,13 @@ def render_abc_html(abc_text: str, *, height: int = 280, add_classes: bool = Tru
     return f"""
     <html>
     <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
       html, body {{ margin: 0; padding: 0; background: #fff; overflow-x: auto; overflow-y: auto; }}
       body {{ padding: 6px 2px 14px 2px; max-width: 100%; box-sizing: border-box; }}
+      #score-title {{ font: 700 15px/1.3 system-ui, sans-serif; color: #0f172a; padding: 0 6px 4px;
+        min-width: 0; max-width: 100%; box-sizing: border-box; white-space: normal;
+        overflow-wrap: anywhere; word-break: break-word; }}
       #paper {{ min-height: 120px; max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }}
       #paper svg {{ max-width: 100%; height: auto; }}
       #paper svg .abcjs-note.cplay-active,
@@ -555,18 +587,52 @@ def render_abc_html(abc_text: str, *, height: int = 280, add_classes: bool = Tru
     <script src="https://cdn.jsdelivr.net/npm/abcjs@6.4.4/dist/abcjs-basic-min.js"></script>
     </head>
     <body>
+    {title_html}
     <div id="paper"></div>
     <script>
     (function () {{
-      var w = Math.max(240, Math.min(520, (window.innerWidth || 360) - 16));
+      // staff + both side paddings + body gutter must fit the viewport (375/390 px phones).
+      var pad = 10;
+      var w = Math.max(280, Math.min(520, (window.innerWidth || 360) - 2 * pad - 12));
       ABCJS.renderAbc("paper", `{escaped}`, {{
         responsive: "resize",
         staffwidth: w,
+        paddingleft: pad,
+        paddingright: pad,
         paddingtop: 6,
         paddingbottom: 14,
         wrap: {{ minSpacing: 1.8, maxSpacing: 2.7, preferredMeasuresPerLine: 4 }},
         add_classes: {add_cls}
       }});
+      // Fit the frame to the drawn score: a fixed frame height hid every system after the
+      // first (measured: 414 px of score in a 220 px frame, bars 3-4 only reachable by
+      // scrolling inside the frame). Same-origin srcdoc frame, so frameElement is reachable.
+      function fit() {{
+        try {{
+          var fe = window.frameElement;
+          if (!fe) return;
+          // abcjs pads the paper to a responsive aspect ratio and absolutely positions the svg,
+          // leaving 120+ px of blank below the staff; size the paper to the drawn svg.
+          var pp = document.getElementById("paper"), sv = pp && pp.querySelector("svg");
+          if (pp && sv) {{
+            pp.style.paddingBottom = "0"; pp.style.minHeight = "0";
+            pp.style.height = Math.ceil(sv.getBoundingClientRect().height) + "px";
+          }}
+          var h = Math.ceil(document.body.getBoundingClientRect().height) + 6;
+          if (h > 60) {{
+            fe.style.height = h + "px"; fe.setAttribute("height", String(h));
+            // Streamlit pins the element container to the height it first measured.
+            var box = fe.parentElement;
+            if (box && box.getAttribute("data-testid") === "stElementContainer") {{
+              box.style.height = h + "px";
+            }}
+          }}
+        }} catch (e) {{}}
+      }}
+      fit();
+      window.addEventListener("load", fit);
+      window.addEventListener("resize", fit);
+      setTimeout(fit, 250);
     }})();
     </script>
     </body>

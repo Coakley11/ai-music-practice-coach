@@ -1,0 +1,43 @@
+scratch C:\Users\danie\AppData\Local\Temp\issue78-probe3-mr9pdgp7; fake capture device fed C:\Users\danie\AppData\Local\Temp\issue78-probe-c3krmz_2\transient3.wav
+picked Let It Be dropdown=True landed=True sidebar_song='SONG\n\nSONG\nLet It Be — The Beatles\n\n🎼 Songs\n\nLet It Be · Rock\n\n📜 Song Original Key: C\n\n🗝️ '
+on the Multitrack page
+  Prepare backing -> clicked
+  layers staged: ['guitar', 'sax / winds', 'extra layer']
+
+== LEG E: Count-in = None removes the transport's decode headroom ==
+  Count-in shows 'None'
+  Count-in now shows 'None'
+  mt-play -> clicked
+  iframe events: 1 context, 0 click, 5 decode, 5 source
+    decode 15329204B -> 173.8s took 576.7 ms
+    decode 529244B -> 6s took 15.7 ms
+    decode 1347884B -> 14.04s took 6.5 ms
+    decode 529244B -> 6s took 18.8 ms
+    decode 529244B -> 6s took 18.3 ms
+    start(when=0.0000) clock 0.6400 -> LATE by 0.6400s -> starts immediately   [173.8s loop=True]
+    start(when=0.0000) clock 0.6720 -> LATE by 0.6720s -> starts immediately   [6s loop=False]
+    start(when=0.0000) clock 0.7307 -> LATE by 0.7307s -> starts immediately   [14.04s loop=False]
+    start(when=0.0000) clock 0.7600 -> LATE by 0.7600s -> starts immediately   [6s loop=False]
+    start(when=0.0000) clock 0.8000 -> LATE by 0.8000s -> starts immediately   [6s loop=False]
+  >> layers actually begin 0.160s (160 ms) apart
+  >> worst layer is 0.800s behind its scheduled beat
+  Count-in restored to '1 bar'
+
+== LEG H: a negative Align in the transport preview ==
+  Align slider focus: thumb-not-found
+  Align timing for guitar now reads no-thumb
+
+== LEG F: Record, then Play, with no rerun between them ==
+  arm recorder: clicked:Record
+  transport iframe still alive after arming the mic: True
+  pressed Play with count-in
+  MediaRecorder.start wall 1794573170018.9
+  transport AudioContext built wall 1794573170540.9 at currentTime 0.0000 (sr=48000, baseLatency=0.01, outputLatency=0)
+  >> first count-in click is 522.0 ms after capture start
+  >> musical beat 1 is 2922.0 ms after capture start
+     This is the amount of audio the take carries before bar 1, measured on
+     the scheduling side only. It excludes device capture latency, the gap
+     between MediaRecorder.start and its first encoded sample, and output
+     latency - none of which JavaScript can observe. The app stores no
+     timestamp for it either way, so nothing downstream knows this number.
+  stop recorder: clicked:Stop recording

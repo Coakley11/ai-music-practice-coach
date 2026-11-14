@@ -1,0 +1,58 @@
+[
+  {
+    "id": "yamaha-guide",
+    "url": "https://www.yamaha.com/en/musical_instrument_guide/saxophone/play/play002.html",
+    "title": "Saxophone fingering and overblowing guide",
+    "checked_on": "2026-11-13",
+    "evidence": "Primary guide; no diagrams or fingering recipes imported.",
+    "status": "documentary; instrument-specific expert validation pending"
+  },
+  {
+    "id": "yamaha-yss",
+    "url": "https://usa.yamaha.com/products/musical_instruments/winds/saxophones/yss-875ex/specs.html",
+    "title": "YSS-875EX / EXHG specifications",
+    "checked_on": "2026-11-13",
+    "evidence": "EX lists high F# and front F; HG also lists high G.",
+    "status": "documentary; instrument-specific expert validation pending"
+  },
+  {
+    "id": "yamaha-yas26",
+    "url": "https://usa.yamaha.com/musical-instruments/brass-woodwinds/products/saxophones/yas-26/specs.html",
+    "title": "YAS-26 specifications",
+    "checked_on": "2026-11-13",
+    "evidence": "Front F listed; absence of high F# is not stored as definitive false.",
+    "status": "documentary; instrument-specific expert validation pending"
+  },
+  {
+    "id": "yamaha-yas280",
+    "url": "https://usa.yamaha.com/products/musical_instruments/winds/saxophones/yas-280/specs.html",
+    "title": "YAS-280 specifications",
+    "checked_on": "2026-11-13",
+    "evidence": "High F# and front F, verified in preceding audit; direct fetch intermittently 403.",
+    "status": "documentary; instrument-specific expert validation pending"
+  },
+  {
+    "id": "yamaha-yts62",
+    "url": "https://jp.yamaha.com/musical-instruments/brass-woodwinds/products/saxophones/yts-62/specs.html",
+    "title": "YTS-62 specifications, Japan",
+    "checked_on": "2026-11-13",
+    "evidence": "Official search index lists high F# and front F; direct fetch 403.",
+    "status": "documentary; instrument-specific expert validation pending"
+  },
+  {
+    "id": "yamaha-ybs62ii",
+    "url": "https://usa.yamaha.com/products/musical_instruments/winds/saxophones/ybs-62_03/specs.html",
+    "title": "YBS-62II specifications, US archived-model page",
+    "checked_on": "2026-11-13",
+    "evidence": "Eb; front F, low A and high F#. Do not conflate with similarly named newer contradictory page.",
+    "status": "documentary; instrument-specific expert validation pending"
+  },
+  {
+    "id": "selmer-supreme",
+    "url": "https://www.selmer.fr/en-int/products/saxophone-alto-supreme",
+    "title": "Supreme alto specifications",
+    "checked_on": "2026-11-13",
+    "evidence": "Published low Bb / high F# physical range; not a generic cap increase.",
+    "status": "documentary; instrument-specific expert validation pending"
+  }
+]

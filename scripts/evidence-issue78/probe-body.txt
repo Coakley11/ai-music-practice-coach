@@ -1,0 +1,428 @@
+keyboard_double_arrow_left
+
+←
+
+→
+
+keyboard_arrow_down
+
+Account & Workspace
+
+Active workspace: Daniel
+
+Shared suite profile (no individual sign-in on this deploy).
+
+Command Center
+
+🏠
+
+Saved Sessions
+
+Your last page, filters, and inputs reload automatically.
+
+Reset to default
+
+Membership
+
+Current access: Open access
+
+View plans
+
+🎼 ACTIVE SONG
+
+SONG
+Let It Be — The Beatles
+
+🎼 Songs
+
+Let It Be · Rock
+
+📜 Song Original Key: C
+
+🗝️ Practice / Concert Key
+
+🎸 YOUR PRACTICE SETUP
+
+Instrument
+
+📈 Level
+
+🔍 Practice focus
+
+💬 MUSIC COACH
+
+💬 Ask the Music Coach
+
+Get help with practice, theory, navigation, backing tracks, karaoke, or this app.
+
+Question
+
+💬 Ask the Music Coach
+
+⏱️ SESSION
+
+⏱️ Session: 30 min (adjust on the Practice page)
+
+☰ Pages
+
+Deploy
+🎵 Daniel Cohen Music Practice Coach AI
+
+AI-powered practice studio for songs, backing tracks, harmony, improvisation, recording, and instrument-specific coaching.
+
+📖 Tutorial
+
+🏠
+Home
+
+Open
+
+🎯
+Practice
+
+Open
+
+🎼
+Songs
+
+Open
+
+🎧
+Backing
+
+Open
+
+✍️
+Custom
+
+Open
+
+🪶
+Compose
+
+Open
+
+🎨
+Creative
+
+Open
+
+🎙️
+Upload
+
+Open
+
+🎚️
+Multitrack
+
+Open
+
+📓
+Log
+
+Open
+
+🎚️
+
+LAYER STUDIO
+
+Multitrack
+
+Multitrack Session Workspace
+
+Overdub layers with monitor backing, mix, and export — synced to your active song.
+
+🎹
+Piano practice mode · Voicings — Left-hand roots vs inversions; right-hand chord tones and voice leading. · Layer and review practice takes.
+STEP 1
+
+Session Setup
+
+Song, tempo, range, and recording options in one compact panel.
+
+🎵
+Let It Be
+📜
+Orig
+C
+🗝️
+Practice
+C
+⏱
+100
+BPM
+🥁
+4/4
+✨
+Auto
+🔁
+full song
+
+🔁
+SONG / SECTION
+
+Full song
+
+Single section (verse, chorus, solo, …)
+
+Multiple sections
+
+Free layering (no backing)
+
+⏱
+BPM / LOOP / GROOVE
+
+Session BPM
+
+100
+
+20
+
+180
+
+Section repeats
+
+2
+
+1
+
+8
+
+✨ Groove / feel
+
+🎙
+COUNT-IN
+
+Count-in
+
+Target: full song · 4/4 @ 100 BPM · 28 bars × 2 ≈ 134.4s
+
+Prepare backing
+
+Prepare Backing uses only the selected sections in song order, repeated by Section repeats (e.g. Verse + Chorus × 2 → Verse → Chorus → Verse → Chorus). If a project is loaded from Project Library, Prepare Backing replaces that project's monitor backing. Save to History to keep a separate version or sync across devices.
+
+keyboard_arrow_right
+
+Preview monitor backing
+
+STEP 2 · LAYERS
+
+Record or upload each instrument slot, then adjust volume, mute, and solo.
+
+Accepted: WAV, MP3, M4A, MP4, MOV, OGG, FLAC. Maximum file size: 500 MB.
+
+How this works: Align = shift a layer earlier/later · Mute = silence a layer · Solo = hear one layer by itself · Monitor backing = hear the backing while recording · Loop section = repeat the selected section while recording
+
+🎸
+Guitar
+● HAS AUDIO
+
+keyboard_arrow_down
+
+Layer controls — Guitar
+
+Layer name
+
+Chart this layer for
+
+⬆️ Upload — Guitar
+
+guitar.wav
+0.5MB
+add
+
+Record — Guitar
+
+00:05
+
+Unsaved take — press Save layer to keep it, or Discard take to record again.
+
+💾 Save layer — Guitar
+
+🗑 Discard take
+
+Volume
+
+1.00
+
+0.00
+
+2.00
+
+Align timing
+
+0.00
+
+-3.00
+
+3.00
+
+Negative = earlier. Positive = later. Use this if the layer sounds ahead of or behind the backing.
+
+Mute
+
+Solo
+
+🎸
+Bass
+○ EMPTY
+
+keyboard_arrow_right
+
+Layer controls — Bass
+
+🎹
+Piano / Keys
+○ EMPTY
+
+keyboard_arrow_right
+
+Layer controls — Piano / Keys
+
+🎤
+Vocals
+○ EMPTY
+
+keyboard_arrow_right
+
+Layer controls — Vocals
+
+🎷
+Sax / winds
+● HAS AUDIO
+
+keyboard_arrow_down
+
+Layer controls — Sax / winds
+
+Layer name
+
+Chart this layer for
+
+⬆️ Upload — Sax / winds
+
+sax.wav
+0.5MB
+add
+
+Record — Sax / winds
+
+00:00
+
+Unsaved take — press Save layer to keep it, or Discard take to record again.
+
+💾 Save layer — Sax / winds
+
+🗑 Discard take
+
+Volume
+
+1.00
+
+0.00
+
+2.00
+
+Align timing
+
+0.00
+
+-3.00
+
+3.00
+
+Negative = earlier. Positive = later. Use this if the layer sounds ahead of or behind the backing.
+
+Mute
+
+Solo
+
+✨
+Extra layer
+● HAS AUDIO
+
+keyboard_arrow_down
+
+Layer controls — Extra layer
+
+Layer name
+
+Chart this layer for
+
+⬆️ Upload — Extra layer
+
+flute.wav
+0.5MB
+add
+
+Record — Extra layer
+
+00:00
+
+Unsaved take — press Save layer to keep it, or Discard take to record again.
+
+💾 Save layer — Extra layer
+
+🗑 Discard take
+
+Volume
+
+1.00
+
+0.00
+
+2.00
+
+Align timing
+
+0.00
+
+-3.00
+
+3.00
+
+Negative = earlier. Positive = later. Use this if the layer sounds ahead of or behind the backing.
+
+Mute
+
+Solo
+
+3 layer(s) saved for this session.
+
+STEP 3 · TRANSPORT & MIXER
+
+Press Play with count-in for a studio-style start. Volume, mute, and solo are edited in Step 2 — the mixer below shows a read-only preview.
+
+Repeat selected section while recording
+
+Click monitor
+
+Hear backing during playback
+
+Backing level
+
+0.75
+
+0.00
+
+1.50
+
+Include backing in exported mix
+
+Transport and mix-export settings persist across refresh and saved projects. Edit layer volume, mute, and solo in Step 2.
+
+STEP 4 · EXPORT
+
+Add reverb to the mix
+
+🎛️ Create mixed WAV
+
+Export Library
+
+No saved exports yet — create a mix above and tap Save Export.
+
+🗑️ Clear all multitrack layers
+
+keyboard_arrow_right
+
+Project Library

@@ -1,0 +1,7 @@
+tests/test_issue79_tone_sustain.py
+tests/test_tuner_tone_ui.py
+tests/test_tuner_live.py
+tests/test_media_tone_catalog.py
+tests/test_tone_take_save_flow.py
+tests/test_tone_history_note_filter.py
+tests/test_practice_history_synthesis.py

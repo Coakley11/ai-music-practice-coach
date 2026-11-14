@@ -8861,17 +8861,13 @@ def mix_multitrack(backing_y, track_items, sr=44100):
 
         y = y * float(item.get("volume", 1.0))
 
-        delay = float(item.get("delay", 0.0))
+        # One shared Align rule, so the exported file lands where the transport preview
+        # said it would. Issue 78: this used to trim the head for a negative offset while
+        # the preview ignored negatives entirely, so one slider position produced two
+        # different performances. The stored take is untouched - only this mix copy.
+        from multitrack_align_contract import apply_to_samples
 
-        ds = int(delay * sr)
-
-        if ds > 0:
-
-            y = np.concatenate([np.zeros(ds, dtype=y.dtype), y])
-
-        elif ds < 0:
-
-            y = y[-ds:]
+        y = apply_to_samples(y, item.get("delay", 0.0), sr)
 
         segs.append(y)
 
@@ -8920,6 +8916,8 @@ def ensure_multitrack_track_controls(session_state, track_names=None):
 
 
 def multitrack_studio_track_payloads(track_items, controls):
+    from multitrack_align_contract import transport_payload
+
     payloads = []
     for item in track_items:
         name = item["name"]
@@ -8934,6 +8932,7 @@ def multitrack_studio_track_payloads(track_items, controls):
         else:
             mime = "audio/wav"
         b64 = base64.b64encode(item["audio_bytes"]).decode("ascii")
+        _align_delay = float(ctrl.get("delay", item.get("delay", 0.0)))
         payloads.append(
             {
                 "id": track_id,
@@ -8942,7 +8941,10 @@ def multitrack_studio_track_payloads(track_items, controls):
                 "volume": float(ctrl.get("volume", item.get("volume", 1.0))),
                 "mute": bool(ctrl.get("mute", item.get("mute", False))),
                 "solo": bool(ctrl.get("solo", item.get("solo", False))),
-                "delay": float(ctrl.get("delay", item.get("delay", 0.0))),
+                "delay": _align_delay,
+                # The Align offset resolved once, here, so the transport applies the same
+                # rule the export mixer does instead of its own Math.max(0, delay).
+                **transport_payload(_align_delay),
             }
         )
     return payloads
@@ -9270,7 +9272,9 @@ def _render_multitrack_session_setup_panel(
                 st.warning("Monitor backing ready locally — catalog update failed.")
         except ImportError:
             st.session_state.multitrack_backing_music_wav = monitor_wav
-            st.success("Monitor backing ready — use Step 3 transport while recording.")
+            st.success(
+                "Monitor backing ready — Record in Step 2 plays it for you while it captures."
+            )
         try:
             from studio_page_persistence import flush_current_page_snapshot
 
@@ -9393,6 +9397,19 @@ def multitrack_studio_html(
     let backingGain = null;
     let masterGain = null;
     let sessionDuration = 8;
+    // Every Play gets a token. A decode that resolves after a Stop, or after another
+    // Play, belongs to a run that no longer owns the transport and must not schedule
+    // anything - which is how a second Play used to leave the first run's sources
+    // playing underneath it.
+    let generation = 0;
+    // Nothing may be scheduled at the clock's current value: by the time start() is
+    // actually called that instant has passed, and Web Audio then plays immediately.
+    // Issue 78 measured the first count-in click scheduled ~32 ms behind the clock for
+    // exactly this reason. Everything is placed this far into the future instead.
+    const SCHEDULE_LEAD_MIN_SEC = 0.12;
+    // A take shorter than its own negative Align offset would disappear. Same floor as
+    // multitrack_align_contract.MIN_AUDIBLE_SEC, so preview and export agree here too.
+    const MIN_AUDIBLE_SEC = 0.05;
 
     {clock_script}
     function barDuration() {{ return cfg.barDuration; }}
@@ -9429,6 +9446,11 @@ def multitrack_studio_html(
           solo: !!meta.solo,
           volume: Number(meta.volume || 1),
           delay: Number(meta.delay || 0),
+          // The resolved Align schedule has to travel with the layer. This function
+          // rebuilds a fresh object per row, so a field it does not copy is simply
+          // absent downstream - which silently flattened every Align offset to zero.
+          startDelaySec: Number(meta.startDelaySec || 0),
+          bufferOffsetSec: Number(meta.bufferOffsetSec || 0),
         }};
       }});
     }}
@@ -9439,10 +9461,19 @@ def multitrack_studio_html(
       return state.filter((t) => !t.mute);
     }}
 
-    async function decodeTrack(track) {{
-      const res = await fetch(track.b64);
+    async function decodeInto(ctx, url) {{
+      const res = await fetch(url);
       const buf = await res.arrayBuffer();
-      return await audioCtx.decodeAudioData(buf);
+      return await ctx.decodeAudioData(buf);
+    }}
+
+    function scheduleLead(ctx) {{
+      // Give the hardware at least one full output buffer of warning, and more when the
+      // device reports a long latency, so the scheduled instant is still in the future
+      // when the audio thread reaches it.
+      const base = Number(ctx.baseLatency) || 0;
+      const out = Number(ctx.outputLatency) || 0;
+      return Math.max(SCHEDULE_LEAD_MIN_SEC, (base + out) * 2);
     }}
 
     function playClick(when, accent) {{
@@ -9457,17 +9488,42 @@ def multitrack_studio_html(
       osc.stop(when + 0.08);
     }}
 
+    function countInBeats() {{
+      return Math.max(0, Number(cfg.countInBars) || 0) * cfg.beatsPerBar;
+    }}
+
     function scheduleCountIn(startTime) {{
-      const beats = Math.max(0, cfg.countInBars) * cfg.beatsPerBar;
+      const beats = countInBeats();
       for (let i = 0; i < beats; i++) {{
         playClick(startTime + i * beatDuration(), i % cfg.beatsPerBar === 0);
       }}
       return startTime + beats * beatDuration();
     }}
 
+    function startMetronome(ctx, fromTime, run) {{
+      // Scheduled on the audio clock with a lookahead rather than from setInterval +
+      // currentTime, which drifted against the music it was supposed to be marking.
+      const beat = beatDuration();
+      const HORIZON = 0.5;
+      let next = fromTime;
+      const tick = () => {{
+        if (run !== generation || audioCtx !== ctx) return;
+        while (next < ctx.currentTime + HORIZON) {{
+          const n = Math.round((next - fromTime) / beat);
+          if (next > ctx.currentTime) playClick(next, n % cfg.beatsPerBar === 0);
+          next += beat;
+        }}
+        metroTimer = setTimeout(tick, 150);
+      }};
+      tick();
+    }}
+
     function stopAll() {{
+      // Retire the current run first: an in-flight decode checks this token before it
+      // schedules anything, so Stop cannot be undone by audio that was still loading.
+      generation += 1;
       if (rafId) cancelAnimationFrame(rafId);
-      if (metroTimer) clearInterval(metroTimer);
+      if (metroTimer) {{ clearTimeout(metroTimer); clearInterval(metroTimer); }}
       rafId = null;
       metroTimer = null;
       trackNodes.forEach((node) => {{
@@ -9478,6 +9534,11 @@ def multitrack_studio_html(
       audioCtx = null;
       cursorEl.style.width = "0%";
       timeEl.textContent = "0.0s";
+      // Bar and beat were left showing wherever the transport happened to stop, so the
+      // readout said "0.0s ... Bar 2 Beat 2" at the same time. Stop means back to the
+      // start, and all three parts of the readout have to say so.
+      barEl.textContent = "1";
+      beatEl.textContent = "1";
       labelEl.textContent = "Stopped.";
       // Layer chord strips follow this clock; a stopped transport must never advance them.
       mtPublishClock(0, false);
@@ -9502,23 +9563,54 @@ def multitrack_studio_html(
 
     async function playSession() {{
       stopAll();
+      const run = ++generation;
       audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-      masterGain = audioCtx.createGain();
+      const ctx = audioCtx;
+      masterGain = ctx.createGain();
       masterGain.gain.value = 0.95;
-      masterGain.connect(audioCtx.destination);
+      masterGain.connect(ctx.destination);
 
       const state = trackStateFromUI();
       const playTracks = audibleTracks(state);
-      const countInStart = audioCtx.currentTime;
+
+      // ---- Decode everything BEFORE choosing when the music starts. ----
+      // musicStart used to be fixed from currentTime up here, before these awaits. By
+      // the time start(musicStart) ran, that instant had passed, so each source began at
+      // its own decode-completion time instead: Issue 78 measured the layers starting
+      // 160 ms apart and the worst 800 ms behind the beat whenever the count-in was not
+      // long enough to hide the decode. Deciding the start afterwards removes the race
+      // rather than widening the window it needs.
+      labelEl.textContent = "Preparing audio\u2026";
+      const wantBacking = !!(cfg.hasBacking && cfg.backingMonitorEnabled && backingEl.src);
+      let backingBuf = null;
+      const layerBufs = [];
+      try {{
+        if (ctx.state === "suspended") await ctx.resume();
+        if (wantBacking) backingBuf = await decodeInto(ctx, backingEl.src);
+        for (const track of playTracks) {{
+          const meta = tracks.find((t) => t.id === track.id);
+          if (!meta || !meta.b64) continue;
+          layerBufs.push({{ track: track, buffer: await decodeInto(ctx, meta.b64) }});
+        }}
+      }} catch (e) {{
+        if (run === generation) {{
+          labelEl.textContent = "Could not prepare this audio for playback.";
+        }}
+        return;
+      }}
+      // Stopped, or Play pressed again, while that was loading.
+      if (run !== generation || audioCtx !== ctx) return;
+
+      // ---- One authoritative start, now that nothing else has to be awaited. ----
+      const countInStart = ctx.currentTime + scheduleLead(ctx);
       const musicStart = scheduleCountIn(countInStart);
       startedAt = musicStart;
       countInStartedAt = countInStart;
 
       let maxEnd = musicStart;
 
-      if (cfg.hasBacking && cfg.backingMonitorEnabled && backingEl.src) {{
-        const backingBuf = await decodeTrack({{ b64: backingEl.src }});
-        const src = audioCtx.createBufferSource();
+      if (backingBuf) {{
+        const src = ctx.createBufferSource();
         src.buffer = backingBuf;
         src.loop = cfg.loopBacking;
         // The rendered buffer ends with the last chord's decay sitting inside a
@@ -9531,7 +9623,7 @@ def multitrack_studio_html(
           src.loopStart = 0;
           src.loopEnd = musicalEnd;
         }}
-        backingGain = audioCtx.createGain();
+        backingGain = ctx.createGain();
         backingGain.gain.value = cfg.backingMonitorVolume;
         src.connect(backingGain);
         backingGain.connect(masterGain);
@@ -9542,19 +9634,27 @@ def multitrack_studio_html(
         trackNodes.push({{ source: src }});
       }}
 
-      for (const track of playTracks) {{
-        const meta = tracks.find((t) => t.id === track.id);
-        if (!meta || !meta.b64) continue;
-        const buf = await decodeTrack(meta);
-        const src = audioCtx.createBufferSource();
+      for (const entry of layerBufs) {{
+        const track = entry.track;
+        const buf = entry.buffer;
+        const src = ctx.createBufferSource();
         src.buffer = buf;
-        const gain = audioCtx.createGain();
+        const gain = ctx.createGain();
         gain.gain.value = track.volume;
         src.connect(gain);
         gain.connect(masterGain);
-        const when = musicStart + Math.max(0, track.delay);
-        src.start(when);
-        maxEnd = Math.max(maxEnd, when + buf.duration);
+        // The shared Align contract (multitrack_align_contract), resolved in Python and
+        // handed over as two numbers. A positive offset delays the start; a negative one
+        // begins part-way into the take, which is what the export mixer has always done
+        // and what the preview used to throw away with Math.max(0, delay).
+        const startDelay = Math.max(0, Number(track.startDelaySec) || 0);
+        let bufferOffset = Math.max(0, Number(track.bufferOffsetSec) || 0);
+        if (bufferOffset > 0 && buf.duration - bufferOffset < MIN_AUDIBLE_SEC) {{
+          bufferOffset = Math.max(0, buf.duration - MIN_AUDIBLE_SEC);
+        }}
+        const when = musicStart + startDelay;
+        src.start(when, bufferOffset);
+        maxEnd = Math.max(maxEnd, when + Math.max(0, buf.duration - bufferOffset));
         trackNodes.push({{ source: src }});
       }}
 
@@ -9563,17 +9663,12 @@ def multitrack_studio_html(
         cfg.backingDurationSec || 0,
         maxEnd - musicStart
       );
-      labelEl.textContent = "Playing. Count-in finished — music started on beat 1.";
+      labelEl.textContent = countInBeats() > 0
+        ? "Counting you in \u2014 everything starts together on beat 1."
+        : "Playing \u2014 everything started together on beat 1.";
       updateTransport();
 
-      if (cfg.metronomeDuringPlayback) {{
-        let beat = 0;
-        metroTimer = setInterval(() => {{
-          if (!audioCtx) return;
-          beat += 1;
-          playClick(audioCtx.currentTime, beat % cfg.beatsPerBar === 1);
-        }}, beatDuration() * 1000);
-      }}
+      if (cfg.metronomeDuringPlayback) startMetronome(ctx, musicStart, run);
     }}
 
     renderTracks();
@@ -13040,14 +13135,9 @@ def _render_composition_active_song_hub(*, wrap_section: bool) -> None:
         _emit_composition_hub_ready_marker()
         _render_composition_song_library_selector()
         if isinstance(doc, dict):
-            rec = {
-                "title": composition_title(doc),
-                "artist": "Composition",
-                "key": composition_home_key(doc),
-                "genre": "Auto",
-                "source": "Composition",
-                "pick_key": f"composition::{doc.get('id')}",
-            }
+            from composition_songs_bridge import composition_song_card_record
+
+            rec = composition_song_card_record(doc)
             _render_active_song_card(rec, show_nav_actions=False, edit_mode="composition")
 
             def _on_composition_hub_backing() -> None:
@@ -28375,7 +28465,11 @@ elif _studio_page == "multitrack":
                 '<p class="ui-multitrack-step-kicker">Step 2 · Layers</p>',
                 unsafe_allow_html=True,
             )
-            st.caption("Record or upload each instrument slot, then adjust volume, mute, and solo.")
+            st.caption(
+                "Record or upload each instrument slot, then adjust volume, mute, and solo. "
+                "One Record plays your count-in, the backing and the layers you have already "
+                "saved, and captures your playing against them on the same clock."
+            )
             try:
                 from upload_media import upload_format_labels, upload_max_size_caption
 
@@ -28507,30 +28601,116 @@ elif _studio_page == "multitrack":
                             key=recorder_widget_key(st.session_state, slot, "upload"),
                             max_upload_size=UPLOAD_MAX_SIZE_MB,
                         )
+                        # One Record, on the recording clock. The count-in, the backing and every
+                        # layer this player is overdubbing against are all scheduled on the same
+                        # AudioContext that captures the microphone, so where musical zero sits
+                        # inside the take is read off frame counters. The old control was
+                        # st.audio_input, which runs in the Streamlit document and cannot know
+                        # anything about the transport: its pre-roll was whatever gap there happened
+                        # to be between pressing Play and pressing Record, and nothing measured it.
+                        _mt_live_take = None
+                        _mt_live_ok = False
                         try:
-                            # st.audio_input defaults to sample_rate=16000 — a speech rate
-                            # that discards everything above 8 kHz, so high flute notes and
-                            # guitar attacks lose the partials that define their tone.
-                            _mt_rec_label = f"Record — {slot}"
-                            _mt_rec_key = recorder_widget_key(st.session_state, slot, "record")
-                            try:
-                                recorded = st.audio_input(
-                                    _mt_rec_label,
-                                    key=_mt_rec_key,
-                                    **({"sample_rate": _mt_capture_sr} if _mt_capture_sr else {}),
-                                )
-                            except TypeError:
-                                # A Streamlit without the sample_rate argument still records,
-                                # at its own default. Asking for better audio must never be
-                                # the reason the recorder disappears.
-                                recorded = st.audio_input(_mt_rec_label, key=_mt_rec_key)
+                            from multitrack_live_recorder import render_layer_recorder as _mt_live_fn
                         except Exception:
-                            recorded = None
-                            st.caption("Recording unavailable in this build — upload still works.")
+                            _mt_live_fn = None
+                        if _mt_live_fn is not None:
+                            st.caption(f"Record — {slot}")
+                            try:
+                                _mt_live_take = _mt_live_fn(
+                                    st,
+                                    st.session_state,
+                                    key=recorder_widget_key(st.session_state, slot, "liverecord"),
+                                    slot=slot,
+                                    slots=MT_SLOTS,
+                                    backing_wav=(monitor_wav if use_backing_monitor else None),
+                                    backing_duration_sec=float(
+                                        st.session_state.get(
+                                            "mt_backing_duration", mt_backing_duration
+                                        )
+                                        or 0.0
+                                    ),
+                                    count_in_bars=mt_count_in_bars,
+                                    bpm=mt_bpm,
+                                    beats_per_bar=mt_beats_per_bar,
+                                )
+                                _mt_live_ok = True
+                            except Exception as _mt_live_err:
+                                # Falling back silently would hand the player a recorder that
+                                # cannot measure anything, and look like it had always been that
+                                # way. Say so, and keep the reason for diagnosis.
+                                _mt_live_ok = False
+                                st.session_state["_mt_live_recorder_error"] = str(_mt_live_err)[:300]
+                                st.warning(
+                                    "**The synchronized recorder could not start on this device.** "
+                                    "Below is the compatibility recorder: it captures your playing, "
+                                    "but it is **not on the shared clock** - it plays no count-in, "
+                                    "nothing plays along with you, and where bar 1 beat 1 sits in "
+                                    "the take is not measured, so you would line it up by hand with "
+                                    "this layer's Align control. Reloading the page, or allowing "
+                                    "microphone access, usually brings the synchronized recorder "
+                                    "back."
+                                )
+
+                        recorded = None
+                        if not _mt_live_ok:
+                            try:
+                                # Fallback only, for a build where the component cannot render.
+                                # st.audio_input defaults to sample_rate=16000 — a speech rate
+                                # that discards everything above 8 kHz, so high flute notes and
+                                # guitar attacks lose the partials that define their tone.
+                                _mt_rec_label = f"Record — {slot} (compatibility, not time-aligned)"
+                                _mt_rec_key = recorder_widget_key(st.session_state, slot, "record")
+                                try:
+                                    recorded = st.audio_input(
+                                        _mt_rec_label,
+                                        key=_mt_rec_key,
+                                        **({"sample_rate": _mt_capture_sr} if _mt_capture_sr else {}),
+                                    )
+                                except TypeError:
+                                    # A Streamlit without the sample_rate argument still records,
+                                    # at its own default. Asking for better audio must never be
+                                    # the reason the recorder disappears.
+                                    recorded = st.audio_input(_mt_rec_label, key=_mt_rec_key)
+                            except Exception:
+                                recorded = None
+                                st.caption("Recording unavailable in this build — upload still works.")
 
                         _mt_audio_obj = recorded if recorded is not None else uploaded
-                        if _mt_audio_obj is not None:
-                            _mt_bytes = _mt_audio_obj.getvalue()
+                        # Which recorder produced this, so the take can say so for the rest of its
+                        # life. Only the first of these was measured on the recording clock.
+                        _mt_landed_source = ""
+                        if _mt_live_take is not None:
+                            _mt_landed_bytes = _mt_live_take["wav"]
+                            _mt_landed_source = "shared-clock"
+                            try:
+                                from multitrack_live_recorder import take_filename
+
+                                _mt_landed_name = take_filename(slot)
+                            except Exception:
+                                _mt_landed_name = "layer-take.wav"
+                        elif _mt_audio_obj is not None:
+                            _mt_landed_bytes = _mt_audio_obj.getvalue()
+                            _mt_landed_name = getattr(_mt_audio_obj, "name", f"{slot}.wav")
+                            _mt_landed_source = (
+                                "basic-recorder" if recorded is not None else "upload"
+                            )
+                        else:
+                            _mt_landed_bytes = None
+                            _mt_landed_name = ""
+                        # A recording that produced no usable audio must never replace a layer the
+                        # musician has already kept. A WAV header alone is 44 bytes, so anything
+                        # this small is a failed capture, not a take.
+                        if _mt_landed_bytes is not None and len(_mt_landed_bytes) < 512:
+                            st.warning(
+                                "That recording came back empty, so nothing was changed - the audio "
+                                "already in this layer is untouched. Please try recording again."
+                            )
+                            _mt_landed_bytes = None
+                            _mt_landed_name = ""
+                            _mt_landed_source = ""
+                        if _mt_landed_bytes is not None:
+                            _mt_bytes = _mt_landed_bytes
                             if st.session_state.mt_tracks.get(slot) != _mt_bytes:
                                 from multitrack_activity import retain_project_source
                                 retain_project_source(st.session_state)
@@ -28545,9 +28725,48 @@ elif _studio_page == "multitrack":
                                     )
                                 except Exception:
                                     pass
-                                st.session_state.mt_track_filenames[slot] = getattr(
-                                    _mt_audio_obj, "name", f"{slot}.wav"
-                                )
+                                st.session_state.mt_track_filenames[slot] = _mt_landed_name
+                                # The measured timing belongs to THIS take. An upload or a fallback
+                                # recording has none, and must not inherit the last live take's -
+                                # that would describe a different performance as if it were this one.
+                                try:
+                                    from multitrack_live_recorder import (
+                                        SOURCE_SHARED_CLOCK,
+                                        record_take_timing,
+                                        record_unsynchronized_take,
+                                        sync_state,
+                                    )
+
+                                    if _mt_live_take is not None:
+                                        _mt_stored_timing = record_take_timing(
+                                            st.session_state,
+                                            slot,
+                                            _mt_live_take.get("timing"),
+                                            source=SOURCE_SHARED_CLOCK,
+                                        )
+                                        _mt_verdict = sync_state(_mt_stored_timing)
+                                        if not _mt_verdict["synchronized"]:
+                                            # The take is kept - the playing is real - but it is
+                                            # labelled for what it is rather than presented as an
+                                            # aligned take.
+                                            st.warning(
+                                                "This take was captured, but its timing could not "
+                                                "be measured ("
+                                                + str(_mt_verdict["reason"])
+                                                + "), so it is **not time-aligned**. Line it up "
+                                                "with the Align control, or record it again."
+                                            )
+                                    else:
+                                        # An upload or a compatibility take has no measurement.
+                                        # Saying so is the point: storing nothing would read the
+                                        # same as a measurement that simply has not arrived.
+                                        record_unsynchronized_take(
+                                            st.session_state,
+                                            slot,
+                                            source=_mt_landed_source or "upload",
+                                        )
+                                except Exception:
+                                    pass
                                 mark_take_unsaved(st.session_state, slot)
                                 try:
                                     from music_persistent_state import force_save_music_state
@@ -28582,6 +28801,12 @@ elif _studio_page == "multitrack":
                             ),
                         ):
                             discard_take(st.session_state, slot)
+                            try:
+                                from multitrack_live_recorder import forget_take_timing
+
+                                forget_take_timing(st.session_state, slot)
+                            except Exception:
+                                pass
                             try:
                                 from music_persistent_state import force_save_music_state
 
@@ -28642,10 +28867,19 @@ elif _studio_page == "multitrack":
                             key=f"mt_delay_{slot}",
                             help="Move this layer earlier or later to line it up with the backing.",
                         )
-                        st.caption(
-                            "Negative = earlier. Positive = later. "
-                            "Use this if the layer sounds ahead of or behind the backing."
-                        )
+                        # One sentence about what THIS setting does, from the shared
+                        # contract, so the caption cannot drift from the behaviour. The
+                        # old wording said "Negative = earlier", which the transport did
+                        # not do at all and the export did by dropping the opening.
+                        try:
+                            from multitrack_align_contract import describe as _align_says
+
+                            st.caption(_align_says(st.session_state.get(f"mt_delay_{slot}", 0.0)))
+                        except Exception:
+                            st.caption(
+                                "Positive starts the layer later than bar 1. Negative "
+                                "starts further into the recording."
+                            )
 
                     with c3:
                         st.checkbox(
@@ -28704,6 +28938,41 @@ elif _studio_page == "multitrack":
                     saved_audio = st.session_state.mt_tracks.get(slot)
                     if saved_audio:
                         st.audio(saved_audio)
+                        # Deliberately the dry recording, with no Align applied: this is
+                        # the only place the untouched take can be heard, which is what
+                        # makes a negative Align recoverable. Naming the three surfaces
+                        # explicitly, because this one SHOULD sound different from the
+                        # other two whenever Align is not zero - without the label that
+                        # difference reads as a bug.
+                        st.caption(
+                            "**Original Take Preview** — your recording exactly as it was "
+                            "captured, with no alignment or mixing applied. It is never "
+                            "altered, so it may sound different from the mix. "
+                            "**Multitrack Playback** (Play with count-in) and the "
+                            "**Exported WAV** both apply your Align timing, Volume, Mute "
+                            "and Solo, and they match each other."
+                        )
+                        # What was actually measured while this take was captured - and, when it
+                        # was not measured at all, a notice the musician cannot miss. A take that
+                        # cannot be placed on the clock must not sit here looking like one that can.
+                        # A layer restored from a project saved before this existed has no record
+                        # either way, and says nothing rather than guessing about it.
+                        try:
+                            from multitrack_live_recorder import (
+                                sync_state,
+                                take_timing,
+                                timing_caption,
+                            )
+
+                            _mt_take_timing = take_timing(st.session_state, slot)
+                            _mt_timing_line = timing_caption(_mt_take_timing)
+                            if _mt_timing_line:
+                                if sync_state(_mt_take_timing)["synchronized"]:
+                                    st.caption(_mt_timing_line)
+                                else:
+                                    st.warning(_mt_timing_line)
+                        except Exception:
+                            pass
                         track_items_for_mix.append(
                             {
                                 "slot": slot,

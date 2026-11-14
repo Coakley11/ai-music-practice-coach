@@ -1,0 +1,114 @@
+{
+  "gates": {
+    "Multitrack page opens": true,
+    "three layers staged": true,
+    "count-in set to None": true,
+    "count-in None: 0 click(s) scheduled": true,
+    "count-in None: no click behind the clock": true,
+    "count-in None: nothing scheduled in the past": true,
+    "count-in None: every layer on one instant": true,
+    "count-in set to 1 bar": true,
+    "count-in 1 bar: 4 click(s) scheduled": true,
+    "count-in 1 bar: no click behind the clock": true,
+    "count-in 1 bar: nothing scheduled in the past": true,
+    "count-in 1 bar: every layer on one instant": true,
+    "count-in 1 bar: bar 1 is exactly the count-in's length later": true,
+    "count-in set to 2 bars": true,
+    "count-in 2 bars: 8 click(s) scheduled": true,
+    "count-in 2 bars: no click behind the clock": true,
+    "count-in 2 bars: nothing scheduled in the past": true,
+    "count-in 2 bars: every layer on one instant": true,
+    "count-in 2 bars: bar 1 is exactly the count-in's length later": true,
+    "the position readout advances while playing": true,
+    "Stop resets the position readout to zero": true,
+    "Stop resets the progress cursor": true,
+    "Stop resets the bar and beat readout too": true,
+    "Stop says so in the transport label": true,
+    "Stop tells the layer chord strips the transport is not playing": true,
+    "a second Play builds a second context": true,
+    "repeat Play schedules nothing in the past": true,
+    "Stop after a repeat still resets": true,
+    "no uncaught JS errors": true
+  },
+  "passed": 29,
+  "total": 29,
+  "failed": [],
+  "measured": {
+    "count_in_None": {
+      "contexts": 1,
+      "sources": 4,
+      "clicks": 0,
+      "worst_late_sec": -0.12,
+      "margin_sec": 0.12,
+      "source_instants": [
+        0.57067
+      ],
+      "first_click": null,
+      "late_clicks": 0
+    },
+    "count_in_1 bar": {
+      "contexts": 1,
+      "sources": 4,
+      "clicks": 4,
+      "worst_late_sec": -2.52,
+      "margin_sec": 2.52,
+      "source_instants": [
+        3.12
+      ],
+      "first_click": 0.72,
+      "late_clicks": 0
+    },
+    "count_in_1 bar_gap_sec": 2.4000000000000004,
+    "count_in_2 bars": {
+      "contexts": 1,
+      "sources": 4,
+      "clicks": 8,
+      "worst_late_sec": -4.911999999999999,
+      "margin_sec": 4.911999999999999,
+      "source_instants": [
+        5.472
+      ],
+      "first_click": 0.672,
+      "late_clicks": 0
+    },
+    "count_in_2 bars_gap_sec": 4.800000000000001,
+    "readout_playing": {
+      "time": "3.4s",
+      "bar": "2",
+      "beat": "2",
+      "cursor": "0.639881%",
+      "label": "Counting you in \u2014 everything starts together on beat 1.",
+      "clock": {
+        "t": 8.24,
+        "playing": true,
+        "at": 1794585658366
+      }
+    },
+    "readout_stopped": {
+      "time": "0.0s",
+      "bar": "1",
+      "beat": "1",
+      "cursor": "0%",
+      "label": "Stopped.",
+      "clock": {
+        "t": 0,
+        "playing": false,
+        "at": 1794585658409
+      }
+    },
+    "repeat_play": {
+      "contexts": 2,
+      "sources": 8,
+      "clicks": 16,
+      "worst_late_sec": -4.92,
+      "margin_sec": 4.92,
+      "source_instants": [
+        5.84,
+        5.90133
+      ],
+      "first_click": 1.04,
+      "late_clicks": 0
+    }
+  },
+  "js_errors": []
+}

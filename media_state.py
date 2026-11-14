@@ -499,6 +499,19 @@ def migrate_multitrack_session(entry: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _first_present(row: dict[str, Any], *keys: str) -> Any:
+    """The value of the first key that is present and not None - zero included.
+
+    ``row.get("a") or row.get("b")`` picks the first *truthy* value, so a stored score of 0.0 fell
+    through to the alias and then to None: a real measurement of zero was discarded and the take
+    came back as though it had never been measured. Since Issue 79 those are different answers.
+    """
+    for key in keys:
+        if key in row and row[key] is not None:
+            return row[key]
+    return None
+
+
 def migrate_tone_take(entry: dict[str, Any]) -> dict[str, Any]:
     """Normalize a single tone/tuner practice take row."""
     if not isinstance(entry, dict):
@@ -529,10 +542,10 @@ def migrate_tone_take(entry: dict[str, Any]) -> dict[str, Any]:
     if not coach and feedback_lines:
         coach = " · ".join(x.replace("**", "") for x in feedback_lines[:4])[:500]
 
-    pitch_score = _coerce_float(out.get("pitch_stability_score") or out.get("pitch_stability"))
-    vol_score = _coerce_float(out.get("volume_stability_score") or out.get("sustain_steadiness"))
-    mean_cents = _coerce_float(out.get("mean_cents") or out.get("average_cents"))
-    tone_consistency = _coerce_float(out.get("tone_consistency_score"))
+    pitch_score = _coerce_float(_first_present(out, "pitch_stability_score", "pitch_stability"))
+    vol_score = _coerce_float(_first_present(out, "volume_stability_score", "sustain_steadiness"))
+    mean_cents = _coerce_float(_first_present(out, "mean_cents", "average_cents"))
+    tone_consistency = _coerce_float(_first_present(out, "tone_consistency_score"))
     if tone_consistency is None and pitch_score is not None and vol_score is not None:
         tone_consistency = round((pitch_score + vol_score) / 2.0, 1)
 
@@ -590,6 +603,20 @@ def migrate_tone_take(entry: dict[str, Any]) -> dict[str, Any]:
         "analysis_summary": analysis_summary,
         "notes": user_notes,
         "user_notes": user_notes,
+        # Issue 79. Which algorithm measured this take, whether it could be measured at all, and
+        # the separated numbers. Absent on rows saved before that existed, which is how a legacy
+        # row is recognised - so these are carried through only when the row really has them.
+        "scoring_version": str(out.get("scoring_version") or "").strip(),
+        "analysis_status": str(out.get("analysis_status") or "").strip(),
+        "analysis_reason": str(out.get("analysis_reason") or "").strip(),
+        "tuning_offset_cents": _coerce_float(out.get("tuning_offset_cents")),
+        "raw_offset_cents": _coerce_float(out.get("raw_offset_cents")),
+        "octave_offset_semitones": int(_coerce_float(out.get("octave_offset_semitones")) or 0),
+        "target_is_pitch_class_only": bool(out.get("target_is_pitch_class_only")),
+        "pitch_spread_cents": _coerce_float(out.get("pitch_spread_cents")),
+        "volume_fluctuation_db": _coerce_float(out.get("volume_fluctuation_db")),
+        "volume_trend_db": _coerce_float(out.get("volume_trend_db")),
+        "detection_confidence": _coerce_float(out.get("detection_confidence")),
         "mime_type": str(out.get("mime_type") or "audio/wav").strip(),
         "local_path": out.get("local_path"),
         "storage_ref": out.get("storage_ref"),

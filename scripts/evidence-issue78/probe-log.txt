@@ -1,0 +1,54 @@
+probe audio in C:\Users\danie\AppData\Local\Temp\issue78-probe-m4st6wyc
+app booted
+picked Let It Be dropdown=True landed=True sidebar_song='SONG\n\nSONG\nLet It Be — The Beatles\n\n🎼 Songs\n\nLet It Be · Rock\n\n📜 Song Original Key: C\n\n🗝️ '
+active song: Let It Be
+on the Multitrack page
+  Prepare backing -> clicked
+  frames now: ['http://127.0.0.1:8590/', 'about:srcdoc', 'about:srcdoc', 'about:srcdoc', 'about:srcdoc', 'about:srcdoc', 'about:srcdoc', 'about:srcdoc']
+  staged a layer into guitar
+  staged a layer into sax / winds
+  staged a layer into extra layer
+  layers staged: ['guitar', 'sax / winds', 'extra layer']
+
+== LEG B: transport clock, count-in and layer scheduling ==
+  transport iframe located, 3 layer(s) staged
+  Play with count-in clicked at wall 1794571842354.2
+  AudioContext(AudioContext) sr=48000 baseLatency=0.01 outputLatency=0
+  count-in clicks scheduled: 4; first when=0.0000 last when=1.8000
+  decodeAudioData 15329204 bytes -> 173.8s @48000Hz took 506.8 ms (ctx 0.0320 -> 0.5413)
+  decodeAudioData 529244 bytes -> 6s @48000Hz took 18.6 ms (ctx 0.5520 -> 0.5707)
+  decodeAudioData 529244 bytes -> 6s @48000Hz took 13.6 ms (ctx 0.5920 -> 0.6000)
+  decodeAudioData 529244 bytes -> 6s @48000Hz took 12.5 ms (ctx 0.6107 -> 0.6320)
+  source.start(when=2.4000) with clock at 0.5413 -> ON TIME (1.8587s of headroom)   [173.8s @48000Hz loop=True]
+  source.start(when=2.4000) with clock at 0.5707 -> ON TIME (1.8293s of headroom)   [6s @48000Hz loop=False]
+  source.start(when=2.4000) with clock at 0.6000 -> ON TIME (1.8000s of headroom)   [6s @48000Hz loop=False]
+  source.start(when=2.4000) with clock at 0.6320 -> ON TIME (1.7680s of headroom)   [6s @48000Hz loop=False]
+  >> spread between earliest and latest actual start = 0.091s - that is how far apart the layers begin
+
+== LEG A: microphone capture contract ==
+  audio_input widgets found: {'found': 6, 'clicked': True, 'label': 'Record'}
+  getUserMedia CONSTRAINTS asked for: {"audio": {"sampleRate": {"ideal": 48000}, "echoCancellation": false, "noiseSuppression": false, "autoGainControl": false, "voiceIsolation": false}}
+  track settings GRANTED:            {"autoGainControl": false, "channelCount": 2, "deviceId": "default", "echoCancellation": false, "groupId": "bf96ecafc58d52990651923dfcb5cbc8b38824a69b48cd46112fe7ea17acefd8", "latency": 0.01, "noiseSuppression": false, "sampleRate": 44100, "sampleSize": 16, "voiceIsolation": false}
+  MediaRecorder started, mimeType='audio/webm' bitrate=128000
+
+== LEG C: can the transport iframe open the microphone itself? ==
+  iframe allow=accelerometer; ambient-light-sensor; autoplay; battery; camera; clipboard-write; document-domain; encrypted-media; fullscreen; geolocation; gyroscope;
+  iframe sandbox=allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox allow-same-origin allow-scripts allow-downloads
+  iframe allow=accelerometer; ambient-light-sensor; autoplay; battery; camera; clipboard-write; document-domain; encrypted-media; fullscreen; geolocation; gyroscope;
+  iframe sandbox=allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox allow-same-origin allow-scripts allow-downloads
+  iframe allow=accelerometer; ambient-light-sensor; autoplay; battery; camera; clipboard-write; document-domain; encrypted-media; fullscreen; geolocation; gyroscope;
+  iframe sandbox=allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox allow-same-origin allow-scripts allow-downloads
+  iframe allow=accelerometer; ambient-light-sensor; autoplay; battery; camera; clipboard-write; document-domain; encrypted-media; fullscreen; geolocation; gyroscope;
+  iframe sandbox=allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox allow-same-origin allow-scripts allow-downloads
+  iframe allow=accelerometer; ambient-light-sensor; autoplay; battery; camera; clipboard-write; document-domain; encrypted-media; fullscreen; geolocation; gyroscope;
+  iframe sandbox=allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox allow-same-origin allow-scripts allow-downloads
+  iframe allow=accelerometer; ambient-light-sensor; autoplay; battery; camera; clipboard-write; document-domain; encrypted-media; fullscreen; geolocation; gyroscope;
+  iframe sandbox=allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox allow-same-origin allow-scripts allow-downloads
+  iframe allow=accelerometer; ambient-light-sensor; autoplay; battery; camera; clipboard-write; document-domain; encrypted-media; fullscreen; geolocation; gyroscope;
+  iframe sandbox=allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox allow-same-origin allow-scripts allow-downloads
+  secure context: True   origin: null
+  getUserMedia inside the transport iframe granted: True
+  granted settings with explicit constraints: {"autoGainControl": false, "channelCount": 2, "deviceId": "default", "echoCancellation": false, "groupId": "451519fa0fdc8bfa229cc3076a35854c3d7d96890271a04f3cbc07e3620827fb", "latency": 0.01, "noiseSuppression": false, "sampleRate": 44100, "sampleSize": 16, "voiceIsolation": false}
+  playback AudioContext sampleRate=48000 baseLatency=0.01 outputLatency=0
+  capture node created on the SAME context as playback: True
+  AudioWorklet available: True   MediaRecorder opus: True

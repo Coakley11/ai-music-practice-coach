@@ -35,6 +35,15 @@ def _reply(text, plan=None, session=None, failed=""):
 
 
 def _response(plan, session, lead=""):
+    if plan["spec"].get("trumpet_fingering"):
+        from music_coach_ami.trumpet_fingering_instructor import practice_response
+        return practice_response(plan, session, lead)
+    if plan['spec'].get('fingering'):
+        from music_coach_ami.fingering_instructor import practice_response
+        return practice_response(plan, session, lead)
+    if plan["spec"].get("sax"):
+        from music_coach_ami.sax_technique import response
+        return response(plan, session, lead)
     if plan["spec"].get("bass"):
         from music_coach_ami.bass_technique import response
         return response(plan, session, lead)
@@ -44,6 +53,8 @@ def _response(plan, session, lead=""):
     if plan["spec"].get("technique"):
         from music_coach_ami.instrument_technique import response
         return response(plan, session, lead)
+    if not plan['spec'].get('single'):
+        return wp._plan_response(plan, lead=lead, session_ref=session)
     p, r, spec = plan["player"], plan["items"][0], plan["spec"]
     return _reply(
         f"{lead}**{r['title']}** — {p['label']}, {spec['level']}, {spec['register']} register. "
@@ -65,6 +76,15 @@ def _window(player, level, register):
 
 
 def build(spec: dict) -> dict:
+    if spec.get("trumpet_fingering"):
+        from music_coach_ami.trumpet_fingering_instructor import build_practice
+        return build_practice(spec)
+    if spec.get('fingering'):
+        from music_coach_ami.fingering_instructor import build_practice
+        return build_practice(spec)
+    if spec.get("sax"):
+        from music_coach_ami.sax_technique import build as build_sax
+        return build_sax(spec)
     if spec.get("bass"):
         from music_coach_ami.bass_technique import build as build_bass
         return build_bass(spec)
@@ -201,6 +221,9 @@ def handle(question: str, session, ami_ctx: dict | None = None) -> CoachResponse
     # M1d owns explicit scale patterns, modes, bar counts and their revisions.
     if re.search(r"\bscale[ -]patterns?\b", q):
         return None
+    from music_coach_ami import sax_technique
+    sax_response=sax_technique.handle(question,session,ami_ctx)
+    if sax_response is not None:return sax_response
     from music_coach_ami import bass_tab
     tab_response=bass_tab.handle(question,session,ami_ctx)
     if tab_response is not None:return tab_response

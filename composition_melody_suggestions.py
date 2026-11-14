@@ -686,6 +686,35 @@ def _section_key(doc: dict[str, Any]) -> str:
     return str(g.get("original_key_center") or "C")
 
 
+def fit_events_to_range(events: list[dict[str, Any]], low: int, high: int) -> list[dict[str, Any]]:
+    """Octave-fold only the sounding notes outside [low, high]; spelling and pitch class are kept.
+
+    The pitch token's octave digit is rewritten (``F#5`` -> ``F#4``), so accidentals chosen for the
+    key survive. Notes already inside the range, rests and every other field are untouched.
+    """
+    import re as _re
+
+    out: list[dict[str, Any]] = []
+    for ev in events or []:
+        row = dict(ev)
+        pitch = str(row.get("pitch") or "")
+        m = _re.match(r"^([A-Ga-g][#b]*)(-?\d+)$", pitch)
+        if row.get("is_rest") or not m or row.get("midi") is None:
+            out.append(row)
+            continue
+        midi = int(row["midi"])
+        shift = 0
+        while midi + shift > high:
+            shift -= 12
+        while midi + shift < low:
+            shift += 12
+        if shift and low <= midi + shift <= high:
+            row["midi"] = midi + shift
+            row["pitch"] = f"{m.group(1)}{int(m.group(2)) + shift // 12}"
+        out.append(row)
+    return out
+
+
 def suggest_melody_concepts(
     doc: dict[str, Any],
     section: dict[str, Any],
@@ -695,7 +724,11 @@ def suggest_melody_concepts(
     limit: int = 3,
     remember: str = "",
     notes: str = "",
+    range_midi: tuple[int, int] | None = None,
 ) -> list[dict[str, Any]]:
+    """Melody candidates. ``range_midi`` is the (low, high) *sounding/concert* MIDI window every
+    generated note must stay inside (see ``composition_melody_projection.concert_melody_range``);
+    None keeps the engine's default window."""
     from composition_song_intent import build_song_intent_profile
 
     feel = str(feel or default_melody_feel_for_section(section)).strip().lower()
@@ -737,6 +770,15 @@ def suggest_melody_concepts(
         chords = chords_for_playback(doc, scope="section", section_id=sid) if sid else []
     except Exception:
         chords = []
+
+    if chords:
+        engine_out = _suggest_over_chords(
+            chords, key=key, meter=meter, feel=feel, style=style, section=section,
+            profile=profile, remember=rem, notes=jot, fam=fam, limit=limit,
+            range_midi=range_midi,
+        )
+        if len(engine_out) >= min(2, max(1, limit)):
+            return engine_out
 
     # Distinct tone cycles per suggestion so variants stay different after intent shaping.
     if fam in {"jazz", "bossa", "soul"}:
@@ -837,12 +879,12 @@ def suggest_melody_concepts(
                 rows[i]["midi"] = midi
                 rows[i]["pitch"] = _pitch_label(midi, key)
                 events = rows
+        if range_midi:
+            events = fit_events_to_range(events, int(range_midi[0]), int(range_midi[1]))
         seen_sigs.add(_esig(events))
         description = describe_melody_from_events(events, chord_count=len(chords))
         notes_line = " ".join(str(e.get("pitch") or "") for e in events)
         name = str(recipe.get("name") or "Melodic idea")
-        if ri < len(variant_names):
-            name = f"{variant_names[ri]} · {name}"
         out.append(
             {
                 "id": rid,
@@ -857,6 +899,92 @@ def suggest_melody_concepts(
                 "notes_intent": jot,
                 "events": events,
                 "notes_line": notes_line,
+                "notes_events": events,
+                "chord_span": len(chords),
+                "style_family": fam,
+                "intent_profile": {
+                    "style_family": fam,
+                    "song_style_family": profile.get("song_style_family"),
+                    "energy_tier": profile.get("energy_tier"),
+                    "section_goal": profile.get("section_goal"),
+                    "melodic_density": profile.get("melodic_density"),
+                },
+            }
+        )
+        if len(out) >= limit:
+            break
+    return out
+
+
+def _suggest_over_chords(
+    chords: list[str],
+    *,
+    key: str,
+    meter: str,
+    feel: str,
+    style: str,
+    section: dict[str, Any],
+    profile: dict[str, Any],
+    remember: str,
+    notes: str,
+    fam: str,
+    limit: int,
+    range_midi: tuple[int, int] | None = None,
+) -> list[dict[str, Any]]:
+    """Harmony-aware candidates: each concept is its own rhythm/contour/phrase identity and
+    the description is measured from the notes that were actually generated."""
+    from composition_melody_describe import describe_melody_with_harmony, verify_concept_claim
+    from composition_melody_engine import CONCEPTS, build_concept_events, concepts_for_feel
+    from composition_melody_shape import events_signature
+
+    try:
+        from composition_song_intent import style_melody_bias
+
+        bias = style_melody_bias(profile) if profile else {}
+    except ImportError:
+        bias = {}
+    flags = _intent_flags(remember, notes)
+    intent = {
+        "hold_last": flags["hold_last"] or str(profile.get("energy_tier")) == "low",
+        "space": flags["space"],
+        "start_low": flags["start_low"],
+        "comfortable": flags["comfortable"],
+    }
+    ids = concepts_for_feel(feel, section_label=str(section.get("label") or ""), limit=max(limit, 1) + 3)
+    out: list[dict[str, Any]] = []
+    seen_sigs: set[tuple] = set()
+    for cid in ids:
+        _kw = {"range_midi": (int(range_midi[0]), int(range_midi[1]))} if range_midi else {}
+        events = build_concept_events(
+            cid, chords, key=key, meter=meter, style=style, feel=feel, intent=intent, bias=bias,
+            density=(float(bias.get("density")) if bias.get("density") is not None else None),
+            **_kw,
+        )
+        if events and range_midi:
+            events = fit_events_to_range(events, int(range_midi[0]), int(range_midi[1]))
+        if not events:
+            continue
+        sig = events_signature(events)
+        if sig in seen_sigs:
+            continue
+        seen_sigs.add(sig)
+        ok, why = verify_concept_claim(cid, events, chords, key=key, meter=meter)
+        if not ok:  # never label a melody with a concept it does not exhibit
+            continue
+        description = describe_melody_with_harmony(events, chords, key=key, meter=meter, concept_id=cid)
+        out.append(
+            {
+                "id": cid,
+                "name": CONCEPTS[cid]["name"],
+                "contour": description,
+                "motif_hint": description,
+                "why": description,
+                "feel": feel,
+                "style": style,
+                "remember": remember,
+                "notes_intent": notes,
+                "events": events,
+                "notes_line": " ".join(str(e.get("pitch") or "") for e in events),
                 "notes_events": events,
                 "chord_span": len(chords),
                 "style_family": fam,

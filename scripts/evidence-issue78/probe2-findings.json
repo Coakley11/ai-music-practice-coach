@@ -1,0 +1,183 @@
+{
+  "count_in_set_to": "Count-in",
+  "zero_headroom_valid": false,
+  "capture_events": [
+    {
+      "wall": 1794572181855.1,
+      "href": "http://127.0.0.1:8590/",
+      "kind": "gum_request",
+      "constraints": {
+        "audio": {
+          "sampleRate": {
+            "ideal": 48000
+          },
+          "echoCancellation": false,
+          "noiseSuppression": false,
+          "autoGainControl": false,
+          "voiceIsolation": false
+        }
+      },
+      "_frame": "main"
+    },
+    {
+      "wall": 1794572181880.4001,
+      "href": "http://127.0.0.1:8590/",
+      "kind": "gum_settings",
+      "settings": {
+        "autoGainControl": false,
+        "channelCount": 2,
+        "deviceId": "default",
+        "echoCancellation": false,
+        "groupId": "19bd46dda5f191527738441406662620ae4cf52121bf6a03efd582413ec048f1",
+        "latency": 0.01,
+        "noiseSuppression": false,
+        "sampleRate": 44100,
+        "sampleSize": 16,
+        "voiceIsolation": false
+      },
+      "_frame": "main"
+    },
+    {
+      "wall": 1794572181901.6,
+      "href": "http://127.0.0.1:8590/",
+      "kind": "audioctx_new",
+      "label": "AudioContext",
+      "sampleRate": 48000,
+      "baseLatency": 0.01,
+      "outputLatency": 0,
+      "currentTime": 0,
+      "_frame": "main"
+    },
+    {
+      "wall": 1794572181902.2,
+      "href": "http://127.0.0.1:8590/",
+      "kind": "mediarecorder_start",
+      "mimeType": "audio/webm",
+      "audioBitsPerSecond": 128000,
+      "_frame": "main"
+    },
+    {
+      "wall": 1794572197773.1,
+      "href": "http://127.0.0.1:8590/",
+      "kind": "mediarecorder_stop",
+      "_frame": "main"
+    },
+    {
+      "wall": 1794572197832.5,
+      "href": "http://127.0.0.1:8590/",
+      "kind": "audioctx_new",
+      "label": "AudioContext",
+      "sampleRate": 8000,
+      "baseLatency": 0.016,
+      "outputLatency": 0,
+      "currentTime": 0,
+      "_frame": "main"
+    },
+    {
+      "wall": 1794572197915.1,
+      "href": "http://127.0.0.1:8590/",
+      "kind": "decode",
+      "bytes": 255320,
+      "wall_ms": 82.5,
+      "ctx_before": 0,
+      "ctx_after": 0,
+      "buffer_sec": 15.84,
+      "buffer_sr": 8000,
+      "_frame": "main"
+    },
+    {
+      "wall": 1794572197931.3,
+      "href": "http://127.0.0.1:8590/",
+      "kind": "audioctx_new",
+      "label": "AudioContext",
+      "sampleRate": 48000,
+      "baseLatency": 0.01,
+      "outputLatency": 0,
+      "currentTime": 0,
+      "_frame": "main"
+    },
+    {
+      "wall": 1794572198039.4001,
+      "href": "http://127.0.0.1:8590/",
+      "kind": "decode",
+      "bytes": 255320,
+      "wall_ms": 82.900146484375,
+      "ctx_before": 0,
+      "ctx_after": 0,
+      "buffer_sec": 15.84,
+      "buffer_sr": 48000,
+      "_frame": "main"
+    },
+    {
+      "wall": 1794572198039.8,
+      "href": "http://127.0.0.1:8590/",
+      "kind": "audioctx_new",
+      "label": "OfflineAudioContext",
+      "sampleRate": 48000,
+      "baseLatency": null,
+      "outputLatency": null,
+      "currentTime": 0,
+      "_frame": "main"
+    },
+    {
+      "wall": 1794572198041.1,
+      "href": "http://127.0.0.1:8590/",
+      "kind": "bufsrc_start",
+      "when": 0,
+      "ctx_now": 0,
+      "late_by": 0,
+      "buffer_sec": 15.84,
+      "buffer_sr": 48000,
+      "loop": false,
+      "_frame": "main"
+    },
+    {
+      "wall": 1794572206171.5,
+      "href": "http://127.0.0.1:8590/",
+      "kind": "audioctx_new",
+      "label": "AudioContext",
+      "sampleRate": 8000,
+      "baseLatency": 0.016,
+      "outputLatency": 0,
+      "currentTime": 0,
+      "_frame": "main"
+    },
+    {
+      "wall": 1794572206194.9001,
+      "href": "http://127.0.0.1:8590/",
+      "kind": "decode",
+      "bytes": 1520684,
+      "wall_ms": 23.300048828125,
+      "ctx_before": 0,
+      "ctx_after": 0,
+      "buffer_sec": 15.84,
+      "buffer_sr": 8000,
+      "_frame": "main"
+    }
+  ],
+  "capture_to_beat1_offset_ms": 24269.300048828125,
+  "stored_take": {
+    "bytes": 1520684,
+    "riff": "RIFF",
+    "channels": 1,
+    "sample_rate": 48000,
+    "sample_width": 2,
+    "frames": 760320,
+    "duration_sec": 15.84,
+    "nyquist_hz": 24000,
+    "peak_abs": 27582,
+    "peak_dbfs": -1.5,
+    "rms_dbfs": -14.22,
+    "transients_sec": [
+      0.4772,
+      6.4772,
+      12.4772
+    ],
+    "transient_count": 3,
+    "transient_gaps_sec": [
+      6.0,
+      6.0
+    ],
+    "can_hold_above_8k": true
+  }
+}

@@ -24,6 +24,7 @@ from media_tone_catalog import (
     tone_take_history_detail_fields,
     tone_take_display_instrument,
     tone_take_quality,
+    tone_take_scoring_is_legacy,
     tone_take_row_summary,
 )
 
@@ -80,6 +81,21 @@ def render_pending_tone_save(
             st_module.rerun()
         else:
             st_module.error(f"Could not save tone take: {err or 'unknown error'}")
+
+
+def _pct(value: object) -> str:
+    """A percentage, or an em dash. ``f"{None:+.0f}"`` raises; ``f"{None}%"`` prints "None%"."""
+    try:
+        return f"{float(value):.0f}%"  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return "—"
+
+
+def _cents(value: object) -> str:
+    try:
+        return f"{float(value):+.0f}¢"  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return "—"
 
 
 def render_tone_take_history_section(
@@ -187,21 +203,49 @@ def _render_tone_take_history_body(
         tid = str(row.get("tone_take_id") or "")
         summary = tone_take_row_summary(row)
         quality_tag = tone_take_quality(row)
-        badge = {"best": "✓", "needs_work": "!", "steady": "·"}.get(quality_tag, "·")
+        badge = {"best": "✓", "needs_work": "!", "steady": "·", "unmeasured": "?"}.get(
+            quality_tag, "·"
+        )
+        legacy = tone_take_scoring_is_legacy(row)
 
         with st_module.expander(f"{badge} {summary}"):
             for label, value in tone_take_history_detail_fields(row):
                 st_module.markdown(f"**{html.escape(label)}:** {html.escape(str(value))}")
-            st_module.markdown(
-                f"**Pitch report:** {row.get('pitch_stability_score', row.get('pitch_stability', '—'))}% stability · "
-                f"{row.get('mean_cents', row.get('average_cents', 0)):+.0f}¢ avg · "
-                f"max drift {row.get('max_cents_drift', '—')}¢"
-            )
-            st_module.markdown(
-                f"**Tone report:** volume {row.get('volume_stability_score', row.get('sustain_steadiness', '—'))}% · "
-                f"sustain {row.get('sustain_seconds', '—')}s · "
-                f"consistency {row.get('tone_consistency_score', '—')}"
-            )
+            if quality_tag == "unmeasured":
+                reason = str(row.get("analysis_reason") or "").strip()
+                st_module.markdown(
+                    "**Pitch report:** not measured — "
+                    + html.escape(reason or "not enough reliable pitch was detected")
+                )
+                st_module.markdown(
+                    f"**Tone report:** not measured · recorded "
+                    f"{row.get('duration_seconds', '—')}s"
+                )
+            else:
+                st_module.markdown(
+                    f"**Pitch report:** {_pct(row.get('pitch_stability_score', row.get('pitch_stability')))} stability · "
+                    f"{_cents(row.get('mean_cents', row.get('average_cents')))} avg · "
+                    f"max drift {row.get('max_cents_drift', '—')}¢"
+                )
+                st_module.markdown(
+                    f"**Tone report:** volume "
+                    f"{_pct(row.get('volume_stability_score', row.get('sustain_steadiness')))} · "
+                    f"sustain {row.get('sustain_seconds', '—')}s · "
+                    f"consistency {row.get('tone_consistency_score', '—')}"
+                )
+                if row.get("octave_offset_semitones"):
+                    octaves = abs(int(row.get("octave_offset_semitones") or 0)) // 12
+                    st_module.markdown(
+                        f"**Octave:** played {octaves} octave(s) from the reference "
+                        f"{html.escape(str(row.get('target_note') or ''))} — the tuning figure is "
+                        "measured against the octave played."
+                    )
+            if legacy:
+                st_module.caption(
+                    "Legacy measurement: scored by the earlier tone analysis, before pitch "
+                    "stability, tuning and octave were measured separately. Kept exactly as it "
+                    "was recorded — it is not directly comparable with newer takes."
+                )
             if row.get("coach_summary") or row.get("coach_report"):
                 st_module.markdown(
                     f"**Coach report:** {html.escape(str(row.get('coach_report') or row.get('coach_summary')))}"
