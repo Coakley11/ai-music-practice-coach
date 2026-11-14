@@ -1,0 +1,223 @@
+{
+  "model": "Yamaha YCL-255",
+  "model_id": "yamaha-ycl255",
+  "type": "Bb soprano clarinet",
+  "system": "standard Boehm, 17 keys, 6 rings",
+  "model_source": {
+    "url": "https://usa.yamaha.com/products/musical_instruments/winds/clarinets/ycl-255/specs.html",
+    "sha256": "3e9ca6d85be63d5db7b75d7db1d624200a788511db3e4b39411c87e5efe209ee"
+  },
+  "chart_sources": {
+    "scheme": {
+      "url": "https://www.wfg.woodwind.org/clarinet/cl_fing.html",
+      "sha256": "074e63abf2ceadcd599dbb1d2a017dda86a104b2ae4f82d923af73a5256611c1"
+    },
+    "chalumeau": {
+      "url": "https://www.wfg.woodwind.org/clarinet/cl_bas_1.html",
+      "sha256": "34602cf2d13142cdda719237a3b278dd9338bdeccf1e50c940a71bc20fbc6a7a"
+    },
+    "clarion": {
+      "url": "https://www.wfg.woodwind.org/clarinet/cl_bas_2.html",
+      "sha256": "f4b7aef9295f2ae8254cdfd2987ea4ee8d33963238a56d3de9c6a2976bc0448c"
+    }
+  },
+  "acoustic_source": {
+    "url": "https://newt.phys.unsw.edu.au/jw/clarinetacoustics.html",
+    "sha256": "17a3358cbf186fe52e393efc9fb2fd835e6e7921dae8163d237f275ea0a1da7f"
+  },
+  "holes": [
+    "T",
+    "L1",
+    "L2",
+    "L3",
+    "R1",
+    "R2",
+    "R3"
+  ],
+  "pilot_keys": [
+    "Register",
+    "A",
+    "L_EB",
+    "R_FC"
+  ],
+  "notes": {
+    "E3": {
+      "written": 52,
+      "sounding": 50,
+      "covered": [
+        "T",
+        "L1",
+        "L2",
+        "L3",
+        "R1",
+        "R2",
+        "R3"
+      ],
+      "pressed": [
+        "L_EB"
+      ],
+      "chart": "chalumeau",
+      "row": 2,
+      "choice": "Left little-finger E/B key; right little-finger keys released"
+    },
+    "F3": {
+      "written": 53,
+      "sounding": 51,
+      "covered": [
+        "T",
+        "L1",
+        "L2",
+        "L3",
+        "R1",
+        "R2",
+        "R3"
+      ],
+      "pressed": [
+        "R_FC"
+      ],
+      "chart": "chalumeau",
+      "row": 5,
+      "choice": "Right little-finger F/C key; left little-finger keys released"
+    },
+    "G3": {
+      "written": 55,
+      "sounding": 53,
+      "covered": [
+        "T",
+        "L1",
+        "L2",
+        "L3",
+        "R1",
+        "R2",
+        "R3"
+      ],
+      "pressed": [],
+      "chart": "chalumeau",
+      "row": 10,
+      "choice": "No little-finger key"
+    },
+    "Bb4": {
+      "written": 70,
+      "sounding": 68,
+      "covered": [],
+      "pressed": [
+        "Register",
+        "A"
+      ],
+      "chart": "chalumeau",
+      "row": 29,
+      "choice": "Basic throat Bb: A and register keys, thumb hole open; no added resonance fingers"
+    },
+    "B4": {
+      "written": 71,
+      "sounding": 69,
+      "covered": [
+        "T",
+        "L1",
+        "L2",
+        "L3",
+        "R1",
+        "R2",
+        "R3"
+      ],
+      "pressed": [
+        "Register",
+        "L_EB"
+      ],
+      "chart": "clarion",
+      "row": 3,
+      "choice": "Left little-finger E/B key, matching selected E3"
+    },
+    "C5": {
+      "written": 72,
+      "sounding": 70,
+      "covered": [
+        "T",
+        "L1",
+        "L2",
+        "L3",
+        "R1",
+        "R2",
+        "R3"
+      ],
+      "pressed": [
+        "Register",
+        "R_FC"
+      ],
+      "chart": "clarion",
+      "row": 6,
+      "choice": "Right little-finger F/C key, matching selected F3"
+    },
+    "D5": {
+      "written": 74,
+      "sounding": 72,
+      "covered": [
+        "T",
+        "L1",
+        "L2",
+        "L3",
+        "R1",
+        "R2",
+        "R3"
+      ],
+      "pressed": [
+        "Register"
+      ],
+      "chart": "clarion",
+      "row": 11,
+      "choice": "No little-finger key, matching G3"
+    }
+  },
+  "pairs": [
+    [
+      "E3",
+      "B4"
+    ],
+    [
+      "F3",
+      "C5"
+    ],
+    [
+      "G3",
+      "D5"
+    ]
+  ],
+  "pair_intervals_semitones": [
+    19,
+    19,
+    19
+  ],
+  "pair_deltas": [
+    "Register: press"
+  ],
+  "break_pair": [
+    "Bb4",
+    "B4"
+  ],
+  "break_interval_semitones": 1,
+  "break_deltas": {
+    "cover": [
+      "T",
+      "L1",
+      "L2",
+      "L3",
+      "R1",
+      "R2",
+      "R3"
+    ],
+    "press": [
+      "L_EB"
+    ],
+    "release": [
+      "A"
+    ],
+    "unchanged_pressed": [
+      "Register"
+    ]
+  },
+  "verification": "manufacturer model specification + reference-supported basic Boehm fingering",
+  "teacher_reviewed": false,
+  "physically_tested": false,
+  "visual_review": "Seven WFG rows visually inspected in source-rows-visual.png; finger-hole/key symbols cross-checked against WFG legend. Source reference graphics are review-only, not shipped product artwork.",
+  "limitations": "Chosen basic little-finger options only. Other little-finger variants, resonance fingers, alternates, Albert/Oehler, other clarinet keys/types, altissimo and specialized embouchure/breathing methods excluded."
+}
