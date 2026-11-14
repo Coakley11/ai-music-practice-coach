@@ -8900,6 +8900,25 @@ def warn_if_backing_loop_degraded():
         )
 
 
+def _mt_backing_duration_for_recorder(monitor_wav, fallback_sec) -> float:
+    """Seconds of monitor backing the recorder should expect, measured from its own bytes.
+
+    Issue 77A. Never raises and never blocks rendering: if the bytes cannot be read as WAV the old
+    predicted value is used, which is no worse than the behaviour this replaces.
+    """
+    if not monitor_wav:
+        return 0.0
+    try:
+        from multitrack_monitor_assets import backing_duration_for_recorder
+
+        return backing_duration_for_recorder(monitor_wav, fallback_sec)
+    except Exception:
+        try:
+            return max(0.0, float(fallback_sec or 0.0))
+        except (TypeError, ValueError):
+            return 0.0
+
+
 def multitrack_monitor_backing_bytes(
     sections,
     selected_section_names,
@@ -28480,11 +28499,27 @@ elif _studio_page == "multitrack":
                                     slot=slot,
                                     slots=MT_SLOTS,
                                     backing_wav=(monitor_wav if use_backing_monitor else None),
-                                    backing_duration_sec=float(
+                                    # Issue 77A. This was the PREDICTED length
+                                    # (bars x bar_seconds x loops), and the renderer
+                                    # could never match it: synthesize_chords_to_numpy
+                                    # leaves a full second of decay after the music, and
+                                    # the recorder refuses any asset more than 0.6 s from
+                                    # what it was told to expect. Every prepared backing
+                                    # was therefore rejected and Record was disabled on
+                                    # every layer - measured 16.0 predicted against 17.0
+                                    # rendered, 32.0 against 33.0, 48.0 against 49.0. The
+                                    # estimate also counted the chart on screen while the
+                                    # render uses the canonical concert sections (72 bars
+                                    # against 78 on a real song). So the duration is now
+                                    # measured from the very bytes the recorder will
+                                    # fetch, which leaves the tolerance doing its real
+                                    # job: catching an asset that is not the one this
+                                    # project means.
+                                    backing_duration_sec=_mt_backing_duration_for_recorder(
+                                        monitor_wav if use_backing_monitor else None,
                                         st.session_state.get(
                                             "mt_backing_duration", mt_backing_duration
-                                        )
-                                        or 0.0
+                                        ),
                                     ),
                                     count_in_bars=mt_count_in_bars,
                                     bpm=mt_bpm,
@@ -28507,6 +28542,69 @@ elif _studio_page == "multitrack":
                                     "microphone access, usually brings the synchronized recorder "
                                     "back."
                                 )
+
+                        # Issue 77A: when the recorder could not load one of the parts it was asked
+                        # to play along with, say WHICH part and offer a way forward. The component
+                        # says so in small print inside its own frame and names nothing, because the
+                        # acknowledgement that carries the asset's identity used to be discarded.
+                        if _mt_live_ok:
+                            try:
+                                from multitrack_monitor_assets import (
+                                    asset_slot,
+                                    exclude_monitor,
+                                    excluded_notice,
+                                    failure_detail,
+                                    layer_recorder_ack,
+                                    monitor_failure_message,
+                                    request_retry,
+                                )
+
+                                _mt_asset_notice = excluded_notice(st.session_state)
+                                if _mt_asset_notice:
+                                    st.caption(_mt_asset_notice)
+                                _mt_asset_msg = monitor_failure_message(
+                                    st.session_state,
+                                    slot,
+                                    excluded_any=bool(_mt_asset_notice),
+                                )
+                                if _mt_asset_msg:
+                                    st.warning(_mt_asset_msg)
+                                    _mt_ack = layer_recorder_ack(st.session_state, slot)
+                                    _mt_bad_slot = asset_slot(_mt_ack.get("failed_asset"))
+                                    _retry_col, _skip_col = st.columns(2)
+                                    if _retry_col.button(
+                                        "↻ Try loading again",
+                                        key=f"mt_asset_retry_{slot}",
+                                        use_container_width=True,
+                                        help="Fetch and decode the parts again.",
+                                    ):
+                                        request_retry(st.session_state)
+                                        st.rerun()
+                                    if _mt_bad_slot:
+                                        if _skip_col.button(
+                                            f"Record without {st.session_state.get(f'mt_name_{_mt_bad_slot}') or _mt_bad_slot}",
+                                            key=f"mt_asset_skip_{slot}",
+                                            use_container_width=True,
+                                            help=(
+                                                "Leaves that layer out of what plays while you "
+                                                "record. The take is measured against what "
+                                                "actually played, so it stays honest about what "
+                                                "you heard."
+                                            ),
+                                        ):
+                                            exclude_monitor(st.session_state, _mt_bad_slot)
+                                            st.rerun()
+                                    else:
+                                        _skip_col.caption(
+                                            "Switch Step 1 to **Free layering (no backing)** to "
+                                            "record with the count-in and your own layers only."
+                                        )
+                                    _mt_detail = failure_detail(st.session_state, slot)
+                                    if _mt_detail:
+                                        with st.expander("Technical detail", expanded=False):
+                                            st.caption(_mt_detail)
+                            except ImportError:
+                                pass
 
                         recorded = None
                         if not _mt_live_ok:
@@ -28565,6 +28663,37 @@ elif _studio_page == "multitrack":
                             _mt_landed_bytes = None
                             _mt_landed_name = ""
                             _mt_landed_source = ""
+                        # Issue 77A: an UPLOAD is decoded before it becomes a layer. The uploader
+                        # accepts a file on its extension and the size guard above accepts anything
+                        # over 512 bytes, so a file no decoder can read used to become a take - and
+                        # then disabled Record on every OTHER layer, because each of those has to
+                        # decode it to play along with it. Takes captured here are not re-checked:
+                        # this app wrote those bytes itself.
+                        if _mt_landed_bytes is not None and _mt_landed_source == "upload":
+                            try:
+                                from multitrack_audio_validation import (
+                                    check_audio_bytes,
+                                    rejection_message,
+                                )
+
+                                _mt_check = check_audio_bytes(_mt_landed_bytes, _mt_landed_name)
+                                if not _mt_check.ok:
+                                    st.warning(
+                                        rejection_message(
+                                            _mt_check,
+                                            _mt_landed_name,
+                                            layer_name=str(
+                                                st.session_state.get(f"mt_name_{slot}") or slot
+                                            ),
+                                        )
+                                    )
+                                    # Nothing is deleted or replaced: the layer keeps whatever it
+                                    # already held, and the uploaded file is simply not adopted.
+                                    _mt_landed_bytes = None
+                                    _mt_landed_name = ""
+                                    _mt_landed_source = ""
+                            except ImportError:
+                                pass
                         if _mt_landed_bytes is not None:
                             _mt_bytes = _mt_landed_bytes
                             if st.session_state.mt_tracks.get(slot) != _mt_bytes:
@@ -28986,8 +29115,14 @@ elif _studio_page == "multitrack":
                     backing_monitor_volume=float(st.session_state.get("mt_backing_volume", backing_volume)),
                     scope_label=st.session_state.get("mt_backing_scope", mt_scope_label),
                     time_signature=mt_time_sig,
-                    backing_duration_sec=float(
-                        st.session_state.get("mt_backing_duration", mt_backing_duration)
+                    # Issue 77A: measured from the prepared bytes, like the recorder's, so the
+                    # transport and the recorder describe the same audio.
+                    backing_duration_sec=(
+                        _mt_backing_duration_for_recorder(
+                            monitor_wav if backing_b64_for_studio else None,
+                            st.session_state.get("mt_backing_duration", mt_backing_duration),
+                        )
+                        or float(st.session_state.get("mt_backing_duration", mt_backing_duration) or 0.0)
                     ),
                 ),
                 height=560,

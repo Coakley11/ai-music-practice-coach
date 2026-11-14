@@ -65,9 +65,22 @@ def monitor_slots(
     The slot being recorded is never monitored against itself - that take is about to be replaced,
     and playing it back into the room would be heard as a double. Otherwise this follows the mixer
     the player can see: Solo narrows to the soloed layers, Mute removes a layer.
+
+    Issue 77A adds one more exclusion: a part the musician has explicitly chosen to record without,
+    after it failed to load. It is dropped from the REQUEST rather than silenced during playback, so
+    the take's ``monitors_expected`` matches what actually started and ``sync_state`` keeps telling
+    the truth about whether the take is aligned.
     """
     tracks = session_state.get("mt_tracks") or {}
     candidates = [s for s in slots if s != recording_slot and tracks.get(s)]
+    try:
+        from multitrack_monitor_assets import excluded_monitors
+
+        skip = excluded_monitors(session_state)
+        if skip:
+            candidates = [s for s in candidates if str(s) not in skip]
+    except ImportError:
+        pass
     controls = {s: _control(session_state, s) for s in candidates}
     soloed = [s for s in candidates if controls[s].get("solo")]
     chosen = soloed or [s for s in candidates if not controls[s].get("mute")]
@@ -432,14 +445,33 @@ def render_layer_recorder(
     )
     # Only a discarded take invalidates what the browser already decoded; an ordinary rerun must
     # not restart the loads, or Record would keep going unavailable under the player's hand.
+    # Issue 77A adds the retry nonce, so "Try again" after a failed load is the one other thing that
+    # may restart them.
     try:
         from multitrack_takes import take_nonce
 
         args["load_nonce"] = int(take_nonce(session_state, slot)) + 1
     except Exception:
         args["load_nonce"] = 1
+    try:
+        from multitrack_monitor_assets import retry_nonce
+
+        args["load_nonce"] = int(args["load_nonce"]) + (int(retry_nonce(session_state)) * 1000)
+    except Exception:
+        pass
 
     value = RECORDER_COMPONENT(key=key, default=None, **args)
+    # Issue 77A: keep the recorder's acknowledgement. It carries which asset failed, its byte count,
+    # its content type and the browser's own error - everything needed to tell the musician which
+    # part could not be loaded. This early return used to drop it, which is why three different
+    # failures all reached the page as one unexplained sentence.
+    if isinstance(value, Mapping) and value.get("ack"):
+        try:
+            from multitrack_monitor_assets import record_layer_recorder_ack
+
+            record_layer_recorder_ack(session_state, slot, value.get("ack"))
+        except ImportError:
+            pass
     if not isinstance(value, dict) or not value.get("take_id") or not value.get("wav_b64"):
         return None
     last_key = f"{LAST_TAKE_ID_PREFIX}{slot}"

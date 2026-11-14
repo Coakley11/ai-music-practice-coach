@@ -111,7 +111,7 @@
       const MAX_ATTEMPTS = 3, BACKOFF_MS = [0, 800, 2000], FETCH_TIMEOUT_MS = 20000, DURATION_TOL_SEC = 0.6;
       const instanceId = Math.random().toString(36).slice(2, 10);
       const IDLE = () => ({ fp: "", state: "idle", nonce: 0, attempts: 0, error: "", bytes: 0, mime: "", sampleRate: 0,
-                            channels: 0, duration: 0, assets: 0 });
+                            channels: 0, duration: 0, assets: 0, failedAsset: "" });
       let args = {};
       let ctx = null, backingBuf = null, armed = [], bk = IDLE(), loadToken = 0, lastAckKey = "";
       let rec = null; // active recording state
@@ -168,7 +168,7 @@
         return { fp: bk.fp, state: bk.state, nonce: bk.nonce, attempts: bk.attempts, error: bk.error, bytes: bk.bytes,
                  mime: bk.mime, sample_rate: bk.sampleRate, channels: bk.channels, duration_sec: bk.duration,
                  expected_duration_sec: Number(args.backing_duration_sec || 0), assets: bk.assets,
-                 instance: instanceId, trace: trace.slice(-16) };
+                 failed_asset: bk.failedAsset || "", instance: instanceId, trace: trace.slice(-16) };
       }
       // Tell Python the outcome for this exact (fingerprint, nonce); once per outcome.
       function sendAck(force) {
@@ -264,6 +264,9 @@
           } catch (e) {
             if (token !== loadToken) return;
             bk.error = describe(e);
+            // Issue 77A: which asset this was. The host can only name the part that failed if the
+            // id travels with the acknowledgement; the trace alone was not read by Multitrack.
+            bk.failedAsset = String(asset.id || "");
             backingBuf = null; armed = []; bk.state = "failed"; note("failed", { error: bk.error, asset: asset.id });
             render(); sendAck();
             return;

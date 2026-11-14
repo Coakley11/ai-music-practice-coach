@@ -133,10 +133,48 @@ def resolve_multitrack_backing_bytes(
         backing_media_relpath(mid) if mid else "",
     ):
         cached = _backing_bytes_from_local_path(ws, rel)
-        if cached:
-            session_state["multitrack_backing_music_wav"] = cached
-            return cached
+        if not cached:
+            continue
+        # Issue 77A: a cached backing was accepted on file size alone, so a truncated or
+        # non-audio file became the monitor backing and then stopped every layer recording,
+        # because each recorder has to decode it before it will arm. A readable WAV header is
+        # the cheap, honest check here (these files are written as WAV by this app).
+        #
+        # A file that fails is NOT deleted or replaced: it stays on disk, it is simply not
+        # adopted as this session's monitor backing, and the reason is recorded so the page can
+        # say so through the notice it already has for unplayable saved backing.
+        if not _cached_backing_is_readable(cached):
+            session_state["_mt_backing_load_error"] = "cached_backing_not_readable"
+            continue
+        session_state["multitrack_backing_music_wav"] = cached
+        return cached
     return None
+
+
+def _cached_backing_is_readable(data: Any) -> bool:
+    """False only for a file that CLAIMS to be a WAV and cannot be read as one.
+
+    Deliberately narrow. Rejecting anything that is not a parseable WAV would turn away audio in
+    other containers, and would break the long-standing contract that whatever is cached on disk is
+    handed back to the session - a stored placeholder is not this function's business. What it does
+    catch is the measured failure: a file whose RIFF/WAVE header is present but truncated or
+    corrupt, which used to become the monitor backing and then stop every layer from recording.
+    """
+    if not isinstance(data, (bytes, bytearray, memoryview)):
+        return True
+    raw = bytes(data)
+    claims_wav = len(raw) >= 12 and raw[0:4] == b"RIFF" and raw[8:12] == b"WAVE"
+    if not claims_wav:
+        return True
+    try:
+        from multitrack_monitor_assets import wav_duration_sec
+    except ImportError:
+        return True        # cannot check here; the recorder still reports a failure honestly
+    try:
+        duration = wav_duration_sec(raw)
+    except Exception:
+        return True
+    return duration is not None and duration > 0.0
 
 
 def _record_backing_upload_diag(session_state: dict[str, Any], store: dict[str, Any]) -> None:
