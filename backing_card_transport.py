@@ -59,6 +59,7 @@ def render_backing_card_transport(
     restart_on_resume: bool = False,
     cycle_active: bool = False,
     theme: dict | None = None,
+    count_in: dict | None = None,
 ) -> None:
     """Mount the transport control (inside the active Backing card).
 
@@ -85,6 +86,8 @@ def render_backing_card_transport(
         restart_on_resume=bool(restart_on_resume),
         cycle_active=bool(cycle_active),
         theme=dict(theme) if theme else None,
+        # M3: the two-bar count-in the browser arms on Play (None: off / Karaoke / Key Cycling).
+        count_in=dict(count_in) if count_in else None,
         # The newest command the server applied (it is committed a little later
         # for Play: once armed).
         consumed=_echo_token(session),

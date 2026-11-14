@@ -96,3 +96,23 @@ def transpose_practice_melody(melody: PracticeMelody, *, new_key_center: str) ->
         _transpose_section(section, steps=steps, new_key_center=target) for section in melody.sections
     )
     return _dc_replace(melody, key_center=target, sections=new_sections)
+
+
+def retime_practice_melody(melody: PracticeMelody, *, bpm: float | int | None) -> PracticeMelody:
+    """Return the same composition at the tempo the musician is playing now.
+
+    The melody's notes, rests and rhythms are written in beats (``duration_beats``), so the tempo is only how
+    fast those beats go by: the heading, the notation's ``Q:`` marking and its audio preview. A BPM change
+    therefore re-times the melody in place, exactly as a key change transposes it -- it never generates a new
+    one (user, 2026-11-11: the melody kept showing the 160 BPM it was generated at after the Backing BPM went
+    to 148).
+
+    A no-op (returns ``melody`` itself) when ``bpm`` is missing, not positive, or already the melody's tempo.
+    """
+    try:
+        target = float(bpm or 0)
+    except (TypeError, ValueError):
+        return melody
+    if target <= 0 or abs(target - float(melody.tempo_bpm or 0)) < 1e-6:
+        return melody
+    return _dc_replace(melody, tempo_bpm=target)
