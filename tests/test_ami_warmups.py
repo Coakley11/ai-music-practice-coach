@@ -362,7 +362,7 @@ class TestStaccatoIsWrittenBeforeTheNote:
               MusicalEvent("E", 5, "eighth", 0, 2.0, "staccato accent"), MusicalEvent("F", 5, "eighth", 0, 2.5, "staccato"), MusicalEvent("G", 5, "half", 0, 3.0, "staccato")]
         comp = MusicalIdeaComposition(tuple(ev), "C", "4/4", 1, "pattern", "x", notation_profile_for_instrument("Flute"), tonic="C", tonality="major")
         abc, _ = composition_to_abc(comp, title="x", bpm=80)
-        assert "(.c/2 d/2)" in abc and "!>!.e/2" in abc and ".f/2" in abc and ".g2" in abc, abc
+        assert "(.c/2d/2)" in abc and "!>!.e/2.f/2" in abc and ".g2" in abc, abc
 
 
 class TestDifficultyIsGenuine:

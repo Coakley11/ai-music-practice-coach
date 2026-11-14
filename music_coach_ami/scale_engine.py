@@ -1170,27 +1170,45 @@ def _abc_apply_triplet_groups(tokens: list[str]) -> list[str]:
 
 
 def _abc_beam_within_measure(chunk: list[str], meter: str, default_len: str) -> str:
-    if meter == "6/8" and default_len == "1/8":
-        parts: list[str] = []
-        j = 0
-        while j < len(chunk):
-            group = chunk[j : j + 3]
-            if len(group) == 3:
-                merged = []
-                for g in group:
-                    if g.startswith("(3") and g.endswith(")"):
-                        merged.append(g)
-                    else:
-                        merged.append(g)
-                if all(not g.startswith("(3") for g in group):
-                    parts.append("".join(group))
-                else:
-                    parts.append(" ".join(group))
-            else:
-                parts.append(" ".join(group))
-            j += 3
-        return " ".join(parts)
-    return " ".join(chunk)
+    """Beam short ABC notes by exact metrical position; change separators only.
+
+    A simple-meter quarter beat groups two eighths/four sixteenths. Compound
+    meters group a dotted-quarter pulse. Rests, chords labels, beat-crossing
+    notes, explicit tuplet/broken-rhythm syntax and unknown tokens break beams.
+    Slurs/decorations stay on their original tokens and coexist with beams.
+    """
+    from fractions import Fraction
+    from composition_melody_notation import join_abc_tokens_with_beams
+
+    try:
+        numerator, denominator = (int(v) for v in meter.split('/'))
+        unit = Fraction(default_len)
+        if numerator <= 0 or denominator <= 0 or unit <= 0:raise ValueError
+    except (ValueError, ZeroDivisionError):
+        return ' '.join(chunk)
+    group = Fraction(3, denominator) if numerator > 3 and numerator % 3 == 0 and denominator >= 8 else Fraction(1, denominator)
+    # 2/2 and related meters use a half-note pulse; eighths still get conventional
+    # subdivisions at a quarter note rather than one oversized beam.
+    group = min(group, Fraction(1, 4)) if denominator <= 4 else group
+    entries=[];position=Fraction(0)
+    for token in chunk:
+        # Unhandled tuplet/broken-rhythm timing must not influence later groups.
+        clean=re.sub(r'"[^"]*"|![^!]*!|\+[^+]*\+','',token)
+        if re.search(r'\(\d|[<>]',clean):return ' '.join(chunk)
+        match=re.fullmatch(r"[().~uvHLMOPST]*([=_^]*[A-Ga-gzZxX](?:[,']*)|\[[^\]]+\])([0-9]*(?:/+[0-9]*)?)[)\-]*",clean)
+        if not match:return ' '.join(chunk)
+        pitch,length=match.groups()
+        if '/' in length:
+            n,slashes,d=re.fullmatch(r'(\d*)(/+)(\d*)',length).groups()
+            duration=unit*Fraction(int(n or 1),int(d) if d else 2**len(slashes))
+        else:duration=unit*int(length or 1)
+        if duration<=0:return ' '.join(chunk)
+        key=position//group
+        pitched=not pitch.lstrip('=_^').startswith(('z','Z','x','X'))
+        beamable=pitched and duration<Fraction(1,4) and position+duration<=(key+1)*group
+        entries.append((token,beamable,key,'"' in token))
+        position+=duration
+    return join_abc_tokens_with_beams(entries)
 
 
 def _abc_pack_measures(

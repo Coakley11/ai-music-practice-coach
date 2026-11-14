@@ -9,6 +9,8 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from typing import Any
 
+from music_feature_icons import AMI_ACTION_ICONS
+
 log = logging.getLogger(__name__)
 
 INSIGHT_ITEM_TYPE = "applied_math_insight"
@@ -2250,10 +2252,10 @@ def render_applied_math_insight_panel(
         c1, c2 = st.columns(2)
         with c1:
             if url:
-                st.link_button("Open full analysis →", url, use_container_width=True)
+                st.link_button("Open full analysis", url, icon=AMI_ACTION_ICONS["analysis"], use_container_width=True)
         with c2:
             insight_id = str(data.get("insight_id") or "pending")[:12]
-            if st.button("Dismiss insight", key=f"ami_insight_dismiss_{insight_id}", use_container_width=True):
+            if st.button("Dismiss insight", icon=AMI_ACTION_ICONS["dismiss"], key=f"ami_insight_dismiss_{insight_id}", use_container_width=True):
                 dismiss_applied_math_insight(st, app_key=app)
                 st.rerun()
     if app == "music":
@@ -2315,7 +2317,7 @@ def _render_warmup_nav(st: Any, data: dict, *, app: str) -> None:
     cols = st.columns(len(wanted))
     for col, (label, delta, tag) in zip(cols, wanted):
         with col:
-            if not st.button(label, key=f"ami_warmup_{tag}_{pid}_{stamp}", use_container_width=True, type="primary" if tag == "next" else "secondary"):
+            if not st.button(label, icon=AMI_ACTION_ICONS[tag], key=f"ami_warmup_{tag}_{pid}_{stamp}", use_container_width=True, type="primary" if tag == "next" else "secondary"):
                 continue
             try:
                 from music_coach_ami.warmup_plan import step_view
