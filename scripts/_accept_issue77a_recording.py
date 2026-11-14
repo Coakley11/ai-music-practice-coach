@@ -30,6 +30,12 @@ SCRIPTS = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPTS))
 sys.path.insert(0, str(ROOT))
 
+# Navigation is reused from the Issue 78C harness rather than written again. Mine did not work and
+# there is no reason to have two: that one already knows this app's sidebar has two copies of each
+# entry at phone widths, and that arrival has to be proved by page content rather than by a click
+# appearing to succeed.
+import _accept_issue78c_visibility as H  # noqa: E402
+
 URL = (sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8615").rstrip("/")
 TAG = sys.argv[sys.argv.index("--tag") + 1] if "--tag" in sys.argv else "after"
 OUT = SCRIPTS / f"evidence-issue77a-{TAG}"
@@ -46,12 +52,22 @@ SLOT_EXTRA = "extra layer"
 
 
 def log(msg: str) -> None:
-    print(msg, flush=True)
+    """ASCII-safe output.
+
+    The app's own labels contain the record dot and the em dash, and a Windows console is cp1252:
+    printing them killed a run after its first three gates had already passed. A harness must not
+    be able to fail on the way it reports a result.
+    """
+    text = str(msg)
+    try:
+        print(text, flush=True)
+    except UnicodeEncodeError:
+        print(text.encode("ascii", "backslashreplace").decode("ascii"), flush=True)
 
 
 def mark(gate: str, ok: bool, detail: object = "") -> None:
     GATES[gate] = bool(ok)
-    log(f"{'PASS' if ok else 'FAIL'}  {gate}" + (f"  — {detail}" if detail else ""))
+    log(("PASS  " if ok else "FAIL  ") + gate + (f"  - {detail}" if detail else ""))
 
 
 # --------------------------------------------------------------------------------------------
@@ -222,32 +238,11 @@ def click_page_button(page, needle: str) -> str:
     return "clicked"
 
 
-def layer_is_open(page, slot: str) -> bool:
-    return bool(page.evaluate(
-        r"""(slot) => { const s = slot.toLowerCase();
-              for (const d of document.querySelectorAll('details')) {
-                const t = ((d.querySelector('summary')||{}).innerText||'').toLowerCase();
-                if (t.includes('layer controls') && t.includes(s)) return !!d.open;
-              } return false; }""", slot))
-
-
 def open_layer(page, slot: str) -> None:
-    if layer_is_open(page, slot):
+    if H.layer_is_open(page, slot):
         return
-    box = page.evaluate(
-        r"""(slot) => { const s = slot.toLowerCase();
-              for (const d of document.querySelectorAll('details')) {
-                const sum = d.querySelector('summary');
-                const t = ((sum && sum.innerText)||'').toLowerCase();
-                if (t.includes('layer controls') && t.includes(s)) {
-                  sum.scrollIntoView({block: 'center'});
-                  const r = sum.getBoundingClientRect();
-                  return {x: r.x + Math.min(40, r.width/2), y: r.y + r.height/2};
-                }
-              } return {error: 'no summary'}; }""", slot)
-    if not box.get("error"):
-        page.mouse.click(box["x"], box["y"])
-        idle(page)
+    H.toggle_layer_by_pointer(page, slot, True)
+    idle(page)
 
 
 def upload_into(page, slot: str, path: str) -> None:
@@ -259,40 +254,17 @@ def upload_into(page, slot: str, path: str) -> None:
     idle(page)
 
 
-def goto_multitrack(page, tries: int = 4) -> bool:
-    for _ in range(tries):
-        clicked = page.evaluate(
-            r"""() => {
-                for (const el of document.querySelectorAll('button, [role="tab"], a, label')) {
-                    const t = (el.innerText || '').trim().toLowerCase();
-                    if (t === 'multitrack' || t.startsWith('multitrack')) {
-                        if (el.offsetParent === null) continue;
-                        const r = el.getBoundingClientRect();
-                        if (r.width < 2 || r.height < 2) continue;
-                        el.scrollIntoView({block: 'center'});
-                        const rr = el.getBoundingClientRect();
-                        return {x: rr.x + rr.width / 2, y: rr.y + rr.height / 2};
-                    }
-                }
-                return {error: 'no multitrack control'};
-            }""")
-        if not clicked.get("error"):
-            page.mouse.click(clicked["x"], clicked["y"])
-            idle(page)
-        body = str(page.evaluate("() => document.body.innerText")).lower()
-        if "multitrack session workspace" in body or "step 2 · layers" in body:
-            return True
-        page.wait_for_timeout(2500)
+def goto_multitrack(page) -> bool:
+    """Reach the Multitrack page, proved by its own content (78C's helper)."""
+    if H.goto_multitrack(page):
+        idle(page)
+        return True
     return False
 
 
 def boot(page) -> None:
-    for needle in ("i agree", "continue", "start practicing", "get started"):
-        try:
-            if click_page_button(page, needle) == "clicked":
-                break
-        except Exception:
-            pass
+    H.boot(page)
+    idle(page)
 
 
 # --------------------------------------------------------------------------------------------
@@ -337,6 +309,49 @@ def gate_a_bad_layer_is_named(page, bad: str) -> None:
          text[:160].replace("\n", " "))
     mark("the refused upload did not become a take",
          panel.get("take") is False, panel.get("take"))
+
+
+def gate_a_real_take_against_the_backing(page) -> None:
+    """G8 - the musician's own objective: press Record, hear the accompaniment, keep the take.
+
+    The gates above prove the control is usable. This one proves the whole point of it: a take
+    captured WITH the generated backing playing, measured on the shared clock (Issue 78B), that can
+    then be saved. Without this, "Record is enabled" could still be followed by a take that never
+    lands or is silently reported unaligned.
+    """
+    log("\n-- G8: record a take with the backing, and keep it")
+    open_layer(page, SLOT_GUITAR)
+    before = wait_recorder(page, SLOT_GUITAR)
+    if before.get("disabled") is not False:
+        mark("Record can be pressed for a real take", False, before.get("status"))
+        return
+    # The count-in runs before the capture is musically useful, so allow for it.
+    tapped = H.tap_record(page, SLOT_GUITAR)
+    MEASURED["take_tap"] = tapped
+    if tapped not in ("tapped", "clicked"):
+        mark("Record can be pressed for a real take", False, tapped)
+        return
+    mark("Record can be pressed for a real take", True, tapped)
+    page.wait_for_timeout(9000)                      # count-in plus a few seconds of playing
+    H.tap_record(page, SLOT_GUITAR)
+    idle(page)
+    page.wait_for_timeout(4000)
+    idle(page)
+    panel = page.evaluate(PANEL_JS, SLOT_GUITAR)
+    text = str(panel.get("text") or "")
+    MEASURED["take_panel"] = text[:600]
+    shot(page, "g8-take-landed")
+    mark("the take lands in the layer", bool(panel.get("take")), panel.get("take"))
+    low = text.lower()
+    mark("the take is not reported as un-aligned",
+         "not time-aligned" not in low and "could not be measured" not in low,
+         [ln for ln in text.splitlines() if "align" in ln.lower()][:2])
+    saved = click_in_layer(page, "save layer", SLOT_GUITAR)
+    MEASURED["save_click"] = saved
+    after = page.evaluate(PANEL_JS, SLOT_GUITAR)
+    mark("Save layer keeps the take",
+         "saved layer" in str(after.get("text") or "").lower(),
+         saved)
 
 
 def gate_free_layering(page) -> None:
@@ -427,6 +442,7 @@ def main() -> int:
             idle(page)
 
             gate_backing_lets_the_musician_record(page)
+            gate_a_real_take_against_the_backing(page)
             gate_a_bad_layer_is_named(page, bad)
             gate_free_layering(page)
             ctx.close()
