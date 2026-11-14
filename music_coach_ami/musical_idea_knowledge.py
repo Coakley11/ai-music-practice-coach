@@ -1039,11 +1039,13 @@ def compose_musical_idea_suggestion(req: CoachRequest) -> dict[str, Any]:
     bars_with_events = sorted({e.bar_index for e in composition.events})
     written_event_chords = [e.chord for e in composition.events if e.chord]
     idea = replace(idea, piano_role=piano_role or idea.piano_role)
+    from music_coach_ami.note_name_display import rows_from_events
     diag = {
         "musical_idea_content": True,
         **realization_diagnostics(instrument, session_state=session_ref),
         **musical_idea_to_diagnostics(idea),
         **composition_diagnostics(composition),
+        "note_name_rows": rows_from_events(composition.events),
         **abc_diag,
         **scale_pattern_diag,
         "resolved_instrument": instrument,

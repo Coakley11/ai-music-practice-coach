@@ -196,9 +196,11 @@ def package(spec, player, built, tonic, mode, *, allowed_pcs=None):
     if not all(lo <= m <= hi and player.play_low <= m <= player.play_high for m in written):
         raise we.WarmupUnavailable("notes exceed the instrument's level window")
     seconds = we.pass_seconds(built)
+    from music_coach_ami.note_name_display import rows_from_events
     row = {"uid": "single", "family": family, "title": title, "abc": abc, "bpm": bpm, "reps": spec["reps"],
            "how": built.how, "written_midi": written, "sounding_midi": [m - player.offset for m in written],
            "written_notes": [f"{n.spelled}{n.octave}" for n in notes if not n.rest],
+           "note_name_rows": rows_from_events(we.to_events(notes)[0], beat_origin=1),
            "durations": [n.dur for n in notes], "checks": checks, "pass_seconds": seconds}
     return {"id": "single-" + hashlib.sha1(json.dumps([spec, abc], sort_keys=True).encode()).hexdigest()[:12], "spec": copy.deepcopy(spec), "items": [row], "level": spec["level"],
             "player": {"key": player.key, "label": player.label, "offset": player.offset, "concert_key": player.concert_key,
