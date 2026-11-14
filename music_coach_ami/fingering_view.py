@@ -16,7 +16,8 @@ def svg(value):
 
 def description(r):
     pressed=', '.join(label for key,label in KEYS if r['key_states'][key]) or 'none'
-    return f'Press: {pressed}. Right-hand main keys and octave thumb control released. Leave auxiliary finger controls released.'
+    released=', '.join(label for key,label in KEYS if not r['key_states'][key]) or 'none'
+    return f'Press: {pressed}. Release: {released}. Leave auxiliary finger controls released.'
 
 
 def html(records):

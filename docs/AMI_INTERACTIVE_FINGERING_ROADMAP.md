@@ -93,3 +93,16 @@ authorized in the Stage A assignment; the earlier proposal does not turn the
 current source cross-check into a qualified teacher review. Advanced specialized
 techniques retain the separate expert/evidence gates. Staff-click selection and
 other instruments remain future work.
+
+
+## Local Stage B follow-up (2026-11-13)
+
+Stage A is integrated at 18ee27b3f61ea4057acbdd1efb993039f75044a4.
+The isolated local Stage B pilot adds nine source-backed Yamaha YAS-280 notes
+and five documented octave pairs, comparisons, and bounded canonical handoffs.
+See AMI_FINGERING_STAGE_B_20261113.md for sources, exact applicability, acceptance
+and limits. Manufacturer/reference-supported remains distinct from teacher review
+and physical validation. Stage B requires separate approval before integration.
+Recommend a small model-identified B-flat trumpet valve/partial pilot next;
+clarinet register systems and flute octave-dependent fingerings remain separate
+future records. No advanced specialized technique or other instrument is enabled.

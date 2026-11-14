@@ -127,5 +127,401 @@
         "locator": "First octave, written B4 basic row"
       }
     ]
+  },
+  {
+    "id": "D4",
+    "instrument_family": "Saxophone",
+    "instrument": "alto",
+    "model_id": "yamaha-yas280",
+    "model": "Yamaha YAS-280",
+    "keywork": "Standard factory keywork in the model-linked Yamaha manual; modifications not covered",
+    "written_name": "D",
+    "written_octave": 4,
+    "key_states": {
+      "L1": true,
+      "L2": true,
+      "L3": true,
+      "R1": true,
+      "R2": true,
+      "R3": true,
+      "O": false
+    },
+    "auxiliary_controls_pressed": false,
+    "variant": "basic",
+    "verification": "manufacturer/reference-supported",
+    "teacher_reviewed": false,
+    "checked_on": "2026-11-13",
+    "sources": [
+      {
+        "url": "https://usa.yamaha.com/files/download/other_assets/6/335916/saxophones_en_om_c0.pdf",
+        "locator": "VDZ0080 / POCP-C0, published 03/2022, Fingering Chart pp.10-12",
+        "sha256": "e7930888afe47f103483161245d360bcb98c42c4dcba97deaaa8037fa990f770"
+      },
+      {
+        "url": "https://usa.yamaha.com/products/musical_instruments/winds/saxophones/yas-280/downloads.html",
+        "locator": "YAS-280 model manual download"
+      },
+      {
+        "url": "https://www.yamaha.com/en/musical_instrument_guide/common/images/saxophone/fingering7.gif",
+        "locator": "D4 basic diagram; visually inspected, not reproduced"
+      },
+      {
+        "url": "https://www.wfg.woodwind.org/sax/sax_bas_1.html",
+        "locator": "D4 basic row, independently corroborated"
+      }
+    ],
+    "limitations": "Basic documented fingering only; no alternative, modified keywork, physical response or teacher validation."
+  },
+  {
+    "id": "E4",
+    "instrument_family": "Saxophone",
+    "instrument": "alto",
+    "model_id": "yamaha-yas280",
+    "model": "Yamaha YAS-280",
+    "keywork": "Standard factory keywork in the model-linked Yamaha manual; modifications not covered",
+    "written_name": "E",
+    "written_octave": 4,
+    "key_states": {
+      "L1": true,
+      "L2": true,
+      "L3": true,
+      "R1": true,
+      "R2": true,
+      "R3": false,
+      "O": false
+    },
+    "auxiliary_controls_pressed": false,
+    "variant": "basic",
+    "verification": "manufacturer/reference-supported",
+    "teacher_reviewed": false,
+    "checked_on": "2026-11-13",
+    "sources": [
+      {
+        "url": "https://usa.yamaha.com/files/download/other_assets/6/335916/saxophones_en_om_c0.pdf",
+        "locator": "VDZ0080 / POCP-C0, published 03/2022, Fingering Chart pp.10-12",
+        "sha256": "e7930888afe47f103483161245d360bcb98c42c4dcba97deaaa8037fa990f770"
+      },
+      {
+        "url": "https://usa.yamaha.com/products/musical_instruments/winds/saxophones/yas-280/downloads.html",
+        "locator": "YAS-280 model manual download"
+      },
+      {
+        "url": "https://www.yamaha.com/en/musical_instrument_guide/common/images/saxophone/fingering10.gif",
+        "locator": "E4 basic diagram; visually inspected, not reproduced"
+      },
+      {
+        "url": "https://www.wfg.woodwind.org/sax/sax_bas_1.html",
+        "locator": "E4 basic row, independently corroborated"
+      }
+    ],
+    "limitations": "Basic documented fingering only; no alternative, modified keywork, physical response or teacher validation."
+  },
+  {
+    "id": "F4",
+    "instrument_family": "Saxophone",
+    "instrument": "alto",
+    "model_id": "yamaha-yas280",
+    "model": "Yamaha YAS-280",
+    "keywork": "Standard factory keywork in the model-linked Yamaha manual; modifications not covered",
+    "written_name": "F",
+    "written_octave": 4,
+    "key_states": {
+      "L1": true,
+      "L2": true,
+      "L3": true,
+      "R1": true,
+      "R2": false,
+      "R3": false,
+      "O": false
+    },
+    "auxiliary_controls_pressed": false,
+    "variant": "basic",
+    "verification": "manufacturer/reference-supported",
+    "teacher_reviewed": false,
+    "checked_on": "2026-11-13",
+    "sources": [
+      {
+        "url": "https://usa.yamaha.com/files/download/other_assets/6/335916/saxophones_en_om_c0.pdf",
+        "locator": "VDZ0080 / POCP-C0, published 03/2022, Fingering Chart pp.10-12",
+        "sha256": "e7930888afe47f103483161245d360bcb98c42c4dcba97deaaa8037fa990f770"
+      },
+      {
+        "url": "https://usa.yamaha.com/products/musical_instruments/winds/saxophones/yas-280/downloads.html",
+        "locator": "YAS-280 model manual download"
+      },
+      {
+        "url": "https://www.yamaha.com/en/musical_instrument_guide/common/images/saxophone/fingering11.gif",
+        "locator": "F4 basic diagram; visually inspected, not reproduced"
+      },
+      {
+        "url": "https://www.wfg.woodwind.org/sax/sax_bas_1.html",
+        "locator": "F4 basic row, independently corroborated"
+      }
+    ],
+    "limitations": "Basic documented fingering only; no alternative, modified keywork, physical response or teacher validation."
+  },
+  {
+    "id": "C5",
+    "instrument_family": "Saxophone",
+    "instrument": "alto",
+    "model_id": "yamaha-yas280",
+    "model": "Yamaha YAS-280",
+    "keywork": "Standard factory keywork in the model-linked Yamaha manual; modifications not covered",
+    "written_name": "C",
+    "written_octave": 5,
+    "key_states": {
+      "L1": false,
+      "L2": true,
+      "L3": false,
+      "R1": false,
+      "R2": false,
+      "R3": false,
+      "O": false
+    },
+    "auxiliary_controls_pressed": false,
+    "variant": "basic",
+    "verification": "manufacturer/reference-supported",
+    "teacher_reviewed": false,
+    "checked_on": "2026-11-13",
+    "sources": [
+      {
+        "url": "https://usa.yamaha.com/files/download/other_assets/6/335916/saxophones_en_om_c0.pdf",
+        "locator": "VDZ0080 / POCP-C0, published 03/2022, Fingering Chart pp.10-12",
+        "sha256": "e7930888afe47f103483161245d360bcb98c42c4dcba97deaaa8037fa990f770"
+      },
+      {
+        "url": "https://usa.yamaha.com/products/musical_instruments/winds/saxophones/yas-280/downloads.html",
+        "locator": "YAS-280 model manual download"
+      },
+      {
+        "url": "https://www.yamaha.com/en/musical_instrument_guide/common/images/saxophone/fingering21.gif",
+        "locator": "C5 basic diagram; visually inspected, not reproduced"
+      },
+      {
+        "url": "https://www.wfg.woodwind.org/sax/sax_bas_1.html",
+        "locator": "C5 basic row, independently corroborated"
+      }
+    ],
+    "limitations": "Basic documented fingering only; no alternative, modified keywork, physical response or teacher validation."
+  },
+  {
+    "id": "D5",
+    "instrument_family": "Saxophone",
+    "instrument": "alto",
+    "model_id": "yamaha-yas280",
+    "model": "Yamaha YAS-280",
+    "keywork": "Standard factory keywork in the model-linked Yamaha manual; modifications not covered",
+    "written_name": "D",
+    "written_octave": 5,
+    "key_states": {
+      "L1": true,
+      "L2": true,
+      "L3": true,
+      "R1": true,
+      "R2": true,
+      "R3": true,
+      "O": true
+    },
+    "auxiliary_controls_pressed": false,
+    "variant": "basic",
+    "verification": "manufacturer/reference-supported",
+    "teacher_reviewed": false,
+    "checked_on": "2026-11-13",
+    "sources": [
+      {
+        "url": "https://usa.yamaha.com/files/download/other_assets/6/335916/saxophones_en_om_c0.pdf",
+        "locator": "VDZ0080 / POCP-C0, published 03/2022, Fingering Chart pp.10-12",
+        "sha256": "e7930888afe47f103483161245d360bcb98c42c4dcba97deaaa8037fa990f770"
+      },
+      {
+        "url": "https://usa.yamaha.com/products/musical_instruments/winds/saxophones/yas-280/downloads.html",
+        "locator": "YAS-280 model manual download"
+      },
+      {
+        "url": "https://www.yamaha.com/en/musical_instrument_guide/common/images/saxophone/fingering24.gif",
+        "locator": "D5 basic diagram; visually inspected, not reproduced"
+      },
+      {
+        "url": "https://www.wfg.woodwind.org/sax/sax_bas_2.html",
+        "locator": "D5 basic row, independently corroborated"
+      }
+    ],
+    "limitations": "Basic documented fingering only; no alternative, modified keywork, physical response or teacher validation."
+  },
+  {
+    "id": "E5",
+    "instrument_family": "Saxophone",
+    "instrument": "alto",
+    "model_id": "yamaha-yas280",
+    "model": "Yamaha YAS-280",
+    "keywork": "Standard factory keywork in the model-linked Yamaha manual; modifications not covered",
+    "written_name": "E",
+    "written_octave": 5,
+    "key_states": {
+      "L1": true,
+      "L2": true,
+      "L3": true,
+      "R1": true,
+      "R2": true,
+      "R3": false,
+      "O": true
+    },
+    "auxiliary_controls_pressed": false,
+    "variant": "basic",
+    "verification": "manufacturer/reference-supported",
+    "teacher_reviewed": false,
+    "checked_on": "2026-11-13",
+    "sources": [
+      {
+        "url": "https://usa.yamaha.com/files/download/other_assets/6/335916/saxophones_en_om_c0.pdf",
+        "locator": "VDZ0080 / POCP-C0, published 03/2022, Fingering Chart pp.10-12",
+        "sha256": "e7930888afe47f103483161245d360bcb98c42c4dcba97deaaa8037fa990f770"
+      },
+      {
+        "url": "https://usa.yamaha.com/products/musical_instruments/winds/saxophones/yas-280/downloads.html",
+        "locator": "YAS-280 model manual download"
+      },
+      {
+        "url": "https://www.yamaha.com/en/musical_instrument_guide/common/images/saxophone/fingering27.gif",
+        "locator": "E5 basic diagram; visually inspected, not reproduced"
+      },
+      {
+        "url": "https://www.wfg.woodwind.org/sax/sax_bas_2.html",
+        "locator": "E5 basic row, independently corroborated"
+      }
+    ],
+    "limitations": "Basic documented fingering only; no alternative, modified keywork, physical response or teacher validation."
+  },
+  {
+    "id": "F5",
+    "instrument_family": "Saxophone",
+    "instrument": "alto",
+    "model_id": "yamaha-yas280",
+    "model": "Yamaha YAS-280",
+    "keywork": "Standard factory keywork in the model-linked Yamaha manual; modifications not covered",
+    "written_name": "F",
+    "written_octave": 5,
+    "key_states": {
+      "L1": true,
+      "L2": true,
+      "L3": true,
+      "R1": true,
+      "R2": false,
+      "R3": false,
+      "O": true
+    },
+    "auxiliary_controls_pressed": false,
+    "variant": "basic",
+    "verification": "manufacturer/reference-supported",
+    "teacher_reviewed": false,
+    "checked_on": "2026-11-13",
+    "sources": [
+      {
+        "url": "https://usa.yamaha.com/files/download/other_assets/6/335916/saxophones_en_om_c0.pdf",
+        "locator": "VDZ0080 / POCP-C0, published 03/2022, Fingering Chart pp.10-12",
+        "sha256": "e7930888afe47f103483161245d360bcb98c42c4dcba97deaaa8037fa990f770"
+      },
+      {
+        "url": "https://usa.yamaha.com/products/musical_instruments/winds/saxophones/yas-280/downloads.html",
+        "locator": "YAS-280 model manual download"
+      },
+      {
+        "url": "https://www.yamaha.com/en/musical_instrument_guide/common/images/saxophone/fingering28.gif",
+        "locator": "F5 basic diagram; visually inspected, not reproduced"
+      },
+      {
+        "url": "https://www.wfg.woodwind.org/sax/sax_bas_2.html",
+        "locator": "F5 basic row, independently corroborated"
+      }
+    ],
+    "limitations": "Basic documented fingering only; no alternative, modified keywork, physical response or teacher validation."
+  },
+  {
+    "id": "G5",
+    "instrument_family": "Saxophone",
+    "instrument": "alto",
+    "model_id": "yamaha-yas280",
+    "model": "Yamaha YAS-280",
+    "keywork": "Standard factory keywork in the model-linked Yamaha manual; modifications not covered",
+    "written_name": "G",
+    "written_octave": 5,
+    "key_states": {
+      "L1": true,
+      "L2": true,
+      "L3": true,
+      "R1": false,
+      "R2": false,
+      "R3": false,
+      "O": true
+    },
+    "auxiliary_controls_pressed": false,
+    "variant": "basic",
+    "verification": "manufacturer/reference-supported",
+    "teacher_reviewed": false,
+    "checked_on": "2026-11-13",
+    "sources": [
+      {
+        "url": "https://usa.yamaha.com/files/download/other_assets/6/335916/saxophones_en_om_c0.pdf",
+        "locator": "VDZ0080 / POCP-C0, published 03/2022, Fingering Chart pp.10-12",
+        "sha256": "e7930888afe47f103483161245d360bcb98c42c4dcba97deaaa8037fa990f770"
+      },
+      {
+        "url": "https://usa.yamaha.com/products/musical_instruments/winds/saxophones/yas-280/downloads.html",
+        "locator": "YAS-280 model manual download"
+      },
+      {
+        "url": "https://www.yamaha.com/en/musical_instrument_guide/common/images/saxophone/fingering31.gif",
+        "locator": "G5 basic diagram; visually inspected, not reproduced"
+      },
+      {
+        "url": "https://www.wfg.woodwind.org/sax/sax_bas_2.html",
+        "locator": "G5 basic row, independently corroborated"
+      }
+    ],
+    "limitations": "Basic documented fingering only; no alternative, modified keywork, physical response or teacher validation."
+  },
+  {
+    "id": "A5",
+    "instrument_family": "Saxophone",
+    "instrument": "alto",
+    "model_id": "yamaha-yas280",
+    "model": "Yamaha YAS-280",
+    "keywork": "Standard factory keywork in the model-linked Yamaha manual; modifications not covered",
+    "written_name": "A",
+    "written_octave": 5,
+    "key_states": {
+      "L1": true,
+      "L2": true,
+      "L3": false,
+      "R1": false,
+      "R2": false,
+      "R3": false,
+      "O": true
+    },
+    "auxiliary_controls_pressed": false,
+    "variant": "basic",
+    "verification": "manufacturer/reference-supported",
+    "teacher_reviewed": false,
+    "checked_on": "2026-11-13",
+    "sources": [
+      {
+        "url": "https://usa.yamaha.com/files/download/other_assets/6/335916/saxophones_en_om_c0.pdf",
+        "locator": "VDZ0080 / POCP-C0, published 03/2022, Fingering Chart pp.10-12",
+        "sha256": "e7930888afe47f103483161245d360bcb98c42c4dcba97deaaa8037fa990f770"
+      },
+      {
+        "url": "https://usa.yamaha.com/products/musical_instruments/winds/saxophones/yas-280/downloads.html",
+        "locator": "YAS-280 model manual download"
+      },
+      {
+        "url": "https://www.yamaha.com/en/musical_instrument_guide/common/images/saxophone/fingering34.gif",
+        "locator": "A5 basic diagram; visually inspected, not reproduced"
+      },
+      {
+        "url": "https://www.wfg.woodwind.org/sax/sax_bas_2.html",
+        "locator": "A5 basic row, independently corroborated"
+      }
+    ],
+    "limitations": "Basic documented fingering only; no alternative, modified keywork, physical response or teacher validation."
   }
 ]
