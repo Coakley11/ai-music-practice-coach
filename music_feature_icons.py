@@ -346,3 +346,7 @@ __all__ = (
     "page_feature_icon",
     "page_feature_label",
 )
+
+# AMI card actions share the studio Unicode icon family; labels stay visible.
+AMI_ACTION_ICONS = {"prev": "⬅️", "next": "➡️", "all": FEATURE_ICONS["full_song_abc_sketch"],
+                    "dismiss": FEATURE_ICONS["action_cancel"], "analysis": "↗️"}
