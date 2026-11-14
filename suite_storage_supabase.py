@@ -134,9 +134,11 @@ def load_current_state_for_app(app: str) -> dict[str, Any]:
 
 def load_current_states_summary() -> dict[str, dict[str, Any]]:
     """All workspace apps — page/summary/updated_at only (no metrics blobs)."""
-    from suite_workspace import logical_storage_app_key, workspace_storage_app_keys
+    from suite_workspace import logical_storage_app_key
 
-    allowed = workspace_storage_app_keys()
+    allowed = frozenset(_workspace_storage_app_keys())  # only keys this session is authorised for
+    if not allowed:  # nothing authorised: never fall back to an unfiltered query
+        return {}
     params: dict[str, str] = {"select": "app,page,summary,updated_at"}
     uid = _cloud_user_id()
     if uid:
@@ -894,9 +896,11 @@ def invalidate_app_resume_items(app: str) -> None:
 
 
 def load_events(limit: int = MAX_EVENTS) -> list[dict[str, Any]]:
-    from suite_workspace import logical_storage_app_key, workspace_storage_app_keys
+    from suite_workspace import logical_storage_app_key
 
-    allowed = workspace_storage_app_keys()
+    allowed = frozenset(_workspace_storage_app_keys())  # only keys this session is authorised for
+    if not allowed:  # nothing authorised: never fall back to an unfiltered query
+        return []
     params: dict[str, str] = {
         "select": "app,event,page,timestamp,metrics",
         "order": "timestamp.desc",
@@ -946,9 +950,11 @@ def load_current_states(*, include_metrics: bool = False) -> dict[str, dict[str,
     """
     if not include_metrics:
         return load_current_states_summary()
-    from suite_workspace import logical_storage_app_key, workspace_storage_app_keys
+    from suite_workspace import logical_storage_app_key
 
-    allowed = workspace_storage_app_keys()
+    allowed = frozenset(_workspace_storage_app_keys())  # only keys this session is authorised for
+    if not allowed:  # nothing authorised: never fall back to an unfiltered query
+        return {}
     params: dict[str, str] = {"select": "app,page,summary,metrics,updated_at"}
     uid = _cloud_user_id()
     if uid:

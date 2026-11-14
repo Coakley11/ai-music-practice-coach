@@ -229,6 +229,58 @@ class TestAmbiguousOrMalformedPolicy(Base):
         self.assertEqual(pol.admin_user_ids(), frozenset({UID_OWNER}))
 
 
+class TestAuthorisationPrecedesEveryPrivilegedCall(Base):
+    """No public storage function that takes an app key may reach the database for a key the caller does not own."""
+
+    FOREIGN = ("music__ariel", "music", "music__" + OWN_C)
+    CALLS = {
+        "load_current_state_meta_for_app": lambda a: sss.load_current_state_meta_for_app(a),
+        "load_current_state_for_app": lambda a: sss.load_current_state_for_app(a),
+        "append_event": lambda a: sss.append_event(a, "x"),
+        "save_current_state": lambda a: sss.save_current_state(a, page="p", summary="s", metrics={}),
+        "save_current_state_conditional_cas": lambda a: sss.save_current_state_conditional_cas(
+            a, metrics={}, expected_workspace_revision=1, candidate_workspace_revision=2),
+        "upsert_resume_item": lambda a: sss.upsert_resume_item(a, "k", title="t"),
+        "invalidate_resume_item": lambda a: sss.invalidate_resume_item(a, "k"),
+        "invalidate_app_resume_items": lambda a: sss.invalidate_app_resume_items(a),
+        "upsert_saved_item": lambda a: sss.upsert_saved_item(a, "t", "k", title="t", payload={}),
+        "invalidate_saved_item": lambda a: sss.invalidate_saved_item(a, "t", "k"),
+        "load_saved_items": lambda a: sss.load_saved_items(app=a),
+        "load_active_resume_items": lambda a: sss.load_active_resume_items(app=a),
+        "record_activity": lambda a: sss.record_activity(a, "e", summary="s"),
+    }
+
+    def test_foreign_keys_never_reach_the_database(self):
+        ss = login("someone@example.com", UID_B)
+        # the caller's workspace is a DIFFERENT one, so logical "music" resolves to their own key; explicit
+        # foreign keys and a forged active workspace are both exercised
+        for forged in (None, "daniel", "ariel"):
+            if forged:
+                ss["_suite_active_workspace_id"] = forged
+            for name, call in self.CALLS.items():
+                for app in self.FOREIGN:
+                    if app == "music" and not forged:
+                        continue  # logical "music" resolves to the caller's own workspace key
+                    with mock.patch.object(st, "session_state", ss), mock.patch.object(sss, "_request") as req:
+                        try:
+                            call(app)
+                        except PermissionError:
+                            pass
+                        except Exception:
+                            pass
+                        req.assert_not_called()
+
+    def test_list_queries_never_include_a_foreign_key(self):
+        ss = login("someone@example.com", UID_B)
+        ss["_suite_active_workspace_id"] = "daniel"  # forged
+        with mock.patch.object(st, "session_state", ss), mock.patch.object(sss, "_request", return_value=[]) as req:
+            sss.load_events(); sss.load_current_states(); sss.load_current_states_summary(); sss.load_saved_items()
+            for call in req.call_args_list:
+                app = str((call.kwargs.get("params") or {}).get("app") or "")
+                self.assertNotIn("daniel", app)
+                self.assertNotRegex(app, r"(^|[(,])music([,)]|$)")
+
+
 class TestSecretsBlock(Base):
     def test_policy_can_come_from_the_streamlit_secrets_block(self):
         secrets = {"suite_auth": {"admin_user_ids": [UID_OWNER.upper()], "personal_accounts": {UID_OWNER: "daniel"}}}
