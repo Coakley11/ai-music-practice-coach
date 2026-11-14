@@ -218,6 +218,11 @@ _PAGE_LOCAL_KEYS: dict[str, frozenset[str]] = {
             "mt_tracks",
             "mt_track_filenames",
             "mt_track_controls",
+            # What the recording clock measured for each take: where bar 1 beat 1 sits inside it,
+            # and whether it was measured at all. It has to travel with the project, or a reloaded
+            # layer would lose the only record of how it lines up. A project saved before this
+            # existed simply has no entry, and claims nothing either way.
+            "mt_take_timing",
             "mixed_track_wav",
             "mt_activity_source_context",
             "mt_activity_mix_snapshot",

@@ -30,6 +30,7 @@ parser.add_argument("--jazz-only",action="store_true")
 parser.add_argument("--score-layout-only",action="store_true")
 parser.add_argument("--capability-only",action="store_true")
 parser.add_argument("--fingering-only",action="store_true")
+parser.add_argument("--fingering-b-only",action="store_true")
 parser.add_argument("--mobile",action="store_true")
 args=parser.parse_args()
 OUT=args.out.resolve();OUT.mkdir(parents=True,exist_ok=True)
@@ -204,7 +205,10 @@ try:
             page.get_by_test_id("stMainBlockContainer").get_by_role("textbox",name="Question",exact=True).wait_for(timeout=90000)
             idle(page)
             (OUT/"practice-start.txt").write_text(page.locator("body").inner_text(),encoding="utf-8")
-            if args.fingering_only:
+            if args.fingering_b_only:
+                from ami_fingering_stage_b_browser_cases import run
+                run(page,request,select,OUT,probe=args.probe)
+            elif args.fingering_only:
                 from ami_fingering_browser_cases import run
                 run(page,request,select,OUT)
             elif args.capability_only:

@@ -1,4 +1,4 @@
-"""Three source-backed finger-control facts; no inferred fingerings or diagrams."""
+"""Bounded source-backed finger-control facts; no inferred fingerings or diagrams."""
 from pathlib import Path
 import json
 from music_coach_ami import sax_capabilities as cap, scale_pattern_harmony as sph
@@ -9,7 +9,7 @@ KEYS = (('L1','Left index'),('L2','Left middle'),('L3','Left ring'),
 
 def record(note):
     raw=next((r for r in json.loads(Path(__file__).with_name('fingering_records.json').read_text(encoding='utf-8')) if r['id']==note),None)
-    if raw is None: raise ValueError('Stage A covers written G4, A4 and B4 only.')
+    if raw is None: raise ValueError('Unsupported written note; no fingering is inferred.')
     cap.model_scope(raw['model_id'],raw['instrument'])
     p=cap.profile(raw['instrument']);written=sph.midi_of(raw['written_name'],raw['written_octave'])
     sounding=written-p.written_minus_sounding
@@ -31,3 +31,7 @@ def changes(a,b):
     x,y=record(a),record(b)
     return [f"{label}: {'press' if y['key_states'][key] else 'release'}" for key,label in KEYS
             if x['key_states'][key]!=y['key_states'][key]]
+
+
+def supported_notes():
+    return tuple(r['id'] for r in json.loads(Path(__file__).with_name('fingering_records.json').read_text(encoding='utf-8')))
