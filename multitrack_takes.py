@@ -80,22 +80,29 @@ AUTO_OPEN_SLOT_KEY = "_mt_auto_open_slot"
 def auto_open_slot(session_state: MutableMapping[str, Any], slots: Any) -> str:
     """Which empty layer should start open, so the Record control is visible without a tap.
 
-    Issue 78C. Every layer panel is collapsed while its slot is empty, which is the state a
-    musician is in before their first take - so the recorder was behind a tap, and (before the
-    component's height was fixed) invisible even after it.
+    Issue 78C. Every layer panel is collapsed while its slot is empty, which is exactly the state a
+    musician is in before their first take - so the recorder sat behind a tap, and (before the
+    component's height was fixed) was invisible even after it.
 
     Exactly ONE layer opens: the first slot with no audio. Opening all of them would make the phone
-    page enormous, which is not an improvement. The decision is made once per session and then
-    remembered, so a layer the musician deliberately collapses stays collapsed instead of springing
-    open on the next rerun. If every slot already holds audio there is nothing to open.
+    page enormous, which is not an improvement.
+
+    It stays open only while the project holds **no audio at all**. That is the case the complaint
+    is about - arriving at an empty Multitrack page and finding no way to record - and in it the
+    layer must stay open on every render, because Streamlit re-applies ``expanded`` on each rerun
+    and anything less makes the control the musician was just given close itself. Once any layer
+    holds a take, the musician is working and knows where the controls are, so this stops
+    altogether rather than fighting their own collapses.
     """
-    if session_state.get(AUTO_OPEN_DECIDED_KEY):
-        return ""
-    session_state[AUTO_OPEN_DECIDED_KEY] = True
     tracks = session_state.get("mt_tracks")
     tracks = tracks if isinstance(tracks, dict) else {}
+    if any(tracks.get(slot) for slot in (slots or ())):
+        session_state[AUTO_OPEN_DECIDED_KEY] = True
+        session_state[AUTO_OPEN_SLOT_KEY] = ""
+        return ""
     for slot in slots or ():
         if not tracks.get(slot):
+            session_state[AUTO_OPEN_DECIDED_KEY] = True
             session_state[AUTO_OPEN_SLOT_KEY] = str(slot)
             return str(slot)
     session_state[AUTO_OPEN_SLOT_KEY] = ""

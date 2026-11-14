@@ -93,14 +93,39 @@ class TheFrameNeverCollapses(unittest.TestCase):
             self.assertIn(anchor, COMPONENT, anchor)
 
 
+class AMicrophoneFailureStaysOnScreenAndMakesSense(unittest.TestCase):
+    """The explanation must survive the next render, and be actionable."""
+
+    def test_the_failure_is_remembered_across_renders(self) -> None:
+        self.assertIn("let lastMicError", COMPONENT)
+        self.assertIn('if (lastMicError) { status(lastMicError); return; }', COMPONENT)
+
+    def test_it_is_cleared_once_recording_really_starts(self) -> None:
+        self.assertIn('lastMicError = "";', COMPONENT)
+
+    def test_the_common_failures_are_named_in_plain_words(self) -> None:
+        block = COMPONENT[COMPONENT.index("function micFailureMessage"):COMPONENT.index("async function start()")]
+        for name in ("NotAllowedError", "SecurityError", "NotFoundError", "NotReadableError"):
+            self.assertIn(name, block)
+        self.assertIn("navigator.mediaDevices", block)
+
+    def test_every_failure_offers_the_truthful_alternative(self) -> None:
+        block = COMPONENT[COMPONENT.index("function micFailureMessage"):COMPONENT.index("async function start()")]
+        # Upload really is available on this surface, so it is an honest alternative to offer.
+        self.assertEqual(block.count("Upload above"), 5)
+
+    def test_an_unknown_failure_still_reports_its_detail(self) -> None:
+        block = COMPONENT[COMPONENT.index("function micFailureMessage"):COMPONENT.index("async function start()")]
+        self.assertIn("could not be started: \" + detail", block)
+
+    def test_no_raw_exception_is_shown_as_the_whole_message(self) -> None:
+        self.assertNotIn('status("Microphone unavailable: " + e)', COMPONENT)
+
+
 class OneEmptyLayerOpensSoTheControlIsFound(unittest.TestCase):
     def test_the_first_empty_layer_is_chosen(self) -> None:
         state: dict = {"mt_tracks": {}}
         self.assertEqual(auto_open_slot(state, SLOTS), "guitar")
-
-    def test_a_slot_that_already_holds_audio_is_skipped(self) -> None:
-        state: dict = {"mt_tracks": {"guitar": b"x"}}
-        self.assertEqual(auto_open_slot(state, SLOTS), "sax / winds")
 
     def test_nothing_opens_when_every_layer_is_recorded(self) -> None:
         state: dict = {"mt_tracks": {s: b"x" for s in SLOTS}}
@@ -109,17 +134,26 @@ class OneEmptyLayerOpensSoTheControlIsFound(unittest.TestCase):
     def test_only_one_layer_is_chosen(self) -> None:
         # Opening every empty layer would make the phone page enormous.
         state: dict = {"mt_tracks": {}}
-        chosen = [s for s in SLOTS if auto_open_slot(state, SLOTS) == s]
-        self.assertEqual(len(chosen), 1)
+        chosen = {auto_open_slot(state, SLOTS) for _ in SLOTS}
+        self.assertEqual(chosen, {"guitar"})
 
-    def test_the_decision_is_made_once_so_a_collapse_sticks(self) -> None:
-        # Streamlit re-applies `expanded` on every rerun, so a layer the musician deliberately
-        # collapsed would spring open again if this were recomputed each time.
+    def test_the_layer_stays_open_across_reruns_while_the_project_is_empty(self) -> None:
+        # Streamlit re-applies `expanded` on EVERY rerun. Deciding once and then returning ""
+        # meant the second render passed expanded=False and the layer the musician had just been
+        # given closed itself - the acceptance caught it as a tap timing out on a vanishing
+        # control, with open:false recorded a moment later.
         state: dict = {"mt_tracks": {}}
         self.assertEqual(auto_open_slot(state, SLOTS), "guitar")
+        self.assertEqual(auto_open_slot(state, SLOTS), "guitar")
+        self.assertEqual(auto_open_slot(state, SLOTS), "guitar")
+        self.assertEqual(state[AUTO_OPEN_SLOT_KEY], "guitar")
+
+    def test_it_stops_as_soon_as_any_layer_holds_a_take(self) -> None:
+        # Then the musician is working and knows where the controls are; nothing should fight
+        # their own collapses.
+        state: dict = {"mt_tracks": {"guitar": b"x"}}
         self.assertEqual(auto_open_slot(state, SLOTS), "")
         self.assertTrue(state[AUTO_OPEN_DECIDED_KEY])
-        self.assertEqual(state[AUTO_OPEN_SLOT_KEY], "guitar")
 
     def test_a_missing_or_odd_track_map_does_not_crash(self) -> None:
         for state in ({}, {"mt_tracks": None}, {"mt_tracks": []}):
@@ -149,10 +183,28 @@ class TheHarnessMeasuresWhatAHumanSees(unittest.TestCase):
 
     def test_the_acceptance_uses_real_pointer_input(self) -> None:
         harness = (ROOT / "scripts" / "_accept_issue78c_visibility.py").read_text(encoding="utf-8")
+        # Real pointer input for the page, and a real TOUCH tap through the frame for the control.
+        # Locator.tap dispatches a touch event and additionally runs the browser's own
+        # actionability checks - visible, stable, able to receive the event - which is a stronger
+        # guarantee than computing a point and hoping, and it raises when the control is not usable.
         self.assertIn("page.mouse.click(", harness)
-        self.assertIn("page.touchscreen.tap(", harness)
-        # No programmatic element.click() as evidence that a control works.
+        self.assertIn("loc.tap(timeout=", harness)
+        self.assertIn("frame_locator(frame_selector(slot))", harness)
+        # No programmatic element.click() as evidence that a control works: that is precisely what
+        # certified a four-pixel recorder.
         self.assertNotIn("getElementById('rec').click()", harness)
+
+    def test_the_acceptance_asks_the_browser_whether_the_button_is_visible(self) -> None:
+        harness = (ROOT / "scripts" / "_accept_issue78c_visibility.py").read_text(encoding="utf-8")
+        self.assertIn("def button_is_visible_to_playwright", harness)
+        self.assertIn("loc.is_visible(timeout=", harness)
+
+    def test_the_screenshots_use_page_coordinates(self) -> None:
+        # getBoundingClientRect is viewport-relative and screenshot clips are page-relative, so
+        # without the scroll offset the evidence photographs the wrong part of the page.
+        harness = (ROOT / "scripts" / "_accept_issue78c_visibility.py").read_text(encoding="utf-8")
+        self.assertIn('window.scrollX, y: window.scrollY', harness)
+        self.assertIn('float(scroll["y"])', harness)
 
     def test_the_acceptance_requires_a_touchable_height(self) -> None:
         harness = (ROOT / "scripts" / "_accept_issue78c_visibility.py").read_text(encoding="utf-8")

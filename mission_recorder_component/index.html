@@ -327,6 +327,43 @@
         return made;
       }
 
+      //: The last microphone failure, kept so the explanation survives the next render. Cleared
+      //: when an attempt succeeds. Without this the message was written and immediately painted
+      //: over by render(), so the musician saw the ready text and no reason at all.
+      let lastMicError = "";
+
+      function micFailureMessage(err) {
+        const name = String((err && err.name) || "");
+        const detail = String((err && err.message) || err || "").slice(0, 120);
+        if (!navigator.mediaDevices) {
+          return (
+            "This browser will not give the page a microphone. Recording needs a recent Chrome, " +
+            "Safari or Firefox over https - you can still add this layer with Upload above."
+          );
+        }
+        if (name === "NotAllowedError" || name === "SecurityError") {
+          return (
+            "Microphone permission was refused, so nothing can be recorded. Allow microphone " +
+            "access for this site in your browser settings and press Record again - or add this " +
+            "layer with Upload above."
+          );
+        }
+        if (name === "NotFoundError" || name === "OverconstrainedError") {
+          return (
+            "No usable microphone was found. Connect one, or allow the built-in one, and press " +
+            "Record again - or add this layer with Upload above."
+          );
+        }
+        if (name === "NotReadableError") {
+          return (
+            "The microphone is in use by another app and could not be opened. Close that app and " +
+            "press Record again - or add this layer with Upload above."
+          );
+        }
+        return "The microphone could not be started: " + detail +
+               ". You can still add this layer with Upload above.";
+      }
+
       async function start() {
         const tClick = performance.now();
         // Parts were asked for but none decoded: refuse. Recording here would capture the player
@@ -402,9 +439,13 @@
             if (stamp && stamp.performanceTime) rec.t0Perf = stamp.performanceTime + (musicStart - stamp.contextTime) * 1000;
           }
           rec.tStart = performance.now();
+          lastMicError = "";
           render(); tick();
         } catch (e) {
-          rec = null; status("Microphone unavailable: " + e); $("rec").disabled = false;
+          rec = null;
+          lastMicError = micFailureMessage(e);
+          status(lastMicError);
+          $("rec").disabled = false;
         }
       }
 
@@ -512,6 +553,9 @@
         const ready = needBacking ? assetsReady : (!wanted || assetsReady);
         btn.disabled = !!args.disabled || !ready;
         $("time").textContent = "0:00"; $("lvl").style.width = "0%";
+        // A microphone failure outlives the render that follows it: the musician needs to read
+        // why nothing happened, not the invitation to press the button again.
+        if (lastMicError) { status(lastMicError); return; }
         if (args.disabled_reason) status(args.disabled_reason);
         else if (needBacking && !wanted) status("Generate Backing first \u2014 Record then starts your take and the backing together.");
         else if (needBacking && bk.state === "failed")

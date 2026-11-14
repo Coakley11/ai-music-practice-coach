@@ -32,7 +32,7 @@ SCRIPTS = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPTS))
 sys.path.insert(0, str(ROOT))
 
-from walk_creative_backing_matrix import click_nav  # noqa: E402
+from walk_creative_backing_matrix import click_nav, expand_pages_nav  # noqa: E402
 
 URL = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8601"
 TAG = "after"
@@ -97,6 +97,9 @@ GEOMETRY_JS = r"""(slot) => {
     });
     if (!frames.length) return {found: false, reason: 'no recorder iframe', open: holder.open};
     const f = frames[0];
+    // Scroll to it the way a person would. Without this, a control that is merely below the fold
+    // reports "not hittable", which is a different thing from "clipped by its frame".
+    try { f.scrollIntoView({block: 'center', inline: 'nearest'}); } catch (e) {}
     const fr = f.getBoundingClientRect();
     const out = {
         found: true,
@@ -104,6 +107,8 @@ GEOMETRY_JS = r"""(slot) => {
         frame: {x: fr.x, y: fr.y, w: fr.width, h: fr.height},
         frame_attr_h: f.getAttribute('height'),
         onscreen: f.offsetParent !== null && fr.width > 0 && fr.height > 0,
+        in_viewport: fr.top >= -1 && fr.bottom <= window.innerHeight + 1,
+        viewport_h: window.innerHeight,
     };
     try {
         const d = f.contentDocument;
@@ -123,6 +128,23 @@ GEOMETRY_JS = r"""(slot) => {
             const hit = document.elementFromPoint(px, py);
             out.hit_tag = hit ? hit.tagName.toLowerCase() : null;
             out.hit_is_frame = hit === f;
+            // Name it. "a div" is not a diagnosis: either something is covering the control, which
+            // is a defect, or it is the component's own wrapper, which is not.
+            if (hit && hit !== f) {
+                const chain = [];
+                let el = hit;
+                for (let i = 0; i < 5 && el; i++) {
+                    chain.push(el.tagName.toLowerCase()
+                        + (el.id ? '#' + el.id : '')
+                        + (el.className && typeof el.className === 'string'
+                            ? '.' + el.className.trim().split(/\s+/).slice(0, 2).join('.') : ''));
+                    el = el.parentElement;
+                }
+                out.hit_chain = chain;
+                out.hit_contains_frame = hit.contains ? hit.contains(f) : null;
+                const hr = hit.getBoundingClientRect();
+                out.hit_rect = {x: hr.x, y: hr.y, w: hr.width, h: hr.height};
+            }
             out.button_inside_frame = br.bottom <= fr.height + 1;
         }
         if (st) {
@@ -137,7 +159,51 @@ GEOMETRY_JS = r"""(slot) => {
 }"""
 
 
+SCROLL_JS = r"""(slot) => {
+    const s = slot.toLowerCase();
+    for (const d of document.querySelectorAll('details')) {
+        const sum = d.querySelector('summary');
+        const t = ((sum && sum.innerText) || '').toLowerCase();
+        if (!t.includes('layer controls') || !t.includes(s)) continue;
+        for (const f of d.querySelectorAll('iframe')) {
+            const title = f.getAttribute('title') || '';
+            const src = f.getAttribute('src') || '';
+            if (/recorder/i.test(title) || /recorder/i.test(src)) {
+                f.setAttribute('data-i78c', s.replace(/[^a-z0-9]+/g, '-'));
+                try { f.scrollIntoView({block: 'center', inline: 'nearest'}); } catch (e) {}
+                return true;
+            }
+        }
+    }
+    return false;
+}"""
+
+
+def frame_selector(slot: str) -> str:
+    import re as _re
+
+    return 'iframe[data-i78c="%s"]' % _re.sub(r"[^a-z0-9]+", "-", slot.lower())
+
+
+def button_is_visible_to_playwright(page: Page, slot: str) -> tuple[bool, str]:
+    """Ask the browser, not arithmetic: is the Record button visible inside its frame?"""
+    try:
+        loc = page.frame_locator(frame_selector(slot)).locator("#rec")
+        return bool(loc.is_visible(timeout=4000)), ""
+    except Exception as exc:
+        return False, str(exc)[:120]
+
+
 def geometry(page: Page, slot: str) -> dict:
+    """Scroll to the recorder, let the layout settle, THEN measure and hit-test.
+
+    Scrolling and hit-testing in one evaluate() raced: elementFromPoint uses viewport coordinates,
+    and on a tall page the browser had not finished settling, so a control that was perfectly
+    visible reported "not hittable". That is a harness artefact of exactly the kind this harness
+    exists to avoid, so the two phases are separated by a real pause.
+    """
+    page.evaluate(SCROLL_JS, slot)
+    page.wait_for_timeout(400)
     return page.evaluate(GEOMETRY_JS, slot)
 
 
@@ -154,8 +220,6 @@ def visible_verdict(geo: dict) -> tuple[bool, str]:
         return False, "the button is clipped by the frame"
     if not geo.get("status_inside_frame", True):
         return False, "the status text is clipped by the frame"
-    if not geo.get("hit_is_frame"):
-        return False, f"hit test at the button's centre landed on {geo.get('hit_tag')}"
     return True, (
         f"frame {frame_h:.0f}px, button {geo['button']['h']:.0f}px "
         f"({geo['button']['text']!r}), status visible"
@@ -165,12 +229,23 @@ def visible_verdict(geo: dict) -> tuple[bool, str]:
 def check_visible(page: Page, slot: str, stage: str, width: int) -> dict:
     geo = geometry(page, slot)
     ok, detail = visible_verdict(geo)
+    # And the browser's own answer, which is the one that decides whether a person can use it.
+    seen, why = button_is_visible_to_playwright(page, slot)
+    if ok and not seen:
+        ok, detail = False, f"Playwright reports the button not visible in its frame: {why}"
+    elif ok:
+        detail += "; Playwright sees the button"
+    geo["playwright_visible"] = seen
     MEASURED[f"{width}px::{stage}"] = {
         "frame_h": (geo.get("frame") or {}).get("h"),
+        "frame_attr_h": geo.get("frame_attr_h"),
         "body_scroll_h": geo.get("body_scroll_h"),
         "button_text": (geo.get("button") or {}).get("text"),
+        "button_bottom": (geo.get("button") or {}).get("bottom"),
+        "status_text": (geo.get("status") or {}).get("text"),
         "open": geo.get("open"),
         "hit_is_frame": geo.get("hit_is_frame"),
+        "in_viewport": geo.get("in_viewport"),
     }
     mark(f"[{width}px] {stage}", ok, detail)
     return geo
@@ -191,9 +266,13 @@ def shot_recorder(page: Page, slot: str, name: str) -> None:
         shot(page, name)
         return
     pad = 60
+    # getBoundingClientRect is in VIEWPORT coordinates; screenshot clips are in PAGE coordinates.
+    # Without the scroll offset the clip photographs whatever happens to be that far down the
+    # document - which is how the evidence for a recorder showed the top of the layer panel.
+    scroll = page.evaluate("() => ({x: window.scrollX, y: window.scrollY})")
     clip = {
-        "x": max(0.0, float(frame["x"]) - 10),
-        "y": max(0.0, float(frame["y"]) - pad),
+        "x": max(0.0, float(frame["x"]) + float(scroll["x"]) - 10),
+        "y": max(0.0, float(frame["y"]) + float(scroll["y"]) - pad),
         "width": max(80.0, float(frame["w"]) + 20),
         "height": max(80.0, float(frame["h"]) + pad + 20),
     }
@@ -201,6 +280,34 @@ def shot_recorder(page: Page, slot: str, name: str) -> None:
         page.screenshot(path=str(OUT / f"{name}.png"), clip=clip)
     except Exception:
         shot(page, name)
+
+
+def click_practice_page(page: Page) -> bool:
+    """Open the Practice page - the one with the tools, not the Practice Log.
+
+    ``click_nav(page, "Practice")`` matches any button whose text CONTAINS "Practice" and takes the
+    last one, which is "Practice Log".
+    """
+    try:
+        expand_pages_nav(page)
+    except Exception:
+        pass
+    page.wait_for_timeout(600)
+    return bool(
+        page.evaluate(
+            r"""() => {
+                const want = /^(?:[^A-Za-z]*\s*)?practice$/i;
+                for (const b of document.querySelectorAll('button')) {
+                    const t = (b.innerText || '').trim();
+                    if (!want.test(t)) continue;
+                    if (b.offsetParent === null) continue;
+                    b.click();
+                    return true;
+                }
+                return false;
+            }"""
+        )
+    )
 
 
 def boot(page: Page) -> bool:
@@ -251,24 +358,23 @@ def toggle_layer_by_pointer(page: Page, slot: str, want_open: bool) -> str:
 
 
 def tap_record(page: Page, slot: str) -> str:
-    """Press Record with real input at its page coordinates - no programmatic element.click()."""
-    geo = geometry(page, slot)
-    point = geo.get("button_page")
-    if not point:
-        return "no button"
-    if not geo.get("hit_is_frame"):
-        return f"not hittable (hit {geo.get('hit_tag')})"
+    """Press Record with real input, through the frame, with the browser's own checks.
+
+    ``frame_locator(...).tap()`` requires the element to be visible, stable and able to receive the
+    event, and raises otherwise - which is exactly the guarantee this acceptance is about. A
+    programmatic ``element.click()`` is used nowhere: that is what certified a four-pixel recorder.
+    """
+    geometry(page, slot)  # tags the frame and scrolls it into view
+    loc = page.frame_locator(frame_selector(slot)).locator("#rec")
     try:
-        if page.context.browser is not None and getattr(page, "touchscreen", None) is not None:
-            try:
-                page.touchscreen.tap(point["x"], point["y"])
-                return "tapped"
-            except Exception:
-                pass
-        page.mouse.click(point["x"], point["y"])
-        return "clicked"
-    except Exception as exc:
-        return f"failed: {exc}"
+        loc.tap(timeout=8000)
+        return "tapped"
+    except Exception as exc_tap:
+        try:
+            loc.click(timeout=8000)
+            return "clicked"
+        except Exception as exc_click:
+            return f"failed: tap={str(exc_tap)[:60]} click={str(exc_click)[:60]}"
 
 
 def recorder_status(page: Page, slot: str) -> str:
@@ -351,18 +457,36 @@ def main() -> int:
             for width in (1400, 390, 360):
                 run_viewport(page, width)
 
-            # 6. navigate away and back
-            page.set_viewport_size({"width": 390, "height": 900})
+            # 6. navigate away and back. Driven at desktop width: the sidebar nav is collapsed at
+            # 390 px, and click_nav matches any button containing the word (including "Practice
+            # Log"), so doing the trip on a phone layout tests the harness, not the product. The
+            # measurement afterwards is taken at 390 px, which is what matters.
+            page.set_viewport_size({"width": 1400, "height": 950})
             settle(page, 3)
-            click_nav(page, "Practice")
-            settle(page, 6)
-            back = goto_multitrack(page)
-            mark("[390px] Multitrack reopens after navigating away", back)
+            left = click_practice_page(page)
+            settle(page, 8)
+            really_left = "multitrack session workspace" not in low(body(page))
+            mark("Multitrack can be left", left and really_left,
+                 f"clicked={left} left={really_left}")
+            back = goto_multitrack(page) if really_left else False
+            # Only meaningful if we actually went away: otherwise this gate measures nothing.
+            mark("Multitrack reopens after navigating away", really_left and back,
+                 f"left={really_left} back={back}")
             if back:
+                page.set_viewport_size({"width": 390, "height": 900})
+                settle(page, 4)
                 toggle_layer_by_pointer(page, SLOT_SAX, want_open=True)
                 check_visible(page, SLOT_SAX, "visible after navigating away and back", 390)
 
-            # 7. record, stop, then the take controls - with real input only
+            # 7. record, stop, then the take controls - with real input only. Independent of the
+            # navigation above: it opens the layer itself.
+            page.set_viewport_size({"width": 390, "height": 900})
+            settle(page, 3)
+            if not goto_multitrack(page):
+                mark("Multitrack is open for the tap test", False)
+            toggle_layer_by_pointer(page, SLOT_SAX, want_open=True)
+            settle(page, 2)
+            check_visible(page, SLOT_SAX, "visible before the tap", 390)
             pressed = tap_record(page, SLOT_SAX)
             mark("[390px] Record responds to a real tap", pressed in ("tapped", "clicked"), pressed)
             if pressed in ("tapped", "clicked"):
@@ -378,6 +502,56 @@ def main() -> int:
                 check_visible(page, SLOT_SAX, "visible after stopping", 390)
                 mark("[390px] the take landed", "original take preview" in low(body(page)))
             mark("no uncaught JS errors", not errors, errors[:3])
+
+            # 8. microphone permission: granted (above), denied, and unavailable. What is asserted
+            # is that the control stays visible and SAYS something - the defect was an empty area.
+            for label, script in (
+                (
+                    "denied",
+                    """
+                    const md = navigator.mediaDevices;
+                    if (md) {
+                        md.getUserMedia = () => Promise.reject(
+                            new DOMException('Permission denied', 'NotAllowedError'));
+                    }
+                    """,
+                ),
+                (
+                    "unavailable",
+                    """
+                    try { Object.defineProperty(navigator, 'mediaDevices', {get: () => undefined}); }
+                    catch (e) {}
+                    """,
+                ),
+            ):
+                ctx2 = browser.new_context(viewport={"width": 390, "height": 900},
+                                           has_touch=True)
+                ctx2.add_init_script(script)
+                p2 = ctx2.new_page()
+                errs2: list[str] = []
+                p2.on("pageerror", lambda e: errs2.append(str(e)))
+                try:
+                    if not boot(p2) or not goto_multitrack(p2):
+                        mark(f"[390px] Multitrack opens with the microphone {label}", False)
+                        continue
+                    mark(f"[390px] Multitrack opens with the microphone {label}", True)
+                    toggle_layer_by_pointer(p2, SLOT_GUITAR, want_open=True)
+                    settle(p2, 2)
+                    geo = check_visible(p2, SLOT_GUITAR,
+                                        f"Record is visible with the microphone {label}", 390)
+                    shot_recorder(p2, SLOT_GUITAR, f"390-mic-{label}")
+                    pressed = tap_record(p2, SLOT_GUITAR)
+                    mark(f"[390px] Record can be pressed with the microphone {label}",
+                         pressed in ("tapped", "clicked"), pressed)
+                    settle(p2, 4)
+                    said = recorder_status(p2, SLOT_GUITAR)
+                    mark(f"[390px] the recorder explains the microphone being {label}",
+                         bool(said.strip()), said[:120])
+                    after = check_visible(p2, SLOT_GUITAR,
+                                          f"still visible after the microphone was {label}", 390)
+                    del geo, after
+                finally:
+                    ctx2.close()
         finally:
             (OUT / "measurements.json").write_text(
                 json.dumps({"gates": GATES, "measured": MEASURED, "js_errors": errors},
