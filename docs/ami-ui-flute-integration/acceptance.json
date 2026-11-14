@@ -1,0 +1,4983 @@
+{
+  "current_dev_baseline": "59e77f35c88a6b0ab421a84be2f7e8fb8f46d3e7",
+  "ui_merge": "699ea72dff170627a86dbcea5e0feffe3d431f44",
+  "combined_merge": "3edef0772f31854fdd44400d9146d237008d99f7",
+  "regression": {
+    "baseline_sha": "59e77f35c88a6b0ab421a84be2f7e8fb8f46d3e7",
+    "ui_merge_sha": "699ea72dff170627a86dbcea5e0feffe3d431f44",
+    "combined_merge_sha": "3edef0772f31854fdd44400d9146d237008d99f7",
+    "baseline_files": 101,
+    "candidate_files": 103,
+    "shared_ids": 3834,
+    "changed": [],
+    "missing": [],
+    "new_ids": 95,
+    "new_failed": [],
+    "failure_ledger_equal": true,
+    "baseline_failures": [
+      "FAILED tests/test_backing_context.py::TestBackingContext::test_custom_progression_context",
+      "FAILED tests/test_backing_context.py::TestBackingContext::test_sections_from_custom_progression_ignores_style_jam",
+      "FAILED tests/test_backing_handoff_authority.py::TestBackingHandoffAuthority::test_refresh_restores_custom_not_catalog",
+      "FAILED tests/test_composition_activation_nav.py::TestNavButtonKeys::test_jam_sets_entry_mode",
+      "FAILED tests/test_cs_fa_phrase_editor_single_score.py::TestPhraseEditorSingleScore::test_armed_renders_exactly_one_synced_score",
+      "FAILED tests/test_cs_fa_phrase_editor_single_score.py::TestPhraseEditorSingleScore::test_unarmed_renders_exactly_one_static_score",
+      "FAILED tests/test_music_canonical_insight_submit.py::TestMusicCanonicalInsightSubmit::test_metrics_include_ami_insight_when_canonical_present",
+      "FAILED tests/test_song_card_guidance.py::TestCardDetailsAndHtml::test_card_html_shows_setup_and_the_four_guidance_rows",
+      "FAILED tests/test_tab_missions_render_regression.py::TestTabMissionsRenderRegression::test_tab_missions_body_with_example_and_recording_expander"
+    ],
+    "candidate_failures": [
+      "FAILED tests/test_backing_context.py::TestBackingContext::test_custom_progression_context",
+      "FAILED tests/test_backing_context.py::TestBackingContext::test_sections_from_custom_progression_ignores_style_jam",
+      "FAILED tests/test_backing_handoff_authority.py::TestBackingHandoffAuthority::test_refresh_restores_custom_not_catalog",
+      "FAILED tests/test_composition_activation_nav.py::TestNavButtonKeys::test_jam_sets_entry_mode",
+      "FAILED tests/test_cs_fa_phrase_editor_single_score.py::TestPhraseEditorSingleScore::test_armed_renders_exactly_one_synced_score",
+      "FAILED tests/test_cs_fa_phrase_editor_single_score.py::TestPhraseEditorSingleScore::test_unarmed_renders_exactly_one_static_score",
+      "FAILED tests/test_music_canonical_insight_submit.py::TestMusicCanonicalInsightSubmit::test_metrics_include_ami_insight_when_canonical_present",
+      "FAILED tests/test_song_card_guidance.py::TestCardDetailsAndHtml::test_card_html_shows_setup_and_the_four_guidance_rows",
+      "FAILED tests/test_tab_missions_render_regression.py::TestTabMissionsRenderRegression::test_tab_missions_body_with_example_and_recording_expander"
+    ],
+    "collection_errors": {
+      "baseline": [],
+      "candidate": []
+    },
+    "same_python": true,
+    "python": "3.12.8 (tags/v3.12.8:2dc476b, Dec  3 2024, 19:30:04) [MSC v.1942 64 bit (AMD64)]",
+    "source_hash_changes": {
+      "baseline": [],
+      "candidate": []
+    }
+  },
+  "baseline_summary": {
+    "passed": 3824,
+    "failed": 9,
+    "skipped": 1,
+    "subtests": 3116,
+    "seconds": 1574.28
+  },
+  "candidate_summary": {
+    "passed": 3919,
+    "failed": 9,
+    "skipped": 1,
+    "subtests": 3116,
+    "seconds": 1306.25
+  },
+  "flute_requests": 46,
+  "flute_visual_scenarios": 24,
+  "notation_requests": 8,
+  "native_before_after_conditions": 24,
+  "native_events_identical": true,
+  "notation_proofs": {
+    "desktop-four-eighths": {
+      "before": {
+        "events": [
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 0,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 1,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 2,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 3,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.5,
+            "rest": "rest",
+            "pitches": [],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          }
+        ],
+        "groups": [],
+        "levels": [],
+        "svgBeams": 0,
+        "subpaths": [],
+        "slurs": 0,
+        "width": 916,
+        "scrollWidth": 916,
+        "svgWidth": 915.984375
+      },
+      "after": {
+        "events": [
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 0,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 1,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 2,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 3,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.5,
+            "rest": "rest",
+            "pitches": [],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          }
+        ],
+        "groups": [
+          [
+            0,
+            1
+          ],
+          [
+            2,
+            3
+          ]
+        ],
+        "levels": [
+          1,
+          1
+        ],
+        "svgBeams": 2,
+        "subpaths": [
+          1,
+          1
+        ],
+        "slurs": 0,
+        "width": 916,
+        "scrollWidth": 916,
+        "svgWidth": 915.984375
+      },
+      "abc_before": "X:1\nM:4/4\nL:1/4\nK:C\nC/2 D/2 E/2 F/2 z2 |",
+      "abc_after": "X:1\nM:4/4\nL:1/4\nK:C\nC/2D/2 E/2F/2 z2 |"
+    },
+    "desktop-eight-eighths": {
+      "before": {
+        "events": [
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 0,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 1,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 2,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 3,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 4,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 5,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 6,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 7,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          }
+        ],
+        "groups": [],
+        "levels": [],
+        "svgBeams": 0,
+        "subpaths": [],
+        "slurs": 0,
+        "width": 916,
+        "scrollWidth": 916,
+        "svgWidth": 915.9375
+      },
+      "after": {
+        "events": [
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 0,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 1,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 2,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 3,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 4,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 5,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 6,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 7,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          }
+        ],
+        "groups": [
+          [
+            0,
+            1
+          ],
+          [
+            2,
+            3
+          ],
+          [
+            4,
+            5
+          ],
+          [
+            6,
+            7
+          ]
+        ],
+        "levels": [
+          1,
+          1,
+          1,
+          1
+        ],
+        "svgBeams": 4,
+        "subpaths": [
+          1,
+          1,
+          1,
+          1
+        ],
+        "slurs": 0,
+        "width": 916,
+        "scrollWidth": 916,
+        "svgWidth": 915.890625
+      },
+      "abc_before": "X:1\nM:4/4\nL:1/4\nK:C\nC/2 D/2 E/2 F/2 G/2 A/2 B/2 c/2 |",
+      "abc_after": "X:1\nM:4/4\nL:1/4\nK:C\nC/2D/2 E/2F/2 G/2A/2 B/2c/2 |"
+    },
+    "desktop-four-sixteenths": {
+      "before": {
+        "events": [
+          {
+            "duration": 0.0625,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 0,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.0625,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 1,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.0625,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 2,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.0625,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 3,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.75,
+            "rest": "rest",
+            "pitches": [],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          }
+        ],
+        "groups": [],
+        "levels": [],
+        "svgBeams": 0,
+        "subpaths": [],
+        "slurs": 0,
+        "width": 916,
+        "scrollWidth": 916,
+        "svgWidth": 915.984375
+      },
+      "after": {
+        "events": [
+          {
+            "duration": 0.0625,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 0,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.0625,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 1,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.0625,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 2,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.0625,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 3,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.75,
+            "rest": "rest",
+            "pitches": [],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          }
+        ],
+        "groups": [
+          [
+            0,
+            1,
+            2,
+            3
+          ]
+        ],
+        "levels": [
+          2
+        ],
+        "svgBeams": 1,
+        "subpaths": [
+          2
+        ],
+        "slurs": 0,
+        "width": 916,
+        "scrollWidth": 916,
+        "svgWidth": 915.984375
+      },
+      "abc_before": "X:1\nM:4/4\nL:1/4\nK:C\nC/4 D/4 E/4 F/4 z3 |",
+      "abc_after": "X:1\nM:4/4\nL:1/4\nK:C\nC/4D/4E/4F/4 z3 |"
+    },
+    "desktop-mixed": {
+      "before": {
+        "events": [
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 0,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.0625,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 1,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.0625,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 2,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.0625,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 3,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.0625,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 4,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 5,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.5,
+            "rest": "rest",
+            "pitches": [],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          }
+        ],
+        "groups": [],
+        "levels": [],
+        "svgBeams": 0,
+        "subpaths": [],
+        "slurs": 0,
+        "width": 916,
+        "scrollWidth": 916,
+        "svgWidth": 915.984375
+      },
+      "after": {
+        "events": [
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 0,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.0625,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 1,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.0625,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 2,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.0625,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 3,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.0625,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 4,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 5,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.5,
+            "rest": "rest",
+            "pitches": [],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          }
+        ],
+        "groups": [
+          [
+            0,
+            1,
+            2
+          ],
+          [
+            3,
+            4,
+            5
+          ]
+        ],
+        "levels": [
+          2,
+          2
+        ],
+        "svgBeams": 2,
+        "subpaths": [
+          2,
+          2
+        ],
+        "slurs": 0,
+        "width": 916,
+        "scrollWidth": 916,
+        "svgWidth": 915.984375
+      },
+      "abc_before": "X:1\nM:4/4\nL:1/4\nK:C\nC/2 D/4 E/4 F/4 G/4 A/2 z2 |",
+      "abc_after": "X:1\nM:4/4\nL:1/4\nK:C\nC/2D/4E/4 F/4G/4A/2 z2 |"
+    },
+    "desktop-beat-boundary": {
+      "before": {
+        "events": [
+          {
+            "duration": 0.125,
+            "rest": "rest",
+            "pitches": [],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 0,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 1,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 2,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 3,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.375,
+            "rest": "rest",
+            "pitches": [],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          }
+        ],
+        "groups": [],
+        "levels": [],
+        "svgBeams": 0,
+        "subpaths": [],
+        "slurs": 0,
+        "width": 916,
+        "scrollWidth": 916,
+        "svgWidth": 915.984375
+      },
+      "after": {
+        "events": [
+          {
+            "duration": 0.125,
+            "rest": "rest",
+            "pitches": [],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 0,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 1,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 2,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 3,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.375,
+            "rest": "rest",
+            "pitches": [],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          }
+        ],
+        "groups": [
+          [
+            1,
+            2
+          ]
+        ],
+        "levels": [
+          1
+        ],
+        "svgBeams": 1,
+        "subpaths": [
+          1
+        ],
+        "slurs": 0,
+        "width": 916,
+        "scrollWidth": 916,
+        "svgWidth": 915.984375
+      },
+      "abc_before": "X:1\nM:4/4\nL:1/4\nK:C\nz/2 C/2 D/2 E/2 F/2 z3/2 |",
+      "abc_after": "X:1\nM:4/4\nL:1/4\nK:C\nz/2 C/2 D/2E/2 F/2 z3/2 |"
+    },
+    "desktop-rest-separator": {
+      "before": {
+        "events": [
+          {
+            "duration": 0.0625,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 0,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.0625,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 1,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.0625,
+            "rest": "rest",
+            "pitches": [],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.0625,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 2,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 3,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 4,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.5,
+            "rest": "rest",
+            "pitches": [],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          }
+        ],
+        "groups": [],
+        "levels": [],
+        "svgBeams": 0,
+        "subpaths": [],
+        "slurs": 0,
+        "width": 916,
+        "scrollWidth": 916,
+        "svgWidth": 915.984375
+      },
+      "after": {
+        "events": [
+          {
+            "duration": 0.0625,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 0,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.0625,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 1,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.0625,
+            "rest": "rest",
+            "pitches": [],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.0625,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 2,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 3,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 4,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.5,
+            "rest": "rest",
+            "pitches": [],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          }
+        ],
+        "groups": [
+          [
+            0,
+            1
+          ],
+          [
+            3,
+            4
+          ]
+        ],
+        "levels": [
+          2,
+          1
+        ],
+        "svgBeams": 2,
+        "subpaths": [
+          2,
+          1
+        ],
+        "slurs": 0,
+        "width": 916,
+        "scrollWidth": 916,
+        "svgWidth": 915.984375
+      },
+      "abc_before": "X:1\nM:4/4\nL:1/4\nK:C\nC/4 D/4 z/4 E/4 F/2 G/2 z2 |",
+      "abc_after": "X:1\nM:4/4\nL:1/4\nK:C\nC/4D/4 z/4 E/4 F/2G/2 z2 |"
+    },
+    "desktop-slur-and-double-beam": {
+      "before": {
+        "events": [
+          {
+            "duration": 0.0625,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 0,
+                "accidental": null,
+                "startSlur": [
+                  {
+                    "label": 101
+                  }
+                ],
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.0625,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 1,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.0625,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 2,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.0625,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 3,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": [
+                  101
+                ]
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.75,
+            "rest": "rest",
+            "pitches": [],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          }
+        ],
+        "groups": [],
+        "levels": [],
+        "svgBeams": 0,
+        "subpaths": [],
+        "slurs": 1,
+        "width": 916,
+        "scrollWidth": 916,
+        "svgWidth": 915.90625
+      },
+      "after": {
+        "events": [
+          {
+            "duration": 0.0625,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 0,
+                "accidental": null,
+                "startSlur": [
+                  {
+                    "label": 101
+                  }
+                ],
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.0625,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 1,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.0625,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 2,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.0625,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 3,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": [
+                  101
+                ]
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.75,
+            "rest": "rest",
+            "pitches": [],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          }
+        ],
+        "groups": [
+          [
+            0,
+            1,
+            2,
+            3
+          ]
+        ],
+        "levels": [
+          2
+        ],
+        "svgBeams": 1,
+        "subpaths": [
+          2
+        ],
+        "slurs": 1,
+        "width": 916,
+        "scrollWidth": 916,
+        "svgWidth": 915.921875
+      },
+      "abc_before": "X:1\nM:4/4\nL:1/4\nK:C\n(C/4 D/4 E/4 F/4) z3 |",
+      "abc_after": "X:1\nM:4/4\nL:1/4\nK:C\n(C/4D/4E/4F/4) z3 |"
+    },
+    "desktop-decorations": {
+      "before": {
+        "events": [
+          {
+            "duration": 0.0625,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 0,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": [
+              "staccato"
+            ],
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.0625,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 1,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": [
+              "accent"
+            ],
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.0625,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 2,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.0625,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 3,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.75,
+            "rest": "rest",
+            "pitches": [],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          }
+        ],
+        "groups": [],
+        "levels": [],
+        "svgBeams": 0,
+        "subpaths": [],
+        "slurs": 0,
+        "width": 916,
+        "scrollWidth": 916,
+        "svgWidth": 915.9375
+      },
+      "after": {
+        "events": [
+          {
+            "duration": 0.0625,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 0,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": [
+              "staccato"
+            ],
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.0625,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 1,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": [
+              "accent"
+            ],
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.0625,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 2,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.0625,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 3,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.75,
+            "rest": "rest",
+            "pitches": [],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          }
+        ],
+        "groups": [
+          [
+            0,
+            1,
+            2,
+            3
+          ]
+        ],
+        "levels": [
+          2
+        ],
+        "svgBeams": 1,
+        "subpaths": [
+          2
+        ],
+        "slurs": 0,
+        "width": 916,
+        "scrollWidth": 916,
+        "svgWidth": 915.9375
+      },
+      "abc_before": "X:1\nM:4/4\nL:1/4\nK:C\n.C/4 !>!D/4 E/4 F/4 z3 |",
+      "abc_after": "X:1\nM:4/4\nL:1/4\nK:C\n.C/4!>!D/4E/4F/4 z3 |"
+    },
+    "desktop-compound-six-eight": {
+      "before": {
+        "events": [
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 0,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 1,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 2,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 3,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 4,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 5,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          }
+        ],
+        "groups": [],
+        "levels": [],
+        "svgBeams": 0,
+        "subpaths": [],
+        "slurs": 0,
+        "width": 916,
+        "scrollWidth": 916,
+        "svgWidth": 915.984375
+      },
+      "after": {
+        "events": [
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 0,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 1,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 2,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 3,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 4,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 5,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          }
+        ],
+        "groups": [
+          [
+            0,
+            1,
+            2
+          ],
+          [
+            3,
+            4,
+            5
+          ]
+        ],
+        "levels": [
+          1,
+          1
+        ],
+        "svgBeams": 2,
+        "subpaths": [
+          1,
+          1
+        ],
+        "slurs": 0,
+        "width": 916,
+        "scrollWidth": 916,
+        "svgWidth": 915.984375
+      },
+      "abc_before": "X:1\nM:6/8\nL:1/4\nK:C\nC/2 D/2 E/2 F/2 G/2 A/2 |",
+      "abc_after": "X:1\nM:6/8\nL:1/4\nK:C\nC/2D/2E/2 F/2G/2A/2 |"
+    },
+    "desktop-three-four": {
+      "before": {
+        "events": [
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 0,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 1,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 2,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 3,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 4,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 5,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          }
+        ],
+        "groups": [],
+        "levels": [],
+        "svgBeams": 0,
+        "subpaths": [],
+        "slurs": 0,
+        "width": 916,
+        "scrollWidth": 916,
+        "svgWidth": 915.984375
+      },
+      "after": {
+        "events": [
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 0,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 1,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 2,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 3,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 4,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 5,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          }
+        ],
+        "groups": [
+          [
+            0,
+            1
+          ],
+          [
+            2,
+            3
+          ],
+          [
+            4,
+            5
+          ]
+        ],
+        "levels": [
+          1,
+          1,
+          1
+        ],
+        "svgBeams": 3,
+        "subpaths": [
+          1,
+          1,
+          1
+        ],
+        "slurs": 0,
+        "width": 916,
+        "scrollWidth": 916,
+        "svgWidth": 915.984375
+      },
+      "abc_before": "X:1\nM:3/4\nL:1/4\nK:C\nC/2 D/2 E/2 F/2 G/2 A/2 |",
+      "abc_after": "X:1\nM:3/4\nL:1/4\nK:C\nC/2D/2 E/2F/2 G/2A/2 |"
+    },
+    "desktop-isolated-quarters": {
+      "before": {
+        "events": [
+          {
+            "duration": 0.25,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 0,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.25,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 1,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.25,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 2,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.25,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 3,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          }
+        ],
+        "groups": [],
+        "levels": [],
+        "svgBeams": 0,
+        "subpaths": [],
+        "slurs": 0,
+        "width": 916,
+        "scrollWidth": 916,
+        "svgWidth": 915.984375
+      },
+      "after": {
+        "events": [
+          {
+            "duration": 0.25,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 0,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.25,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 1,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.25,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 2,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.25,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 3,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          }
+        ],
+        "groups": [],
+        "levels": [],
+        "svgBeams": 0,
+        "subpaths": [],
+        "slurs": 0,
+        "width": 916,
+        "scrollWidth": 916,
+        "svgWidth": 915.984375
+      },
+      "abc_before": "X:1\nM:4/4\nL:1/4\nK:C\nC D E F |",
+      "abc_after": "X:1\nM:4/4\nL:1/4\nK:C\nC D E F |"
+    },
+    "desktop-syncopated-crossing": {
+      "before": {
+        "events": [
+          {
+            "duration": 0.1875,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 0,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 1,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.0625,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 2,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.625,
+            "rest": "rest",
+            "pitches": [],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          }
+        ],
+        "groups": [],
+        "levels": [],
+        "svgBeams": 0,
+        "subpaths": [],
+        "slurs": 0,
+        "width": 916,
+        "scrollWidth": 916,
+        "svgWidth": 915.984375
+      },
+      "after": {
+        "events": [
+          {
+            "duration": 0.1875,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 0,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 1,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.0625,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 2,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.625,
+            "rest": "rest",
+            "pitches": [],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          }
+        ],
+        "groups": [],
+        "levels": [],
+        "svgBeams": 0,
+        "subpaths": [],
+        "slurs": 0,
+        "width": 916,
+        "scrollWidth": 916,
+        "svgWidth": 915.984375
+      },
+      "abc_before": "X:1\nM:4/4\nL:1/4\nK:C\nC3/4 D/2 E/4 z5/2 |",
+      "abc_after": "X:1\nM:4/4\nL:1/4\nK:C\nC3/4 D/2 E/4 z5/2 |"
+    },
+    "mobile-four-eighths": {
+      "before": {
+        "events": [
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 0,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 1,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 2,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 3,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.5,
+            "rest": "rest",
+            "pitches": [],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          }
+        ],
+        "groups": [],
+        "levels": [],
+        "svgBeams": 0,
+        "subpaths": [],
+        "slurs": 0,
+        "width": 302,
+        "scrollWidth": 302,
+        "svgWidth": 301.9375
+      },
+      "after": {
+        "events": [
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 0,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 1,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 2,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 3,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.5,
+            "rest": "rest",
+            "pitches": [],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          }
+        ],
+        "groups": [
+          [
+            0,
+            1
+          ],
+          [
+            2,
+            3
+          ]
+        ],
+        "levels": [
+          1,
+          1
+        ],
+        "svgBeams": 2,
+        "subpaths": [
+          1,
+          1
+        ],
+        "slurs": 0,
+        "width": 302,
+        "scrollWidth": 302,
+        "svgWidth": 301.9375
+      },
+      "abc_before": "X:1\nM:4/4\nL:1/4\nK:C\nC/2 D/2 E/2 F/2 z2 |",
+      "abc_after": "X:1\nM:4/4\nL:1/4\nK:C\nC/2D/2 E/2F/2 z2 |"
+    },
+    "mobile-eight-eighths": {
+      "before": {
+        "events": [
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 0,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 1,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 2,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 3,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 4,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 5,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 6,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 7,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          }
+        ],
+        "groups": [],
+        "levels": [],
+        "svgBeams": 0,
+        "subpaths": [],
+        "slurs": 0,
+        "width": 302,
+        "scrollWidth": 302,
+        "svgWidth": 301.96875
+      },
+      "after": {
+        "events": [
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 0,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 1,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 2,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 3,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 4,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 5,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 6,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 7,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          }
+        ],
+        "groups": [
+          [
+            0,
+            1
+          ],
+          [
+            2,
+            3
+          ],
+          [
+            4,
+            5
+          ],
+          [
+            6,
+            7
+          ]
+        ],
+        "levels": [
+          1,
+          1,
+          1,
+          1
+        ],
+        "svgBeams": 4,
+        "subpaths": [
+          1,
+          1,
+          1,
+          1
+        ],
+        "slurs": 0,
+        "width": 302,
+        "scrollWidth": 302,
+        "svgWidth": 301.953125
+      },
+      "abc_before": "X:1\nM:4/4\nL:1/4\nK:C\nC/2 D/2 E/2 F/2 G/2 A/2 B/2 c/2 |",
+      "abc_after": "X:1\nM:4/4\nL:1/4\nK:C\nC/2D/2 E/2F/2 G/2A/2 B/2c/2 |"
+    },
+    "mobile-four-sixteenths": {
+      "before": {
+        "events": [
+          {
+            "duration": 0.0625,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 0,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.0625,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 1,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.0625,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 2,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.0625,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 3,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.75,
+            "rest": "rest",
+            "pitches": [],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          }
+        ],
+        "groups": [],
+        "levels": [],
+        "svgBeams": 0,
+        "subpaths": [],
+        "slurs": 0,
+        "width": 302,
+        "scrollWidth": 302,
+        "svgWidth": 301.9375
+      },
+      "after": {
+        "events": [
+          {
+            "duration": 0.0625,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 0,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.0625,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 1,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.0625,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 2,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.0625,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 3,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.75,
+            "rest": "rest",
+            "pitches": [],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          }
+        ],
+        "groups": [
+          [
+            0,
+            1,
+            2,
+            3
+          ]
+        ],
+        "levels": [
+          2
+        ],
+        "svgBeams": 1,
+        "subpaths": [
+          2
+        ],
+        "slurs": 0,
+        "width": 302,
+        "scrollWidth": 302,
+        "svgWidth": 301.9375
+      },
+      "abc_before": "X:1\nM:4/4\nL:1/4\nK:C\nC/4 D/4 E/4 F/4 z3 |",
+      "abc_after": "X:1\nM:4/4\nL:1/4\nK:C\nC/4D/4E/4F/4 z3 |"
+    },
+    "mobile-mixed": {
+      "before": {
+        "events": [
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 0,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.0625,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 1,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.0625,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 2,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.0625,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 3,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.0625,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 4,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 5,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.5,
+            "rest": "rest",
+            "pitches": [],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          }
+        ],
+        "groups": [],
+        "levels": [],
+        "svgBeams": 0,
+        "subpaths": [],
+        "slurs": 0,
+        "width": 302,
+        "scrollWidth": 302,
+        "svgWidth": 301.9375
+      },
+      "after": {
+        "events": [
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 0,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.0625,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 1,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.0625,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 2,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.0625,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 3,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.0625,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 4,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 5,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.5,
+            "rest": "rest",
+            "pitches": [],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          }
+        ],
+        "groups": [
+          [
+            0,
+            1,
+            2
+          ],
+          [
+            3,
+            4,
+            5
+          ]
+        ],
+        "levels": [
+          2,
+          2
+        ],
+        "svgBeams": 2,
+        "subpaths": [
+          2,
+          2
+        ],
+        "slurs": 0,
+        "width": 302,
+        "scrollWidth": 302,
+        "svgWidth": 301.9375
+      },
+      "abc_before": "X:1\nM:4/4\nL:1/4\nK:C\nC/2 D/4 E/4 F/4 G/4 A/2 z2 |",
+      "abc_after": "X:1\nM:4/4\nL:1/4\nK:C\nC/2D/4E/4 F/4G/4A/2 z2 |"
+    },
+    "mobile-beat-boundary": {
+      "before": {
+        "events": [
+          {
+            "duration": 0.125,
+            "rest": "rest",
+            "pitches": [],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 0,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 1,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 2,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 3,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.375,
+            "rest": "rest",
+            "pitches": [],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          }
+        ],
+        "groups": [],
+        "levels": [],
+        "svgBeams": 0,
+        "subpaths": [],
+        "slurs": 0,
+        "width": 302,
+        "scrollWidth": 302,
+        "svgWidth": 301.9375
+      },
+      "after": {
+        "events": [
+          {
+            "duration": 0.125,
+            "rest": "rest",
+            "pitches": [],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 0,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 1,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 2,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 3,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.375,
+            "rest": "rest",
+            "pitches": [],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          }
+        ],
+        "groups": [
+          [
+            1,
+            2
+          ]
+        ],
+        "levels": [
+          1
+        ],
+        "svgBeams": 1,
+        "subpaths": [
+          1
+        ],
+        "slurs": 0,
+        "width": 302,
+        "scrollWidth": 302,
+        "svgWidth": 301.9375
+      },
+      "abc_before": "X:1\nM:4/4\nL:1/4\nK:C\nz/2 C/2 D/2 E/2 F/2 z3/2 |",
+      "abc_after": "X:1\nM:4/4\nL:1/4\nK:C\nz/2 C/2 D/2E/2 F/2 z3/2 |"
+    },
+    "mobile-rest-separator": {
+      "before": {
+        "events": [
+          {
+            "duration": 0.0625,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 0,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.0625,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 1,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.0625,
+            "rest": "rest",
+            "pitches": [],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.0625,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 2,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 3,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 4,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.5,
+            "rest": "rest",
+            "pitches": [],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          }
+        ],
+        "groups": [],
+        "levels": [],
+        "svgBeams": 0,
+        "subpaths": [],
+        "slurs": 0,
+        "width": 302,
+        "scrollWidth": 302,
+        "svgWidth": 301.9375
+      },
+      "after": {
+        "events": [
+          {
+            "duration": 0.0625,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 0,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.0625,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 1,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.0625,
+            "rest": "rest",
+            "pitches": [],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.0625,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 2,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 3,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 4,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.5,
+            "rest": "rest",
+            "pitches": [],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          }
+        ],
+        "groups": [
+          [
+            0,
+            1
+          ],
+          [
+            3,
+            4
+          ]
+        ],
+        "levels": [
+          2,
+          1
+        ],
+        "svgBeams": 2,
+        "subpaths": [
+          2,
+          1
+        ],
+        "slurs": 0,
+        "width": 302,
+        "scrollWidth": 302,
+        "svgWidth": 301.9375
+      },
+      "abc_before": "X:1\nM:4/4\nL:1/4\nK:C\nC/4 D/4 z/4 E/4 F/2 G/2 z2 |",
+      "abc_after": "X:1\nM:4/4\nL:1/4\nK:C\nC/4D/4 z/4 E/4 F/2G/2 z2 |"
+    },
+    "mobile-slur-and-double-beam": {
+      "before": {
+        "events": [
+          {
+            "duration": 0.0625,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 0,
+                "accidental": null,
+                "startSlur": [
+                  {
+                    "label": 101
+                  }
+                ],
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.0625,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 1,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.0625,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 2,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.0625,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 3,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": [
+                  101
+                ]
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.75,
+            "rest": "rest",
+            "pitches": [],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          }
+        ],
+        "groups": [],
+        "levels": [],
+        "svgBeams": 0,
+        "subpaths": [],
+        "slurs": 1,
+        "width": 302,
+        "scrollWidth": 302,
+        "svgWidth": 301.96875
+      },
+      "after": {
+        "events": [
+          {
+            "duration": 0.0625,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 0,
+                "accidental": null,
+                "startSlur": [
+                  {
+                    "label": 101
+                  }
+                ],
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.0625,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 1,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.0625,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 2,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.0625,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 3,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": [
+                  101
+                ]
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.75,
+            "rest": "rest",
+            "pitches": [],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          }
+        ],
+        "groups": [
+          [
+            0,
+            1,
+            2,
+            3
+          ]
+        ],
+        "levels": [
+          2
+        ],
+        "svgBeams": 1,
+        "subpaths": [
+          2
+        ],
+        "slurs": 1,
+        "width": 302,
+        "scrollWidth": 302,
+        "svgWidth": 301.96875
+      },
+      "abc_before": "X:1\nM:4/4\nL:1/4\nK:C\n(C/4 D/4 E/4 F/4) z3 |",
+      "abc_after": "X:1\nM:4/4\nL:1/4\nK:C\n(C/4D/4E/4F/4) z3 |"
+    },
+    "mobile-decorations": {
+      "before": {
+        "events": [
+          {
+            "duration": 0.0625,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 0,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": [
+              "staccato"
+            ],
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.0625,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 1,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": [
+              "accent"
+            ],
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.0625,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 2,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.0625,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 3,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.75,
+            "rest": "rest",
+            "pitches": [],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          }
+        ],
+        "groups": [],
+        "levels": [],
+        "svgBeams": 0,
+        "subpaths": [],
+        "slurs": 0,
+        "width": 302,
+        "scrollWidth": 302,
+        "svgWidth": 301.9375
+      },
+      "after": {
+        "events": [
+          {
+            "duration": 0.0625,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 0,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": [
+              "staccato"
+            ],
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.0625,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 1,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": [
+              "accent"
+            ],
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.0625,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 2,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.0625,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 3,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.75,
+            "rest": "rest",
+            "pitches": [],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          }
+        ],
+        "groups": [
+          [
+            0,
+            1,
+            2,
+            3
+          ]
+        ],
+        "levels": [
+          2
+        ],
+        "svgBeams": 1,
+        "subpaths": [
+          2
+        ],
+        "slurs": 0,
+        "width": 302,
+        "scrollWidth": 302,
+        "svgWidth": 301.9375
+      },
+      "abc_before": "X:1\nM:4/4\nL:1/4\nK:C\n.C/4 !>!D/4 E/4 F/4 z3 |",
+      "abc_after": "X:1\nM:4/4\nL:1/4\nK:C\n.C/4!>!D/4E/4F/4 z3 |"
+    },
+    "mobile-compound-six-eight": {
+      "before": {
+        "events": [
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 0,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 1,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 2,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 3,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 4,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 5,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          }
+        ],
+        "groups": [],
+        "levels": [],
+        "svgBeams": 0,
+        "subpaths": [],
+        "slurs": 0,
+        "width": 302,
+        "scrollWidth": 302,
+        "svgWidth": 301.9375
+      },
+      "after": {
+        "events": [
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 0,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 1,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 2,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 3,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 4,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 5,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          }
+        ],
+        "groups": [
+          [
+            0,
+            1,
+            2
+          ],
+          [
+            3,
+            4,
+            5
+          ]
+        ],
+        "levels": [
+          1,
+          1
+        ],
+        "svgBeams": 2,
+        "subpaths": [
+          1,
+          1
+        ],
+        "slurs": 0,
+        "width": 302,
+        "scrollWidth": 302,
+        "svgWidth": 301.9375
+      },
+      "abc_before": "X:1\nM:6/8\nL:1/4\nK:C\nC/2 D/2 E/2 F/2 G/2 A/2 |",
+      "abc_after": "X:1\nM:6/8\nL:1/4\nK:C\nC/2D/2E/2 F/2G/2A/2 |"
+    },
+    "mobile-three-four": {
+      "before": {
+        "events": [
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 0,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 1,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 2,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 3,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 4,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 5,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          }
+        ],
+        "groups": [],
+        "levels": [],
+        "svgBeams": 0,
+        "subpaths": [],
+        "slurs": 0,
+        "width": 302,
+        "scrollWidth": 302,
+        "svgWidth": 301.9375
+      },
+      "after": {
+        "events": [
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 0,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 1,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 2,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 3,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 4,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 5,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          }
+        ],
+        "groups": [
+          [
+            0,
+            1
+          ],
+          [
+            2,
+            3
+          ],
+          [
+            4,
+            5
+          ]
+        ],
+        "levels": [
+          1,
+          1,
+          1
+        ],
+        "svgBeams": 3,
+        "subpaths": [
+          1,
+          1,
+          1
+        ],
+        "slurs": 0,
+        "width": 302,
+        "scrollWidth": 302,
+        "svgWidth": 301.9375
+      },
+      "abc_before": "X:1\nM:3/4\nL:1/4\nK:C\nC/2 D/2 E/2 F/2 G/2 A/2 |",
+      "abc_after": "X:1\nM:3/4\nL:1/4\nK:C\nC/2D/2 E/2F/2 G/2A/2 |"
+    },
+    "mobile-isolated-quarters": {
+      "before": {
+        "events": [
+          {
+            "duration": 0.25,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 0,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.25,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 1,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.25,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 2,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.25,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 3,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          }
+        ],
+        "groups": [],
+        "levels": [],
+        "svgBeams": 0,
+        "subpaths": [],
+        "slurs": 0,
+        "width": 302,
+        "scrollWidth": 302,
+        "svgWidth": 301.9375
+      },
+      "after": {
+        "events": [
+          {
+            "duration": 0.25,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 0,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.25,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 1,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.25,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 2,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.25,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 3,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          }
+        ],
+        "groups": [],
+        "levels": [],
+        "svgBeams": 0,
+        "subpaths": [],
+        "slurs": 0,
+        "width": 302,
+        "scrollWidth": 302,
+        "svgWidth": 301.9375
+      },
+      "abc_before": "X:1\nM:4/4\nL:1/4\nK:C\nC D E F |",
+      "abc_after": "X:1\nM:4/4\nL:1/4\nK:C\nC D E F |"
+    },
+    "mobile-syncopated-crossing": {
+      "before": {
+        "events": [
+          {
+            "duration": 0.1875,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 0,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 1,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.0625,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 2,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.625,
+            "rest": "rest",
+            "pitches": [],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          }
+        ],
+        "groups": [],
+        "levels": [],
+        "svgBeams": 0,
+        "subpaths": [],
+        "slurs": 0,
+        "width": 302,
+        "scrollWidth": 302,
+        "svgWidth": 301.9375
+      },
+      "after": {
+        "events": [
+          {
+            "duration": 0.1875,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 0,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.125,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 1,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.0625,
+            "rest": null,
+            "pitches": [
+              {
+                "pitch": 2,
+                "accidental": null,
+                "startSlur": null,
+                "endSlur": null
+              }
+            ],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          },
+          {
+            "duration": 0.625,
+            "rest": "rest",
+            "pitches": [],
+            "decoration": null,
+            "startSlur": null,
+            "endSlur": null
+          }
+        ],
+        "groups": [],
+        "levels": [],
+        "svgBeams": 0,
+        "subpaths": [],
+        "slurs": 0,
+        "width": 302,
+        "scrollWidth": 302,
+        "svgWidth": 301.9375
+      },
+      "abc_before": "X:1\nM:4/4\nL:1/4\nK:C\nC3/4 D/2 E/4 z5/2 |",
+      "abc_after": "X:1\nM:4/4\nL:1/4\nK:C\nC3/4 D/2 E/4 z5/2 |"
+    }
+  },
+  "navigation_layout": {
+    "desktop": [
+      {
+        "text": "\u2b05\ufe0f\n\nPrevious exercise",
+        "width": 305.328125,
+        "height": 40,
+        "scrollWidth": 303,
+        "clientWidth": 303
+      },
+      {
+        "text": "\u27a1\ufe0f\n\nNext exercise",
+        "width": 305.34375,
+        "height": 40,
+        "scrollWidth": 303,
+        "clientWidth": 303
+      },
+      {
+        "text": "\ud83d\uddd2\ufe0f\n\nWhole warmup",
+        "width": 305.328125,
+        "height": 40,
+        "scrollWidth": 303,
+        "clientWidth": 303
+      }
+    ],
+    "mobile": [
+      {
+        "text": "\u2b05\ufe0f\n\nPrevious exercise",
+        "width": 334,
+        "height": 40,
+        "scrollWidth": 332,
+        "clientWidth": 332
+      },
+      {
+        "text": "\u27a1\ufe0f\n\nNext exercise",
+        "width": 334,
+        "height": 40,
+        "scrollWidth": 332,
+        "clientWidth": 332
+      },
+      {
+        "text": "\ud83d\uddd2\ufe0f\n\nWhole warmup",
+        "width": 334,
+        "height": 40,
+        "scrollWidth": 332,
+        "clientWidth": 332
+      }
+    ]
+  },
+  "analysis_link_normal_cards": [
+    {
+      "viewport": 1440,
+      "present": false
+    },
+    {
+      "viewport": 390,
+      "present": false
+    }
+  ],
+  "analysis_link_fixture": [
+    {
+      "viewport": 1440,
+      "native_component_fixture": true,
+      "destination_action_verified": true,
+      "text": "\u2197\ufe0f\n\nOpen full analysis",
+      "href": "http://127.0.0.1:54401/?review=full",
+      "width": 328,
+      "height": 40,
+      "scrollWidth": 326,
+      "clientWidth": 326,
+      "color": "rgb(49, 51, 63)",
+      "background": "rgb(255, 255, 255)"
+    },
+    {
+      "viewport": 390,
+      "native_component_fixture": true,
+      "destination_action_verified": true,
+      "text": "\u2197\ufe0f\n\nOpen full analysis",
+      "href": "http://127.0.0.1:54401/?review=full",
+      "width": 326,
+      "height": 40,
+      "scrollWidth": 324,
+      "clientWidth": 324,
+      "color": "rgb(49, 51, 63)",
+      "background": "rgb(255, 255, 255)"
+    }
+  ],
+  "source_file_hash_counts": {
+    "baseline": 2150,
+    "candidate": 2160
+  },
+  "newer_dev_files_preserved": 9,
+  "paid_api_attempts": false
+}
