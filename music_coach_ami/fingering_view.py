@@ -4,6 +4,9 @@ from music_coach_ami.fingering_data import KEYS, validate_record
 
 
 def svg(value):
+    if value.get('family')=='trumpet-valve-partial':
+        from music_coach_ami.trumpet_fingering_view import svg as trumpet_svg
+        return trumpet_svg(value)
     r=validate_record(value);uid='fingering-'+r['id']
     shapes=[]
     for key,label in KEYS:
@@ -21,6 +24,10 @@ def description(r):
 
 
 def html(records):
+    records=list(records)
+    if records and all(r.get("family")=="trumpet-valve-partial" for r in records):
+        from music_coach_ami.trumpet_fingering_view import html as trumpet_html
+        return trumpet_html(records)
     figures=[]
     for value in records:
         r=validate_record(value)
