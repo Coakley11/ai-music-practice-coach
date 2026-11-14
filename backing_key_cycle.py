@@ -14208,6 +14208,10 @@ def render_backing_key_cycle_playback_bar(st: Any, session: dict[str, Any]) -> N
             # keys); these server paths only run before it is installed.
             # Callbacks, not `if st.button: ...; st.rerun()`: a press made while
             # that rerun was running was dropped.
+            # No ``help=`` tooltips here: Streamlit renders a button with a
+            # tooltip twice (a visible one in the tooltip wrapper and a hidden
+            # copy without handlers), and page scripts that look a transport
+            # button up by its key could take the dead copy. The labels say it.
             def _btn(label: str, key: str, **kw: Any) -> bool:
                 try:
                     return bool(st.button(label, key=key, width="stretch", **kw))
@@ -14218,7 +14222,6 @@ def render_backing_key_cycle_playback_bar(st: Any, session: dict[str, Any]) -> N
                 "Previous",
                 "backing_key_cycle_prev_btn",
                 icon=":material/skip_previous:",
-                help="Previous key in the cycle",
                 disabled=transport_stopped,
                 on_click=_step_key_cycle_from_button,
                 args=(session, -1),
@@ -14228,7 +14231,6 @@ def render_backing_key_cycle_playback_bar(st: Any, session: dict[str, Any]) -> N
                 "backing_key_cycle_pause_btn",
                 # The page script swaps this icon with the label as playback changes.
                 icon=":material/play_arrow:" if pause_label == "Resume" else ":material/pause:",
-                help="Pause stays on this key; Resume continues from here",
                 type="primary",
                 on_click=_toggle_key_cycle_pause_resume,
                 args=(session,),
@@ -14238,7 +14240,6 @@ def render_backing_key_cycle_playback_bar(st: Any, session: dict[str, Any]) -> N
                 "Next",
                 "backing_key_cycle_advance_btn",
                 icon=":material/skip_next:",
-                help="Next key in the cycle",
                 disabled=transport_stopped,
                 on_click=_step_key_cycle_from_button,
                 args=(session, 1),
@@ -14250,7 +14251,6 @@ def render_backing_key_cycle_playback_bar(st: Any, session: dict[str, Any]) -> N
                 "Stop",
                 "backing_key_cycle_stop_btn",
                 icon=":material/stop:",
-                help="Turn Key Cycling off and return to your Practice Key",
                 on_click=_stop_key_cycle_from_button,
                 args=(session,),
             )
