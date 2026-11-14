@@ -298,7 +298,22 @@ class IncomingAudioIsChecked(unittest.TestCase):
         self.assertFalse(check.ok)
         self.assertIn("bytes", check.reason)
 
-    def test_with_no_decoder_installed_the_check_accepts_rather_than_blocks(self) -> None:
+    def test_a_decoded_file_is_reported_as_verified(self) -> None:
+        from multitrack_audio_validation import VERIFIED, check_audio_bytes
+
+        check = check_audio_bytes(wav_bytes(1.0), "take.wav")
+        self.assertEqual(check.status, VERIFIED)
+        self.assertTrue(check.verified)
+        self.assertFalse(check.unverified)
+        self.assertFalse(check.rejected)
+
+    def test_with_no_decoder_the_result_is_UNVERIFIED_not_a_successful_decode(self) -> None:
+        """Accepting an unchecked file is right; calling it verified is not.
+
+        The first version of this module returned ok=True with the reason in a string, which no
+        caller could tell apart from a real decode - so the musician could be assured a file would
+        play when nothing had established that at all.
+        """
         import multitrack_audio_validation as mav
 
         original_sf, original_lr = mav._try_soundfile, mav._try_librosa
@@ -308,8 +323,21 @@ class IncomingAudioIsChecked(unittest.TestCase):
             check = mav.check_audio_bytes(wav_bytes(1.0), "take.wav")
         finally:
             mav._try_soundfile, mav._try_librosa = original_sf, original_lr
-        self.assertTrue(check.ok)
-        self.assertIn("not checked", check.reason)
+        self.assertEqual(check.status, mav.UNVERIFIED)
+        self.assertTrue(check.unverified)
+        self.assertFalse(check.verified, "an unchecked file must never read as verified")
+        self.assertTrue(check.ok, "it is still accepted, for legacy compatibility")
+        notice = mav.unverified_notice(check, "take.wav")
+        self.assertIn("without being checked", notice)
+        self.assertIn("may still turn out not to play", notice)
+        self.assertNotIn("could not be added", notice)
+
+    def test_a_verified_or_rejected_file_produces_no_unverified_notice(self) -> None:
+        from multitrack_audio_validation import check_audio_bytes, unverified_notice
+
+        junk = b"RIFF" + (900).to_bytes(4, "little") + b"WAVEjunk" + b"\x7f" * 900
+        self.assertEqual(unverified_notice(check_audio_bytes(wav_bytes(1.0), "a.wav"), "a.wav"), "")
+        self.assertEqual(unverified_notice(check_audio_bytes(junk, "b.wav"), "b.wav"), "")
 
     def test_the_rejection_says_nothing_was_changed(self) -> None:
         from multitrack_audio_validation import check_audio_bytes, rejection_message

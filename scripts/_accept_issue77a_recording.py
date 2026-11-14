@@ -295,6 +295,28 @@ def gate_backing_lets_the_musician_record(page) -> None:
          "count-in" in str(state.get("label") or "").lower(), state.get("label"))
 
 
+def gate_several_valid_monitors_load(page, good: str) -> None:
+    """G9 - more than one monitored layer must load, and the recorder must say how many.
+
+    The failure this slice fixes aborted the whole request at the first asset, so "one asset works"
+    was never enough evidence. Here a third layer has to decode two others before it will arm.
+    """
+    log("\n-- G9: several valid monitor layers")
+    open_layer(page, SLOT_SAX)
+    upload_into(page, SLOT_SAX, good)
+    panel = page.evaluate(PANEL_JS, SLOT_SAX)
+    mark("a second valid layer is accepted", bool(panel.get("take")), panel.get("take"))
+    open_layer(page, SLOT_EXTRA)
+    state = wait_recorder(page, SLOT_EXTRA)
+    MEASURED["recorder_with_two_monitors"] = state
+    shot(page, "g9-two-monitors")
+    status = str(state.get("status") or "").lower()
+    mark("Record is ENABLED with two monitored layers plus the backing",
+         state.get("disabled") is False, state.get("status"))
+    mark("the recorder counts the parts it will play",
+         "other layer" in status, state.get("status"))
+
+
 def gate_a_bad_layer_is_named(page, bad: str) -> None:
     """G3/G4 - one undecodable layer used to block every other layer, anonymously."""
     log("\n-- G3/G4: a part that cannot load is named, with a way forward")
@@ -346,6 +368,15 @@ def gate_a_real_take_against_the_backing(page) -> None:
     mark("the take is not reported as un-aligned",
          "not time-aligned" not in low and "could not be measured" not in low,
          [ln for ln in text.splitlines() if "align" in ln.lower()][:2])
+    # The positive statement, not merely the absence of a warning: Issue 78B's measurement must
+    # still be there, and it must say that a part played along - which is the proof the backing
+    # really was in the take rather than merely allowed by the gate.
+    measured = [ln for ln in text.splitlines() if "measured on the recording clock" in ln.lower()]
+    MEASURED["take_timing_caption"] = measured[:1]
+    mark("the take reports its shared-clock measurement",
+         bool(measured), measured[:1])
+    mark("the measurement says a part played along with the take",
+         any("part(s) playing along" in ln for ln in measured), measured[:1])
     saved = click_in_layer(page, "save layer", SLOT_GUITAR)
     MEASURED["save_click"] = saved
     after = page.evaluate(PANEL_JS, SLOT_GUITAR)
@@ -443,6 +474,7 @@ def main() -> int:
 
             gate_backing_lets_the_musician_record(page)
             gate_a_real_take_against_the_backing(page)
+            gate_several_valid_monitors_load(page, good)
             gate_a_bad_layer_is_named(page, bad)
             gate_free_layering(page)
             ctx.close()

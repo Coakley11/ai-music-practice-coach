@@ -28674,10 +28674,21 @@ elif _studio_page == "multitrack":
                                 from multitrack_audio_validation import (
                                     check_audio_bytes,
                                     rejection_message,
+                                    unverified_notice,
                                 )
 
                                 _mt_check = check_audio_bytes(_mt_landed_bytes, _mt_landed_name)
-                                if not _mt_check.ok:
+                                # Three outcomes, not two. A file accepted because no decoder was
+                                # available has NOT been shown to play, and must not be presented
+                                # as though it had: the browser still has to decode it while
+                                # recording, and if it cannot, Record is held back and this layer
+                                # is named.
+                                _mt_unverified = unverified_notice(
+                                    _mt_check, _mt_landed_name
+                                )
+                                if _mt_unverified:
+                                    st.warning(_mt_unverified)
+                                if _mt_check.rejected:
                                     st.warning(
                                         rejection_message(
                                             _mt_check,
