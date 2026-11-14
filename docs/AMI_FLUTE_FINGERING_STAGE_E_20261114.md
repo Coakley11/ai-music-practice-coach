@@ -121,10 +121,10 @@ ordinary flute/bass-TAB handoffs passed. No forbidden API call was recorded.
 Matched full regression **passed its comparison**: **3,842 passed, the same nine
 baseline failures, 3,116 passing subtests**, 13 warnings, **939.28 seconds**.
 All **3,773 shared IDs were unchanged** and all **78 added cases passed**; no
-missing IDs, collection errors or changes to the **301 frozen source hashes**. The baseline is the just-validated
+missing IDs, collection errors or changes to the **205 distinct source-file hashes**. The baseline is the just-validated
 98-file clarinet merge `38294198e0d5196913e1f21f2070ce6a16f66601`;
 remote integration differs only by its receipt. Stage E retains those 98 files
-and adds the permanent flute module (99 total). All 301 frozen source hashes
+and adds the permanent flute module (99 total). All 205 distinct source-file hashes
 remained unchanged; every shared ID/phase and the exact nine-failure ledger
 matched. See [machine acceptance](fingering-stage-e/acceptance.json).
 
@@ -163,3 +163,8 @@ retains viewport/content width and native DOM hash. Long native tune headings
 retain the existing horizontally scrollable score behavior; the named note, staff
 and all key-action labels are legible. Raw obstructed captures are retained in
 evidence rather than shipped as review artifacts.
+
+Hash-ledger clarification: the original freeze had 301 path/hash entries, including
+Windows slash/backslash aliases for the same files. All original entries were
+verified unchanged, then normalized to 205 distinct source files. The original
+ledger remains in evidence; this changes receipt metadata only, not tested code.
