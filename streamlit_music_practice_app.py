@@ -28390,7 +28390,9 @@ elif _studio_page == "multitrack":
                 pass
 
             # Issue 78C: one empty layer starts open so the Record control is discoverable
-            # without a tap. Decided once per session, so a deliberate collapse is not undone.
+            # without a tap. It stays open while the project holds no audio at all - Streamlit
+            # re-applies `expanded` on every rerun, so anything less closes the control it just
+            # gave the musician - and stops entirely once any layer holds a take.
             try:
                 from multitrack_takes import auto_open_slot
 

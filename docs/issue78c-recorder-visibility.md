@@ -168,3 +168,105 @@ The app computes its own commit at runtime (`git rev-parse HEAD` → `_studio_ui
 shows it in the sidebar caption; that line settles it. Two faster tells inside the layer: the 78B
 recorder's button reads **"● Record with count-in"** when a count-in is configured, and its status
 line uses the phrase **"on one clock"** — neither string exists before 78B.
+
+## Integration round (2026-11-14): four of the final acceptance items were not being checked
+
+The decision to integrate asked for ten things to be verified on the combined tree. Four of them
+had no gate at all, and the first one explains why that matters.
+
+**"Permission denial and microphone unavailability produce understandable visible messages"** was
+being checked as `bool(said.strip())` — whether the status line contained any text. So the run
+before this one reported **PASS** for *the recorder explains the microphone being denied* while the
+component was showing its ready text (*"Record starts a 4-beat count-in…"*), and **PASS** for
+*unavailable* while it was showing *"Microphone unavailable: TypeError: Cannot read properties of
+undefined (reading 'getSupportedConstraints')"*. The wording fix had already landed; the gate that
+should have demanded it did not exist. It does now (`mic_message_verdict`): the message may not be
+the ready text, may not read like a stack trace, has to name the alternative that genuinely exists
+on this surface, and — for a refusal — has to say that permission was refused. The two strings above
+are unit-pinned as rejections in `tests/test_issue78c_recorder_visibility.py`.
+
+Added with it: the **whole take lifecycle** (record → discard → record again → Save layer, with real
+clicks), **sideways overflow**, and a walk to **Mission's** copy of the component.
+
+### The retained measured check
+
+`tests/test_issue78c_frame_height_browser.py` is the guard the decision asked to keep. It does not
+read the component — it loads `mission_recorder_component/index.html` into Chromium inside a
+**closed** `<details>`, answers `componentReady` with one `streamlit:render` exactly as Streamlit
+does, then opens the container and **sends nothing more**, which is the missing event at the heart
+of this defect. It asserts that no published height is ever below the 52 px floor, that opening the
+container alone produces a real measurement, and that the Record button fits inside the height that
+was published. Restoring the old `scrollHeight + 4` logic makes it fail with
+`AssertionError: 4 not greater than or equal to 52 … published while hidden: [4]` — the four pixels
+from the original report. It runs in about ten seconds, needs no app server and touches no `data/`
+directory, which is why it can live in `tests/` and run in the main checkout; the full-app version
+(`scripts/_accept_issue78c_visibility.py`) still refuses to run outside a worktree.
+
+## Two findings that are NOT Issue 78C's, with the evidence
+
+### Discard take does not remove the take — pre-existing on dev `f3d33016`
+
+Pressing **🗑 Discard take** leaves the take exactly where it was: the layer still shows *Original
+Take Preview*, still says *Unsaved take*, and still holds its `<audio>` element, 30 s later. This
+was established carefully, because the obvious explanations are harness mistakes:
+
+* the control pressed was the layer's **own** Discard button and was **not disabled** (every layer
+  renders one, disabled while that layer is empty — taking the first visible match had been
+  clicking guitar's disabled button and reporting "clicked");
+* the `help=` tooltip was ruled out as an interceptor — `elementFromPoint` at the button's centre
+  returns the button both before and after hovering;
+* **Playwright's own hit-tested `click()`** succeeded, and a **keyboard `Enter` on the focused
+  button** was also pressed. Neither removed the take.
+* **dev `f3d33016` behaves identically**, with the take provoked programmatically there because its
+  Record button is inside a four-pixel frame.
+
+So it is a real defect and it is not this slice's. The gate stays in the suite and is reported every
+run as `KNOWN (dev f3d33016 behaves the same)`, via `KNOWN_PREEXISTING`, which keeps it visible
+without blaming Issue 78C for it. It belongs with Issue 77, whose brief already covers *Discard
+Take* and a position reset.
+
+That baseline run also independently reproduced this slice's defect: the sax layer's recorder
+measured **`frame_h: 4`** before a take landed, and 103 px afterwards — a take arriving triggers a
+render, which is the only thing that used to re-measure.
+
+### The 7 px overhang at 360 px was a measurement artefact
+
+At 360 px the acceptance found the recorder iframe's right edge at **367.08 px**, clipped by the
+expander. It is an artefact of resizing **one** page from 1400 → 390 → 360 within a single session:
+components keep the width they were first laid out at. A page **loaded** at 360 px has **no**
+overhanging element at all, and the page never scrolls sideways at any width. Since a phone loads at
+its own width, the gate moved to `fresh_width_checks()`, which opens a new context per width; the
+in-sequence figure is kept as a note. Nothing in Issue 78C touches width.
+
+## Mission's recorder: why it was never broken, and what was actually checked
+
+My earlier note said Mission mounted the recorder in a plain always-visible container. That was
+wrong. `mission_upload_recording_ui.render_mission_recording_upload_expander` also uses
+`st.expander(…, expanded=default_mission_recording_expander_expanded())`, which returns **False** —
+so Mission's recorder is inside a collapsed expander too. It escaped the defect for a different
+reason: the component is only **mounted** after the musician has opened that expander and pressed
+*Open live recording tools*, so it has always had a layout when it first measured itself.
+
+The browser walk to it — Creative Lab → the *Analysis mode* selectbox → Missions → a mission → the
+recording expander → the button — could not be completed by this harness in this build: the
+selectbox control responds to a click but its option list never renders for Playwright. Rather than
+leave a gate failing for a reason that has nothing to do with the product, the harness prints a
+**NOTE** naming what Mission's coverage actually is this run: the 161 Mission and Slice 78B contract
+tests that pass with this component changed, and the component-level browser test above, which
+exercises the same file in the same collapsed-then-opened pattern Mission uses. Mission was **not**
+verified end-to-end in a browser, and this document says so rather than implying otherwise.
+
+## Final acceptance on the combined tree
+
+**72 of 73 gates pass**, the single failure being the pre-existing Discard defect above. Measured:
+
+| state | frame |
+|---|---|
+| fresh empty layer, desktop / 390 / 360 | 103 / 103 / 133 px |
+| page **loaded** at 1400 / 390 / 360, layer opened by click | 103 / 122 / 133 px |
+| while recording | 84 px, button reads ■ Stop recording |
+| microphone denied / unavailable | 122 px, each explained in plain words |
+| sideways scroll at any width | none; no overhanging element on a fresh load |
+
+A real touch tap starts recording and a second stops it; the take lands; a second take can be
+recorded and **Save layer** keeps it (*"Saved layer — it plays with the mix and exports."*).

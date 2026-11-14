@@ -210,6 +210,115 @@ class TheHarnessMeasuresWhatAHumanSees(unittest.TestCase):
         harness = (ROOT / "scripts" / "_accept_issue78c_visibility.py").read_text(encoding="utf-8")
         self.assertIn("MIN_TOUCH_PX", harness)
 
+    def test_the_acceptance_judges_the_microphone_message_not_just_its_length(self) -> None:
+        # The run before this one reported PASS for "the recorder explains the microphone being
+        # denied" while the component was showing its READY text, and PASS for "unavailable" while
+        # it was showing "TypeError: Cannot read properties of undefined". Both passed because the
+        # gate asked `bool(said.strip())`.
+        harness = (ROOT / "scripts" / "_accept_issue78c_visibility.py").read_text(encoding="utf-8")
+        self.assertIn("def mic_message_verdict", harness)
+        self.assertIn("ok_msg, why = mic_message_verdict(label, said)", harness)
+        self.assertNotIn("bool(said.strip()), said[:120]", harness)
+
+    def test_the_acceptance_exercises_the_whole_take_lifecycle(self) -> None:
+        harness = (ROOT / "scripts" / "_accept_issue78c_visibility.py").read_text(encoding="utf-8")
+        for gate in ("Discard take can be pressed", "discarding really removes the take",
+                     "a second take can be recorded after a discard", "Save layer can be pressed",
+                     "the layer is saved and says so"):
+            self.assertIn(gate, harness)
+
+    def test_the_acceptance_measures_sideways_overflow_on_a_fresh_load(self) -> None:
+        # Resizing one page from 1400 to 390 to 360 leaves components sized for the width they were
+        # first laid out at, which invented a 7 px overhang at 360 px that a page loaded at 360 px
+        # does not have. A phone loads at its own width, so that is where the gate belongs.
+        harness = (ROOT / "scripts" / "_accept_issue78c_visibility.py").read_text(encoding="utf-8")
+        self.assertIn("def horizontal_overflow", harness)
+        self.assertIn("def fresh_width_checks", harness)
+        self.assertIn("nothing is clipped off the side", harness)
+
+    def test_a_known_pre_existing_failure_is_reported_not_hidden(self) -> None:
+        # Discard take does not remove the take - on dev f3d33016 as much as here. Dropping the
+        # gate would hide a real defect; letting it fail this slice would blame it on Issue 78C.
+        harness = (ROOT / "scripts" / "_accept_issue78c_visibility.py").read_text(encoding="utf-8")
+        self.assertIn("KNOWN_PREEXISTING", harness)
+        self.assertIn("[390px] discarding really removes the take", harness)
+        # The gate must still be evaluated, and the run's verdict must ignore only known entries.
+        self.assertIn("real = sorted(n for n, ok in GATES.items()", harness)
+        self.assertIn("return 0 if not real else 1", harness)
+
+    def test_the_acceptance_checks_missions_copy_of_the_component(self) -> None:
+        harness = (ROOT / "scripts" / "_accept_issue78c_visibility.py").read_text(encoding="utf-8")
+        self.assertIn("def mission_recorder_frame", harness)
+        # It gates when Mission is reached, and when it cannot be reached it says so instead of
+        # either failing for an unrelated reason or quietly implying it was checked.
+        self.assertIn("Mission's recorder still mounts and is visible", harness)
+        self.assertIn("was NOT reached in the browser this run", harness)
+
+
+class TheMicrophoneMessageRulesRejectWhatReachedTheMusician(unittest.TestCase):
+    """The two strings the previous acceptance run passed, and the ones that replaced them."""
+
+    @staticmethod
+    def _verdict(label: str, text: str):
+        scripts = ROOT / "scripts"
+        if str(scripts) not in sys.path:
+            sys.path.insert(0, str(scripts))
+        import importlib.util
+
+        spec = importlib.util.spec_from_file_location(
+            "_i78c_rules", scripts / "_accept_issue78c_visibility.py"
+        )
+        # The harness reads sys.argv and imports Playwright at module scope, so the rule is lifted
+        # out of the source rather than imported. Keeping the two in step is what the test above is
+        # for.
+        src = (scripts / "_accept_issue78c_visibility.py").read_text(encoding="utf-8")
+        start = src.index("READY_TEXT_MARKERS")
+        end = src.index("def horizontal_overflow")
+        ns: dict = {"low": lambda x: (x or "").lower()}
+        exec(compile(src[start:end], "mic_rules", "exec"), ns)  # noqa: S102
+        del spec
+        return ns["mic_message_verdict"](label, text)
+
+    def test_the_ready_text_is_not_an_explanation(self) -> None:
+        ok, why = self._verdict(
+            "denied",
+            "Record starts a 4-beat count-in and your other layer together with your take, "
+            "on one clock.",
+        )
+        self.assertFalse(ok)
+        self.assertIn("READY", why)
+
+    def test_a_stack_trace_is_not_an_explanation(self) -> None:
+        ok, why = self._verdict(
+            "unavailable",
+            "Microphone unavailable: TypeError: Cannot read properties of undefined "
+            "(reading 'getSupportedConstraints')",
+        )
+        self.assertFalse(ok)
+        self.assertIn("stack trace", why)
+
+    def test_silence_is_not_an_explanation(self) -> None:
+        ok, _ = self._verdict("denied", "   ")
+        self.assertFalse(ok)
+
+    def test_a_message_with_no_alternative_is_rejected(self) -> None:
+        ok, why = self._verdict("denied", "Microphone permission was refused.")
+        self.assertFalse(ok)
+        self.assertIn("alternative", why)
+
+    def test_the_real_messages_pass(self) -> None:
+        for label, text in (
+            ("denied",
+             "Microphone permission was refused, so nothing can be recorded. Allow microphone "
+             "access for this site in your browser settings and press Record again - or add this "
+             "layer with Upload above."),
+            ("unavailable",
+             "This browser will not give the page a microphone. Recording needs a recent Chrome, "
+             "Safari or Firefox over https - you can still add this layer with Upload above."),
+        ):
+            ok, why = self._verdict(label, text)
+            self.assertTrue(ok, f"{label}: {why}")
+
 
 if __name__ == "__main__":
     unittest.main()
