@@ -18,6 +18,7 @@ parser.add_argument("--out",type=Path,required=True)
 parser.add_argument("--port",type=int,default=8596)
 parser.add_argument("--probe",action="store_true")
 parser.add_argument("--notation-polish-only",action="store_true")
+parser.add_argument("--note-name-display-only",action="store_true")
 parser.add_argument("--song-only",action="store_true")
 parser.add_argument("--technique-only",action="store_true")
 parser.add_argument("--technique-parser-only",action="store_true")
@@ -221,6 +222,9 @@ try:
             elif args.fingering_b_only:
                 from ami_fingering_stage_b_browser_cases import run
                 run(page,request,select,OUT,probe=args.probe)
+            elif args.note_name_display_only:
+                from ami_note_name_browser_cases import run as run_note_name_display
+                run_note_name_display(page,request,select,OUT)
             elif args.notation_polish_only:
                 from ami_notation_polish_browser_cases import run as run_notation_polish
                 run_notation_polish(page,request,select,OUT)

@@ -863,6 +863,7 @@ def build_item(player: we.Player, spec: dict[str, Any], desc: dict[str, Any]) ->
     if player.key=="bass":
         from music_coach_ami.bass_tab import timeline
         built.meta["bass_tab"]=timeline(built,level,bpm,abc)
+    from music_coach_ami.note_name_display import rows_from_events
     pitched = [n for n in built.notes if not n.rest]
     written = [n.midi for n in pitched]
     sax_data = {}
@@ -877,6 +878,7 @@ def build_item(player: we.Player, spec: dict[str, Any], desc: dict[str, Any]) ->
         "bars": int(round(float(we.total_beats(built.notes) / we.BEATS_PER_BAR))), "pass_seconds": round(seconds, 2), "how": list(built.how),
         "listen": list(built.listen), "meta": dict(built.meta), "written_midi": written, "sounding_midi": [m - player.offset for m in written],
         "written_notes": [f"{n.spelled}{n.octave}" for n in pitched], "durations": [("rest_" if n.rest else "") + n.dur for n in built.notes],
+        "note_name_rows": rows_from_events(we.to_events(built.notes)[0], beat_origin=1),
         "articulations": [n.art for n in built.notes if not n.rest], "slur_groups": [n.slur for n in built.notes if not n.rest],
         "checks": checks, "range": [min(written), max(written)],
     }

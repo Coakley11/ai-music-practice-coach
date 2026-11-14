@@ -317,5 +317,5 @@ def test_revisions_write_only_ami_conversation_keys(session):
     for q in ("Make it slower", "Undo that", "Redo", "Add accents", "Set it to 100 BPM"):
         ask(session, q)
     added = set(session) - set(before)
-    assert added <= {AMI_LAST_EXERCISE_KEY, cs.STATE_KEY, "_ami_conv_owner", "_music_workflow_state_store"}   # the last one is the engines' own
+    assert added <= {AMI_LAST_EXERCISE_KEY, cs.STATE_KEY, "_ami_conv_owner", "_ami_conv_note_names_snapshot", "_music_workflow_state_store"}   # the last one is the engines' own
     assert all(session[k] == v for k, v in before.items())
