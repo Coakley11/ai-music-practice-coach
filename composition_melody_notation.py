@@ -611,6 +611,13 @@ def render_abc_html(abc_text: str, *, height: int = 280, add_classes: bool = Tru
         try {{
           var fe = window.frameElement;
           if (!fe) return;
+          // abcjs pads the paper to a responsive aspect ratio and absolutely positions the svg,
+          // leaving 120+ px of blank below the staff; size the paper to the drawn svg.
+          var pp = document.getElementById("paper"), sv = pp && pp.querySelector("svg");
+          if (pp && sv) {{
+            pp.style.paddingBottom = "0"; pp.style.minHeight = "0";
+            pp.style.height = Math.ceil(sv.getBoundingClientRect().height) + "px";
+          }}
           var h = Math.ceil(document.body.getBoundingClientRect().height) + 6;
           if (h > 60) {{
             fe.style.height = h + "px"; fe.setAttribute("height", String(h));

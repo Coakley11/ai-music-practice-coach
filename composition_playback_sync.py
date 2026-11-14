@@ -407,7 +407,7 @@ def render_synced_score_playback_html(
   .cplay-chord.is-soft {{
     background: #e0f2fe; border-color: #7dd3fc; color: #0c4a6e;
   }}
-  .cplay-paper {{ min-height: {int(height * 0.55)}px; }}
+  .cplay-paper:empty {{ min-height: {int(height * 0.55)}px; }}
   .cplay-paper svg .abcjs-note.cplay-active,
   .cplay-paper svg .abcjs-note.cplay-active * {{
     fill: #0284c7 !important; stroke: #0284c7 !important;
@@ -501,6 +501,11 @@ def render_synced_score_playback_html(
     try {{
       const fe = window.frameElement;
       if (!fe) return;
+      const pp = document.getElementById("{safe_id}-paper"), sv = pp && pp.querySelector("svg");
+      if (pp && sv) {{
+        pp.style.paddingBottom = "0"; pp.style.minHeight = "0";
+        pp.style.height = Math.ceil(sv.getBoundingClientRect().height) + "px";
+      }}
       const h = Math.ceil(document.body.getBoundingClientRect().height) + 8;
       if (h > 60) {{
         fe.style.height = h + "px"; fe.setAttribute("height", String(h));

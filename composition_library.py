@@ -25,7 +25,15 @@ DELETED_KEY = "composer_deleted_document_ids"
 
 
 def _title(doc: dict[str, Any]) -> str:
-    return str(doc.get("title") or "Untitled").strip() or "Untitled"
+    """Display title: top-level ``title`` (legacy docs), else the normal ``metadata.title``,
+    else ``global.title`` / ``name``; never blank."""
+    meta = doc.get("metadata") if isinstance(doc.get("metadata"), dict) else {}
+    glob = doc.get("global") if isinstance(doc.get("global"), dict) else {}
+    for cand in (doc.get("title"), meta.get("title"), glob.get("title"), doc.get("name")):
+        text = str(cand or "").strip()
+        if text:
+            return text
+    return "Untitled"
 
 
 def _retitled(doc: dict[str, Any], suffix: str) -> dict[str, Any]:
