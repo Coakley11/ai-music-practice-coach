@@ -294,6 +294,15 @@ def _apply_authenticated_user(
             clear_conversation_state(session_state)
     except ImportError:
         pass
+    _uid_in = str(getattr(user, "id", None) or (user.get("id") if isinstance(user, dict) else None) or "").strip().lower()
+    _prev_owner = str(session_state.get(_STATE_OWNER_KEY) or "")
+    _held_uid = str(session_state.get(AUTH_USER_ID_KEY) or "").strip().lower()
+    if _uid_in and (
+        (_prev_owner and _prev_owner != _uid_in) or (_held_uid and _held_uid != _uid_in)
+    ):  # a different account is taking over this browser session: it must not inherit anything
+        purge_account_session_state(session_state, keep=frozenset({AUTH_CLIENT_KEY}))
+    if _uid_in:
+        session_state[_STATE_OWNER_KEY] = _uid_in
     session_state[AUTH_SESSION_KEY] = True
     email = str(getattr(user, "email", None) or (user.get("email") if isinstance(user, dict) else None) or email_fallback).strip()
     session_state[AUTH_USER_EMAIL_KEY] = email
@@ -314,6 +323,27 @@ def _apply_authenticated_user(
             pass
     if tokens:
         session_state[AUTH_TOKENS_KEY] = dict(tokens)
+
+
+_STATE_OWNER_KEY = "_suite_state_owner_uid"
+
+
+def purge_account_session_state(session_state: Any, *, keep: frozenset[str] = frozenset()) -> None:
+    """Drop everything this browser session loaded for the previous account (library, songs, drafts...).
+
+    Streamlit keeps session state for the life of the browser tab, so without this the next account to sign
+    in on the same tab would still see the previous account's compositions.
+    """
+    for key in list(session_state.keys()):
+        if key in keep:
+            continue
+        try:
+            del session_state[key]
+        except Exception:
+            try:
+                session_state.pop(key, None)
+            except Exception:
+                continue
 
 
 def _clear_auth_session(session_state: dict[str, Any], *, st: Any | None = None) -> None:
@@ -340,6 +370,7 @@ def _clear_auth_session(session_state: dict[str, Any], *, st: Any | None = None)
         quarantine_account_scoped_pending_intents(session_state)
     except ImportError:
         pass
+    purge_account_session_state(session_state)
     if st is not None:
         try:
             from suite_auth_browser import clear_browser_auth_tokens

@@ -259,6 +259,43 @@ class TestStaleRegistryRecord(Base):
         write.assert_not_called()
 
 
+class TestSessionStateDoesNotCrossAccounts(Base):
+    """Streamlit session state lives as long as the browser tab: the next account must not inherit it."""
+
+    def _load_library(self, ss):
+        ss["composition_library_cache"] = ["Legacy Daniel Song"]
+        ss["composition_workspace"] = {"title": "Legacy Daniel Song"}
+
+    def test_logout_purges_everything_the_account_loaded(self):
+        ss = login("owner@example.com", UID_OWNER)
+        self._load_library(ss)
+        with mock.patch.object(suite_auth, "_auth_api", side_effect=RuntimeError("no network")):
+            suite_auth.logout(ss, st=None)
+        self.assertEqual(dict(ss), {})
+
+    def test_a_different_account_taking_over_the_tab_inherits_nothing(self):
+        ss = login("owner@example.com", UID_OWNER)
+        self._load_library(ss)
+        suite_auth._apply_authenticated_user(ss, SimpleNamespace(id=UID_B, email="other@example.com"))
+        self.assertNotIn("composition_library_cache", ss)
+        self.assertNotIn("composition_workspace", ss)
+        self.assertEqual(suite_auth.resolve_auth_external_id(ss), OWN_B)
+
+    def test_the_same_account_signing_in_again_keeps_its_state(self):
+        ss = login("owner@example.com", UID_OWNER)
+        self._load_library(ss)
+        suite_auth._apply_authenticated_user(ss, SimpleNamespace(id=UID_OWNER, email="owner@example.com"))
+        self.assertIn("composition_library_cache", ss)
+
+    def test_leftover_state_stamped_by_another_account_is_purged_even_after_auth_keys_were_lost(self):
+        ss = login("owner@example.com", UID_OWNER)
+        self._load_library(ss)
+        for key in (suite_auth.AUTH_USER_ID_KEY, suite_auth.AUTH_SESSION_KEY):
+            ss.pop(key, None)
+        suite_auth._apply_authenticated_user(ss, SimpleNamespace(id=UID_B, email="other@example.com"))
+        self.assertNotIn("composition_library_cache", ss)
+
+
 class TestPersistedWorkspaceIsClamped(Base):
     def test_a_remembered_foreign_workspace_is_not_returned(self):
         ss = login("someone@example.com", UID_B)
