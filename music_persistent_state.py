@@ -2844,7 +2844,20 @@ def build_music_disk_state(st: Any) -> dict[str, Any]:
                         record_multitrack_persist_diag,
                     )
 
-                    if count_mt_layers(val) == 0:
+                    # Issue 77B. Skipping this key while no layer holds audio is what stops a
+                    # half-restored session - momentarily empty as a workspace loads - from writing
+                    # an empty layer map over real saved recordings. That protection stays. What it
+                    # could not do was record a deletion the musician asked for: the cached blob
+                    # kept the discarded take and the next render handed it back. So the skip now
+                    # yields to one explicit signal, set only by a removal that removed something.
+                    _mt_layer_count = count_mt_layers(val)
+                    try:
+                        from multitrack_take_removal import should_persist_empty_layer_map
+
+                        _mt_may_write = should_persist_empty_layer_map(ss, _mt_layer_count)
+                    except ImportError:
+                        _mt_may_write = _mt_layer_count > 0
+                    if not _mt_may_write:
                         continue
                     encoded, diag = encode_mt_tracks_for_persist(val)
                     val = encoded
