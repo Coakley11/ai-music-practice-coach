@@ -51,7 +51,7 @@ def test_owner_token_names_account_and_workspace():
 
 
 # ---- sign-out ---------------------------------------------------------------------------------------------------
-def test_sign_out_clears_conversation_state_and_nothing_else(monkeypatch):
+def test_sign_out_clears_conversation_state_and_everything_else_the_account_loaded(monkeypatch):
     s = _session("u1")
     _make_exercise(s)
     s["_ami_claude_cache"] = {"fp": "x"}
@@ -59,14 +59,14 @@ def test_sign_out_clears_conversation_state_and_nothing_else(monkeypatch):
     suite_auth._clear_auth_session(s)
     assert not [k for k in s if scope.is_conversation_key(k)]
     assert "_suite_auth_user_id" not in s
-    assert _unrelated_intact(s)
+    assert not any(k in s for k in UNRELATED)  # the whole previous account's session is discarded
 
 
 def test_logout_function_also_clears_it():
     s = _session("u1")
     _make_exercise(s)
     suite_auth.logout(s, st=None)
-    assert AMI_LAST_EXERCISE_KEY not in s and cs.STATE_KEY not in s and _unrelated_intact(s)
+    assert AMI_LAST_EXERCISE_KEY not in s and cs.STATE_KEY not in s and not any(k in s for k in UNRELATED)
 
 
 # ---- account change ---------------------------------------------------------------------------------------------
@@ -75,7 +75,7 @@ def test_signing_in_as_a_different_account_drops_the_previous_accounts_conversat
     _make_exercise(s)
     suite_auth._apply_authenticated_user(s, {"id": "u2", "email": "u2@example.com"})
     assert AMI_LAST_EXERCISE_KEY not in s and cs.STATE_KEY not in s
-    assert _unrelated_intact(s)
+    assert not any(k in s for k in UNRELATED)  # a different account inherits nothing
 
 
 def test_signing_in_again_as_the_same_account_keeps_it():

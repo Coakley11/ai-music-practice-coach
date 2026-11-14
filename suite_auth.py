@@ -90,61 +90,55 @@ def current_auth_email(session_state: dict[str, Any]) -> str:
 
 
 def allowed_workspaces_for_user(external_user_id: str) -> tuple[str, ...]:
-    """Owned workspace(s) allowed for this account — one workspace unless admin."""
-    key = str(external_user_id or "").strip().lower()
-    try:
-        from suite_workspace_registry import admin_allowed_workspaces, is_admin_account
-
-        if is_admin_account(external_id=key):
-            return admin_allowed_workspaces(external_id=key)
-    except ImportError:
-        pass
-    if key in _DEFAULT_ALLOWED_WORKSPACES:
-        if key == "daniel":
-            return _DEFAULT_ALLOWED_WORKSPACES[key]
-        return (key,)
-    if key == "default":
-        return ("daniel", "ariel", "guest", "test_user")
-    if re.fullmatch(r"[a-z0-9_]+", key):
-        return (key,)
-    return ("daniel", "guest", "test_user")
+    """The single workspace an account key owns. Admin breadth is decided per SESSION (auth user id), never by key."""
+    key = re.sub(r"[^a-z0-9_]+", "_", str(external_user_id or "").strip().lower()).strip("_")
+    if not key or key in ("default", "unresolved_account"):
+        return ()
+    return (key,)
 
 
 def resolve_auth_external_id(session_state: dict[str, Any]) -> str:
-    """Best-effort suite profile id for the signed-in account."""
+    """Account key of the signed-in user, derived ONLY from the verified Supabase Auth user id.
+
+    Never from the email and never defaulting to ``daniel``: an unresolvable identity yields ``""``
+    (fail closed). When sign-in is not enabled the legacy suite-profile behaviour is unchanged.
+    """
+    if is_auth_enabled():
+        from suite_access_policy import external_id_for_auth_user
+
+        return external_id_for_auth_user(session_state.get(AUTH_USER_ID_KEY))
     ext = str(session_state.get(AUTH_EXTERNAL_ID_KEY) or "").strip().lower()
-    if ext:
-        return ext
-    inferred = _infer_external_id_from_email(current_auth_email(session_state))
-    if inferred:
-        return inferred
-    return "daniel"
+    return ext or "daniel"
 
 
 def allowed_workspaces_for_session(session_state: dict[str, Any]) -> tuple[str, ...]:
-    """Allowed workspace ids for this session — all presets when auth is off."""
-    if not is_auth_enabled() or not is_authenticated(session_state):
+    """Allowed workspace ids for this session: all presets when auth is off, else the account's own
+    workspace, plus the admin set only for an operator-authorised Auth user id."""
+    if not is_auth_enabled():
         try:
             from suite_workspace import WORKSPACE_PRESETS
 
             return tuple(p["id"] for p in WORKSPACE_PRESETS)
         except ImportError:
             return ("daniel", "ariel", "guest", "test_user")
-    return allowed_workspaces_for_user(resolve_auth_external_id(session_state))
+    if not is_authenticated(session_state):
+        return ()
+    ext = resolve_auth_external_id(session_state)
+    if not ext:
+        return ()
+    try:
+        from suite_workspace_registry import admin_allowed_workspaces, is_admin_user
+
+        if is_admin_user(session_state=session_state):
+            return admin_allowed_workspaces(external_id=ext)
+    except ImportError:
+        pass
+    return allowed_workspaces_for_user(ext)
 
 
 def _infer_external_id_from_email(email: str) -> str:
-    low = str(email or "").strip().lower()
-    if not low:
-        return ""
-    if "ariel" in low:
-        return "ariel"
-    if "daniel" in low:
-        return "daniel"
-    local = low.split("@", 1)[0]
-    if local in _DEFAULT_ALLOWED_WORKSPACES:
-        return local
-    return local or "daniel"
+    """Retired: an email address is not an identity. Kept so old imports fail closed, not open."""
+    return ""
 
 
 def enforce_workspace_ownership(session_state: dict[str, Any]) -> None:
@@ -300,15 +294,56 @@ def _apply_authenticated_user(
             clear_conversation_state(session_state)
     except ImportError:
         pass
+    _uid_in = str(getattr(user, "id", None) or (user.get("id") if isinstance(user, dict) else None) or "").strip().lower()
+    _prev_owner = str(session_state.get(_STATE_OWNER_KEY) or "")
+    _held_uid = str(session_state.get(AUTH_USER_ID_KEY) or "").strip().lower()
+    if _uid_in and (
+        (_prev_owner and _prev_owner != _uid_in) or (_held_uid and _held_uid != _uid_in)
+    ):  # a different account is taking over this browser session: it must not inherit anything
+        purge_account_session_state(session_state, keep=frozenset({AUTH_CLIENT_KEY}))
+    if _uid_in:
+        session_state[_STATE_OWNER_KEY] = _uid_in
     session_state[AUTH_SESSION_KEY] = True
     email = str(getattr(user, "email", None) or (user.get("email") if isinstance(user, dict) else None) or email_fallback).strip()
     session_state[AUTH_USER_EMAIL_KEY] = email
-    session_state[AUTH_EXTERNAL_ID_KEY] = _infer_external_id_from_email(email)
     uid = str(getattr(user, "id", None) or (user.get("id") if isinstance(user, dict) else None) or "").strip()
     if uid:
         session_state[AUTH_USER_ID_KEY] = uid
+    session_state[AUTH_EXTERNAL_ID_KEY] = resolve_auth_external_id(session_state) if is_auth_enabled() else ""
+    _own = session_state[AUTH_EXTERNAL_ID_KEY]
+    if _own:
+        # Bind the session to the account's own workspace immediately. Otherwise it runs in the default
+        # "daniel" workspace (shared cloud key and disk state) until ownership is enforced later.
+        try:
+            from suite_workspace import normalize_workspace_id
+
+            if normalize_workspace_id(_own) in allowed_workspaces_for_session(session_state):
+                session_state["_suite_active_workspace_id"] = normalize_workspace_id(_own)
+        except Exception:
+            pass
     if tokens:
         session_state[AUTH_TOKENS_KEY] = dict(tokens)
+
+
+_STATE_OWNER_KEY = "_suite_state_owner_uid"
+
+
+def purge_account_session_state(session_state: Any, *, keep: frozenset[str] = frozenset()) -> None:
+    """Drop everything this browser session loaded for the previous account (library, songs, drafts...).
+
+    Streamlit keeps session state for the life of the browser tab, so without this the next account to sign
+    in on the same tab would still see the previous account's compositions.
+    """
+    for key in list(session_state.keys()):
+        if key in keep:
+            continue
+        try:
+            del session_state[key]
+        except Exception:
+            try:
+                session_state.pop(key, None)
+            except Exception:
+                continue
 
 
 def _clear_auth_session(session_state: dict[str, Any], *, st: Any | None = None) -> None:
@@ -335,6 +370,7 @@ def _clear_auth_session(session_state: dict[str, Any], *, st: Any | None = None)
         quarantine_account_scoped_pending_intents(session_state)
     except ImportError:
         pass
+    purge_account_session_state(session_state)
     if st is not None:
         try:
             from suite_auth_browser import clear_browser_auth_tokens

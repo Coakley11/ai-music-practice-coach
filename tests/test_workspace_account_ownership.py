@@ -26,6 +26,29 @@ from suite_workspace_registry import (
 )
 
 
+_POLICY = {
+    "SUITE_PERSONAL_ACCOUNTS": json.dumps({
+        "d0000000-0000-4000-8000-000000000001": "daniel",
+        "a0000000-0000-4000-8000-000000000002": "ariel",
+        "c0000000-0000-4000-8000-000000000003": "coakley11",
+    }),
+    "SUITE_ADMIN_USER_IDS": "d0000000-0000-4000-8000-000000000001",
+}
+
+
+def setUpModule() -> None:  # operator policy: explicit Auth user ids only (emails are not identities)
+    import os
+    from unittest import mock
+
+    global _ENV
+    _ENV = mock.patch.dict(os.environ, _POLICY)
+    _ENV.start()
+
+
+def tearDownModule() -> None:
+    _ENV.stop()
+
+
 def _auth_session(*, user_id: str, email: str, external_id: str) -> dict:
     return {
         "_suite_auth_session": True,
@@ -43,7 +66,13 @@ class _FakeSt:
 
 class TestWorkspaceAccountOwnership(unittest.TestCase):
     def test_daniel_admin_can_access_all_presets(self) -> None:
-        allowed = allowed_workspaces_for_user("daniel")
+        from suite_auth import allowed_workspaces_for_session
+
+        session = _auth_session(
+            user_id="d0000000-0000-4000-8000-000000000001", email="whoever@example.com", external_id="daniel"
+        )
+        with patch("suite_auth.is_auth_enabled", return_value=True):
+            allowed = allowed_workspaces_for_session(session)
         self.assertIn("daniel", allowed)
         self.assertIn("ariel", allowed)
         self.assertIn("guest", allowed)
@@ -70,14 +99,14 @@ class TestWorkspaceAccountOwnership(unittest.TestCase):
                 "suite_workspace.DATA_DIR", data
             ):
                 session = _auth_session(
-                    user_id="uuid-ariel",
+                    user_id="a0000000-0000-4000-8000-000000000002",
                     email="ariel@example.com",
                     external_id="ariel",
                 )
                 record = ensure_owned_workspace_for_session(session)
                 self.assertEqual(record["workspace_id"], "ariel")
-                self.assertEqual(record["owner_user_id"], "uuid-ariel")
-                stored = get_registry_record("uuid-ariel")
+                self.assertEqual(record["owner_user_id"], "a0000000-0000-4000-8000-000000000002")
+                stored = get_registry_record("a0000000-0000-4000-8000-000000000002")
                 self.assertIsNotNone(stored)
                 assert stored is not None
                 self.assertEqual(stored["workspace_id"], "ariel")
@@ -93,7 +122,7 @@ class TestWorkspaceAccountOwnership(unittest.TestCase):
                 "suite_workspace.DATA_DIR", data
             ), patch("suite_workspace._PERSISTED_FILE", data / "suite_active_workspace.json"):
                 session = _auth_session(
-                    user_id="uuid-daniel",
+                    user_id="d0000000-0000-4000-8000-000000000001",
                     email="daniel@example.com",
                     external_id="daniel",
                 )
@@ -104,12 +133,12 @@ class TestWorkspaceAccountOwnership(unittest.TestCase):
                     persist_active_workspace_id("daniel", session_state=session)
                     reloaded = load_persisted_workspace_id(session_state=session)
                     self.assertEqual(reloaded, "daniel")
-                    active_file = active_dir / "uuid-daniel.json"
+                    active_file = active_dir / "d0000000-0000-4000-8000-000000000001.json"
                     self.assertTrue(active_file.is_file())
 
     def test_stale_foreign_workspace_rejected(self) -> None:
         session = _auth_session(
-            user_id="uuid-ariel",
+            user_id="a0000000-0000-4000-8000-000000000002",
             email="ariel@example.com",
             external_id="ariel",
         )
@@ -117,7 +146,7 @@ class TestWorkspaceAccountOwnership(unittest.TestCase):
             "suite_auth.is_authenticated", return_value=True
         ), patch("suite_workspace_registry.ensure_owned_workspace_for_session") as ensure_mock:
             ensure_mock.return_value = {
-                "owner_user_id": "uuid-ariel",
+                "owner_user_id": "a0000000-0000-4000-8000-000000000002",
                 "workspace_id": "ariel",
                 "label": "Ariel",
             }
@@ -126,7 +155,7 @@ class TestWorkspaceAccountOwnership(unittest.TestCase):
                 self.assertTrue(workspace_access_allowed("ariel", session_state=session))
 
     def test_enforce_clamps_foreign_active_workspace(self) -> None:
-        st = _FakeSt(_auth_session(user_id="uuid-ariel", email="ariel@example.com", external_id="ariel"))
+        st = _FakeSt(_auth_session(user_id="a0000000-0000-4000-8000-000000000002", email="ariel@example.com", external_id="ariel"))
         st.session_state["_suite_active_workspace_id"] = "daniel"
         with patch("suite_auth.is_auth_enabled", return_value=True), patch(
             "suite_auth.is_authenticated", return_value=True
@@ -135,13 +164,13 @@ class TestWorkspaceAccountOwnership(unittest.TestCase):
         ), patch("suite_workspace_registry.ensure_owned_workspace_for_session") as ensure_mock, patch(
             "suite_workspace_registry.get_owned_workspace_id", return_value="ariel"
         ), patch("suite_workspace.persist_active_workspace_id", return_value=True):
-            ensure_mock.return_value = {"workspace_id": "ariel", "owner_user_id": "uuid-ariel"}
+            ensure_mock.return_value = {"workspace_id": "ariel", "owner_user_id": "a0000000-0000-4000-8000-000000000002"}
             enforce_workspace_ownership(st.session_state)
             self.assertEqual(get_active_workspace_id(st), "ariel")
 
     def test_init_suite_ignores_foreign_query_workspace(self) -> None:
         st = _FakeSt(
-            _auth_session(user_id="uuid-ariel", email="ariel@example.com", external_id="ariel"),
+            _auth_session(user_id="a0000000-0000-4000-8000-000000000002", email="ariel@example.com", external_id="ariel"),
             query={"suite_workspace": "daniel"},
         )
         with patch("suite_auth.is_auth_enabled", return_value=True), patch(
@@ -158,7 +187,7 @@ class TestWorkspaceAccountOwnership(unittest.TestCase):
     def test_bootstrap_auth_before_workspace_coakley11(self) -> None:
         """Startup smoke: stale daniel session + foreign URL → coakley11 after bootstrap."""
         session = _auth_session(
-            user_id="uuid-coakley",
+            user_id="c0000000-0000-4000-8000-000000000003",
             email="coakley11@aol.com",
             external_id="coakley11",
         )
@@ -190,7 +219,7 @@ class TestWorkspaceAccountOwnership(unittest.TestCase):
     def test_no_recursion_resolving_owned_workspace(self) -> None:
         """Regression: account-aware and legacy paths must not call each other."""
         session = _auth_session(
-            user_id="uuid-coakley",
+            user_id="c0000000-0000-4000-8000-000000000003",
             email="coakley11@aol.com",
             external_id="coakley11",
         )
@@ -236,7 +265,7 @@ class TestWorkspaceAccountOwnership(unittest.TestCase):
     def test_bootstrap_refresh_stays_coakley11(self) -> None:
         """Second bootstrap (refresh) keeps coakley11 owned workspace."""
         session = _auth_session(
-            user_id="uuid-coakley",
+            user_id="c0000000-0000-4000-8000-000000000003",
             email="coakley11@aol.com",
             external_id="coakley11",
         )

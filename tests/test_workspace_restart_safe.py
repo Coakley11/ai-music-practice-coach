@@ -23,10 +23,33 @@ class _FakeSt:
         self.query_params = dict(query or {})
 
 
+_UIDS = {
+    "daniel": "d0000000-0000-4000-8000-000000000001",
+    "ariel": "a0000000-0000-4000-8000-000000000002",
+    "coakley11": "c0000000-0000-4000-8000-000000000003",
+}
+
+
+def setUpModule() -> None:  # operator policy: explicit Auth user ids (an email is not an identity)
+    import json
+    import os
+
+    global _ENV
+    _ENV = mock.patch.dict(os.environ, {
+        "SUITE_PERSONAL_ACCOUNTS": json.dumps({uid: ext for ext, uid in _UIDS.items()}),
+        "SUITE_ADMIN_USER_IDS": _UIDS["daniel"],
+    })
+    _ENV.start()
+
+
+def tearDownModule() -> None:
+    _ENV.stop()
+
+
 def _auth(email: str, ext: str) -> dict:
     return {
         "_suite_auth_session": True,
-        "_suite_auth_user_id": f"uuid-{ext}",
+        "_suite_auth_user_id": _UIDS[ext],
         "_suite_auth_user_email": email,
         "_suite_auth_external_id": ext,
     }
