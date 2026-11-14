@@ -1,0 +1,362 @@
+[
+  {
+    "id": "C4",
+    "family": "trumpet-valve-partial",
+    "instrument": "trumpet",
+    "type": "Bb three-piston trumpet",
+    "model": "Yamaha YTR-2330",
+    "model_id": "yamaha-ytr2330",
+    "written_name": "C",
+    "written_octave": 4,
+    "valve": "open",
+    "valve_states": {
+      "1": false,
+      "2": false,
+      "3": false
+    },
+    "partial": 2,
+    "normal_slot": 1,
+    "fundamental_written_midi": 48,
+    "verification": "manufacturer/reference-supported",
+    "teacher_reviewed": false,
+    "physically_tested": false,
+    "register": "Bounded normal-register partials 2-4 only",
+    "limitations": "Standard factory model only; no pedal, partial 5+, alternate fingerings, other combinations or specialized embouchure instruction.",
+    "partial_convention": "Partial 1 is the theoretical fundamental/pedal reference, not enabled. First ordinary played slot here is partial 2. Tempered targets approximate resonant partials; no exact acoustic intonation claim.",
+    "sources": [
+      {
+        "url": "https://usa.yamaha.com/files/download/other_assets/8/326908/trumpet_en_om_b0.pdf",
+        "locator": "VDE1660 / POCP-B0, 03/2022, printed p.14 Fingering Chart",
+        "sha256": "a791635c53276d10b83f4861cbad13542c9d61744e7f724dbd9b9c91d8382e92"
+      },
+      {
+        "url": "https://www.yamaha.com/en/musical_instrument_guide/common/images/trumpet/mechanism_f02_02_00.jpg",
+        "locator": "Written harmonic-series chart"
+      },
+      {
+        "url": "https://newt.phys.unsw.edu.au/jw/brassacoustics.html",
+        "locator": "Bb transposition, C4/G4 harmonics and fundamental convention"
+      }
+    ]
+  },
+  {
+    "id": "G4",
+    "family": "trumpet-valve-partial",
+    "instrument": "trumpet",
+    "type": "Bb three-piston trumpet",
+    "model": "Yamaha YTR-2330",
+    "model_id": "yamaha-ytr2330",
+    "written_name": "G",
+    "written_octave": 4,
+    "valve": "open",
+    "valve_states": {
+      "1": false,
+      "2": false,
+      "3": false
+    },
+    "partial": 3,
+    "normal_slot": 2,
+    "fundamental_written_midi": 48,
+    "verification": "manufacturer/reference-supported",
+    "teacher_reviewed": false,
+    "physically_tested": false,
+    "register": "Bounded normal-register partials 2-4 only",
+    "limitations": "Standard factory model only; no pedal, partial 5+, alternate fingerings, other combinations or specialized embouchure instruction.",
+    "partial_convention": "Partial 1 is the theoretical fundamental/pedal reference, not enabled. First ordinary played slot here is partial 2. Tempered targets approximate resonant partials; no exact acoustic intonation claim.",
+    "sources": [
+      {
+        "url": "https://usa.yamaha.com/files/download/other_assets/8/326908/trumpet_en_om_b0.pdf",
+        "locator": "VDE1660 / POCP-B0, 03/2022, printed p.14 Fingering Chart",
+        "sha256": "a791635c53276d10b83f4861cbad13542c9d61744e7f724dbd9b9c91d8382e92"
+      },
+      {
+        "url": "https://www.yamaha.com/en/musical_instrument_guide/common/images/trumpet/mechanism_f02_02_00.jpg",
+        "locator": "Written harmonic-series chart"
+      },
+      {
+        "url": "https://newt.phys.unsw.edu.au/jw/brassacoustics.html",
+        "locator": "Bb transposition, C4/G4 harmonics and fundamental convention"
+      }
+    ]
+  },
+  {
+    "id": "C5",
+    "family": "trumpet-valve-partial",
+    "instrument": "trumpet",
+    "type": "Bb three-piston trumpet",
+    "model": "Yamaha YTR-2330",
+    "model_id": "yamaha-ytr2330",
+    "written_name": "C",
+    "written_octave": 5,
+    "valve": "open",
+    "valve_states": {
+      "1": false,
+      "2": false,
+      "3": false
+    },
+    "partial": 4,
+    "normal_slot": 3,
+    "fundamental_written_midi": 48,
+    "verification": "manufacturer/reference-supported",
+    "teacher_reviewed": false,
+    "physically_tested": false,
+    "register": "Bounded normal-register partials 2-4 only",
+    "limitations": "Standard factory model only; no pedal, partial 5+, alternate fingerings, other combinations or specialized embouchure instruction.",
+    "partial_convention": "Partial 1 is the theoretical fundamental/pedal reference, not enabled. First ordinary played slot here is partial 2. Tempered targets approximate resonant partials; no exact acoustic intonation claim.",
+    "sources": [
+      {
+        "url": "https://usa.yamaha.com/files/download/other_assets/8/326908/trumpet_en_om_b0.pdf",
+        "locator": "VDE1660 / POCP-B0, 03/2022, printed p.14 Fingering Chart",
+        "sha256": "a791635c53276d10b83f4861cbad13542c9d61744e7f724dbd9b9c91d8382e92"
+      },
+      {
+        "url": "https://www.yamaha.com/en/musical_instrument_guide/common/images/trumpet/mechanism_f02_02_00.jpg",
+        "locator": "Written harmonic-series chart"
+      },
+      {
+        "url": "https://newt.phys.unsw.edu.au/jw/brassacoustics.html",
+        "locator": "Bb transposition, C4/G4 harmonics and fundamental convention"
+      }
+    ]
+  },
+  {
+    "id": "Bb3",
+    "family": "trumpet-valve-partial",
+    "instrument": "trumpet",
+    "type": "Bb three-piston trumpet",
+    "model": "Yamaha YTR-2330",
+    "model_id": "yamaha-ytr2330",
+    "written_name": "Bb",
+    "written_octave": 3,
+    "valve": "1",
+    "valve_states": {
+      "1": true,
+      "2": false,
+      "3": false
+    },
+    "partial": 2,
+    "normal_slot": 1,
+    "fundamental_written_midi": 46,
+    "verification": "manufacturer/reference-supported",
+    "teacher_reviewed": false,
+    "physically_tested": false,
+    "register": "Bounded normal-register partials 2-4 only",
+    "limitations": "Standard factory model only; no pedal, partial 5+, alternate fingerings, other combinations or specialized embouchure instruction.",
+    "partial_convention": "Partial 1 is the theoretical fundamental/pedal reference, not enabled. First ordinary played slot here is partial 2. Tempered targets approximate resonant partials; no exact acoustic intonation claim.",
+    "sources": [
+      {
+        "url": "https://usa.yamaha.com/files/download/other_assets/8/326908/trumpet_en_om_b0.pdf",
+        "locator": "VDE1660 / POCP-B0, 03/2022, printed p.14 Fingering Chart",
+        "sha256": "a791635c53276d10b83f4861cbad13542c9d61744e7f724dbd9b9c91d8382e92"
+      },
+      {
+        "url": "https://www.yamaha.com/en/musical_instrument_guide/common/images/trumpet/mechanism_f02_02_01.jpg",
+        "locator": "Written harmonic-series chart"
+      },
+      {
+        "url": "https://newt.phys.unsw.edu.au/jw/brassacoustics.html",
+        "locator": "Bb transposition, C4/G4 harmonics and fundamental convention"
+      }
+    ]
+  },
+  {
+    "id": "F4",
+    "family": "trumpet-valve-partial",
+    "instrument": "trumpet",
+    "type": "Bb three-piston trumpet",
+    "model": "Yamaha YTR-2330",
+    "model_id": "yamaha-ytr2330",
+    "written_name": "F",
+    "written_octave": 4,
+    "valve": "1",
+    "valve_states": {
+      "1": true,
+      "2": false,
+      "3": false
+    },
+    "partial": 3,
+    "normal_slot": 2,
+    "fundamental_written_midi": 46,
+    "verification": "manufacturer/reference-supported",
+    "teacher_reviewed": false,
+    "physically_tested": false,
+    "register": "Bounded normal-register partials 2-4 only",
+    "limitations": "Standard factory model only; no pedal, partial 5+, alternate fingerings, other combinations or specialized embouchure instruction.",
+    "partial_convention": "Partial 1 is the theoretical fundamental/pedal reference, not enabled. First ordinary played slot here is partial 2. Tempered targets approximate resonant partials; no exact acoustic intonation claim.",
+    "sources": [
+      {
+        "url": "https://usa.yamaha.com/files/download/other_assets/8/326908/trumpet_en_om_b0.pdf",
+        "locator": "VDE1660 / POCP-B0, 03/2022, printed p.14 Fingering Chart",
+        "sha256": "a791635c53276d10b83f4861cbad13542c9d61744e7f724dbd9b9c91d8382e92"
+      },
+      {
+        "url": "https://www.yamaha.com/en/musical_instrument_guide/common/images/trumpet/mechanism_f02_02_01.jpg",
+        "locator": "Written harmonic-series chart"
+      },
+      {
+        "url": "https://newt.phys.unsw.edu.au/jw/brassacoustics.html",
+        "locator": "Bb transposition, C4/G4 harmonics and fundamental convention"
+      }
+    ]
+  },
+  {
+    "id": "Bb4",
+    "family": "trumpet-valve-partial",
+    "instrument": "trumpet",
+    "type": "Bb three-piston trumpet",
+    "model": "Yamaha YTR-2330",
+    "model_id": "yamaha-ytr2330",
+    "written_name": "Bb",
+    "written_octave": 4,
+    "valve": "1",
+    "valve_states": {
+      "1": true,
+      "2": false,
+      "3": false
+    },
+    "partial": 4,
+    "normal_slot": 3,
+    "fundamental_written_midi": 46,
+    "verification": "manufacturer/reference-supported",
+    "teacher_reviewed": false,
+    "physically_tested": false,
+    "register": "Bounded normal-register partials 2-4 only",
+    "limitations": "Standard factory model only; no pedal, partial 5+, alternate fingerings, other combinations or specialized embouchure instruction.",
+    "partial_convention": "Partial 1 is the theoretical fundamental/pedal reference, not enabled. First ordinary played slot here is partial 2. Tempered targets approximate resonant partials; no exact acoustic intonation claim.",
+    "sources": [
+      {
+        "url": "https://usa.yamaha.com/files/download/other_assets/8/326908/trumpet_en_om_b0.pdf",
+        "locator": "VDE1660 / POCP-B0, 03/2022, printed p.14 Fingering Chart",
+        "sha256": "a791635c53276d10b83f4861cbad13542c9d61744e7f724dbd9b9c91d8382e92"
+      },
+      {
+        "url": "https://www.yamaha.com/en/musical_instrument_guide/common/images/trumpet/mechanism_f02_02_01.jpg",
+        "locator": "Written harmonic-series chart"
+      },
+      {
+        "url": "https://newt.phys.unsw.edu.au/jw/brassacoustics.html",
+        "locator": "Bb transposition, C4/G4 harmonics and fundamental convention"
+      }
+    ]
+  },
+  {
+    "id": "B3",
+    "family": "trumpet-valve-partial",
+    "instrument": "trumpet",
+    "type": "Bb three-piston trumpet",
+    "model": "Yamaha YTR-2330",
+    "model_id": "yamaha-ytr2330",
+    "written_name": "B",
+    "written_octave": 3,
+    "valve": "2",
+    "valve_states": {
+      "1": false,
+      "2": true,
+      "3": false
+    },
+    "partial": 2,
+    "normal_slot": 1,
+    "fundamental_written_midi": 47,
+    "verification": "manufacturer/reference-supported",
+    "teacher_reviewed": false,
+    "physically_tested": false,
+    "register": "Bounded normal-register partials 2-4 only",
+    "limitations": "Standard factory model only; no pedal, partial 5+, alternate fingerings, other combinations or specialized embouchure instruction.",
+    "partial_convention": "Partial 1 is the theoretical fundamental/pedal reference, not enabled. First ordinary played slot here is partial 2. Tempered targets approximate resonant partials; no exact acoustic intonation claim.",
+    "sources": [
+      {
+        "url": "https://usa.yamaha.com/files/download/other_assets/8/326908/trumpet_en_om_b0.pdf",
+        "locator": "VDE1660 / POCP-B0, 03/2022, printed p.14 Fingering Chart",
+        "sha256": "a791635c53276d10b83f4861cbad13542c9d61744e7f724dbd9b9c91d8382e92"
+      },
+      {
+        "url": "https://www.yamaha.com/en/musical_instrument_guide/common/images/trumpet/mechanism_f02_02_02.jpg",
+        "locator": "Written harmonic-series chart"
+      },
+      {
+        "url": "https://newt.phys.unsw.edu.au/jw/brassacoustics.html",
+        "locator": "Bb transposition, C4/G4 harmonics and fundamental convention"
+      }
+    ]
+  },
+  {
+    "id": "F#4",
+    "family": "trumpet-valve-partial",
+    "instrument": "trumpet",
+    "type": "Bb three-piston trumpet",
+    "model": "Yamaha YTR-2330",
+    "model_id": "yamaha-ytr2330",
+    "written_name": "F#",
+    "written_octave": 4,
+    "valve": "2",
+    "valve_states": {
+      "1": false,
+      "2": true,
+      "3": false
+    },
+    "partial": 3,
+    "normal_slot": 2,
+    "fundamental_written_midi": 47,
+    "verification": "manufacturer/reference-supported",
+    "teacher_reviewed": false,
+    "physically_tested": false,
+    "register": "Bounded normal-register partials 2-4 only",
+    "limitations": "Standard factory model only; no pedal, partial 5+, alternate fingerings, other combinations or specialized embouchure instruction.",
+    "partial_convention": "Partial 1 is the theoretical fundamental/pedal reference, not enabled. First ordinary played slot here is partial 2. Tempered targets approximate resonant partials; no exact acoustic intonation claim.",
+    "sources": [
+      {
+        "url": "https://usa.yamaha.com/files/download/other_assets/8/326908/trumpet_en_om_b0.pdf",
+        "locator": "VDE1660 / POCP-B0, 03/2022, printed p.14 Fingering Chart",
+        "sha256": "a791635c53276d10b83f4861cbad13542c9d61744e7f724dbd9b9c91d8382e92"
+      },
+      {
+        "url": "https://www.yamaha.com/en/musical_instrument_guide/common/images/trumpet/mechanism_f02_02_02.jpg",
+        "locator": "Written harmonic-series chart"
+      },
+      {
+        "url": "https://newt.phys.unsw.edu.au/jw/brassacoustics.html",
+        "locator": "Bb transposition, C4/G4 harmonics and fundamental convention"
+      }
+    ]
+  },
+  {
+    "id": "B4",
+    "family": "trumpet-valve-partial",
+    "instrument": "trumpet",
+    "type": "Bb three-piston trumpet",
+    "model": "Yamaha YTR-2330",
+    "model_id": "yamaha-ytr2330",
+    "written_name": "B",
+    "written_octave": 4,
+    "valve": "2",
+    "valve_states": {
+      "1": false,
+      "2": true,
+      "3": false
+    },
+    "partial": 4,
+    "normal_slot": 3,
+    "fundamental_written_midi": 47,
+    "verification": "manufacturer/reference-supported",
+    "teacher_reviewed": false,
+    "physically_tested": false,
+    "register": "Bounded normal-register partials 2-4 only",
+    "limitations": "Standard factory model only; no pedal, partial 5+, alternate fingerings, other combinations or specialized embouchure instruction.",
+    "partial_convention": "Partial 1 is the theoretical fundamental/pedal reference, not enabled. First ordinary played slot here is partial 2. Tempered targets approximate resonant partials; no exact acoustic intonation claim.",
+    "sources": [
+      {
+        "url": "https://usa.yamaha.com/files/download/other_assets/8/326908/trumpet_en_om_b0.pdf",
+        "locator": "VDE1660 / POCP-B0, 03/2022, printed p.14 Fingering Chart",
+        "sha256": "a791635c53276d10b83f4861cbad13542c9d61744e7f724dbd9b9c91d8382e92"
+      },
+      {
+        "url": "https://www.yamaha.com/en/musical_instrument_guide/common/images/trumpet/mechanism_f02_02_02.jpg",
+        "locator": "Written harmonic-series chart"
+      },
+      {
+        "url": "https://newt.phys.unsw.edu.au/jw/brassacoustics.html",
+        "locator": "Bb transposition, C4/G4 harmonics and fundamental convention"
+      }
+    ]
+  }
+]

@@ -14,6 +14,7 @@ def context(session):
     return copy.deepcopy(value) if is_owned(value,session) else {}
 
 def remember(session,note='',model=True,notes=None):
+    session.pop('_ami_conv_trumpet_fingering',None)
     session[STATE]=stamp({'model':'yamaha-yas280' if model else '', 'note':note, 'notes':list(notes or [])},session)
 
 def reply(text,session):

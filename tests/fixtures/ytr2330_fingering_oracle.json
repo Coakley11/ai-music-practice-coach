@@ -1,0 +1,107 @@
+{
+  "model": "Yamaha YTR-2330",
+  "type": "Bb trumpet, standard factory three-piston keywork",
+  "manual_url": "https://usa.yamaha.com/files/download/other_assets/8/326908/trumpet_en_om_b0.pdf",
+  "manual_locator": "VDE1660 / POCP-B0, published 03/2022, printed Fingering Chart p.14",
+  "manual_sha256": "a791635c53276d10b83f4861cbad13542c9d61744e7f724dbd9b9c91d8382e92",
+  "model_listing": "https://usa.yamaha.com/products/musical_instruments/winds/trumpets/bb_trumpets/ytr-2330/downloads.html",
+  "harmonic_chart_urls": {
+    "open": "https://www.yamaha.com/en/musical_instrument_guide/common/images/trumpet/mechanism_f02_02_00.jpg",
+    "1": "https://www.yamaha.com/en/musical_instrument_guide/common/images/trumpet/mechanism_f02_02_01.jpg",
+    "2": "https://www.yamaha.com/en/musical_instrument_guide/common/images/trumpet/mechanism_f02_02_02.jpg"
+  },
+  "independent_physics_reference": "https://newt.phys.unsw.edu.au/jw/brassacoustics.html",
+  "partial_convention": "1 is the theoretical fundamental/pedal reference (not enabled); normal-register targets start at partial 2, not partial 1. These are tempered staff targets for documented harmonic slots, not claims of exact acoustic intonation.",
+  "sets": {
+    "open": {
+      "fundamental_written_midi": 48,
+      "notes": [
+        {
+          "id": "C4",
+          "written": 60,
+          "sounding": 58,
+          "partial": 2
+        },
+        {
+          "id": "G4",
+          "written": 67,
+          "sounding": 65,
+          "partial": 3
+        },
+        {
+          "id": "C5",
+          "written": 72,
+          "sounding": 70,
+          "partial": 4
+        }
+      ]
+    },
+    "1": {
+      "fundamental_written_midi": 46,
+      "notes": [
+        {
+          "id": "Bb3",
+          "written": 58,
+          "sounding": 56,
+          "partial": 2
+        },
+        {
+          "id": "F4",
+          "written": 65,
+          "sounding": 63,
+          "partial": 3
+        },
+        {
+          "id": "Bb4",
+          "written": 70,
+          "sounding": 68,
+          "partial": 4
+        }
+      ]
+    },
+    "2": {
+      "fundamental_written_midi": 47,
+      "notes": [
+        {
+          "id": "B3",
+          "written": 59,
+          "sounding": 57,
+          "partial": 2
+        },
+        {
+          "id": "F#4",
+          "written": 66,
+          "sounding": 64,
+          "partial": 3
+        },
+        {
+          "id": "B4",
+          "written": 71,
+          "sounding": 69,
+          "partial": 4
+        }
+      ]
+    }
+  },
+  "valve_states": {
+    "open": {
+      "1": false,
+      "2": false,
+      "3": false
+    },
+    "1": {
+      "1": true,
+      "2": false,
+      "3": false
+    },
+    "2": {
+      "1": false,
+      "2": true,
+      "3": false
+    }
+  },
+  "verification": "manufacturer/reference-supported",
+  "teacher_reviewed": false,
+  "physically_tested": false,
+  "visual_review": "Manual printed p.14 and all three Yamaha harmonic diagrams inspected; corroborated open written C4/G4 and partial numbering with UNSW authored physics reference."
+}

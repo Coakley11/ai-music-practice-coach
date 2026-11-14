@@ -35,6 +35,9 @@ def _reply(text, plan=None, session=None, failed=""):
 
 
 def _response(plan, session, lead=""):
+    if plan["spec"].get("trumpet_fingering"):
+        from music_coach_ami.trumpet_fingering_instructor import practice_response
+        return practice_response(plan, session, lead)
     if plan['spec'].get('fingering'):
         from music_coach_ami.fingering_instructor import practice_response
         return practice_response(plan, session, lead)
@@ -73,6 +76,9 @@ def _window(player, level, register):
 
 
 def build(spec: dict) -> dict:
+    if spec.get("trumpet_fingering"):
+        from music_coach_ami.trumpet_fingering_instructor import build_practice
+        return build_practice(spec)
     if spec.get('fingering'):
         from music_coach_ami.fingering_instructor import build_practice
         return build_practice(spec)
