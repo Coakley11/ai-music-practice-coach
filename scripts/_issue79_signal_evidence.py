@@ -55,9 +55,12 @@ def main() -> int:
         # from the target, octave included, which is the whole of defect 3. Show that, so the
         # before column says +1200c where the after column says -30c and "1 octave".
         offset = getattr(r, "tuning_offset_cents", None)
-        if offset is None:
+        if offset is None and status == "measured":
+            # The legacy analysis had no separate tuning number: its mean_cents WAS the raw offset
+            # from the target, octave included, which is the whole of defect 3.
             offset = getattr(r, "mean_cents", None)
-        tune = "n/a" if offset is None else f"{offset:+.0f}c"
+        # An unmeasurable take has no tuning either: "+0c" would read as a measurement.
+        tune = "n/a" if (offset is None or status != "measured") else f"{offset:+.0f}c"
         oct_off = getattr(r, "octave_offset_semitones", 0) // 12
         extra = []
         if status != "measured":
