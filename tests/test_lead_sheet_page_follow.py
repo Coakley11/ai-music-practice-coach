@@ -78,3 +78,12 @@ def test_no_other_page_scroller_was_added():
     # The sheet's old inner-box scroll stays only for the non-follow (Karaoke) path.
     assert APP.count("shell.scrollTop += delta") == 1
     assert len(re.findall(r"__lsFollow\.request\(", APP)) == 2
+
+
+def test_compact_bar_offers_only_stop_while_the_card_is_starting():
+    """Loading / counting in: the card shows Stop only; a compact Pause there was swallowed by the count-in."""
+    js = lpf._CONTROLLER_JS
+    assert 'getAttribute("data-state") === "starting"' in js
+    click = js[js.index('pz.addEventListener("click"'):][:300]
+    assert click.index("if (cardStarting())") < click.index("pauseButton().click()")
+    assert 'pz.style.display = cardStarting() ? "none" : ""' in js

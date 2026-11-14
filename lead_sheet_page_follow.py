@@ -199,6 +199,7 @@ _CONTROLLER_JS = r"""
     stop.textContent = "■ Stop";
     pz.addEventListener("click", function () {
       var p = activeProvider();
+      if (cardStarting()) { syncBar(); return; }
       try { if (p && p.pauseButton && p.pauseButton()) p.pauseButton().click(); } catch (e) {}
       setTimeout(syncBar, 120);
     });
@@ -210,6 +211,12 @@ _CONTROLLER_JS = r"""
     bar.appendChild(pz); bar.appendChild(stop);
     doc.body.appendChild(bar);
     return bar;
+  }
+  // Loading or counting in: the card offers only Stop (its take is held), so the bar does the same --
+  // a Pause / Resume press there reached a player the count-in holds and was silently lost.
+  function cardStarting() {
+    var d = cardTransportDoc(), b = d && d.getElementById("btn");
+    return !!b && b.getAttribute("data-state") === "starting";
   }
   function syncBar() {
     var p = activeProvider();
@@ -227,6 +234,7 @@ _CONTROLLER_JS = r"""
     var paused = false;
     try { paused = !p.playing(); } catch (e) {}
     var pz = doc.getElementById("ls-mini-pause");
+    pz.style.display = cardStarting() ? "none" : "";
     var want = paused ? "▶ Resume" : "⏸ Pause";
     if (pz.textContent !== want) pz.textContent = want;
     pz.setAttribute("aria-label", paused ? "Resume" : "Pause");
