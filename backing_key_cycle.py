@@ -7884,9 +7884,13 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
     // The audible take nearest its start: at a handoff the outgoing take is
     // still ending (and incoming takes were warmed up muted, so their start
     // stamps are older than the outgoing take's).
+    // No minimum currentTime: the swap silences the outgoing take and unmutes +
+    // plays the incoming one in the same task, so in the first ~50 ms of a
+    // handoff the incoming take (currentTime ~0) IS the take Resume continues.
+    // A minimum made a Pause at that instant report the outgoing key.
     var live = null;
     Array.prototype.slice.call(D.querySelectorAll('audio[id^="kc-"]')).forEach(function (a) {{
-      if (!a.paused && !a.ended && !a.muted && Number(a.volume) > 0.01 && Number(a.currentTime || 0) > 0.05
+      if (!a.paused && !a.ended && !a.muted && Number(a.volume) > 0.01
           && (!live || Number(a.currentTime) < Number(live.currentTime))) live = a;
     }});
     return String((live && live.getAttribute('data-kc-sounding')) || '').trim();
@@ -11094,6 +11098,39 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           return;
         }}
       }} catch (ePauseGuard) {{}}
+      // The epoch guard above records the epoch APPLIED at the click. When the
+      // user resumes before the Pause's own (newer-epoch) paused command has
+      // arrived, that command looked newer and silenced the resumed take, and
+      // its abort latched userPaused: every later press toggled the wrong way.
+      // Same rule as the card's own label: the user's newest click stands
+      // until Python's command echoes it (transportConsumed); after that,
+      // Python's transport state is authoritative again. Only the transport
+      // bit that click already decided is neutralised; the rest of the command
+      // (epoch, next takes, charts, consumed acks) applies as before. Dropping
+      // the whole command lost its epoch, so natural handoff acks were
+      // rejected as stale_epoch and the page ran out of next takes.
+      try {{
+        const tl = parentWin.__backingTransportLocal;
+        if (
+          tl && tl.token && Date.now() < Number(tl.until || 0) && cmd.enabled
+          && String(cmd.transportConsumed || '') !== String(tl.token)
+          && !cmd.forcePlay && !cmd.restart && !cmd.arrangementReload
+          && !cmd.forceArrangementReplace && !cmd.hardStop
+        ) {{
+          const wantsPause = !!cmd.paused && !cmd.resume;
+          const wantsPlay = !cmd.paused && (!!cmd.resume || !!cmd.autoplay);
+          if ((tl.intent === 'playing' && wantsPause) || (tl.intent === 'paused' && wantsPlay)) {{
+            parentWin.__kcStaleTransportCmdDrops = Number(parentWin.__kcStaleTransportCmdDrops || 0) + 1;
+            try {{
+              const bag = parentWin.__kcApplyTrace || (parentWin.__kcApplyTrace = []);
+              bag.push({{ t: Date.now(), reason: 'stale_transport_cmd', epoch: cmd.epoch, intent: tl.intent,
+                          paused: !!cmd.paused, echo: String(cmd.transportConsumed || '') }});
+              if (bag.length > 40) bag.shift();
+            }} catch (eTl) {{}}
+            cmd = Object.assign({{}}, cmd, {{ paused: false, resume: false, autoplay: false }});
+          }}
+        }}
+      }} catch (eTransportGuard) {{}}
       const detail = parentDoc.getElementById('kc-persistent-detail');
       // Cache projection bundles by sounding before any liveHandoff merge so
       // seamless swap can adopt nextDisplayProjection without chord-text heuristics.
@@ -12417,6 +12454,16 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
 </script></body></html>"""
 
 
+def _card_transport_echo(session: Any) -> str:
+    """The card's ``consumed`` echo: the newest transport click Python applied."""
+    try:
+        from backing_card_commands import card_echo_token
+
+        return card_echo_token(session)
+    except Exception:
+        return ""
+
+
 def render_backing_key_cycle_persistent_player(
     st: Any,
     session: dict[str, Any],
@@ -12846,6 +12893,10 @@ def render_backing_key_cycle_persistent_player(
         "hardStop": bool(hard_stop),
         "restart": bool(restart_play),
         "ackedSwitchSeq": int(session.get("_kc_acked_switch_seq") or 0),
+        # The newest card transport click this run had applied (the card's own
+        # ``consumed`` echo). The page ignores the pause/play bit of a command
+        # built before the user's newest Pause/Resume click instead of undoing it.
+        "transportConsumed": _card_transport_echo(session),
         "arrangementReload": _arrangement_reload,
         "arrangementUrl": _arrange_url,
         "forceArrangementReplace": bool(_force_replace or _oneshot_reload),

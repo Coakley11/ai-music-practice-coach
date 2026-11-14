@@ -171,6 +171,62 @@ class TestBackwardCompatibleChannel(_Base):
         self.assertIn("parentWin.__kcPauseSounding = {{", js)
         self.assertIn("W.__kcLiveKey = liveKey;", js)
 
+    def test_live_key_counts_the_incoming_take_from_its_first_frame(self) -> None:
+        # Guitar Shape browser run 2026-11-13: Pause pressed in the task that saw
+        # the buffer flip (incoming take at currentTime 0.02) reported the
+        # OUTGOING key, because liveKey() skipped takes under 0.05 s and fell back
+        # to the stale __kcLastLive. The server held Am, the browser held Dm, and
+        # Resume played Dm under the Am label.
+        js = (_ROOT / "backing_key_cycle.py").read_text(encoding="utf-8")
+        start = js.index("function liveKey() {{")
+        body = js[start:js.index("function audibleKey()", start)]
+        self.assertNotIn("currentTime || 0) > 0.05", body)
+        self.assertIn("!a.paused && !a.ended && !a.muted && Number(a.volume) > 0.01", body)
+        self.assertIn("Number(a.currentTime) < Number(live.currentTime)", body)
+
+    def test_player_command_echoes_the_newest_applied_card_click(self) -> None:
+        # Guitar Shape browser run 2026-11-13: Resume ~2.7 s after Pause, before
+        # the Pause's own paused command (epoch N+1) reached the page. The epoch
+        # guard held epoch N, so that command looked newer, silenced the resumed
+        # take and latched userPaused; every later press then toggled backwards.
+        ss: dict = {}
+        self.assertEqual(kc._card_transport_echo(ss), "")
+        ss[BACKING_CARD_TRANSPORT_KEY] = {"action": "resume", "nonce": 9, "session": "s"}
+        got, token = cards.pending_card_command(ss)
+        cards.commit_card_command(ss, token)
+        self.assertEqual(kc._card_transport_echo(ss), token)
+        self.assertEqual(kc._card_transport_echo(ss), cards.card_echo_token(ss))
+        js = (_ROOT / "backing_key_cycle.py").read_text(encoding="utf-8")
+        self.assertIn('"transportConsumed": _card_transport_echo(session),', js)
+
+    def test_page_drops_only_transport_commands_built_before_the_newest_click(self) -> None:
+        js = (_ROOT / "backing_key_cycle.py").read_text(encoding="utf-8")
+        start = js.index("const tl = parentWin.__backingTransportLocal;")
+        guard = js[start:js.index("}} catch (eTransportGuard) {{}}", start)]
+        # Only while the click is unconfirmed, and only a command contradicting it.
+        self.assertIn("String(cmd.transportConsumed || '') !== String(tl.token)", guard)
+        self.assertIn("Date.now() < Number(tl.until || 0)", guard)
+        self.assertIn("(tl.intent === 'playing' && wantsPause) || (tl.intent === 'paused' && wantsPlay)", guard)
+        # Stop, explicit Play, Next/Previous restarts and reloads are never held back.
+        for exempt in ("!cmd.hardStop", "!cmd.forcePlay", "!cmd.restart", "!cmd.arrangementReload",
+                       "!cmd.forceArrangementReplace"):
+            self.assertIn(exempt, guard)
+        # Only the transport bit is neutralised; the command itself still applies.
+        # Browser runs 2026-11-13: dropping the whole command lost its epoch, so
+        # 10 natural handoff acks were rejected (stale_epoch) and Python fell a
+        # key behind; recording the epoch without applying left the page with no
+        # next take (it replayed an old key). Neither variant remains.
+        self.assertIn("cmd = Object.assign({{}}, cmd, {{ paused: false, resume: false, autoplay: false }});", guard)
+        self.assertNotIn("return;", guard)
+        self.assertNotIn("state.epoch =", guard)
+        # It runs before the command can pause (abortTransportPlayback) or play.
+        self.assertLess(js.index("const tl = parentWin.__backingTransportLocal;"),
+                        js.index("if ((cmd.hardStop || cmd.paused) && !cmd.resume && !cmd.restart && !cmd.forcePlay) {{"))
+        html = (_ROOT / "backing_transport_component" / "index.html").read_text(encoding="utf-8")
+        self.assertIn("window.parent.__backingTransportLocal = { intent: intent, token: localToken, until: localUntil };", html)
+        # The card's own label still clears on the same echo.
+        self.assertIn("if (localIntent && args.consumed === localToken)", html)
+
     def test_pause_in_a_silent_handoff_gap_is_a_pause_not_a_resume(self) -> None:
         js = (_ROOT / "backing_key_cycle.py").read_text(encoding="utf-8")
         # Decided by the transport intent, not by whether a take is audible this instant.

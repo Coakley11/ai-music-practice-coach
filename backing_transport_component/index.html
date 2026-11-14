@@ -73,6 +73,10 @@
         localIntent = intent;
         localToken = SESSION + ":" + nonce;
         localUntil = Date.now() + 20000;
+        // Shared with the Key Cycling player: until the server echoes this
+        // click (its commands carry ``transportConsumed``), a player command
+        // built before the click must not undo it.
+        try { window.parent.__backingTransportLocal = { intent: intent, token: localToken, until: localUntil }; } catch (e) {}
       }
       function intentNow() {
         if (localIntent && Date.now() < localUntil) return localIntent;
