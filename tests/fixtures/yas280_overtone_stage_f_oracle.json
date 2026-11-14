@@ -1,0 +1,63 @@
+{
+  "model_id": "yamaha-yas280",
+  "fundamental": {
+    "written_name": "D4",
+    "written_midi": 62,
+    "sounding_name": "F3",
+    "sounding_midi": 53,
+    "pressed": [
+      "L1",
+      "L2",
+      "L3",
+      "R1",
+      "R2",
+      "R3"
+    ],
+    "octave_thumb": false
+  },
+  "targets": [
+    {
+      "partial": 2,
+      "written_name": "D5",
+      "written_midi": 74,
+      "sounding_name": "F4",
+      "sounding_midi": 65,
+      "ideal_ratio": 2,
+      "semitones": 12,
+      "ideal_cents_above_tempered": 0.0
+    },
+    {
+      "partial": 3,
+      "written_name": "A5",
+      "written_midi": 81,
+      "sounding_name": "C5",
+      "sounding_midi": 72,
+      "ideal_ratio": 3,
+      "semitones": 19,
+      "ideal_cents_above_tempered": 1.955000865387772
+    }
+  ],
+  "ordinary_preview": {
+    "written": [
+      62,
+      74
+    ],
+    "sounding": [
+      53,
+      65
+    ],
+    "durations": [
+      "half",
+      "half"
+    ],
+    "quarter_beats": 4,
+    "bpm": 60,
+    "seconds": 4,
+    "changed_controls": [
+      "Octave thumb: press"
+    ]
+  },
+  "specialized_generation_enabled": false,
+  "source_status": "Published harmonic theory and existing basic fingering reference only; no YAS-280 overtone response or altissimo variant physically validated",
+  "checked_on": "2026-11-14"
+}
