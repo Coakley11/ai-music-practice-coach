@@ -61,3 +61,38 @@ mapping. Use, in this order:
    and only with sign-in still off.
 The hotfix writes nothing that needs undoing: no migration, no ownership change. New accounts may get a new
 `suite_users` row and an empty workspace; these are harmless and can stay.
+
+## Verified vs assumed (read before deploying)
+* **Observed** (anonymous page load of the Music app's public URL named in `suite_deep_links.py`, no interaction):
+  the app shows "Sign in to continue" with **Log in / Create account / Reset password**. Sign-in is therefore
+  enabled on that deployment. Which branch/commit it runs, and whether Supabase accepts public sign-ups, were **not**
+  verified (testing sign-up would create an account in the shared Suite project; not done).
+* **Assumed from the repository only:** `suite_auth_enabled` defaults off and the secrets template says to leave it
+  off in production. The observation above contradicts that default for the URL checked.
+* If Create account works there, the legacy defect is reachable now: treat as a priority security issue.
+* Authentication settings of the shared Suite and Baseball projects were not read or changed.
+
+## Auth-disabled mode (unchanged by this hotfix)
+With sign-in off nothing here applies: the storage guard returns early, identity comes from the existing
+`suite_user_id`/`default` profile, and no account is required. Staging results: no login gate, all pages load, an
+anonymous profile with no `suite_user_id` sees no one's cloud data (separate `default` account row). A deployment that
+sets `suite_user_id = "daniel"` is, by design, Daniel for every visitor: do not run such a deployment and a
+sign-in deployment against the same database rows without understanding that they share the `music` row.
+
+## Obtaining the account ids (the legacy accounts may have no Auth identity)
+1. Supabase dashboard -> Authentication -> Users. Find the Daniel and Ariel people by the email shown there.
+2. If a person has no Auth user, they must create one (Create account / invite) first; until then they cannot be mapped.
+   Never create or edit an account on their behalf and never guess an id.
+3. Open the user, copy **User UID**, paste straight into the Streamlit Cloud Secrets box (not chat, not a file in the repo).
+4. Run `python scripts/check_access_policy.py` (counts only). Then sign in as that person on staging.
+5. Before production, copy the existing `suite_users` / `suite_app_current_state` rows for `daniel` and `ariel` (export, no edits)
+   so a mapping mistake can be compared against the original.
+
+## `suite_sid` capability URL (separate, not fixed here)
+After sign-in the URL carries `?suite_sid=<uuid>`; whoever holds that URL can restore the session (bearer secret, stored
+server side with the refresh token; the hotfix authorises everything *after* restore, so it cannot help if the URL is
+shared). Not release-blocking for this change because it is an existing mechanism and needs the victim's URL.
+Near-term mitigations that keep recovery working: (1) tell users to log out on shared devices (logout now invalidates the
+row and clears the tab); (2) follow-up change: refuse stored sessions older than N days using the row's `updated_at`
+(already selected by the query) and drop `suite_sid` from the address bar once restored; (3) the token-encryption redesign
+stays on the separate QA branch.
