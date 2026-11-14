@@ -7646,15 +7646,26 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
     parentWin.__kcRequestCyclePause = function () {{
       // Live Stop already paused dual-buffer; click cycle Pause so Streamlit
       // enters Held. Skip the client toggle (buffers already held).
+      // Read the button BEFORE pausing the audio: __kcPauseAudio marks the user
+      // hold and syncVisibleTransport relabels the button Resume at once, so a
+      // check made afterwards never clicked. Streamlit stayed Running and the
+      // next rerun or handoff brought the audio back 3-15 s later.
+      let wantHeld = false;
+      try {{
+        const b0 = parentDoc.querySelector(
+          '[class*="st-key-backing_key_cycle_pause_btn"] button'
+        );
+        wantHeld = !!b0 && kcPauseBtnMode(b0) === 'pause';
+      }} catch (eB0) {{ wantHeld = false; }}
       try {{
         parentWin.__kcPauseAudio();
       }} catch (eP) {{}}
+      if (!wantHeld) return;
       try {{
         const b = parentDoc.querySelector(
           '[class*="st-key-backing_key_cycle_pause_btn"] button'
         );
         if (!b) return;
-        if (kcPauseBtnMode(b) !== 'pause') return;
         parentWin.__kcProgrammaticPauseClick = true;
         try {{ b.click(); }} catch (eClk) {{}}
         window.setTimeout(() => {{

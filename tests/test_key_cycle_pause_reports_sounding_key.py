@@ -251,7 +251,7 @@ class PauseButtonModeIgnoresIconText(unittest.TestCase):
         self.assertLess(js.index("function kcPauseBtnMode(b)"), js.index("__kcRequestCyclePause = function"))
         self.assertNotIn("/^Pause$/i.test(lab", js)
         self.assertNotIn("/^Resume$/i.test(lab", js)
-        self.assertEqual(js.count("kcPauseBtnMode(b) !== 'pause'"), 1)   # live-player Pause
+        self.assertEqual(js.count("kcPauseBtnMode(b0) === 'pause'"), 1)  # live-player Pause, read first
         self.assertEqual(js.count("kcPauseBtnMode(b) !== 'resume'"), 1)  # resume align
         self.assertEqual(js.count("kcPauseBtnMode(b0) === 'resume'"), 2)  # Resume + Back to loop start
         # The fallback routes (no key class after a remount) read the label without the icon too.
@@ -300,6 +300,76 @@ class PauseButtonModeIgnoresIconText(unittest.TestCase):
         for k, (_html, label, mode) in cases.items():
             self.assertEqual(got[k]["label"], label, (k, got[k]))
             self.assertEqual(got[k]["mode"], mode, (k, got[k]))
+
+
+class LivePlayerPauseReachesTheServer(unittest.TestCase):
+    """The live player's Pause (Lead Sheet stop -> __kcRequestCyclePause) must click the Streamlit
+    Pause button once, so the server enters Held. It used to pause the audio first; that set the
+    user hold and relabelled the button Resume at once, so the later "is it Pause?" check never
+    clicked. The server stayed Running and the audio came back by itself 3-15 s later (browser
+    runs 2026-11-14 on dev 59e77f35 and on the integration merge: 0 clicks per press)."""
+
+    _PARENT = (
+        '<html><body><div class="st-key-backing_key_cycle_pause_btn"><button>'
+        '<span data-testid="stIconMaterial">{icon}</span>'
+        '<div data-testid="stMarkdownContainer"><p>{label}</p></div></button></div>'
+        '<iframe id="kc-bridge"></iframe></body></html>'
+    )
+
+    def _press(self, label: str, icon: str) -> dict:
+        try:
+            from playwright import sync_api
+        except Exception:  # pragma: no cover - browser tooling not installed
+            self.skipTest("playwright not installed")
+        bridge = _bridge_js()
+        with sync_api.sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            try:
+                page = browser.new_page()
+                errors: list = []
+                page.on("pageerror", lambda e: errors.append(str(e)))
+                page.set_content(self._PARENT.format(label=label, icon=icon))
+                # The bridge runs in a frame whose parent is the app page, as components.html mounts it.
+                page.evaluate(
+                    """(html) => { window.__clicks = []; const btn = document.querySelector('button');
+                      window.addEventListener('click', (ev) => {
+                        if (ev.target && ev.target.closest && ev.target.closest('button') === btn)
+                          window.__clicks.push(btn.querySelector('p').textContent); }, true);
+                      document.getElementById('kc-bridge').srcdoc = html; }""",
+                    bridge,
+                )
+                page.wait_for_function("() => typeof window.__kcRequestCyclePause === 'function'", timeout=15000)
+                page.evaluate("() => window.__kcRequestCyclePause()")
+                page.wait_for_timeout(300)
+                got = page.evaluate(
+                    "() => ({clicks: window.__clicks, label: document.querySelector('p').textContent,"
+                    " userPaused: !!(window.__kcDual || {}).userPaused})"
+                )
+            finally:
+                browser.close()
+        got["errors"] = errors
+        return got
+
+    def test_pause_from_playing_clicks_the_server_pause_exactly_once(self) -> None:
+        got = self._press("Pause", "pause")
+        self.assertEqual(len(got["clicks"]), 1, got)
+        self.assertTrue(got["userPaused"], got)
+        self.assertEqual(got["label"], "Resume", got)  # the button shows what the audio does
+        self.assertEqual(got["errors"], [], got)
+
+    def test_pause_when_already_held_does_not_click_and_so_never_resumes(self) -> None:
+        # The server toggles on this click (Held -> Resume), so a held player must not click.
+        got = self._press("Resume", "play_arrow")
+        self.assertEqual(got["clicks"], [], got)
+        self.assertEqual(got["errors"], [], got)
+
+    def test_the_mode_is_read_before_the_audio_is_paused(self) -> None:
+        js = _bridge_js()
+        body = js[js.index("__kcRequestCyclePause = function"):js.index("__kcResumeAudio = function")]
+        self.assertLess(body.index("kcPauseBtnMode(b0) === 'pause'"), body.index("parentWin.__kcPauseAudio();"))
+        self.assertLess(body.index("parentWin.__kcPauseAudio();"), body.index("if (!wantHeld) return;"))
+        self.assertEqual(body.count("b.click()"), 1)
+        self.assertNotIn("kcPauseBtnMode(b) !== 'pause'", body)  # no second, after-the-fact check
 
 
 if __name__ == "__main__":
