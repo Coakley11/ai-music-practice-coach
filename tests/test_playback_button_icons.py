@@ -48,3 +48,18 @@ def test_the_browser_swaps_the_pause_icon_with_the_label() -> None:
     assert "stIconMaterial" in block and "paused ? 'play_arrow' : 'pause'" in block
     # The label is still written to the label element only, never over the icon.
     assert re.search(r"const labelEl = btn\.querySelector\('p'\) \|\| btn;", block)
+
+
+def test_key_cycle_bridge_decides_pause_or_resume_from_a_mode_not_exact_text():
+    """The icon's ligature text is part of the button's innerText ("pause Pause"); the bridge must not compare
+    display text exactly -- it asks kcPauseBtnMode() for 'pause' / 'resume'."""
+    import backing_key_cycle as kc
+
+    js = kc.cycle_persistent_player_bridge_html(cmd_json="{}")
+    assert "function kcPauseBtnMode(b)" in js and "function kcPauseBtnLabel(b)" in js
+    assert js.index("function kcPauseBtnMode(b)") < js.index("__kcRequestCyclePause = function")
+    assert "/^Pause$/i.test(lab" not in js and "/^Resume$/i.test(lab" not in js
+    assert js.count("kcPauseBtnMode(b) !== 'pause'") == 1
+    assert js.count("kcPauseBtnMode(b) !== 'resume'") == 1
+    assert js.count("kcPauseBtnMode(b0) === 'resume'") == 2
+    assert 'stIconMaterial' in js[js.index("function kcPauseBtnLabel(b)"):js.index("function kcPauseBtnMode(b)")]
