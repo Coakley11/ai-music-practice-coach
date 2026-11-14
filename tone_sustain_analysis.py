@@ -76,7 +76,11 @@ MIN_FLOOR_FRACTION = 0.10
 
 #: Pitch movement over a block at least this long is a different note, not a wobble.
 NOTE_CHANGE_BLOCK_SEC = 0.25
+#: A step this big is reported as movement worth naming.
 NOTE_CHANGE_CENTS = 50.0
+#: ...but only a step this big is called a change of NOTE. Seventy cents is a wide wobble; calling
+#: it "two notes rather than one held tone" tells the musician something that did not happen.
+NOTE_CHANGE_NAMED_CENTS = 80.0
 
 #: Vibrato lives in this band. Slower is drift; faster is not something a player sustains.
 VIBRATO_MIN_HZ = 3.0
@@ -818,6 +822,44 @@ def measure_tone(
     return out
 
 
+#: What a pitch-stability score means, in one word. A score has to be readable as good or bad
+#: without the reader knowing the scale: 8% beside "Volume consistency 99.9%" can otherwise be
+#: skimmed as just another percentage.
+PITCH_STABILITY_BANDS: tuple[tuple[float, str], ...] = (
+    (90.0, "very steady"),
+    (75.0, "steady"),
+    (55.0, "some movement"),
+    (35.0, "unsteady"),
+    (0.0, "very unstable"),
+)
+
+VOLUME_CONSISTENCY_BANDS: tuple[tuple[float, str], ...] = (
+    (90.0, "very even"),
+    (75.0, "even"),
+    (55.0, "uneven"),
+    (35.0, "very uneven"),
+    (0.0, "broken up"),
+)
+
+
+def band_word(score: float | None, bands: tuple[tuple[float, str], ...]) -> str:
+    """The word for a score, or "not measured" when there is no score at all."""
+    if score is None:
+        return "not measured"
+    for floor, word in bands:
+        if float(score) >= floor:
+            return word
+    return bands[-1][1]
+
+
+def pitch_stability_band(score: float | None) -> str:
+    return band_word(score, PITCH_STABILITY_BANDS)
+
+
+def volume_consistency_band(score: float | None) -> str:
+    return band_word(score, VOLUME_CONSISTENCY_BANDS)
+
+
 def explain(measurement: ToneMeasurement) -> list[str]:
     """What the numbers mean, in a musician's words - and never contradicting them."""
     m = measurement
@@ -826,11 +868,25 @@ def explain(measurement: ToneMeasurement) -> list[str]:
 
     lines: list[str] = []
 
-    if m.note_change_detected:
+    # Say the verdict in words before the detail, so a very low score cannot be skimmed past.
+    if (m.pitch_stability_score or 0) < 55:
+        lines.append(
+            f"**Pitch stability {m.pitch_stability_score:.0f}% - "
+            f"{pitch_stability_band(m.pitch_stability_score)}.** The pitch moved about "
+            f"{m.pitch_spread_cents:.0f} cents around its centre, which is a lot for a long tone."
+        )
+
+    if m.note_change_detected and m.largest_step_cents >= NOTE_CHANGE_NAMED_CENTS:
         lines.append(
             f"The pitch **changed by about {m.largest_step_cents:.0f} cents** during the note "
             f"({_interval_words(m.largest_step_cents)}), so this is two notes rather than one held "
             "tone. Pitch stability describes the whole recording."
+        )
+    elif m.note_change_detected:
+        lines.append(
+            f"The pitch **shifted by about {m.largest_step_cents:.0f} cents** between parts of the "
+            f"note ({_interval_words(m.largest_step_cents)}) - a wide wobble rather than a change "
+            "of note."
         )
     elif m.vibrato_rate_hz:
         lines.append(
@@ -854,13 +910,18 @@ def explain(measurement: ToneMeasurement) -> list[str]:
             f"Pitch moved about **{m.pitch_spread_cents:.0f} cents** around its centre."
         )
 
+    shaped = abs(m.volume_trend_db) >= 4
     if m.volume_trend_db <= -4:
         lines.append(
-            f"The sound **faded by {abs(m.volume_trend_db):.0f} dB** from start to end. A "
-            "decrescendo is fine if you meant it; if not, it is air support running out."
+            f"The sound **faded by {abs(m.volume_trend_db):.0f} dB** from start to end - this was "
+            "**not** a constant volume. A decrescendo is fine if you meant it; if not, it is air "
+            "support running out."
         )
     elif m.volume_trend_db >= 4:
-        lines.append(f"The sound **grew by {m.volume_trend_db:.0f} dB** - a crescendo shape.")
+        lines.append(
+            f"The sound **grew by {m.volume_trend_db:.0f} dB** from start to end - a crescendo "
+            "shape, **not** a constant volume."
+        )
     if m.volume_dip_db >= 6 and not m.dropout_count:
         lines.append(
             f"The sound **fell about {m.volume_dip_db:.0f} dB below its own level** at its weakest "
@@ -879,7 +940,14 @@ def explain(measurement: ToneMeasurement) -> list[str]:
             "beyond that overall shape."
         )
     elif m.volume_fluctuation_db <= 1:
-        lines.append("**Volume stayed even** through the sustain.")
+        # Never bare when the sound rose or fell: "Volume stayed even" printed under "the sound
+        # grew by 8 dB" reads as a contradiction, and invites 98% to be read as constant volume.
+        lines.append(
+            "Apart from that change in level, the loudness was **steady from moment to moment** - "
+            "which is what the Volume consistency number measures."
+            if shaped
+            else "**Volume stayed even** through the sustain."
+        )
 
     if m.octave_offset_semitones:
         octaves = abs(m.octave_offset_semitones) // 12
@@ -991,6 +1059,11 @@ def measurement_as_dict(m: ToneMeasurement) -> dict[str, Any]:
 
 __all__ = [
     "FLAT_NOTE_NAMES",
+    "PITCH_STABILITY_BANDS",
+    "VOLUME_CONSISTENCY_BANDS",
+    "band_word",
+    "pitch_stability_band",
+    "volume_consistency_band",
     "SPREAD_TRIM_FACTOR",
     "SPREAD_TRIM_FRACTION",
     "PITCH_STABILITY_ANCHORS",

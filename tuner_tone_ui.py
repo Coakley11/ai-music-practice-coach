@@ -566,17 +566,35 @@ def _render_tone_practice_result(
         )
         return
 
+    from tone_sustain_analysis import pitch_stability_band, volume_consistency_band
+
+    _trend_db = float(getattr(result, "volume_trend_db", 0.0) or 0.0)
+    _trend_word = ""
+    if _trend_db >= 4:
+        _trend_word = f"grew {_trend_db:.0f} dB overall"
+    elif _trend_db <= -4:
+        _trend_word = f"faded {abs(_trend_db):.0f} dB overall"
+
     c1, c2, c3 = st_module.columns(3)
     with c1:
         st_module.metric("Pitch stability", f"{result.pitch_stability_score:.0f}%",
                          help="How steadily the pitch was held around its own centre. "
                               "Being sharp or flat does not change this.")
-        st_module.caption(f"moved ±{getattr(result, 'pitch_spread_cents', 0.0):.0f}¢")
+        st_module.caption(
+            f"{pitch_stability_band(result.pitch_stability_score)} · moved "
+            f"±{getattr(result, 'pitch_spread_cents', 0.0):.0f}¢"
+        )
     with c2:
         st_module.metric("Volume consistency", f"{result.volume_stability_score:.0f}%",
-                         help="How evenly the sound was sustained, after allowing for an "
-                              "intentional crescendo or decrescendo. Loudness itself is not scored.")
-        st_module.caption(f"wavered ±{getattr(result, 'volume_fluctuation_db', 0.0):.1f} dB")
+                         help="How evenly the sound was sustained from moment to moment, after "
+                              "allowing for an intentional crescendo or decrescendo. It is NOT a "
+                              "measure of constant loudness - any overall rise or fall is reported "
+                              "separately. Loudness itself is never scored.")
+        st_module.caption(
+            f"{volume_consistency_band(result.volume_stability_score)} moment to moment · wavered "
+            f"±{getattr(result, 'volume_fluctuation_db', 0.0):.1f} dB"
+            + (f" · **{_trend_word}**" if _trend_word else "")
+        )
     with c3:
         st_module.metric("Sustain", f"{result.sustain_seconds:.1f}s",
                          help="How much usable sustained sound was found, with the attack and "
@@ -598,6 +616,8 @@ def _render_tone_practice_result(
         )
     elif getattr(result, "target_is_pitch_class_only", False):
         bits.append("**Octave:** any octave accepted")
+    if _trend_word:
+        bits.append(f"**Volume trend:** {_trend_word}")
     bits.append(f"**Confidence:** {getattr(result, 'confidence', 0.0) * 100:.0f}%")
     st_module.markdown(" · ".join(bits))
     if octave_semitones:

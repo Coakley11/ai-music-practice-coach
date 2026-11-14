@@ -188,6 +188,135 @@ class PitchStabilityDoesNotSaturate(unittest.TestCase):
         self.assertNotIn("very steadily", text)
 
 
+class AScoreNeverReadsBetterThanItIs(unittest.TestCase):
+    """A positive floor on the scale must not become reassurance."""
+
+    def test_a_very_poor_score_says_so_in_words(self) -> None:
+        r = analysed("octave_jump")
+        text = " ".join(r.feedback).lower()
+        self.assertIn("very unstable", text)
+        self.assertLess(float(r.pitch_stability_score), 35.0)
+
+    def test_the_verdict_comes_before_the_detail(self) -> None:
+        r = analysed("octave_jump")
+        self.assertIn("pitch stability", r.feedback[0].lower())
+
+    def test_a_good_score_is_not_given_a_warning_it_has_not_earned(self) -> None:
+        text = " ".join(analysed("steady_e5_trimmed").feedback).lower()
+        self.assertNotIn("very unstable", text)
+        self.assertNotIn("a lot for a long tone", text)
+
+    def test_the_band_words_cover_the_scale_in_order(self) -> None:
+        from tone_sustain_analysis import pitch_stability_band, volume_consistency_band
+
+        self.assertEqual(pitch_stability_band(100.0), "very steady")
+        self.assertEqual(pitch_stability_band(80.0), "steady")
+        self.assertEqual(pitch_stability_band(60.0), "some movement")
+        self.assertEqual(pitch_stability_band(40.0), "unsteady")
+        self.assertEqual(pitch_stability_band(8.0), "very unstable")
+        self.assertEqual(volume_consistency_band(99.0), "very even")
+        self.assertEqual(volume_consistency_band(40.3), "very uneven")
+
+    def test_no_score_at_all_is_not_a_band_but_not_measured(self) -> None:
+        from tone_sustain_analysis import pitch_stability_band, volume_consistency_band
+
+        self.assertEqual(pitch_stability_band(None), "not measured")
+        self.assertEqual(volume_consistency_band(None), "not measured")
+
+    def test_an_unmeasurable_take_shows_not_measured_rather_than_a_floor_score(self) -> None:
+        for name in ("breath_noise_only", "weak_input", "too_short"):
+            r = analysed(name)
+            self.assertIsNone(r.pitch_stability_score, name)
+            self.assertNotEqual(r.pitch_stability_score, 0.0, name)
+            self.assertTrue(r.reason, name)
+
+    def test_the_panel_prints_the_band_word_beside_the_number(self) -> None:
+        source = (ROOT / "tuner_tone_ui.py").read_text(encoding="utf-8")
+        self.assertIn("pitch_stability_band(result.pitch_stability_score)", source)
+        self.assertIn("volume_consistency_band(result.volume_stability_score)", source)
+
+
+def prose(lines: list[str]) -> str:
+    """Feedback as a musician reads it: markdown emphasis removed, lower case.
+
+    Asserting on the raw string is asserting on where the asterisks fall - "**not** a constant
+    volume" does not contain "not a constant volume" - which tests the formatting instead of the
+    sentence.
+    """
+    return " ".join(lines).replace("**", "").lower()
+
+
+class VolumeTrendIsNeverMistakenForSteadiness(unittest.TestCase):
+    """98% short-term steadiness must not read as "I held a constant volume"."""
+
+    def test_a_crescendo_is_stated_as_not_a_constant_volume(self) -> None:
+        text = prose(analysed("crescendo").feedback)
+        self.assertIn("grew", text)
+        self.assertIn("not a constant volume", text)
+
+    def test_a_decrescendo_is_stated_as_not_a_constant_volume(self) -> None:
+        text = prose(analysed("decrescendo").feedback)
+        self.assertIn("faded", text)
+        self.assertIn("not a constant volume", text)
+
+    def test_the_evenness_sentence_is_never_bare_under_a_trend(self) -> None:
+        # "The sound grew by 8 dB" followed by "Volume stayed even through the sustain" reads as a
+        # contradiction and invites exactly the misreading this guards against.
+        for name in ("crescendo", "decrescendo"):
+            text = " ".join(analysed(name).feedback)
+            self.assertNotIn("**Volume stayed even** through the sustain.", text, name)
+            self.assertIn("Apart from that change in level", text, name)
+
+    def test_an_actually_even_note_still_says_so_plainly(self) -> None:
+        text = " ".join(analysed("steady_e5_trimmed").feedback)
+        self.assertIn("**Volume stayed even** through the sustain.", text)
+
+    def test_the_trend_is_a_separate_reported_number(self) -> None:
+        self.assertGreaterEqual(analysed("crescendo").volume_trend_db, 4.0)
+        self.assertLessEqual(analysed("decrescendo").volume_trend_db, -4.0)
+        self.assertAlmostEqual(analysed("steady_e5_trimmed").volume_trend_db, 0.0, delta=1.0)
+
+    def test_the_panel_shows_the_trend_beside_the_consistency_number(self) -> None:
+        source = (ROOT / "tuner_tone_ui.py").read_text(encoding="utf-8")
+        self.assertIn("grew {_trend_db:.0f} dB overall", source)
+        self.assertIn("Volume trend:", source)
+        self.assertIn("It is NOT a ", source)
+
+    def test_the_five_measurements_stay_distinct(self) -> None:
+        # pitch stability, tuning accuracy, octave difference, volume steadiness, volume trend.
+        r = analysed("flat31_e5_target_e4")
+        self.assertIsNotNone(r.pitch_stability_score)
+        self.assertIsNotNone(r.tuning_offset_cents)
+        self.assertEqual(r.octave_offset_semitones, 12)
+        self.assertIsNotNone(r.volume_stability_score)
+        self.assertIsNotNone(r.volume_trend_db)
+        stored = r.measurement
+        for key in (
+            "pitch_stability_score",
+            "tuning_offset_cents",
+            "octave_offset_semitones",
+            "volume_consistency_score",
+            "volume_trend_db",
+        ):
+            self.assertIn(key, stored)
+
+
+class TheWordsMatchTheSizeOfWhatHappened(unittest.TestCase):
+    def test_a_seventy_cent_wobble_is_not_called_two_notes(self) -> None:
+        text = " ".join(analysed("fluctuation_irregular").feedback).lower()
+        self.assertIn("wide wobble", text)
+        self.assertNotIn("two notes", text)
+
+    def test_a_semitone_step_is_called_a_change_of_note(self) -> None:
+        text = " ".join(analysed("semitone_jump").feedback).lower()
+        self.assertIn("two notes", text)
+
+    def test_an_octave_step_is_called_a_change_of_note(self) -> None:
+        text = " ".join(analysed("octave_jump").feedback).lower()
+        self.assertIn("two notes", text)
+        self.assertIn("about an octave", text)
+
+
 class TheScoringCurvesAreMonotonicAndDocumented(unittest.TestCase):
     """The map from a measurement to a score, checked as a function."""
 
