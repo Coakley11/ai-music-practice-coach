@@ -15,6 +15,7 @@ def context(session):
     return copy.deepcopy(v) if is_owned(v,session) else {}
 
 def remember(session,records=()):
+    session.pop('_ami_conv_clarinet_fingering',None)
     session.pop('_ami_conv_fingering',None)
     session[STATE]=stamp({'model':data.MODEL,'notes':[r['id'] for r in records]},session)
 

@@ -26,6 +26,13 @@ def run_coach_submit(
     from music_coach_ami import warmup_plan as _warmup
     from music_coach_ami.exercise_revision import stale_song_response
 
+    from music_coach_ami.clarinet_fingering_instructor import handle as clarinet_fingering_request
+    clarinet_fingering = clarinet_fingering_request(question, session_state, ami_ctx)
+    if clarinet_fingering is not None:
+        req = route_question(question, session_state, ami_ctx=ami_ctx)
+        _conv.record_turn(session_state, question, clarinet_fingering.direct_answer)
+        return req, clarinet_fingering
+
     from music_coach_ami.sax_specialized_requests import handle as specialized_request
     specialized = specialized_request(question, session_state, ami_ctx)
     if specialized is not None:

@@ -4,6 +4,9 @@ from music_coach_ami.fingering_data import KEYS, validate_record
 
 
 def svg(value):
+    if value.get("family")=="clarinet-keywork":
+        from music_coach_ami.clarinet_fingering_view import svg as clarinet_svg
+        return clarinet_svg(value)
     if value.get('family')=='trumpet-valve-partial':
         from music_coach_ami.trumpet_fingering_view import svg as trumpet_svg
         return trumpet_svg(value)
@@ -25,6 +28,9 @@ def description(r):
 
 def html(records):
     records=list(records)
+    if records and all(r.get("family")=="clarinet-keywork" for r in records):
+        from music_coach_ami.clarinet_fingering_view import html as clarinet_html
+        return clarinet_html(records)
     if records and all(r.get("family")=="trumpet-valve-partial" for r in records):
         from music_coach_ami.trumpet_fingering_view import html as trumpet_html
         return trumpet_html(records)

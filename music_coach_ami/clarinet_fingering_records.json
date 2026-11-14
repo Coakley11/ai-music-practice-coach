@@ -1,0 +1,443 @@
+[
+  {
+    "id": "E3",
+    "family": "clarinet-keywork",
+    "instrument": "clarinet",
+    "type": "Bb soprano clarinet",
+    "model": "Yamaha YCL-255",
+    "model_id": "yamaha-ycl255",
+    "system": "Standard Boehm, 17 keys, 6 rings",
+    "written_name": "E",
+    "written_octave": 3,
+    "holes": {
+      "T": true,
+      "L1": true,
+      "L2": true,
+      "L3": true,
+      "R1": true,
+      "R2": true,
+      "R3": true
+    },
+    "keys": {
+      "Register": false,
+      "A": false,
+      "L_EB": true,
+      "R_FC": false
+    },
+    "little_finger_choice": "Left little-finger E/B key",
+    "auxiliary_controls_pressed": [],
+    "released_auxiliary_controls": [
+      "Throat G-sharp key",
+      "Left Eb/Bb sliver",
+      "Other left little-finger keys: F/C, F-sharp/C-sharp, C-sharp/G-sharp",
+      "Other right little-finger keys: E/B, F-sharp/C-sharp, G-sharp/D-sharp",
+      "Right B/F-sharp sliver and side keys 1-4"
+    ],
+    "register": "chalumeau",
+    "verification": "manufacturer model specification + reference-supported basic Boehm fingering",
+    "teacher_reviewed": false,
+    "physically_tested": false,
+    "limitations": "Chosen basic little-finger option only. Other fingerings, resonance fingers, altissimo, modified keywork, Albert/Oehler and other clarinet types/keys are not enabled.",
+    "model_applicability": "Standard factory YCL-255 Boehm system; reference compatibility, not actual-horn validation",
+    "sources": [
+      {
+        "url": "https://usa.yamaha.com/products/musical_instruments/winds/clarinets/ycl-255/specs.html",
+        "sha256": "3e9ca6d85be63d5db7b75d7db1d624200a788511db3e4b39411c87e5efe209ee",
+        "locator": "Bb, Boehm, 17 keys and 6 rings"
+      },
+      {
+        "url": "https://www.wfg.woodwind.org/clarinet/cl_bas_1.html",
+        "sha256": "34602cf2d13142cdda719237a3b278dd9338bdeccf1e50c940a71bc20fbc6a7a",
+        "locator": "Basic chalumeau chart, table row 2 (including navigation/header rows); selected Left little-finger E/B key"
+      },
+      {
+        "url": "https://www.wfg.woodwind.org/clarinet/cl_fing.html",
+        "sha256": "074e63abf2ceadcd599dbb1d2a017dda86a104b2ae4f82d923af73a5256611c1",
+        "locator": "Thumb hole, register key, main holes and Boehm little-finger key legend"
+      },
+      {
+        "url": "https://newt.phys.unsw.edu.au/jw/clarinetacoustics.html",
+        "sha256": "17a3358cbf186fe52e393efc9fb2fd835e6e7921dae8163d237f275ea0a1da7f",
+        "locator": "Registers, register holes, E3/B4 and throat-to-clarion break"
+      }
+    ]
+  },
+  {
+    "id": "F3",
+    "family": "clarinet-keywork",
+    "instrument": "clarinet",
+    "type": "Bb soprano clarinet",
+    "model": "Yamaha YCL-255",
+    "model_id": "yamaha-ycl255",
+    "system": "Standard Boehm, 17 keys, 6 rings",
+    "written_name": "F",
+    "written_octave": 3,
+    "holes": {
+      "T": true,
+      "L1": true,
+      "L2": true,
+      "L3": true,
+      "R1": true,
+      "R2": true,
+      "R3": true
+    },
+    "keys": {
+      "Register": false,
+      "A": false,
+      "L_EB": false,
+      "R_FC": true
+    },
+    "little_finger_choice": "Right little-finger F/C key",
+    "auxiliary_controls_pressed": [],
+    "released_auxiliary_controls": [
+      "Throat G-sharp key",
+      "Left Eb/Bb sliver",
+      "Other left little-finger keys: F/C, F-sharp/C-sharp, C-sharp/G-sharp",
+      "Other right little-finger keys: E/B, F-sharp/C-sharp, G-sharp/D-sharp",
+      "Right B/F-sharp sliver and side keys 1-4"
+    ],
+    "register": "chalumeau",
+    "verification": "manufacturer model specification + reference-supported basic Boehm fingering",
+    "teacher_reviewed": false,
+    "physically_tested": false,
+    "limitations": "Chosen basic little-finger option only. Other fingerings, resonance fingers, altissimo, modified keywork, Albert/Oehler and other clarinet types/keys are not enabled.",
+    "model_applicability": "Standard factory YCL-255 Boehm system; reference compatibility, not actual-horn validation",
+    "sources": [
+      {
+        "url": "https://usa.yamaha.com/products/musical_instruments/winds/clarinets/ycl-255/specs.html",
+        "sha256": "3e9ca6d85be63d5db7b75d7db1d624200a788511db3e4b39411c87e5efe209ee",
+        "locator": "Bb, Boehm, 17 keys and 6 rings"
+      },
+      {
+        "url": "https://www.wfg.woodwind.org/clarinet/cl_bas_1.html",
+        "sha256": "34602cf2d13142cdda719237a3b278dd9338bdeccf1e50c940a71bc20fbc6a7a",
+        "locator": "Basic chalumeau chart, table row 5 (including navigation/header rows); selected Right little-finger F/C key"
+      },
+      {
+        "url": "https://www.wfg.woodwind.org/clarinet/cl_fing.html",
+        "sha256": "074e63abf2ceadcd599dbb1d2a017dda86a104b2ae4f82d923af73a5256611c1",
+        "locator": "Thumb hole, register key, main holes and Boehm little-finger key legend"
+      },
+      {
+        "url": "https://newt.phys.unsw.edu.au/jw/clarinetacoustics.html",
+        "sha256": "17a3358cbf186fe52e393efc9fb2fd835e6e7921dae8163d237f275ea0a1da7f",
+        "locator": "Registers, register holes, E3/B4 and throat-to-clarion break"
+      }
+    ]
+  },
+  {
+    "id": "G3",
+    "family": "clarinet-keywork",
+    "instrument": "clarinet",
+    "type": "Bb soprano clarinet",
+    "model": "Yamaha YCL-255",
+    "model_id": "yamaha-ycl255",
+    "system": "Standard Boehm, 17 keys, 6 rings",
+    "written_name": "G",
+    "written_octave": 3,
+    "holes": {
+      "T": true,
+      "L1": true,
+      "L2": true,
+      "L3": true,
+      "R1": true,
+      "R2": true,
+      "R3": true
+    },
+    "keys": {
+      "Register": false,
+      "A": false,
+      "L_EB": false,
+      "R_FC": false
+    },
+    "little_finger_choice": "No little-finger key",
+    "auxiliary_controls_pressed": [],
+    "released_auxiliary_controls": [
+      "Throat G-sharp key",
+      "Left Eb/Bb sliver",
+      "Other left little-finger keys: F/C, F-sharp/C-sharp, C-sharp/G-sharp",
+      "Other right little-finger keys: E/B, F-sharp/C-sharp, G-sharp/D-sharp",
+      "Right B/F-sharp sliver and side keys 1-4"
+    ],
+    "register": "chalumeau",
+    "verification": "manufacturer model specification + reference-supported basic Boehm fingering",
+    "teacher_reviewed": false,
+    "physically_tested": false,
+    "limitations": "Chosen basic little-finger option only. Other fingerings, resonance fingers, altissimo, modified keywork, Albert/Oehler and other clarinet types/keys are not enabled.",
+    "model_applicability": "Standard factory YCL-255 Boehm system; reference compatibility, not actual-horn validation",
+    "sources": [
+      {
+        "url": "https://usa.yamaha.com/products/musical_instruments/winds/clarinets/ycl-255/specs.html",
+        "sha256": "3e9ca6d85be63d5db7b75d7db1d624200a788511db3e4b39411c87e5efe209ee",
+        "locator": "Bb, Boehm, 17 keys and 6 rings"
+      },
+      {
+        "url": "https://www.wfg.woodwind.org/clarinet/cl_bas_1.html",
+        "sha256": "34602cf2d13142cdda719237a3b278dd9338bdeccf1e50c940a71bc20fbc6a7a",
+        "locator": "Basic chalumeau chart, table row 10 (including navigation/header rows); selected No little-finger key"
+      },
+      {
+        "url": "https://www.wfg.woodwind.org/clarinet/cl_fing.html",
+        "sha256": "074e63abf2ceadcd599dbb1d2a017dda86a104b2ae4f82d923af73a5256611c1",
+        "locator": "Thumb hole, register key, main holes and Boehm little-finger key legend"
+      },
+      {
+        "url": "https://newt.phys.unsw.edu.au/jw/clarinetacoustics.html",
+        "sha256": "17a3358cbf186fe52e393efc9fb2fd835e6e7921dae8163d237f275ea0a1da7f",
+        "locator": "Registers, register holes, E3/B4 and throat-to-clarion break"
+      }
+    ]
+  },
+  {
+    "id": "Bb4",
+    "family": "clarinet-keywork",
+    "instrument": "clarinet",
+    "type": "Bb soprano clarinet",
+    "model": "Yamaha YCL-255",
+    "model_id": "yamaha-ycl255",
+    "system": "Standard Boehm, 17 keys, 6 rings",
+    "written_name": "Bb",
+    "written_octave": 4,
+    "holes": {
+      "T": false,
+      "L1": false,
+      "L2": false,
+      "L3": false,
+      "R1": false,
+      "R2": false,
+      "R3": false
+    },
+    "keys": {
+      "Register": true,
+      "A": true,
+      "L_EB": false,
+      "R_FC": false
+    },
+    "little_finger_choice": "Basic throat Bb, no added resonance fingers",
+    "auxiliary_controls_pressed": [],
+    "released_auxiliary_controls": [
+      "Throat G-sharp key",
+      "Left Eb/Bb sliver",
+      "Other left little-finger keys: F/C, F-sharp/C-sharp, C-sharp/G-sharp",
+      "Other right little-finger keys: E/B, F-sharp/C-sharp, G-sharp/D-sharp",
+      "Right B/F-sharp sliver and side keys 1-4"
+    ],
+    "register": "throat tone",
+    "verification": "manufacturer model specification + reference-supported basic Boehm fingering",
+    "teacher_reviewed": false,
+    "physically_tested": false,
+    "limitations": "Chosen basic little-finger option only. Other fingerings, resonance fingers, altissimo, modified keywork, Albert/Oehler and other clarinet types/keys are not enabled.",
+    "model_applicability": "Standard factory YCL-255 Boehm system; reference compatibility, not actual-horn validation",
+    "sources": [
+      {
+        "url": "https://usa.yamaha.com/products/musical_instruments/winds/clarinets/ycl-255/specs.html",
+        "sha256": "3e9ca6d85be63d5db7b75d7db1d624200a788511db3e4b39411c87e5efe209ee",
+        "locator": "Bb, Boehm, 17 keys and 6 rings"
+      },
+      {
+        "url": "https://www.wfg.woodwind.org/clarinet/cl_bas_1.html",
+        "sha256": "34602cf2d13142cdda719237a3b278dd9338bdeccf1e50c940a71bc20fbc6a7a",
+        "locator": "Basic chalumeau chart, table row 29 (including navigation/header rows); selected Basic throat Bb, no added resonance fingers"
+      },
+      {
+        "url": "https://www.wfg.woodwind.org/clarinet/cl_fing.html",
+        "sha256": "074e63abf2ceadcd599dbb1d2a017dda86a104b2ae4f82d923af73a5256611c1",
+        "locator": "Thumb hole, register key, main holes and Boehm little-finger key legend"
+      },
+      {
+        "url": "https://newt.phys.unsw.edu.au/jw/clarinetacoustics.html",
+        "sha256": "17a3358cbf186fe52e393efc9fb2fd835e6e7921dae8163d237f275ea0a1da7f",
+        "locator": "Registers, register holes, E3/B4 and throat-to-clarion break"
+      }
+    ]
+  },
+  {
+    "id": "B4",
+    "family": "clarinet-keywork",
+    "instrument": "clarinet",
+    "type": "Bb soprano clarinet",
+    "model": "Yamaha YCL-255",
+    "model_id": "yamaha-ycl255",
+    "system": "Standard Boehm, 17 keys, 6 rings",
+    "written_name": "B",
+    "written_octave": 4,
+    "holes": {
+      "T": true,
+      "L1": true,
+      "L2": true,
+      "L3": true,
+      "R1": true,
+      "R2": true,
+      "R3": true
+    },
+    "keys": {
+      "Register": true,
+      "A": false,
+      "L_EB": true,
+      "R_FC": false
+    },
+    "little_finger_choice": "Left little-finger E/B key",
+    "auxiliary_controls_pressed": [],
+    "released_auxiliary_controls": [
+      "Throat G-sharp key",
+      "Left Eb/Bb sliver",
+      "Other left little-finger keys: F/C, F-sharp/C-sharp, C-sharp/G-sharp",
+      "Other right little-finger keys: E/B, F-sharp/C-sharp, G-sharp/D-sharp",
+      "Right B/F-sharp sliver and side keys 1-4"
+    ],
+    "register": "clarion",
+    "verification": "manufacturer model specification + reference-supported basic Boehm fingering",
+    "teacher_reviewed": false,
+    "physically_tested": false,
+    "limitations": "Chosen basic little-finger option only. Other fingerings, resonance fingers, altissimo, modified keywork, Albert/Oehler and other clarinet types/keys are not enabled.",
+    "model_applicability": "Standard factory YCL-255 Boehm system; reference compatibility, not actual-horn validation",
+    "sources": [
+      {
+        "url": "https://usa.yamaha.com/products/musical_instruments/winds/clarinets/ycl-255/specs.html",
+        "sha256": "3e9ca6d85be63d5db7b75d7db1d624200a788511db3e4b39411c87e5efe209ee",
+        "locator": "Bb, Boehm, 17 keys and 6 rings"
+      },
+      {
+        "url": "https://www.wfg.woodwind.org/clarinet/cl_bas_2.html",
+        "sha256": "f4b7aef9295f2ae8254cdfd2987ea4ee8d33963238a56d3de9c6a2976bc0448c",
+        "locator": "Basic clarion chart, table row 3 (including navigation/header rows); selected Left little-finger E/B key"
+      },
+      {
+        "url": "https://www.wfg.woodwind.org/clarinet/cl_fing.html",
+        "sha256": "074e63abf2ceadcd599dbb1d2a017dda86a104b2ae4f82d923af73a5256611c1",
+        "locator": "Thumb hole, register key, main holes and Boehm little-finger key legend"
+      },
+      {
+        "url": "https://newt.phys.unsw.edu.au/jw/clarinetacoustics.html",
+        "sha256": "17a3358cbf186fe52e393efc9fb2fd835e6e7921dae8163d237f275ea0a1da7f",
+        "locator": "Registers, register holes, E3/B4 and throat-to-clarion break"
+      }
+    ]
+  },
+  {
+    "id": "C5",
+    "family": "clarinet-keywork",
+    "instrument": "clarinet",
+    "type": "Bb soprano clarinet",
+    "model": "Yamaha YCL-255",
+    "model_id": "yamaha-ycl255",
+    "system": "Standard Boehm, 17 keys, 6 rings",
+    "written_name": "C",
+    "written_octave": 5,
+    "holes": {
+      "T": true,
+      "L1": true,
+      "L2": true,
+      "L3": true,
+      "R1": true,
+      "R2": true,
+      "R3": true
+    },
+    "keys": {
+      "Register": true,
+      "A": false,
+      "L_EB": false,
+      "R_FC": true
+    },
+    "little_finger_choice": "Right little-finger F/C key",
+    "auxiliary_controls_pressed": [],
+    "released_auxiliary_controls": [
+      "Throat G-sharp key",
+      "Left Eb/Bb sliver",
+      "Other left little-finger keys: F/C, F-sharp/C-sharp, C-sharp/G-sharp",
+      "Other right little-finger keys: E/B, F-sharp/C-sharp, G-sharp/D-sharp",
+      "Right B/F-sharp sliver and side keys 1-4"
+    ],
+    "register": "clarion",
+    "verification": "manufacturer model specification + reference-supported basic Boehm fingering",
+    "teacher_reviewed": false,
+    "physically_tested": false,
+    "limitations": "Chosen basic little-finger option only. Other fingerings, resonance fingers, altissimo, modified keywork, Albert/Oehler and other clarinet types/keys are not enabled.",
+    "model_applicability": "Standard factory YCL-255 Boehm system; reference compatibility, not actual-horn validation",
+    "sources": [
+      {
+        "url": "https://usa.yamaha.com/products/musical_instruments/winds/clarinets/ycl-255/specs.html",
+        "sha256": "3e9ca6d85be63d5db7b75d7db1d624200a788511db3e4b39411c87e5efe209ee",
+        "locator": "Bb, Boehm, 17 keys and 6 rings"
+      },
+      {
+        "url": "https://www.wfg.woodwind.org/clarinet/cl_bas_2.html",
+        "sha256": "f4b7aef9295f2ae8254cdfd2987ea4ee8d33963238a56d3de9c6a2976bc0448c",
+        "locator": "Basic clarion chart, table row 6 (including navigation/header rows); selected Right little-finger F/C key"
+      },
+      {
+        "url": "https://www.wfg.woodwind.org/clarinet/cl_fing.html",
+        "sha256": "074e63abf2ceadcd599dbb1d2a017dda86a104b2ae4f82d923af73a5256611c1",
+        "locator": "Thumb hole, register key, main holes and Boehm little-finger key legend"
+      },
+      {
+        "url": "https://newt.phys.unsw.edu.au/jw/clarinetacoustics.html",
+        "sha256": "17a3358cbf186fe52e393efc9fb2fd835e6e7921dae8163d237f275ea0a1da7f",
+        "locator": "Registers, register holes, E3/B4 and throat-to-clarion break"
+      }
+    ]
+  },
+  {
+    "id": "D5",
+    "family": "clarinet-keywork",
+    "instrument": "clarinet",
+    "type": "Bb soprano clarinet",
+    "model": "Yamaha YCL-255",
+    "model_id": "yamaha-ycl255",
+    "system": "Standard Boehm, 17 keys, 6 rings",
+    "written_name": "D",
+    "written_octave": 5,
+    "holes": {
+      "T": true,
+      "L1": true,
+      "L2": true,
+      "L3": true,
+      "R1": true,
+      "R2": true,
+      "R3": true
+    },
+    "keys": {
+      "Register": true,
+      "A": false,
+      "L_EB": false,
+      "R_FC": false
+    },
+    "little_finger_choice": "No little-finger key",
+    "auxiliary_controls_pressed": [],
+    "released_auxiliary_controls": [
+      "Throat G-sharp key",
+      "Left Eb/Bb sliver",
+      "Other left little-finger keys: F/C, F-sharp/C-sharp, C-sharp/G-sharp",
+      "Other right little-finger keys: E/B, F-sharp/C-sharp, G-sharp/D-sharp",
+      "Right B/F-sharp sliver and side keys 1-4"
+    ],
+    "register": "clarion",
+    "verification": "manufacturer model specification + reference-supported basic Boehm fingering",
+    "teacher_reviewed": false,
+    "physically_tested": false,
+    "limitations": "Chosen basic little-finger option only. Other fingerings, resonance fingers, altissimo, modified keywork, Albert/Oehler and other clarinet types/keys are not enabled.",
+    "model_applicability": "Standard factory YCL-255 Boehm system; reference compatibility, not actual-horn validation",
+    "sources": [
+      {
+        "url": "https://usa.yamaha.com/products/musical_instruments/winds/clarinets/ycl-255/specs.html",
+        "sha256": "3e9ca6d85be63d5db7b75d7db1d624200a788511db3e4b39411c87e5efe209ee",
+        "locator": "Bb, Boehm, 17 keys and 6 rings"
+      },
+      {
+        "url": "https://www.wfg.woodwind.org/clarinet/cl_bas_2.html",
+        "sha256": "f4b7aef9295f2ae8254cdfd2987ea4ee8d33963238a56d3de9c6a2976bc0448c",
+        "locator": "Basic clarion chart, table row 11 (including navigation/header rows); selected No little-finger key"
+      },
+      {
+        "url": "https://www.wfg.woodwind.org/clarinet/cl_fing.html",
+        "sha256": "074e63abf2ceadcd599dbb1d2a017dda86a104b2ae4f82d923af73a5256611c1",
+        "locator": "Thumb hole, register key, main holes and Boehm little-finger key legend"
+      },
+      {
+        "url": "https://newt.phys.unsw.edu.au/jw/clarinetacoustics.html",
+        "sha256": "17a3358cbf186fe52e393efc9fb2fd835e6e7921dae8163d237f275ea0a1da7f",
+        "locator": "Registers, register holes, E3/B4 and throat-to-clarion break"
+      }
+    ]
+  }
+]
