@@ -302,19 +302,68 @@ class ThePositionMovesOnlyWhenAsked(unittest.TestCase):
     def test_a_position_belongs_to_one_song_project_and_scope(self) -> None:
         from multitrack_take_removal import position_context
 
-        a = position_context({"active_song_title": "Blue Bossa", "mt_playback_scope": "Full song"})
-        b = position_context({"active_song_title": "Autumn Leaves", "mt_playback_scope": "Full song"})
-        c = position_context({
-            "active_song_title": "Blue Bossa", "mt_playback_scope": "Free layering (no backing)"
-        })
-        d = position_context({
-            "active_song_title": "Blue Bossa", "mt_playback_scope": "Full song",
-            "multitrack_catalog_active_id": "mt-77",
-        })
+        base = {"active_song_title": "Blue Bossa", "mt_playback_scope": "Full song",
+                "multitrack_catalog_active_id": "mt-77", "_suite_active_workspace_id": "daniel"}
+        a = position_context(dict(base))
+        b = position_context(dict(base, active_song_title="Autumn Leaves"))
+        c = position_context(dict(base, mt_playback_scope="Free layering (no backing)"))
+        d = position_context(dict(base, multitrack_catalog_active_id="mt-99"))
+        e = position_context(dict(base, _suite_active_workspace_id="ariel"))
         self.assertNotEqual(a, b, "a position would leak between songs")
         self.assertNotEqual(a, c, "a position would leak across playback scopes")
-        self.assertNotEqual(a, d, "a position would leak between projects")
+        self.assertNotEqual(a, d, "a position would leak between saved projects")
+        self.assertNotEqual(a, e, "a position would leak between musicians sharing a browser")
         self.assertTrue(position_context({}))
+
+    def test_the_same_saved_project_keeps_one_context(self) -> None:
+        from multitrack_take_removal import position_context
+
+        ss = {"active_song_title": "Say", "mt_playback_scope": "Full song",
+              "multitrack_catalog_active_id": "mt-7", "_suite_active_workspace_id": "daniel"}
+        self.assertEqual(position_context(ss), position_context(dict(ss)))
+
+    def test_two_unsaved_projects_for_one_song_do_not_share_a_position(self) -> None:
+        """The hole a display name leaves: an unsaved project has no library id at all.
+
+        sessionStorage is per browser tab, so without an identity of its own every unsaved project
+        for the same song and scope wrote to one key, and starting a new one inherited the previous
+        one's position.
+        """
+        from multitrack_session_persistence import reset_multitrack_working_session
+        from multitrack_take_removal import position_context
+
+        ss = {"active_song_title": "Say", "mt_playback_scope": "Full song",
+              "_suite_active_workspace_id": "daniel"}
+        first = position_context(ss)
+        self.assertEqual(first, position_context(ss), "the token must be stable within a project")
+
+        reset_multitrack_working_session(ss)          # the musician starts a new project
+        second = position_context(ss)
+        self.assertNotEqual(first, second, "a new working project inherited the old one's position")
+        self.assertIn("new:", first)
+        self.assertIn("new:", second)
+
+    def test_starting_a_new_project_also_mints_a_new_identity(self) -> None:
+        from multitrack_session_persistence import start_new_multitrack_project
+        from multitrack_take_removal import position_context
+
+        ss = {"active_song_title": "Say", "mt_playback_scope": "Full song",
+              "_suite_active_workspace_id": "daniel"}
+        before = position_context(ss)
+        start_new_multitrack_project(ss, song_title="Say")
+        self.assertNotEqual(before, position_context(ss))
+
+    def test_a_saved_project_id_wins_over_the_working_token(self) -> None:
+        from multitrack_take_removal import position_context
+
+        ss = {"active_song_title": "Say", "mt_playback_scope": "Full song",
+              "_suite_active_workspace_id": "daniel"}
+        unsaved = position_context(ss)
+        ss["multitrack_catalog_active_id"] = "mt-123"
+        saved = position_context(ss)
+        self.assertIn("new:", unsaved)
+        self.assertIn("mt-123", saved)
+        self.assertNotIn("new:", saved)
 
     def test_only_a_real_removal_advances_the_token(self) -> None:
         from multitrack_take_removal import position_reset_token, remove_take, request_position_reset

@@ -38,6 +38,10 @@ DELIBERATELY_EMPTY_KEY = "_mt_layers_deliberately_empty"
 #: beat 1 exactly once - never on an ordinary rerun.
 POSITION_RESET_TOKEN_KEY = "_mt_position_reset_token"
 
+#: Identity for a project that has no library id yet, so two unsaved projects for the same song
+#: cannot share one remembered position.
+WORKING_PROJECT_TOKEN_KEY = "_mt_working_project_token"
+
 _BLOB_KEY = "_mt_tracks_persist_blob"
 _SNAPSHOT_STORE_KEY = "_studio_page_snapshots"
 _SNAPSHOT_PAGE = "multitrack"
@@ -150,23 +154,65 @@ def request_position_reset(session_state: MutableMapping[str, Any]) -> int:
     return token
 
 
-def position_context(session_state: Mapping[str, Any]) -> str:
-    """Which song, project and scope a remembered position belongs to.
+def working_project_token(session_state: MutableMapping[str, Any]) -> str:
+    """A stable identity for a Multitrack project that has not been saved to the library yet.
+
+    A saved project has ``multitrack_catalog_active_id``. An unsaved one has nothing, and a display
+    name will not do - two projects for the same song can share one. Without an identity of its own,
+    every unsaved project for a given song and scope keyed its remembered position to the same
+    string, so starting a new one could inherit the previous one's position. This mints a token the
+    first time it is needed and keeps it until the working session is deliberately reset.
+    """
+    token = str(session_state.get(WORKING_PROJECT_TOKEN_KEY) or "").strip()
+    if not token:
+        import uuid
+
+        token = uuid.uuid4().hex[:10]
+        try:
+            session_state[WORKING_PROJECT_TOKEN_KEY] = token
+        except Exception:
+            return token
+    return token
+
+
+def clear_working_project_token(session_state: MutableMapping[str, Any]) -> None:
+    """A new / different working project begins, so its predecessor's position must not apply."""
+    try:
+        session_state.pop(WORKING_PROJECT_TOKEN_KEY, None)
+    except Exception:
+        pass
+
+
+def position_context(session_state: Any) -> str:
+    """Which user, song, project and scope a remembered position belongs to.
 
     A position is meaningless outside the music it was taken in, so it is stored against this
-    string: change song, load another project or switch the playback scope and the remembered
-    position does not apply, rather than silently placing the musician somewhere in a different
-    piece. Deliberately not the workspace id - it is about identity, not storage.
+    string. Four things make it up, and each one is here because leaving it out lets a position
+    reach music it does not describe:
+
+    * the **workspace** - ``sessionStorage`` is per browser tab, not per account, so two musicians
+      sharing a browser would otherwise share positions;
+    * the **song**;
+    * the **project** - its library id when it has one, and otherwise a token of its own
+      (:func:`working_project_token`), because two unsaved projects for the same song cannot be told
+      apart by name;
+    * the **playback scope**, since a position in "full song" means nothing in a single section.
     """
+    get = session_state.get if hasattr(session_state, "get") else (lambda *_a, **_k: None)
+    project = str(
+        get("multitrack_catalog_active_id") or get("_last_catalog_multitrack_id") or ""
+    ).strip()
+    if not project:
+        try:
+            project = "new:" + working_project_token(session_state)
+        except Exception:
+            project = "new"
     parts = [
-        str(session_state.get("active_song_title") or ""),
-        str(
-            session_state.get("multitrack_catalog_active_id")
-            or session_state.get("_last_catalog_multitrack_id")
-            or ""
-        ),
-        str(session_state.get("mt_playback_scope") or ""),
-        str(session_state.get("mt_backing_scope") or ""),
+        str(get("_suite_active_workspace_id") or ""),
+        str(get("active_song_title") or ""),
+        project,
+        str(get("mt_playback_scope") or ""),
+        str(get("mt_backing_scope") or ""),
     ]
     cleaned = "|".join(p.replace("|", "/") for p in parts).strip("|")
     return cleaned or "multitrack"
@@ -219,7 +265,9 @@ def remove_take(
 __all__ = [
     "DELIBERATELY_EMPTY_KEY",
     "POSITION_RESET_TOKEN_KEY",
+    "WORKING_PROJECT_TOKEN_KEY",
     "clear_deliberately_empty",
+    "clear_working_project_token",
     "clear_slot_from_caches",
     "layers_deliberately_empty",
     "live_layer_count",
@@ -229,4 +277,5 @@ __all__ = [
     "remove_take",
     "request_position_reset",
     "should_persist_empty_layer_map",
+    "working_project_token",
 ]
