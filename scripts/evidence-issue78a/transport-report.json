@@ -1,0 +1,396 @@
+{
+  "gates": {
+    "count-in-none-3-layers :: no JS errors": true,
+    "count-in-none-3-layers :: no source scheduled in the past": true,
+    "count-in-none-3-layers :: no count-in click scheduled in the past": true,
+    "count-in-none-3-layers :: layers share one scheduled instant per run": true,
+    "count-in-1-bar-3-layers :: no JS errors": true,
+    "count-in-1-bar-3-layers :: no source scheduled in the past": true,
+    "count-in-1-bar-3-layers :: no count-in click scheduled in the past": true,
+    "count-in-1-bar-3-layers :: layers share one scheduled instant per run": true,
+    "fast-tempo-180bpm-short-count-in :: no JS errors": true,
+    "fast-tempo-180bpm-short-count-in :: no source scheduled in the past": true,
+    "fast-tempo-180bpm-short-count-in :: no count-in click scheduled in the past": true,
+    "fast-tempo-180bpm-short-count-in :: layers share one scheduled instant per run": true,
+    "long-layers-60s-no-count-in :: no JS errors": true,
+    "long-layers-60s-no-count-in :: no source scheduled in the past": true,
+    "long-layers-60s-no-count-in :: no count-in click scheduled in the past": true,
+    "long-layers-60s-no-count-in :: layers share one scheduled instant per run": true,
+    "six-layers-no-count-in :: no JS errors": true,
+    "six-layers-no-count-in :: no source scheduled in the past": true,
+    "six-layers-no-count-in :: no count-in click scheduled in the past": true,
+    "six-layers-no-count-in :: layers share one scheduled instant per run": true,
+    "no-backing-layers-only :: no JS errors": true,
+    "no-backing-layers-only :: no source scheduled in the past": true,
+    "no-backing-layers-only :: no count-in click scheduled in the past": true,
+    "no-backing-layers-only :: layers share one scheduled instant per run": true,
+    "play-twice-no-stale-sources :: no JS errors": true,
+    "play-twice-no-stale-sources :: no source scheduled in the past": true,
+    "play-twice-no-stale-sources :: no count-in click scheduled in the past": true,
+    "play-twice-no-stale-sources :: layers share one scheduled instant per run": true,
+    "stop-during-decode-schedules-nothing :: no JS errors": true,
+    "metronome-on-clicks-stay-ahead-of-the-clock :: no JS errors": true,
+    "metronome-on-clicks-stay-ahead-of-the-clock :: no source scheduled in the past": true,
+    "metronome-on-clicks-stay-ahead-of-the-clock :: no count-in click scheduled in the past": true,
+    "metronome-on-clicks-stay-ahead-of-the-clock :: layers share one scheduled instant per run": true,
+    "align-zero-layers-together :: no JS errors": true,
+    "align-zero-layers-together :: no source scheduled in the past": true,
+    "align-zero-layers-together :: no count-in click scheduled in the past": true,
+    "align-zero-layers-together :: layers share one scheduled instant per run": true,
+    "align-positive-moves-the-start-later :: no JS errors": true,
+    "align-positive-moves-the-start-later :: no source scheduled in the past": true,
+    "align-positive-moves-the-start-later :: no count-in click scheduled in the past": true,
+    "align-positive-moves-the-start-later :: 3 distinct scheduled instants per run": true,
+    "align-negative-reads-into-the-take :: no JS errors": true,
+    "align-negative-reads-into-the-take :: no source scheduled in the past": true,
+    "align-negative-reads-into-the-take :: no count-in click scheduled in the past": true,
+    "align-negative-reads-into-the-take :: layers share one scheduled instant per run": true,
+    "align-negative :: a buffer offset is applied, not discarded": true,
+    "play-twice :: a second Play builds a fresh context": true,
+    "play-twice :: the retired run's context is closed": true,
+    "stop-during-decode :: nothing was scheduled": true
+  },
+  "passed": 49,
+  "total": 49,
+  "failed": [],
+  "measured": {
+    "count-in-none-3-layers": {
+      "case": "count-in-none-3-layers",
+      "contexts": 1,
+      "sources": 4,
+      "clicks_scheduled": 0,
+      "late_sources": 0,
+      "late_clicks": 0,
+      "worst_late_sec": -0.11999999999999998,
+      "smallest_scheduling_margin_sec": 0.11999999999999998,
+      "actual_start_spread_sec": 0.0,
+      "actual_start_spread_basis": "scheduled instants within a run, all honoured",
+      "scheduled_instants_per_run": {
+        "1": [
+          0.232
+        ]
+      },
+      "distinct_whens": [
+        0.232
+      ],
+      "js_errors": [],
+      "label": "Playing \u2014 everything started together on beat 1.",
+      "offsets": [
+        0.0
+      ],
+      "context_states": [
+        "running"
+      ]
+    },
+    "count-in-1-bar-3-layers": {
+      "case": "count-in-1-bar-3-layers",
+      "contexts": 1,
+      "sources": 4,
+      "clicks_scheduled": 4,
+      "late_sources": 0,
+      "late_clicks": 0,
+      "worst_late_sec": -2.52,
+      "smallest_scheduling_margin_sec": 2.52,
+      "actual_start_spread_sec": 0.0,
+      "actual_start_spread_basis": "scheduled instants within a run, all honoured",
+      "scheduled_instants_per_run": {
+        "1": [
+          2.69067
+        ]
+      },
+      "distinct_whens": [
+        2.69067
+      ],
+      "js_errors": [],
+      "label": "Counting you in \u2014 everything starts together on beat 1.",
+      "offsets": [
+        0.0
+      ],
+      "context_states": [
+        "running"
+      ]
+    },
+    "fast-tempo-180bpm-short-count-in": {
+      "case": "fast-tempo-180bpm-short-count-in",
+      "contexts": 1,
+      "sources": 4,
+      "clicks_scheduled": 4,
+      "late_sources": 0,
+      "late_clicks": 0,
+      "worst_late_sec": -1.4533333333333331,
+      "smallest_scheduling_margin_sec": 1.4533333333333331,
+      "actual_start_spread_sec": 0.0,
+      "actual_start_spread_basis": "scheduled instants within a run, all honoured",
+      "scheduled_instants_per_run": {
+        "1": [
+          1.63467
+        ]
+      },
+      "distinct_whens": [
+        1.63467
+      ],
+      "js_errors": [],
+      "label": "Counting you in \u2014 everything starts together on beat 1.",
+      "offsets": [
+        0.0
+      ],
+      "context_states": [
+        "running"
+      ]
+    },
+    "long-layers-60s-no-count-in": {
+      "case": "long-layers-60s-no-count-in",
+      "contexts": 1,
+      "sources": 4,
+      "clicks_scheduled": 0,
+      "late_sources": 0,
+      "late_clicks": 0,
+      "worst_late_sec": -0.12,
+      "smallest_scheduling_margin_sec": 0.12,
+      "actual_start_spread_sec": 0.0,
+      "actual_start_spread_basis": "scheduled instants within a run, all honoured",
+      "scheduled_instants_per_run": {
+        "1": [
+          1.032
+        ]
+      },
+      "distinct_whens": [
+        1.032
+      ],
+      "js_errors": [],
+      "label": "Playing \u2014 everything started together on beat 1.",
+      "offsets": [
+        0.0
+      ],
+      "context_states": [
+        "running"
+      ]
+    },
+    "six-layers-no-count-in": {
+      "case": "six-layers-no-count-in",
+      "contexts": 1,
+      "sources": 7,
+      "clicks_scheduled": 0,
+      "late_sources": 0,
+      "late_clicks": 0,
+      "worst_late_sec": -0.12,
+      "smallest_scheduling_margin_sec": 0.12,
+      "actual_start_spread_sec": 0.0,
+      "actual_start_spread_basis": "scheduled instants within a run, all honoured",
+      "scheduled_instants_per_run": {
+        "1": [
+          0.41067
+        ]
+      },
+      "distinct_whens": [
+        0.41067
+      ],
+      "js_errors": [],
+      "label": "Playing \u2014 everything started together on beat 1.",
+      "offsets": [
+        0.0
+      ],
+      "context_states": [
+        "running"
+      ]
+    },
+    "no-backing-layers-only": {
+      "case": "no-backing-layers-only",
+      "contexts": 1,
+      "sources": 3,
+      "clicks_scheduled": 0,
+      "late_sources": 0,
+      "late_clicks": 0,
+      "worst_late_sec": -0.12,
+      "smallest_scheduling_margin_sec": 0.12,
+      "actual_start_spread_sec": 0.0,
+      "actual_start_spread_basis": "scheduled instants within a run, all honoured",
+      "scheduled_instants_per_run": {
+        "1": [
+          0.21067
+        ]
+      },
+      "distinct_whens": [
+        0.21067
+      ],
+      "js_errors": [],
+      "label": "Playing \u2014 everything started together on beat 1.",
+      "offsets": [
+        0.0
+      ],
+      "context_states": [
+        "running"
+      ]
+    },
+    "play-twice-no-stale-sources": {
+      "case": "play-twice-no-stale-sources",
+      "contexts": 2,
+      "sources": 8,
+      "clicks_scheduled": 8,
+      "late_sources": 0,
+      "late_clicks": 0,
+      "worst_late_sec": -2.5199999999999996,
+      "smallest_scheduling_margin_sec": 2.5199999999999996,
+      "actual_start_spread_sec": 0.0,
+      "actual_start_spread_basis": "scheduled instants within a run, all honoured",
+      "scheduled_instants_per_run": {
+        "1": [
+          2.69067
+        ],
+        "2": [
+          2.72
+        ]
+      },
+      "distinct_whens": [
+        2.69067,
+        2.72
+      ],
+      "js_errors": [],
+      "label": "Counting you in \u2014 everything starts together on beat 1.",
+      "offsets": [
+        0.0
+      ],
+      "context_states": [
+        "closed",
+        "running"
+      ]
+    },
+    "stop-during-decode-schedules-nothing": {
+      "case": "stop-during-decode-schedules-nothing",
+      "contexts": 1,
+      "sources": 0,
+      "clicks_scheduled": 0,
+      "late_sources": 0,
+      "late_clicks": 0,
+      "worst_late_sec": 0.0,
+      "smallest_scheduling_margin_sec": 0.0,
+      "actual_start_spread_sec": 0.0,
+      "actual_start_spread_basis": "scheduled instants within a run, all honoured",
+      "scheduled_instants_per_run": {},
+      "distinct_whens": [],
+      "js_errors": [],
+      "label": "Stopped.",
+      "offsets": [],
+      "context_states": [
+        "closed"
+      ]
+    },
+    "metronome-on-clicks-stay-ahead-of-the-clock": {
+      "case": "metronome-on-clicks-stay-ahead-of-the-clock",
+      "contexts": 1,
+      "sources": 3,
+      "clicks_scheduled": 9,
+      "late_sources": 0,
+      "late_clicks": 0,
+      "worst_late_sec": -2.512,
+      "smallest_scheduling_margin_sec": 2.512,
+      "actual_start_spread_sec": 0.0,
+      "actual_start_spread_basis": "scheduled instants within a run, all honoured",
+      "scheduled_instants_per_run": {
+        "1": [
+          2.592
+        ]
+      },
+      "distinct_whens": [
+        2.592
+      ],
+      "js_errors": [],
+      "label": "Counting you in \u2014 everything starts together on beat 1.",
+      "offsets": [
+        0.0
+      ],
+      "context_states": [
+        "running"
+      ]
+    },
+    "align-zero-layers-together": {
+      "case": "align-zero-layers-together",
+      "contexts": 1,
+      "sources": 3,
+      "clicks_scheduled": 4,
+      "late_sources": 0,
+      "late_clicks": 0,
+      "worst_late_sec": -2.5199999999999996,
+      "smallest_scheduling_margin_sec": 2.5199999999999996,
+      "actual_start_spread_sec": 0.0,
+      "actual_start_spread_basis": "scheduled instants within a run, all honoured",
+      "scheduled_instants_per_run": {
+        "1": [
+          2.61067
+        ]
+      },
+      "distinct_whens": [
+        2.61067
+      ],
+      "js_errors": [],
+      "label": "Counting you in \u2014 everything starts together on beat 1.",
+      "offsets": [
+        0.0
+      ],
+      "context_states": [
+        "running"
+      ]
+    },
+    "align-positive-moves-the-start-later": {
+      "case": "align-positive-moves-the-start-later",
+      "contexts": 1,
+      "sources": 3,
+      "clicks_scheduled": 4,
+      "late_sources": 0,
+      "late_clicks": 0,
+      "worst_late_sec": -2.5199999999999996,
+      "smallest_scheduling_margin_sec": 2.5199999999999996,
+      "actual_start_spread_sec": 1.0,
+      "actual_start_spread_basis": "scheduled instants within a run, all honoured",
+      "scheduled_instants_per_run": {
+        "1": [
+          2.61067,
+          3.11067,
+          3.61067
+        ]
+      },
+      "distinct_whens": [
+        2.61067,
+        3.11067,
+        3.61067
+      ],
+      "js_errors": [],
+      "label": "Counting you in \u2014 everything starts together on beat 1.",
+      "offsets": [
+        0.0
+      ],
+      "context_states": [
+        "running"
+      ]
+    },
+    "align-negative-reads-into-the-take": {
+      "case": "align-negative-reads-into-the-take",
+      "contexts": 1,
+      "sources": 2,
+      "clicks_scheduled": 4,
+      "late_sources": 0,
+      "late_clicks": 0,
+      "worst_late_sec": -2.5199999999999996,
+      "smallest_scheduling_margin_sec": 2.5199999999999996,
+      "actual_start_spread_sec": 0.0,
+      "actual_start_spread_basis": "scheduled instants within a run, all honoured",
+      "scheduled_instants_per_run": {
+        "1": [
+          2.57067
+        ]
+      },
+      "distinct_whens": [
+        2.57067
+      ],
+      "js_errors": [],
+      "label": "Counting you in \u2014 everything starts together on beat 1.",
+      "offsets": [
+        0.0,
+        0.5
+      ],
+      "context_states": [
+        "running"
+      ]
+    }
+  }
+}

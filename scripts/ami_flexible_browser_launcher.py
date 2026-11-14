@@ -35,7 +35,7 @@ if args.evidence_dir:
             plan=warmup_plan.current(session_state)
             record={"run_id":args.run_id,"time_ns":time.time_ns(),"question":question,
                     "response":asdict(result[1]) if result[1] else None,
-                    "plan":copy.deepcopy(plan),"history":warmup_plan.history(session_state),"before_settings":before_settings,
+                    "fingering_context":copy.deepcopy(session_state.get("_ami_conv_fingering")),"plan":copy.deepcopy(plan),"history":warmup_plan.history(session_state),"before_settings":before_settings,
                     "settings":{k:session_state.get(k) for k in settings_keys}}
             args.evidence_dir.mkdir(parents=True,exist_ok=True)
             (args.evidence_dir/"last-submit.json").write_text(json.dumps(record,default=str,indent=2),encoding="utf-8")

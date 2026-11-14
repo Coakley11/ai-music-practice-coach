@@ -751,6 +751,10 @@ def initial_items(spec: dict[str, Any]) -> None:
 
 def _ordered(spec: dict[str, Any]) -> list[dict[str, Any]]:
     """Exercises in a sensible order: tone first, then fingers, then the mouth, then the harder shapes; a family's variants stay in sequence."""
+    if spec.get("sax", {}).get("jazz_kind")=="plan":
+        families=["guide_tones","chord_tones","approach_notes"]
+        groups={f:[d for d in spec["items"] if d["family"]==f] for f in families}
+        return [groups[f][i] for i in range(max((len(v) for v in groups.values()),default=0)) for f in families if i<len(groups[f])]
     rank = {"long_tones": 0, "scale": 1, "guide_tones": 2, "chord_tones": 2.5, "approach_notes": 2.8, "intervals": 3, "articulation": 4}
     pref = spec.get("order_pref") or []
     if pref:                                   # the musician named the exercises in an order: keep it
@@ -793,6 +797,10 @@ def build_item(player: we.Player, spec: dict[str, Any], desc: dict[str, Any]) ->
     if spec.get("sax") and desc.get("sax_snapshot"):
         from music_coach_ami.sax_conversation import restore
         built = restore(desc["sax_snapshot"])
+    elif spec.get("sax", {}).get("jazz") and fam in SONG_FAMILIES:
+        from music_coach_ami import jazz_engine, jazz_patterns
+        sel=spec["song_sel"]
+        built=jazz_engine.build(player,level,spec["song"],sel["section"],tuple(sel["bars"]) if sel.get("bars") else None,jazz_patterns.item_options(spec,desc))
     elif spec.get("sax", {}).get("chart_intervals") and fam in SONG_FAMILIES:
         from music_coach_ami import sax_chart_intervals as sci
         sel = spec["song_sel"]
@@ -829,7 +837,7 @@ def build_item(player: we.Player, spec: dict[str, Any], desc: dict[str, Any]) ->
         built = we.BUILDERS[fam](player, level, tonic, tonality, **kwargs)
     if player.key in ("soprano","alto","tenor","baritone") and spec.get("sax"):
         from music_coach_ami import sax_technique
-        if fam in SONG_FAMILIES and not desc.get("sax_snapshot"):
+        if fam in SONG_FAMILIES and not desc.get("sax_snapshot") and not built.meta.get("jazz"):
             built=sax_technique.decorate(built,spec["sax"])
     if player.key == "bass":
         from music_coach_ami.bass_technique import certify
@@ -842,7 +850,10 @@ def build_item(player: we.Player, spec: dict[str, Any], desc: dict[str, Any]) ->
     bpm = int(desc.get("tempo") or round(built.bpm * scale))
     bpm = max(36, min(160, bpm))
     abc, diag = we.render(player, built, tonic, tonality, title=built.title, bpm=bpm)
-    if built.meta.get("sax_chart"):
+    if built.meta.get("jazz"):
+        from music_coach_ami import jazz_engine
+        checks=jazz_engine.verify(player,level,built,diag,spec["song"])
+    elif built.meta.get("sax_chart"):
         from music_coach_ami import sax_chart_intervals as sci
         checks = sci.verify(player, level, built, diag, spec["song"])
     else:
@@ -927,7 +938,7 @@ def build_plan(player: we.Player, spec: dict[str, Any], *, replan: bool = True) 
             spec["items"] = [d for d in spec["items"] if d["uid"] != desc["uid"]]
             notes.append(f"Left out {we.FAMILY_LABEL[desc['family']].lower()} exercise ({why}).")
         if bad:
-            if spec.get("sax", {}).get("chart_intervals"):
+            if spec.get("sax", {}).get("chart_intervals") or spec.get("sax", {}).get("jazz"):
                 raise we.WarmupUnavailable("; ".join(why for _, why in bad))
             continue
         if not rows:
@@ -1179,6 +1190,9 @@ def _nav(plan: dict[str, Any], view: dict[str, Any]) -> dict[str, Any]:
 
 def _plan_response(plan: dict[str, Any], *, lead: str = "", changed: list[str] | None = None, kept: str = "", view: dict[str, Any] | None = None,
                    session_ref: Any = None, assumptions: list[str] | None = None, history_info: dict[str, Any] | None = None) -> CoachResponse:
+    if plan['spec'].get('fingering'):
+        from music_coach_ami.fingering_instructor import practice_response
+        return practice_response(plan, session_ref, lead)
     view = view or {"mode": "plan", "index": 0}
     gap = plan["gap_seconds"]
     steps: list[str] = ["**Practice**"]

@@ -33,6 +33,7 @@ def build(player, level, song, section, bars, options):
     segs, first, last = ws.build_timeline(song, section, bars, player.offset, player.semitones)
     from music_coach_ami.flexible_single import _window
     lo, hi = _window(player, level, options.get('register', 'middle'))
+    cycle = options.get('interval_cycle') or [options['interval']]
     interval = options['interval']; approach = options.get('chart_approach', False)
     unit = Fraction(1, 4) if level == 'Advanced' else Fraction(1, 2) if level == 'Intermediate' else Fraction(1)
     if options.get('rhythm'):
@@ -47,6 +48,7 @@ def build(player, level, song, section, bars, options):
         if seg.beats % cell:
             raise we.WarmupUnavailable(f'{seg.chord}, bar {seg.src_bar}: that rhythm does not fit its exact harmonic duration')
         for k in range(int(seg.beats / cell)):
+            interval=cycle[len(pairs)%len(cycle)]
             direction = options.get('direction', 'ascending')
             if direction == 'alternating': direction = 'descending' if len(pairs) % 2 else 'ascending'
             choices = candidates(seg, lo, hi, interval, direction)
@@ -80,6 +82,7 @@ def build(player, level, song, section, bars, options):
                                 'written_chord': seg.info['symbol_written'], 'name': name, 'midi': m, 'role': role})
             previous = values[-1][0]; previous_pair = (a, b)
     if not notes: raise we.WarmupUnavailable('the selected chart has no interval cells')
+    interval=' and '.join(cycle)
     how = [f'Play {interval} as chord-tone pairs on each actual chart chord. The connections between pairs follow the changing harmony and need not be {interval}.',
            'Chord symbols above the staff are written for this saxophone. Changes occur at the chart beat, including split measures.']
     if approach: how.append('After each interval pair, a non-chord chromatic neighbour resolves by one semitone to the first chord tone of that cell; this is an in-chord approach, not an anticipation of the next chord.')

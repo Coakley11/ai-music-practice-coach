@@ -72,6 +72,8 @@ def stage_routed_music_coach_insight(
         insight["notation_abc_sections"] = [str(insight["notation_abc"])]
     tabs=(getattr(coach_resp,"diagnostics",None) or {}).get("bass_tab_sections")
     if tabs:insight["bass_tab_sections"]=tabs
+    fingerings=(getattr(coach_resp,"diagnostics",None) or {}).get("fingering_instruction")
+    if fingerings:insight["fingering_instruction"]=fingerings
     nav = (getattr(coach_resp, "diagnostics", None) or {}).get("warmup_nav")
     if isinstance(nav, dict) and nav.get("count"):
         insight["warmup_nav"] = nav   # the card's "Next exercise" / "Whole warmup" buttons (a view change, never a new warmup)

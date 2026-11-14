@@ -1,0 +1,102 @@
+picked Let It Be dropdown=True landed=True sidebar_song='SONG\n\nSONG\nLet It Be — The Beatles\n\n🎼 Songs\n\nLet It Be · Rock\n\n📜 Song Original Key: C\n\n🗝️ '
+on multitrack: True
+== testid census (audio/slider/select related) ==
+   stAudio: 5
+   stAudioInput: 6
+   stAudioInputActionButton: 6
+   stAudioInputWaveSurfer: 6
+   stAudioInputWaveformTimeCode: 6
+   stCheckbox: 17
+   stExpander: 9
+   stExpanderDetails: 9
+   stSelectbox: 12
+   stSlider: 15
+   stSliderThumbValue: 15
+   stSliderTickBar: 15
+   stWidgetLabel: 66
+
+== selectboxes ==
+   [0] innerText='🗝️ Practice / Concert Key'
+        selText=None input='C' single=None
+        cls='stSelectbox'
+   [1] innerText='Instrument'
+        selText=None input='Piano' single=None
+        cls='stSelectbox'
+   [2] innerText='📈 Level'
+        selText=None input='🚀 Intermediate' single=None
+        cls='stSelectbox'
+   [3] innerText='🔍 Practice focus'
+        selText=None input='Voicings' single=None
+        cls='stSelectbox'
+   [4] innerText='✨ Groove / feel'
+        selText=None input='Auto' single=None
+        cls='stSelectbox'
+   [5] innerText='Count-in'
+        selText=None input='None' single=None
+        cls='stSelectbox'
+   [6] innerText='Chart this layer for'
+        selText=None input='Guitar' single=None
+        cls='stSelectbox'
+   [7] innerText=''
+        selText=None input='Bass' single=None
+        cls='stSelectbox'
+   [8] innerText=''
+        selText=None input='Piano' single=None
+        cls='stSelectbox'
+   [9] innerText='Chart this layer for'
+        selText=None input='Voice' single=None
+        cls='stSelectbox'
+   [10] innerText='Chart this layer for'
+        selText=None input='Alto saxophone (Eb)' single=None
+        cls='stSelectbox'
+   [11] innerText='Chart this layer for'
+        selText=None input='Piano' single=None
+        cls='stSelectbox'
+
+== guitar layer sliders ==
+{
+  "found": true,
+  "sliders": [],
+  "roleSliders": 0,
+  "testids": {
+    "stIconMaterial": 2,
+    "stMarkdownContainer": 18,
+    "stExpanderDetails": 1,
+    "stVerticalBlock": 6,
+    "stLayoutWrapper": 2,
+    "stHorizontalBlock": 2,
+    "stColumn": 5,
+    "stElementContainer": 14,
+    "stTextInput": 1,
+    "stWidgetLabel": 8,
+    "stTextInputRootElement": 1,
+    "stSelectbox": 1,
+    "stTooltipIcon": 5,
+    "stTooltipHoverTarget": 5,
+    "stFileUploader": 1,
+    "stFileUploaderDropzone": 1,
+    "stFileUploaderDropzoneInput": 1,
+    "stFileChips": 1,
+    "stFileChip": 1,
+    "stFileChipName": 1,
+    "stFileChipDeleteBtn": 1,
+    "stBaseButton-minimal": 1,
+    "stBaseButton-borderlessIcon": 1,
+    "stAudioInput": 1,
+    "stElementToolbar": 1,
+    "stElementToolbarButtonContainer": 1,
+    "stAudioInputActionButton": 1,
+    "stAudioInputWaveSurfer": 1,
+    "stAudioInputWaveformTimeCode": 1,
+    "stMarkdown": 2,
+    "stCaptionContainer": 2,
+    "stButton": 2,
+    "stBaseButton-secondary": 3,
+    "stSlider": 2,
+    "stSliderThumbValue": 2,
+    "stSliderTickBar": 2,
+    "stCheckbox": 2,
+    "stIFrame": 1,
+    "stAudio": 1
+  }
+}

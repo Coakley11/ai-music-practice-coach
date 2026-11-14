@@ -1,0 +1,277 @@
+{
+  "frames": [
+    "http://127.0.0.1:8590/",
+    "about:srcdoc",
+    "about:srcdoc",
+    "about:srcdoc",
+    "about:srcdoc",
+    "about:srcdoc",
+    "about:srcdoc",
+    "about:srcdoc"
+  ],
+  "play_clicked_wall": 1794571842354.2,
+  "transport_events": [
+    {
+      "wall": 1794571842369.3,
+      "href": "about:srcdoc",
+      "kind": "audioctx_new",
+      "label": "AudioContext",
+      "sampleRate": 48000,
+      "baseLatency": 0.01,
+      "outputLatency": 0,
+      "currentTime": 0,
+      "_frame": "iframe"
+    },
+    {
+      "wall": 1794571842373.9,
+      "href": "about:srcdoc",
+      "kind": "osc_start",
+      "when": 0,
+      "ctx_now": 0,
+      "freq": 1180,
+      "_frame": "iframe"
+    },
+    {
+      "wall": 1794571842374,
+      "href": "about:srcdoc",
+      "kind": "osc_start",
+      "when": 0.6,
+      "ctx_now": 0,
+      "freq": 760,
+      "_frame": "iframe"
+    },
+    {
+      "wall": 1794571842374,
+      "href": "about:srcdoc",
+      "kind": "osc_start",
+      "when": 1.2,
+      "ctx_now": 0,
+      "freq": 760,
+      "_frame": "iframe"
+    },
+    {
+      "wall": 1794571842374.0999,
+      "href": "about:srcdoc",
+      "kind": "osc_start",
+      "when": 1.7999999999999998,
+      "ctx_now": 0,
+      "freq": 760,
+      "_frame": "iframe"
+    },
+    {
+      "wall": 1794571843358,
+      "href": "about:srcdoc",
+      "kind": "decode",
+      "bytes": 15329204,
+      "wall_ms": 506.800048828125,
+      "ctx_before": 0.032,
+      "ctx_after": 0.5413333333333333,
+      "buffer_sec": 173.8,
+      "buffer_sr": 48000,
+      "_frame": "iframe"
+    },
+    {
+      "wall": 1794571843359.8,
+      "href": "about:srcdoc",
+      "kind": "bufsrc_start",
+      "when": 2.4,
+      "ctx_now": 0.5413333333333333,
+      "late_by": -1.8586666666666667,
+      "buffer_sec": 173.8,
+      "buffer_sr": 48000,
+      "loop": true,
+      "_frame": "iframe"
+    },
+    {
+      "wall": 1794571843393.2,
+      "href": "about:srcdoc",
+      "kind": "decode",
+      "bytes": 529244,
+      "wall_ms": 18.60009765625,
+      "ctx_before": 0.552,
+      "ctx_after": 0.5706666666666667,
+      "buffer_sec": 6,
+      "buffer_sr": 48000,
+      "_frame": "iframe"
+    },
+    {
+      "wall": 1794571843393.4,
+      "href": "about:srcdoc",
+      "kind": "bufsrc_start",
+      "when": 2.4,
+      "ctx_now": 0.5706666666666667,
+      "late_by": -1.8293333333333333,
+      "buffer_sec": 6,
+      "buffer_sr": 48000,
+      "loop": false,
+      "_frame": "iframe"
+    },
+    {
+      "wall": 1794571843422.4,
+      "href": "about:srcdoc",
+      "kind": "decode",
+      "bytes": 529244,
+      "wall_ms": 13.599853515625,
+      "ctx_before": 0.592,
+      "ctx_after": 0.6,
+      "buffer_sec": 6,
+      "buffer_sr": 48000,
+      "_frame": "iframe"
+    },
+    {
+      "wall": 1794571843422.5,
+      "href": "about:srcdoc",
+      "kind": "bufsrc_start",
+      "when": 2.4,
+      "ctx_now": 0.6,
+      "late_by": -1.7999999999999998,
+      "buffer_sec": 6,
+      "buffer_sr": 48000,
+      "loop": false,
+      "_frame": "iframe"
+    },
+    {
+      "wall": 1794571843448.4,
+      "href": "about:srcdoc",
+      "kind": "decode",
+      "bytes": 529244,
+      "wall_ms": 12.5,
+      "ctx_before": 0.6106666666666667,
+      "ctx_after": 0.632,
+      "buffer_sec": 6,
+      "buffer_sr": 48000,
+      "_frame": "iframe"
+    },
+    {
+      "wall": 1794571843448.5,
+      "href": "about:srcdoc",
+      "kind": "bufsrc_start",
+      "when": 2.4,
+      "ctx_now": 0.632,
+      "late_by": -1.7679999999999998,
+      "buffer_sec": 6,
+      "buffer_sr": 48000,
+      "loop": false,
+      "_frame": "iframe"
+    }
+  ],
+  "late_sources": [],
+  "gum_request": [
+    {
+      "wall": 1794571857178.5999,
+      "href": "http://127.0.0.1:8590/",
+      "kind": "gum_request",
+      "constraints": {
+        "audio": {
+          "sampleRate": {
+            "ideal": 48000
+          },
+          "echoCancellation": false,
+          "noiseSuppression": false,
+          "autoGainControl": false,
+          "voiceIsolation": false
+        }
+      },
+      "_frame": "main"
+    }
+  ],
+  "gum_settings": [
+    {
+      "wall": 1794571857196.4,
+      "href": "http://127.0.0.1:8590/",
+      "kind": "gum_settings",
+      "settings": {
+        "autoGainControl": false,
+        "channelCount": 2,
+        "deviceId": "default",
+        "echoCancellation": false,
+        "groupId": "bf96ecafc58d52990651923dfcb5cbc8b38824a69b48cd46112fe7ea17acefd8",
+        "latency": 0.01,
+        "noiseSuppression": false,
+        "sampleRate": 44100,
+        "sampleSize": 16,
+        "voiceIsolation": false
+      },
+      "_frame": "main"
+    }
+  ],
+  "mediarecorder_start": [
+    {
+      "wall": 1794571857215.5,
+      "href": "http://127.0.0.1:8590/",
+      "kind": "mediarecorder_start",
+      "mimeType": "audio/webm",
+      "audioBitsPerSecond": 128000,
+      "_frame": "main"
+    }
+  ],
+  "iframe_attrs": [
+    {
+      "allow": "accelerometer; ambient-light-sensor; autoplay; battery; camera; clipboard-write; document-domain; encrypted-media; fullscreen; geolocation; gyroscope; layout-animations; legacy-image-formats; magnetometer; microphone; midi; oversized-images; payment; picture-in-picture; publickey-credentials-get; sync-xhr; usb; vr ; wake-lock; xr-spatial-tracking",
+      "sandbox": "allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox allow-same-origin allow-scripts allow-downloads",
+      "srcdoc": true,
+      "src": ""
+    },
+    {
+      "allow": "accelerometer; ambient-light-sensor; autoplay; battery; camera; clipboard-write; document-domain; encrypted-media; fullscreen; geolocation; gyroscope; layout-animations; legacy-image-formats; magnetometer; microphone; midi; oversized-images; payment; picture-in-picture; publickey-credentials-get; sync-xhr; usb; vr ; wake-lock; xr-spatial-tracking",
+      "sandbox": "allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox allow-same-origin allow-scripts allow-downloads",
+      "srcdoc": true,
+      "src": ""
+    },
+    {
+      "allow": "accelerometer; ambient-light-sensor; autoplay; battery; camera; clipboard-write; document-domain; encrypted-media; fullscreen; geolocation; gyroscope; layout-animations; legacy-image-formats; magnetometer; microphone; midi; oversized-images; payment; picture-in-picture; publickey-credentials-get; sync-xhr; usb; vr ; wake-lock; xr-spatial-tracking",
+      "sandbox": "allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox allow-same-origin allow-scripts allow-downloads",
+      "srcdoc": true,
+      "src": ""
+    },
+    {
+      "allow": "accelerometer; ambient-light-sensor; autoplay; battery; camera; clipboard-write; document-domain; encrypted-media; fullscreen; geolocation; gyroscope; layout-animations; legacy-image-formats; magnetometer; microphone; midi; oversized-images; payment; picture-in-picture; publickey-credentials-get; sync-xhr; usb; vr ; wake-lock; xr-spatial-tracking",
+      "sandbox": "allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox allow-same-origin allow-scripts allow-downloads",
+      "srcdoc": true,
+      "src": ""
+    },
+    {
+      "allow": "accelerometer; ambient-light-sensor; autoplay; battery; camera; clipboard-write; document-domain; encrypted-media; fullscreen; geolocation; gyroscope; layout-animations; legacy-image-formats; magnetometer; microphone; midi; oversized-images; payment; picture-in-picture; publickey-credentials-get; sync-xhr; usb; vr ; wake-lock; xr-spatial-tracking",
+      "sandbox": "allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox allow-same-origin allow-scripts allow-downloads",
+      "srcdoc": true,
+      "src": ""
+    },
+    {
+      "allow": "accelerometer; ambient-light-sensor; autoplay; battery; camera; clipboard-write; document-domain; encrypted-media; fullscreen; geolocation; gyroscope; layout-animations; legacy-image-formats; magnetometer; microphone; midi; oversized-images; payment; picture-in-picture; publickey-credentials-get; sync-xhr; usb; vr ; wake-lock; xr-spatial-tracking",
+      "sandbox": "allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox allow-same-origin allow-scripts allow-downloads",
+      "srcdoc": true,
+      "src": ""
+    },
+    {
+      "allow": "accelerometer; ambient-light-sensor; autoplay; battery; camera; clipboard-write; document-domain; encrypted-media; fullscreen; geolocation; gyroscope; layout-animations; legacy-image-formats; magnetometer; microphone; midi; oversized-images; payment; picture-in-picture; publickey-credentials-get; sync-xhr; usb; vr ; wake-lock; xr-spatial-tracking",
+      "sandbox": "allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox allow-same-origin allow-scripts allow-downloads",
+      "srcdoc": true,
+      "src": ""
+    }
+  ],
+  "iframe_capture": {
+    "secureContext": true,
+    "origin": "null",
+    "hasMD": true,
+    "granted": true,
+    "settings": {
+      "autoGainControl": false,
+      "channelCount": 2,
+      "deviceId": "default",
+      "echoCancellation": false,
+      "groupId": "451519fa0fdc8bfa229cc3076a35854c3d7d96890271a04f3cbc07e3620827fb",
+      "latency": 0.01,
+      "noiseSuppression": false,
+      "sampleRate": 44100,
+      "sampleSize": 16,
+      "voiceIsolation": false
+    },
+    "ctxSampleRate": 48000,
+    "sourceNodeOnSameContext": true,
+    "ctxCurrentTime": 0,
+    "ctxBaseLatency": 0.01,
+    "ctxOutputLatency": 0,
+    "mediaRecorderOpus": true,
+    "hasAudioWorklet": true
+  }
+}

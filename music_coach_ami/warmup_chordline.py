@@ -452,7 +452,9 @@ def _dir_word(direction: str, shape: str) -> str:
 
 
 def build_approach(player: we.Player, level: str, song: dict[str, Any], section: str, bars: tuple[int, int] | None, *, kind: str, target: str, smooth: bool = False,
-                   loop: bool = True) -> we.Built:
+                   loop: bool = True, allow_chord_neighbors: bool = False) -> we.Built:
+    # The jazz wrapper labels chord-tone neighbours individually and supplies its
+    # own event-function verifier. Ordinary callers keep the strict non-chord policy.
     segs, good, b_lo, b_hi, share, lo, hi = _prepare(player, level, song, section, bars, "approach-note")
     key = sph.practice_key_scale(song.get("practice_key"), song.get("original_key"))
     m = len(good)
@@ -499,7 +501,7 @@ def build_approach(player: we.Player, level: str, song: dict[str, Any], section:
                 how_found = how_found or ("" if d else "the scale reader had no scale for this chord, so a chromatic approach stands in")
             for k_alt, off in enumerate(opts):
                 pcs = [(tone.pc + o) % 12 for o in off]
-                if any(pc in prev_pcs or pc in t_pcs for pc in pcs):
+                if not allow_chord_neighbors and any(pc in prev_pcs or pc in t_pcs for pc in pcs):
                     continue                                   # a neighbour that is itself a chord tone is not an approach
                 if any(near_name(tone.name, o) is None for o in off):
                     continue

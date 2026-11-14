@@ -1,0 +1,129 @@
+{
+  "gates": {
+    "app boots": true,
+    "Multitrack page opens": true,
+    "three layers staged": true,
+    "no layer scheduled in the past": true,
+    "every layer shares one scheduled instant": true,
+    "sax / winds can be muted": true,
+    "extra layer can be muted": true,
+    "Align reads back as +0.50": true,
+    "transport applies buffer offset 0.00s": true,
+    "exported mix can be read back": true,
+    "exported transient is at 1.50s as the contract says": true,
+    "preview and export agree on the position": true,
+    "Align reads back as -0.50": true,
+    "transport applies buffer offset 0.50s": true,
+    "exported transient is at 0.50s as the contract says": true,
+    "Align reads back as +0.00": true,
+    "exported transient is at 1.00s as the contract says": true,
+    "the layer's own audio can be read back": true,
+    "the stored take still has its full length": true,
+    "the stored take's transient is where it was recorded": true,
+    "the panel names this the Original Take Preview": true,
+    "the panel says the preview is never altered": true,
+    "the panel says playback and export match each other": true,
+    "390px :: no horizontal page scroll": true,
+    "390px :: the page still renders": true,
+    "390px :: the Align wording is present": true,
+    "360px :: no horizontal page scroll": true,
+    "360px :: the page still renders": true,
+    "360px :: the Align wording is present": true,
+    "no uncaught JS errors on the page": true
+  },
+  "passed": 30,
+  "total": 30,
+  "failed": [],
+  "measured": {
+    "three_layers": {
+      "sources": 4,
+      "clicks": 4,
+      "worst_late_sec": -2.5199999999999996,
+      "smallest_margin_sec": 2.5199999999999996,
+      "whens": [
+        3.28
+      ],
+      "offsets": [
+        0.0
+      ],
+      "label": "Counting you in \u2014 everything starts together on beat 1."
+    },
+    "transport_at_0.5": {
+      "sources": 2,
+      "clicks": 4,
+      "worst_late_sec": -2.52,
+      "smallest_margin_sec": 2.52,
+      "whens": [
+        3.032,
+        3.532
+      ],
+      "offsets": [
+        0.0
+      ],
+      "label": "Counting you in \u2014 everything starts together on beat 1."
+    },
+    "export_at_0.5": {
+      "bytes": 573344,
+      "channels": 1,
+      "sample_rate": 44100,
+      "duration_sec": 6.5,
+      "peak_abs": 31128,
+      "peak_sec": 1.5
+    },
+    "agreement_ms_at_0.5": 0.0,
+    "transport_at_-0.5": {
+      "sources": 2,
+      "clicks": 4,
+      "worst_late_sec": -2.5199999999999996,
+      "smallest_margin_sec": 2.5199999999999996,
+      "whens": [
+        3.01067
+      ],
+      "offsets": [
+        0.0,
+        0.5
+      ],
+      "label": "Counting you in \u2014 everything starts together on beat 1."
+    },
+    "export_at_-0.5": {
+      "bytes": 485144,
+      "channels": 1,
+      "sample_rate": 44100,
+      "duration_sec": 5.5,
+      "peak_abs": 31128,
+      "peak_sec": 0.5
+    },
+    "agreement_ms_at_-0.5": 0.00333333333379926,
+    "transport_at_0.0": {
+      "sources": 2,
+      "clicks": 4,
+      "worst_late_sec": -2.5199999999999996,
+      "smallest_margin_sec": 2.5199999999999996,
+      "whens": [
+        3.57067
+      ],
+      "offsets": [
+        0.0
+      ],
+      "label": "Counting you in \u2014 everything starts together on beat 1."
+    },
+    "export_at_0.0": {
+      "bytes": 529244,
+      "channels": 1,
+      "sample_rate": 44100,
+      "duration_sec": 6.0,
+      "peak_abs": 31128,
+      "peak_sec": 1.0
+    },
+    "agreement_ms_at_0.0": 0.0033333333333551707,
+    "dry_take": {
+      "bytes": 529244,
+      "channels": 1,
+      "sample_rate": 44100,
+      "duration_sec": 6.0,
+      "peak_abs": 32000,
+      "peak_sec": 1.0
+    }
+  },
+  "js_errors": []
+}
