@@ -14,6 +14,7 @@ def context(session):
     return copy.deepcopy(v) if is_owned(v,session) else {}
 
 def remember(session,ids=(),recipe=None):
+    session.pop('_ami_conv_flute_fingering',None)
     session.pop('_ami_conv_fingering',None);session.pop('_ami_conv_trumpet_fingering',None)
     session[STATE]=stamp({'model':data.MODEL,'instrument':'clarinet','notes':list(ids),'recipe':copy.deepcopy(recipe)},session)
 

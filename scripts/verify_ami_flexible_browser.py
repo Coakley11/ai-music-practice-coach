@@ -33,6 +33,7 @@ parser.add_argument("--fingering-only",action="store_true")
 parser.add_argument("--fingering-b-only",action="store_true")
 parser.add_argument("--trumpet-fingering-only",action="store_true")
 parser.add_argument("--clarinet-fingering-only",action="store_true")
+parser.add_argument("--flute-fingering-only",action="store_true")
 parser.add_argument("--mobile",action="store_true")
 args=parser.parse_args()
 OUT=args.out.resolve();OUT.mkdir(parents=True,exist_ok=True)
@@ -207,7 +208,10 @@ try:
             page.get_by_test_id("stMainBlockContainer").get_by_role("textbox",name="Question",exact=True).wait_for(timeout=90000)
             idle(page)
             (OUT/"practice-start.txt").write_text(page.locator("body").inner_text(),encoding="utf-8")
-            if args.clarinet_fingering_only:
+            if args.flute_fingering_only:
+                from ami_flute_fingering_browser_cases import run as run_flute_fingering
+                run_flute_fingering(page,request,select,OUT)
+            elif args.clarinet_fingering_only:
                 from ami_clarinet_fingering_browser_cases import run
                 run(page,request,select,OUT)
             elif args.trumpet_fingering_only:
