@@ -34,6 +34,11 @@ PRACTICE_TUNER_UI_MODE_KEY = "practice_tuner_ui_mode"
 
 PRACTICE_TONE_PITCH_CLASS_KEY = "practice_tone_pitch_class"
 PRACTICE_TONE_OCTAVE_KEY = "practice_tone_octave"
+#: Whether the stored octave is a decision or a leftover. Until the Tone Sustain panel had an
+#: octave selector, ``practice_tone_octave`` held the app's own assumption (4) and no musician had
+#: ever chosen it - so acting on it as a choice is what compared a flute E5 against E4. "any" means
+#: the pitch-class contract; "specific" means the stored octave was really chosen.
+PRACTICE_TONE_OCTAVE_MODE_KEY = "practice_tone_octave_mode"
 PRACTICE_TONE_REFERENCE_PITCH_KEY = "practice_tone_reference_pitch"
 
 TIME_PITCH_MODE_METRONOME = "metronome"
@@ -197,6 +202,8 @@ def gather_practice_workspace_from_session(session: dict[str, Any]) -> dict[str,
     ).strip()
     try:
         tone["octave"] = int(session.get(PRACTICE_TONE_OCTAVE_KEY) or tone.get("octave") or 4)
+        mode = str(session.get(PRACTICE_TONE_OCTAVE_MODE_KEY) or tone.get("octave_mode") or "").strip()
+        tone["octave_mode"] = mode if mode in ("any", "specific") else "any"
     except (TypeError, ValueError):
         tone["octave"] = 4
     try:
@@ -389,6 +396,11 @@ def project_practice_workspace_to_session(session: dict[str, Any], *, overwrite:
         session[PRACTICE_TONE_PITCH_CLASS_KEY] = str(tone.get("pitch_class") or "A")
     if overwrite or PRACTICE_TONE_OCTAVE_KEY not in session:
         session[PRACTICE_TONE_OCTAVE_KEY] = int(tone.get("octave") or 4)
+    if overwrite or PRACTICE_TONE_OCTAVE_MODE_KEY not in session:
+        stored_mode = str(tone.get("octave_mode") or "").strip()
+        session[PRACTICE_TONE_OCTAVE_MODE_KEY] = (
+            stored_mode if stored_mode in ("any", "specific") else "any"
+        )
     if overwrite or PRACTICE_TONE_REFERENCE_PITCH_KEY not in session:
         session[PRACTICE_TONE_REFERENCE_PITCH_KEY] = int(tone.get("reference_pitch") or 440)
 

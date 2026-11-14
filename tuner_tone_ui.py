@@ -60,6 +60,42 @@ def _pitch_class_storage_key(key_prefix: str) -> str:
     return f"{key_prefix}::tone_target_pitch_class"
 
 
+def _octave_storage_key(key_prefix: str) -> str:
+    return f"{key_prefix}::tone_target_octave"
+
+
+#: The octaves a practice long tone plausibly lives in, from a bass instrument's low register to a
+#: flute's or a soprano's top. Plus the deliberate pitch-class-only contract.
+ANY_OCTAVE_LABEL = "Any octave"
+TONE_OCTAVE_OPTIONS: tuple[str, ...] = (ANY_OCTAVE_LABEL, "2", "3", "4", "5", "6")
+
+
+def _get_persisted_octave_choice(session_state: dict, key_prefix: str) -> str:
+    """The octave contract this player last chose, defaulting to pitch-class-only.
+
+    Why "Any octave" is the default rather than 4: until this selector existed there was no way to
+    choose an octave, and the analysis simply assumed 4. A stored 4 therefore records an assumption
+    the app made, not a decision the musician took - and acting on it is what compared a flute's E5
+    against E4 and reported 1169 cents of being out of tune. A player who wants octave-specific
+    practice can now say so, and that choice is remembered.
+    """
+    raw = str(session_state.get(_octave_storage_key(key_prefix)) or "").strip()
+    if raw in TONE_OCTAVE_OPTIONS:
+        return raw
+    try:
+        from practice_workspace_persistence import PRACTICE_TONE_OCTAVE_MODE_KEY
+
+        mode = str(session_state.get(PRACTICE_TONE_OCTAVE_MODE_KEY) or "").strip()
+    except ImportError:
+        mode = ""
+    if mode == "specific":
+        stored = session_state.get("practice_tone_octave")
+        token = str(int(stored)) if isinstance(stored, (int, float)) else ""
+        if token in TONE_OCTAVE_OPTIONS:
+            return token
+    return ANY_OCTAVE_LABEL
+
+
 def _get_persisted_pitch_class(session_state: dict, key_prefix: str) -> str:
     raw = session_state.get(_pitch_class_storage_key(key_prefix))
     if raw in CHROMATIC_NOTE_OPTIONS:
@@ -92,13 +128,47 @@ def _render_tone_target_selector(
     except ValueError:
         default_index = 9
 
-    selected = st_module.selectbox(
-        "Target note",
-        CHROMATIC_NOTE_OPTIONS,
-        index=default_index,
-        key=f"{key_prefix}::tone_target_select",
-    )
+    default_octave_choice = _get_persisted_octave_choice(session_state, key_prefix)
+    try:
+        octave_index = TONE_OCTAVE_OPTIONS.index(default_octave_choice)
+    except ValueError:
+        octave_index = 0
+
+    note_col, oct_col = st_module.columns(2)
+    with note_col:
+        selected = st_module.selectbox(
+            "Target note",
+            CHROMATIC_NOTE_OPTIONS,
+            index=default_index,
+            key=f"{key_prefix}::tone_target_select",
+        )
+    with oct_col:
+        octave_choice = st_module.selectbox(
+            "Target octave",
+            TONE_OCTAVE_OPTIONS,
+            index=octave_index,
+            key=f"{key_prefix}::tone_target_octave_select",
+            help=(
+                "Pick an octave to practise one specific note, such as E5. "
+                "Choose Any octave to practise the note in whichever octave you play it - the "
+                "analysis then measures tuning against the octave you actually played."
+            ),
+        )
+    session_state[_octave_storage_key(key_prefix)] = octave_choice
     session_state[_pitch_class_storage_key(key_prefix)] = selected
+    try:
+        from practice_workspace_persistence import (
+            PRACTICE_TONE_OCTAVE_KEY,
+            PRACTICE_TONE_OCTAVE_MODE_KEY,
+        )
+
+        if octave_choice == ANY_OCTAVE_LABEL:
+            session_state[PRACTICE_TONE_OCTAVE_MODE_KEY] = "any"
+        else:
+            session_state[PRACTICE_TONE_OCTAVE_MODE_KEY] = "specific"
+            session_state[PRACTICE_TONE_OCTAVE_KEY] = int(octave_choice)
+    except ImportError:
+        pass
     try:
         from practice_workspace_persistence import (
             PRACTICE_TONE_PITCH_CLASS_KEY,
@@ -114,9 +184,23 @@ def _render_tone_target_selector(
         selected,
         transposing_type,
         is_transposing=transposing,
+        octave=None if octave_choice == ANY_OCTAVE_LABEL else int(octave_choice),
     )
     session_state[_target_storage_key(key_prefix)] = ctx.get("target_note")
     session_state[TUNER_TARGET_KEY] = ctx.get("target_note")
+    # Say the contract out loud. Which octave the analysis compares against is the difference
+    # between "31 cents flat" and "1169 cents sharp", so it must never be implicit again.
+    if ctx.get("pitch_class_only"):
+        st_module.caption(
+            f"Target: **any {html.escape(selected)}** - tuning is measured against the octave you "
+            "play."
+        )
+    else:
+        st_module.caption(
+            f"Target: **{html.escape(str(ctx.get('target_note') or selected))}** - a specific "
+            "octave. Playing a different octave is reported as an octave difference, not as being "
+            "out of tune."
+        )
 
     if transposing and ctx.get("display_written") and ctx.get("display_concert"):
         st_module.markdown(
@@ -453,19 +537,79 @@ def _render_tone_practice_result(
         )
         return
 
+    if not getattr(result, "measured", True):
+        # Not 0%. A measurement that could not be made is not a score of nothing.
+        st_module.warning(
+            f"**Not enough reliable pitch detected.** "
+            f"{html.escape(getattr(result, 'reason', '') or '')}"
+        )
+        st_module.caption(
+            f"Recorded {result.duration_sec:.1f}s · held sound found: "
+            f"{result.sustain_seconds:.1f}s · loudest level "
+            f"{getattr(result, 'peak_dbfs', 0.0):.0f} dBFS. "
+            "Nothing was scored, and nothing was saved as a score."
+        )
+        cache_pending_tone_take(
+            st_module.session_state,
+            result=result,
+            audio_bytes=audio_bytes,
+            target_note=ui_target_note or None,
+            meta={
+                "instrument": instrument,
+                "display_key": display_key,
+                "transposing_type": transposing_type,
+                "pitch_class_label": st_module.session_state.get(
+                    _pitch_class_storage_key(key_prefix),
+                    "",
+                ),
+            },
+        )
+        return
+
     c1, c2, c3 = st_module.columns(3)
     with c1:
-        st_module.metric("Pitch stability", f"{result.pitch_stability_score:.0f}%")
+        st_module.metric("Pitch stability", f"{result.pitch_stability_score:.0f}%",
+                         help="How steadily the pitch was held around its own centre. "
+                              "Being sharp or flat does not change this.")
+        st_module.caption(f"moved ±{getattr(result, 'pitch_spread_cents', 0.0):.0f}¢")
     with c2:
-        st_module.metric("Volume consistency", f"{result.volume_stability_score:.0f}%")
+        st_module.metric("Volume consistency", f"{result.volume_stability_score:.0f}%",
+                         help="How evenly the sound was sustained, after allowing for an "
+                              "intentional crescendo or decrescendo. Loudness itself is not scored.")
+        st_module.caption(f"wavered ±{getattr(result, 'volume_fluctuation_db', 0.0):.1f} dB")
     with c3:
-        st_module.metric("Sustain", f"{result.sustain_seconds:.1f}s")
+        st_module.metric("Sustain", f"{result.sustain_seconds:.1f}s",
+                         help="How much usable sustained sound was found, with the attack and "
+                              "release trimmed off.")
+        st_module.caption(f"of a {result.duration_sec:.1f}s recording")
 
-    st_module.markdown(
-        f"**Detected center:** {html.escape(result.median_note)} · "
-        f"**Mean offset:** {result.mean_cents:+.0f}¢ · "
-        f"**Clip:** {result.duration_sec:.1f}s"
-    )
+    detected = html.escape(getattr(result, "detected_note", "") or result.median_note)
+    tuning = getattr(result, "tuning_offset_cents", None)
+    octave_semitones = int(getattr(result, "octave_offset_semitones", 0) or 0)
+    bits = [f"**Detected note:** {detected}"]
+    if tuning is not None:
+        bits.append(f"**Tuning offset:** {tuning:+.0f}¢ from {detected}")
+    if octave_semitones:
+        octaves = abs(octave_semitones) // 12
+        where = "above" if octave_semitones > 0 else "below"
+        bits.append(
+            f"**Octave:** {octaves} octave{'s' if octaves != 1 else ''} {where} the reference "
+            f"{html.escape(str(result.target_note or ''))}"
+        )
+    elif getattr(result, "target_is_pitch_class_only", False):
+        bits.append("**Octave:** any octave accepted")
+    bits.append(f"**Confidence:** {getattr(result, 'confidence', 0.0) * 100:.0f}%")
+    st_module.markdown(" · ".join(bits))
+    if octave_semitones:
+        # Rendered as markdown rather than st.info: this module deliberately contains no st.info
+        # (a test pins that, from an earlier cleanup of helper boxes in the tuner section).
+        st_module.markdown(
+            f"> **Octave difference, not a tuning error.** You played {detected}, which is "
+            f"{abs(octave_semitones) // 12} octave(s) away from the reference "
+            f"{html.escape(str(result.target_note or ''))}. The tuning offset above is measured "
+            "against the octave you played, so it describes your tuning rather than the octave. "
+            "Change **Target octave** if you meant to practise that other octave."
+        )
 
     if result.pitch_trace_hz and result.time_trace_sec:
         target_hz = None

@@ -298,10 +298,22 @@ def resolve_tone_target_from_pitch_class(
     *,
     is_transposing: bool,
     default_octave: int = DEFAULT_TONE_PRACTICE_OCTAVE,
+    octave: int | None = -1,
 ) -> dict[str, Any]:
-    """Map UI pitch-class selection to storage + analysis concert/written tokens."""
-    selected_token = pitch_class_option_to_token(pitch_class_label, octave=default_octave)
+    """Map the chosen target to storage and analysis tokens, with its octave contract stated.
+
+    ``octave`` is the musician's choice: an integer for octave-specific practice, ``None`` for the
+    deliberate pitch-class-only contract (any octave of that note counts, and tuning is measured
+    against the octave they played). The default of ``-1`` means "not specified by the caller", and
+    falls back to ``default_octave`` so that every existing caller behaves exactly as before.
+
+    The returned ``pitch_class_only`` flag is what lets the UI and the analyzer agree about which
+    contract is in force, instead of each assuming one.
+    """
+    specified = octave if octave != -1 else int(default_octave)
+    pitch_class_only = specified is None
     selected_pc = pitch_class_from_option(pitch_class_label)
+    selected_token = selected_pc if pitch_class_only else f"{selected_pc}{int(specified)}"
 
     if not is_transposing or not str(transposing_type or "").strip():
         return {
@@ -311,15 +323,34 @@ def resolve_tone_target_from_pitch_class(
             "concert_note": selected_token,
             "display_written": None,
             "display_concert": selected_pc,
+            "pitch_class_only": pitch_class_only,
+            "target_octave": None if pitch_class_only else int(specified),
         }
 
+    # A bare letter name cannot be transposed, so a pitch-class target is mapped through a
+    # reference octave and the octave is dropped again afterwards. The pitch class is what the
+    # contract is about; the reference octave never reaches the musician or the analyzer.
+    probe_token = (
+        f"{selected_pc}{int(DEFAULT_TONE_PRACTICE_OCTAVE)}" if pitch_class_only else selected_token
+    )
     _, written_note, concert_note = resolve_tone_note_context(
-        target_note=selected_token,
+        target_note=probe_token,
         detected_note=None,
         transposing_type=transposing_type,
     )
-    written_pc = _note_pitch_class(str(written_note or selected_token))
+    written_pc = _note_pitch_class(str(written_note or probe_token))
     concert_pc = _note_pitch_class(str(concert_note or ""))
+    if pitch_class_only:
+        return {
+            "target_note": written_pc or selected_pc,
+            "analysis_target_note": concert_pc or selected_pc,
+            "written_note": written_pc or selected_pc,
+            "concert_note": concert_pc or selected_pc,
+            "display_written": written_pc,
+            "display_concert": concert_pc,
+            "pitch_class_only": True,
+            "target_octave": None,
+        }
     return {
         "target_note": selected_token,
         "analysis_target_note": concert_note or selected_token,
@@ -327,6 +358,8 @@ def resolve_tone_target_from_pitch_class(
         "concert_note": concert_note,
         "display_written": written_pc,
         "display_concert": concert_pc,
+        "pitch_class_only": False,
+        "target_octave": int(specified),
     }
 
 
@@ -370,13 +403,35 @@ def resolve_tone_note_context(
 
 
 def tone_take_quality(row: dict[str, Any]) -> str:
-    score = float(row.get("pitch_stability_score") or 0)
+    """Rank a take, or say it was never measured.
+
+    A row with no pitch score used to rank as "needs_work", because ``float(None or 0)`` is 0.0 -
+    so a recording the analyzer could not read was filed as badly played. "unmeasured" is its own
+    answer, and the only honest one.
+    """
+    raw = row.get("pitch_stability_score")
+    if raw is None or str(row.get("analysis_status") or "").strip() == "insufficient":
+        return "unmeasured"
+    try:
+        score = float(raw)
+    except (TypeError, ValueError):
+        return "unmeasured"
     cents = abs(float(row.get("mean_cents") or 0))
     if score >= 78 and cents <= 10:
         return "best"
     if score < 55 or cents > 20:
         return "needs_work"
     return "steady"
+
+
+def tone_take_scoring_is_legacy(row: dict[str, Any]) -> bool:
+    """True when this row's numbers came from the pre-Issue-79 scoring.
+
+    Legacy rows are never recalculated and never rewritten: the audio may be gone, the old numbers
+    are what the musician saw at the time, and silently reinterpreting them under a new formula
+    would change their practice history without telling them.
+    """
+    return not str(row.get("scoring_version") or "").strip()
 
 
 def build_tone_take_fields(
@@ -435,11 +490,19 @@ def build_tone_take_fields(
     elif player_target:
         target_note = player_target
 
-    tone_consistency = round((result.pitch_stability_score + result.volume_stability_score) / 2.0, 1)
     coach = " · ".join(x.replace("**", "") for x in (result.feedback or [])[:4])
     mean_cents = round(result.mean_cents, 1)
-    pitch_score = round(result.pitch_stability_score, 1)
-    vol_score = round(result.volume_stability_score, 1)
+    pitch_raw = getattr(result, "pitch_stability_score", None)
+    vol_raw = getattr(result, "volume_stability_score", None)
+    pitch_score = None if pitch_raw is None else round(float(pitch_raw), 1)
+    vol_score = None if vol_raw is None else round(float(vol_raw), 1)
+    # An average of two numbers one of which does not exist is not a number.
+    tone_consistency = (
+        None
+        if (pitch_score is None or vol_score is None)
+        else round((pitch_score + vol_score) / 2.0, 1)
+    )
+    measured = str(getattr(result, "status", "measured") or "measured") == "measured"
 
     analysis_summary = {
         "pitch_stability_score": pitch_score,
@@ -452,6 +515,11 @@ def build_tone_take_fields(
         "sustain_seconds": round(result.sustain_seconds, 2),
         "tone_consistency_score": tone_consistency,
         "feedback": list(result.feedback or []),
+        "pitch_spread_cents": round(float(getattr(result, "pitch_spread_cents", 0.0) or 0.0), 2),
+        "volume_fluctuation_db": round(float(getattr(result, "volume_fluctuation_db", 0.0) or 0.0), 2),
+        "volume_trend_db": round(float(getattr(result, "volume_trend_db", 0.0) or 0.0), 2),
+        "confidence": round(float(getattr(result, "confidence", 0.0) or 0.0), 3),
+        "measurement": dict(getattr(result, "measurement", {}) or {}),
     }
 
     return {
@@ -481,6 +549,19 @@ def build_tone_take_fields(
         "coach_summary": coach[:500],
         "coach_report": coach[:500],
         "analysis_summary": analysis_summary,
+        # Which algorithm produced the numbers above. A row without this was measured by the
+        # pre-Issue-79 scoring and is shown as a legacy measurement rather than compared with these.
+        "scoring_version": str(getattr(result, "scoring_version", "") or ""),
+        "analysis_status": "measured" if measured else "insufficient",
+        "analysis_reason": str(getattr(result, "reason", "") or ""),
+        "tuning_offset_cents": getattr(result, "tuning_offset_cents", None),
+        "raw_offset_cents": getattr(result, "raw_offset_cents", None),
+        "octave_offset_semitones": int(getattr(result, "octave_offset_semitones", 0) or 0),
+        "target_is_pitch_class_only": bool(getattr(result, "target_is_pitch_class_only", False)),
+        "pitch_spread_cents": round(float(getattr(result, "pitch_spread_cents", 0.0) or 0.0), 2),
+        "volume_fluctuation_db": round(float(getattr(result, "volume_fluctuation_db", 0.0) or 0.0), 2),
+        "volume_trend_db": round(float(getattr(result, "volume_trend_db", 0.0) or 0.0), 2),
+        "detection_confidence": round(float(getattr(result, "confidence", 0.0) or 0.0), 3),
         "notes": str(notes or "").strip()[:2000],
         "user_notes": str(notes or "").strip()[:2000],
         "mime_type": "audio/wav",
@@ -654,10 +735,24 @@ def cache_pending_tone_take(
         "target_note": target_note,
         "mean_cents": result.mean_cents,
         "max_cents_drift": result.max_cents_drift,
+        # Left as None when the recording could not be measured: zero is a score, not a gap.
         "pitch_stability_score": result.pitch_stability_score,
         "volume_stability_score": result.volume_stability_score,
         "sustain_seconds": result.sustain_seconds,
         "feedback": list(result.feedback or []),
+        "status": getattr(result, "status", "measured"),
+        "reason": getattr(result, "reason", ""),
+        "scoring_version": getattr(result, "scoring_version", ""),
+        "detected_note": getattr(result, "detected_note", "") or result.median_note,
+        "tuning_offset_cents": getattr(result, "tuning_offset_cents", None),
+        "raw_offset_cents": getattr(result, "raw_offset_cents", None),
+        "octave_offset_semitones": getattr(result, "octave_offset_semitones", 0),
+        "target_is_pitch_class_only": getattr(result, "target_is_pitch_class_only", False),
+        "pitch_spread_cents": getattr(result, "pitch_spread_cents", 0.0),
+        "volume_fluctuation_db": getattr(result, "volume_fluctuation_db", 0.0),
+        "volume_trend_db": getattr(result, "volume_trend_db", 0.0),
+        "confidence": getattr(result, "confidence", 0.0),
+        "measurement": dict(getattr(result, "measurement", {}) or {}),
     }
     session_state[_PENDING_TONE_AUDIO_KEY] = bytes(audio_bytes)
     if meta:
@@ -701,16 +796,38 @@ def save_pending_tone_take(
     transposing_type = str(transposing_type or meta.get("transposing_type") or "").strip()
     selected_pitch_class = str(meta.get("pitch_class_label") or meta.get("selected_pitch_class") or "").strip()
 
+    def _score(value: Any) -> float | None:
+        """A stored score, or None. ``float(value or 0)`` is what turned "unknown" into "0%"."""
+        if value is None:
+            return None
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
+
     result = TonePracticeResult(
         duration_sec=float(raw.get("duration_sec") or 0),
         median_note=str(raw.get("median_note") or ""),
         target_note=raw.get("target_note"),
         mean_cents=float(raw.get("mean_cents") or 0),
         max_cents_drift=float(raw.get("max_cents_drift") or 0),
-        pitch_stability_score=float(raw.get("pitch_stability_score") or 0),
-        volume_stability_score=float(raw.get("volume_stability_score") or 0),
+        pitch_stability_score=_score(raw.get("pitch_stability_score")),
+        volume_stability_score=_score(raw.get("volume_stability_score")),
         sustain_seconds=float(raw.get("sustain_seconds") or 0),
         feedback=list(raw.get("feedback") or []),
+        status=str(raw.get("status") or "measured"),
+        reason=str(raw.get("reason") or ""),
+        scoring_version=str(raw.get("scoring_version") or ""),
+        detected_note=str(raw.get("detected_note") or raw.get("median_note") or ""),
+        tuning_offset_cents=_score(raw.get("tuning_offset_cents")),
+        raw_offset_cents=_score(raw.get("raw_offset_cents")),
+        octave_offset_semitones=int(raw.get("octave_offset_semitones") or 0),
+        target_is_pitch_class_only=bool(raw.get("target_is_pitch_class_only")),
+        pitch_spread_cents=float(raw.get("pitch_spread_cents") or 0.0),
+        volume_fluctuation_db=float(raw.get("volume_fluctuation_db") or 0.0),
+        volume_trend_db=float(raw.get("volume_trend_db") or 0.0),
+        confidence=float(raw.get("confidence") or 0.0),
+        measurement=dict(raw.get("measurement") or {}),
     )
     fields = build_tone_take_fields(
         session_state,
