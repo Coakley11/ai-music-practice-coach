@@ -106,6 +106,53 @@ zero-is-not-a-height rule, the re-measurement, the self-limiting fallback, the o
 its once-per-session memory — and that the harness itself still measures the iframe rather than its
 contents.
 
+## Measured
+
+Same harness, same ten states, three viewports, against the tree without the fix and with it.
+
+| state | before | after |
+|---|---|---|
+| desktop, fresh empty layer | **frame 4.0 px** | **103 px**, button 35 px, status visible |
+| desktop, after opening a collapsed layer | **4.0 px** | 103 px |
+| desktop, collapse and reopen | **4.0 px** | 103 px |
+| desktop, guitar / saxophone / flute | **4.0 px** each | 103 px each |
+| desktop, after a Streamlit rerun | **4.0 px** | 103 px |
+| 390 px / 360 px | 103 / 133 px once a re-render had been forced | 103 / 133 px from the start |
+| microphone denied | — | 122 px, button visible, refusal explained |
+| microphone unavailable | — | 122 px, button visible, browser limitation explained |
+| **gates** | **29 / 38** | **55 / 55** |
+
+A real touch tap through the frame starts recording ("Counting you in, then recording…", frame
+84 px with **■ Stop recording**), a second tap stops it, and the take lands.
+
+* 31 deterministic tests (`tests/test_issue78c_recorder_visibility.py`).
+* **Mission recorder compatibility: 161 tests pass** with the shared component changed —
+  `test_mission_music_capture`, `test_mc4_backing_handshake`, `test_mc4_generated_backing_recorder`,
+  the full 78B live-recorder contract and 78C's own suite.
+* **Matched regression vs `origin/dev` `f3d33016`, 277 shared files: 3858 test IDs both sides,
+  0 disappeared, 0 new, 0 outcome changes, 0 regressions** (83 failures identical on both and
+  pre-existing).
+
+### Three faults the acceptance found that the unit tests could not
+
+* **My own auto-open rule closed the layer it had just opened.** Deciding once per session meant
+  the next rerun re-applied `expanded=False`. Streamlit re-applies that value on every rerun, so
+  the control the musician had just been given closed itself. It now stays open on every render
+  while the project holds no audio at all, and stops once any layer has a take.
+* **A denied microphone showed the ready text.** The error was written and then painted over by the
+  following render. The component now remembers its last microphone failure until the next attempt.
+* **An unavailable microphone showed a raw `TypeError`.** The common failures are now named in
+  plain words, each offering the alternative that genuinely exists here: Upload.
+
+### And three in the harness, all the same family as the defect itself
+
+Scrolling and hit-testing in one `evaluate()` (a control below the fold read as "not hittable");
+`page.screenshot(clip=…)` taking page coordinates while `getBoundingClientRect()` returns viewport
+coordinates (the evidence photographs were offset by the scroll); and `elementFromPoint` arithmetic
+as the oracle, replaced by `frame_locator(...).tap()` so the browser's own actionability checks
+decide — they raise when a control cannot receive the event, which is the guarantee this acceptance
+is about.
+
 ## Deployed version — still unknown
 
 I have not obtained the runtime release SHA of the hosted app, so which build the phone was running
