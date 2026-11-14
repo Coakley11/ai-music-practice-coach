@@ -1,0 +1,188 @@
+{
+  "review": "Manual transcription of six visually inspected WFG basic rows and key legend; independent of future production mapping",
+  "model": "Yamaha YFL-222",
+  "configuration": {
+    "concert_key": "C",
+    "footjoint": "C",
+    "keys": "covered",
+    "G": "offset",
+    "split_E": false
+  },
+  "thumb_choice": "B-natural lever, primary choice permitted by T legend; Bb lever released",
+  "all_other_present_controls_released": [
+    "Bb_thumb",
+    "G_sharp",
+    "R3",
+    "Bb_trill",
+    "D_trill",
+    "Eb_trill",
+    "low_C_sharp",
+    "low_C"
+  ],
+  "absent_controls": [
+    "low_B",
+    "gizmo",
+    "C_sharp_trill",
+    "split_E"
+  ],
+  "notes": [
+    {
+      "id": "E4",
+      "written_midi": 64,
+      "concert_midi": 64,
+      "source_text": "T 123|12- Eb",
+      "source_page": "first",
+      "source_row": 7,
+      "pressed": [
+        "B_thumb",
+        "L1",
+        "L2",
+        "L3",
+        "R1",
+        "R2",
+        "Eb"
+      ]
+    },
+    {
+      "id": "F4",
+      "written_midi": 65,
+      "concert_midi": 65,
+      "source_text": "T 123|1-- Eb",
+      "source_page": "first",
+      "source_row": 8,
+      "pressed": [
+        "B_thumb",
+        "L1",
+        "L2",
+        "L3",
+        "R1",
+        "Eb"
+      ]
+    },
+    {
+      "id": "G4",
+      "written_midi": 67,
+      "concert_midi": 67,
+      "source_text": "T 123|--- Eb",
+      "source_page": "first",
+      "source_row": 11,
+      "pressed": [
+        "B_thumb",
+        "L1",
+        "L2",
+        "L3",
+        "Eb"
+      ]
+    },
+    {
+      "id": "E5",
+      "written_midi": 76,
+      "concert_midi": 76,
+      "source_text": "T 123|12- Eb",
+      "source_page": "second",
+      "source_row": 5,
+      "pressed": [
+        "B_thumb",
+        "L1",
+        "L2",
+        "L3",
+        "R1",
+        "R2",
+        "Eb"
+      ]
+    },
+    {
+      "id": "F5",
+      "written_midi": 77,
+      "concert_midi": 77,
+      "source_text": "T 123|1-- Eb",
+      "source_page": "second",
+      "source_row": 6,
+      "pressed": [
+        "B_thumb",
+        "L1",
+        "L2",
+        "L3",
+        "R1",
+        "Eb"
+      ]
+    },
+    {
+      "id": "G5",
+      "written_midi": 79,
+      "concert_midi": 79,
+      "source_text": "T 123|--- Eb",
+      "source_page": "second",
+      "source_row": 9,
+      "pressed": [
+        "B_thumb",
+        "L1",
+        "L2",
+        "L3",
+        "Eb"
+      ]
+    }
+  ],
+  "pairs": [
+    [
+      "E4",
+      "E5"
+    ],
+    [
+      "F4",
+      "F5"
+    ],
+    [
+      "G4",
+      "G5"
+    ]
+  ],
+  "pair_semitones": 12,
+  "pair_finger_changes": [],
+  "teacher_reviewed": false,
+  "physically_tested": false,
+  "sources": {
+    "model.html": {
+      "file": "model.html",
+      "url": "https://usa.yamaha.com/musical-instruments/brass-woodwinds/products/flutes/400-300-200-series/",
+      "sha256": "31be7113f41c1ee120697832e5c77a5736b40fda1d9a467d039a3e839c4719a0"
+    },
+    "first.html": {
+      "file": "first.html",
+      "url": "https://www.wfg.woodwind.org/flute/fl_bas_1.html",
+      "sha256": "acc3355fbfb202e289fb79c41b64e58289d7c794add4a73c6fd8f1b5f2beddca"
+    },
+    "second.html": {
+      "file": "second.html",
+      "url": "https://www.wfg.woodwind.org/flute/fl_bas_2.html",
+      "sha256": "03796c7caedd07b9ad8a72ff4407675048e4e375a9cc8727266b778a04d435aa"
+    },
+    "scheme.html": {
+      "file": "scheme.html",
+      "url": "https://www.wfg.woodwind.org/flute/fl_fing.html",
+      "sha256": "3f9a21dbce039d17a71919a1c0e0dfb0c548323a77091e08223410280b75fa22"
+    },
+    "yamaha-chart.html": {
+      "file": "yamaha-chart.html",
+      "url": "https://www.yamaha.com/en/musical_instrument_guide/flute/play/play002.html",
+      "sha256": "c0147ea14cdd00e8e4278f2a0a2e34b7dba8718076a2af229ef3a17560fc7bf5"
+    },
+    "acoustics.html": {
+      "file": "acoustics.html",
+      "url": "https://newt.phys.unsw.edu.au/jw/fluteacoustics.html",
+      "sha256": "627c2698e6ebf181084355721d11021adecc014ec3b605f9be039ef30b800c66"
+    },
+    "yamaha-brochure.pdf": {
+      "file": "yamaha-brochure.pdf",
+      "url": "https://usa.yamaha.com/files/download/brochure/1/1152261/W255UR5_wind_us.pdf",
+      "sha256": "5076b1a91c77c9e45f707c94f5d104315c9609395ac1b72fc9fefb3374735d2e",
+      "reviewed_page": 6
+    },
+    "notation.html": {
+      "file": "notation.html",
+      "url": "https://www.vsl.co.at/academy/woodwinds/concert-flute",
+      "sha256": "9a0a5edc4adf95ae454374cbbc7733572d8f1f7ab626595a079b6e4b01fd4c42",
+      "note": "Direct download returned a site bootstrap; the full notation statement was independently retrieved via web tool."
+    }
+  }
+}

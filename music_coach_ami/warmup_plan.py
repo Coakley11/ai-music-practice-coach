@@ -1190,6 +1190,9 @@ def _nav(plan: dict[str, Any], view: dict[str, Any]) -> dict[str, Any]:
 
 def _plan_response(plan: dict[str, Any], *, lead: str = "", changed: list[str] | None = None, kept: str = "", view: dict[str, Any] | None = None,
                    session_ref: Any = None, assumptions: list[str] | None = None, history_info: dict[str, Any] | None = None) -> CoachResponse:
+    if plan["spec"].get("flute_fingering"):
+        from music_coach_ami.flute_fingering_instructor import practice_response
+        return practice_response(plan, session_ref, lead)
     if plan["spec"].get("clarinet_fingering"):
         from music_coach_ami.clarinet_fingering_instructor import practice_response
         return practice_response(plan, session_ref, lead)

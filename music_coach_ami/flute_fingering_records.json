@@ -1,0 +1,356 @@
+[
+  {
+    "id": "E4",
+    "family": "flute-keywork",
+    "model_id": "yamaha-yfl222-c-foot",
+    "configuration": "Yamaha YFL-222 concert C flute; covered keys; offset G; C footjoint; no split-E mechanism",
+    "written_name": "E",
+    "written_octave": 4,
+    "key_states": {
+      "B_thumb": true,
+      "Bb_thumb": false,
+      "L1": true,
+      "L2": true,
+      "L3": true,
+      "G_sharp": false,
+      "R1": true,
+      "R2": true,
+      "R3": false,
+      "Eb": true,
+      "Bb_trill": false,
+      "D_trill": false,
+      "Eb_trill": false,
+      "low_C_sharp": false,
+      "low_C": false
+    },
+    "thumb_choice": "Primary B-natural thumb lever; Bb lever released (selected basic option permitted by WFG T legend)",
+    "register_difference": "Identical selected finger actions for the corresponding verified octave pair; register is produced through air-jet/embouchure control, not an octave key",
+    "verification_status": "reference-supported",
+    "teacher_reviewed": false,
+    "physically_tested": false,
+    "source_row": 7,
+    "sources": [
+      {
+        "file": "model.html",
+        "url": "https://usa.yamaha.com/musical-instruments/brass-woodwinds/products/flutes/400-300-200-series/",
+        "sha256": "31be7113f41c1ee120697832e5c77a5736b40fda1d9a467d039a3e839c4719a0"
+      },
+      {
+        "file": "first.html",
+        "url": "https://www.wfg.woodwind.org/flute/fl_bas_1.html",
+        "sha256": "acc3355fbfb202e289fb79c41b64e58289d7c794add4a73c6fd8f1b5f2beddca"
+      },
+      {
+        "file": "scheme.html",
+        "url": "https://www.wfg.woodwind.org/flute/fl_fing.html",
+        "sha256": "3f9a21dbce039d17a71919a1c0e0dfb0c548323a77091e08223410280b75fa22"
+      },
+      {
+        "file": "yamaha-brochure.pdf",
+        "url": "https://usa.yamaha.com/files/download/brochure/1/1152261/W255UR5_wind_us.pdf",
+        "sha256": "5076b1a91c77c9e45f707c94f5d104315c9609395ac1b72fc9fefb3374735d2e",
+        "reviewed_page": 6
+      }
+    ],
+    "limitations": [
+      "Only the six displayed basic E4/F4/G4/E5/F5/G5 records",
+      "Finger actions, not a mechanical pad/linkage map",
+      "No alternate thumb fingering, high third register, B-foot/Gizmo, split-E, open-hole or modified configuration is enabled"
+    ]
+  },
+  {
+    "id": "F4",
+    "family": "flute-keywork",
+    "model_id": "yamaha-yfl222-c-foot",
+    "configuration": "Yamaha YFL-222 concert C flute; covered keys; offset G; C footjoint; no split-E mechanism",
+    "written_name": "F",
+    "written_octave": 4,
+    "key_states": {
+      "B_thumb": true,
+      "Bb_thumb": false,
+      "L1": true,
+      "L2": true,
+      "L3": true,
+      "G_sharp": false,
+      "R1": true,
+      "R2": false,
+      "R3": false,
+      "Eb": true,
+      "Bb_trill": false,
+      "D_trill": false,
+      "Eb_trill": false,
+      "low_C_sharp": false,
+      "low_C": false
+    },
+    "thumb_choice": "Primary B-natural thumb lever; Bb lever released (selected basic option permitted by WFG T legend)",
+    "register_difference": "Identical selected finger actions for the corresponding verified octave pair; register is produced through air-jet/embouchure control, not an octave key",
+    "verification_status": "reference-supported",
+    "teacher_reviewed": false,
+    "physically_tested": false,
+    "source_row": 8,
+    "sources": [
+      {
+        "file": "model.html",
+        "url": "https://usa.yamaha.com/musical-instruments/brass-woodwinds/products/flutes/400-300-200-series/",
+        "sha256": "31be7113f41c1ee120697832e5c77a5736b40fda1d9a467d039a3e839c4719a0"
+      },
+      {
+        "file": "first.html",
+        "url": "https://www.wfg.woodwind.org/flute/fl_bas_1.html",
+        "sha256": "acc3355fbfb202e289fb79c41b64e58289d7c794add4a73c6fd8f1b5f2beddca"
+      },
+      {
+        "file": "scheme.html",
+        "url": "https://www.wfg.woodwind.org/flute/fl_fing.html",
+        "sha256": "3f9a21dbce039d17a71919a1c0e0dfb0c548323a77091e08223410280b75fa22"
+      },
+      {
+        "file": "yamaha-brochure.pdf",
+        "url": "https://usa.yamaha.com/files/download/brochure/1/1152261/W255UR5_wind_us.pdf",
+        "sha256": "5076b1a91c77c9e45f707c94f5d104315c9609395ac1b72fc9fefb3374735d2e",
+        "reviewed_page": 6
+      }
+    ],
+    "limitations": [
+      "Only the six displayed basic E4/F4/G4/E5/F5/G5 records",
+      "Finger actions, not a mechanical pad/linkage map",
+      "No alternate thumb fingering, high third register, B-foot/Gizmo, split-E, open-hole or modified configuration is enabled"
+    ]
+  },
+  {
+    "id": "G4",
+    "family": "flute-keywork",
+    "model_id": "yamaha-yfl222-c-foot",
+    "configuration": "Yamaha YFL-222 concert C flute; covered keys; offset G; C footjoint; no split-E mechanism",
+    "written_name": "G",
+    "written_octave": 4,
+    "key_states": {
+      "B_thumb": true,
+      "Bb_thumb": false,
+      "L1": true,
+      "L2": true,
+      "L3": true,
+      "G_sharp": false,
+      "R1": false,
+      "R2": false,
+      "R3": false,
+      "Eb": true,
+      "Bb_trill": false,
+      "D_trill": false,
+      "Eb_trill": false,
+      "low_C_sharp": false,
+      "low_C": false
+    },
+    "thumb_choice": "Primary B-natural thumb lever; Bb lever released (selected basic option permitted by WFG T legend)",
+    "register_difference": "Identical selected finger actions for the corresponding verified octave pair; register is produced through air-jet/embouchure control, not an octave key",
+    "verification_status": "reference-supported",
+    "teacher_reviewed": false,
+    "physically_tested": false,
+    "source_row": 11,
+    "sources": [
+      {
+        "file": "model.html",
+        "url": "https://usa.yamaha.com/musical-instruments/brass-woodwinds/products/flutes/400-300-200-series/",
+        "sha256": "31be7113f41c1ee120697832e5c77a5736b40fda1d9a467d039a3e839c4719a0"
+      },
+      {
+        "file": "first.html",
+        "url": "https://www.wfg.woodwind.org/flute/fl_bas_1.html",
+        "sha256": "acc3355fbfb202e289fb79c41b64e58289d7c794add4a73c6fd8f1b5f2beddca"
+      },
+      {
+        "file": "scheme.html",
+        "url": "https://www.wfg.woodwind.org/flute/fl_fing.html",
+        "sha256": "3f9a21dbce039d17a71919a1c0e0dfb0c548323a77091e08223410280b75fa22"
+      },
+      {
+        "file": "yamaha-brochure.pdf",
+        "url": "https://usa.yamaha.com/files/download/brochure/1/1152261/W255UR5_wind_us.pdf",
+        "sha256": "5076b1a91c77c9e45f707c94f5d104315c9609395ac1b72fc9fefb3374735d2e",
+        "reviewed_page": 6
+      }
+    ],
+    "limitations": [
+      "Only the six displayed basic E4/F4/G4/E5/F5/G5 records",
+      "Finger actions, not a mechanical pad/linkage map",
+      "No alternate thumb fingering, high third register, B-foot/Gizmo, split-E, open-hole or modified configuration is enabled"
+    ]
+  },
+  {
+    "id": "E5",
+    "family": "flute-keywork",
+    "model_id": "yamaha-yfl222-c-foot",
+    "configuration": "Yamaha YFL-222 concert C flute; covered keys; offset G; C footjoint; no split-E mechanism",
+    "written_name": "E",
+    "written_octave": 5,
+    "key_states": {
+      "B_thumb": true,
+      "Bb_thumb": false,
+      "L1": true,
+      "L2": true,
+      "L3": true,
+      "G_sharp": false,
+      "R1": true,
+      "R2": true,
+      "R3": false,
+      "Eb": true,
+      "Bb_trill": false,
+      "D_trill": false,
+      "Eb_trill": false,
+      "low_C_sharp": false,
+      "low_C": false
+    },
+    "thumb_choice": "Primary B-natural thumb lever; Bb lever released (selected basic option permitted by WFG T legend)",
+    "register_difference": "Identical selected finger actions for the corresponding verified octave pair; register is produced through air-jet/embouchure control, not an octave key",
+    "verification_status": "reference-supported",
+    "teacher_reviewed": false,
+    "physically_tested": false,
+    "source_row": 5,
+    "sources": [
+      {
+        "file": "model.html",
+        "url": "https://usa.yamaha.com/musical-instruments/brass-woodwinds/products/flutes/400-300-200-series/",
+        "sha256": "31be7113f41c1ee120697832e5c77a5736b40fda1d9a467d039a3e839c4719a0"
+      },
+      {
+        "file": "second.html",
+        "url": "https://www.wfg.woodwind.org/flute/fl_bas_2.html",
+        "sha256": "03796c7caedd07b9ad8a72ff4407675048e4e375a9cc8727266b778a04d435aa"
+      },
+      {
+        "file": "scheme.html",
+        "url": "https://www.wfg.woodwind.org/flute/fl_fing.html",
+        "sha256": "3f9a21dbce039d17a71919a1c0e0dfb0c548323a77091e08223410280b75fa22"
+      },
+      {
+        "file": "yamaha-brochure.pdf",
+        "url": "https://usa.yamaha.com/files/download/brochure/1/1152261/W255UR5_wind_us.pdf",
+        "sha256": "5076b1a91c77c9e45f707c94f5d104315c9609395ac1b72fc9fefb3374735d2e",
+        "reviewed_page": 6
+      }
+    ],
+    "limitations": [
+      "Only the six displayed basic E4/F4/G4/E5/F5/G5 records",
+      "Finger actions, not a mechanical pad/linkage map",
+      "No alternate thumb fingering, high third register, B-foot/Gizmo, split-E, open-hole or modified configuration is enabled"
+    ]
+  },
+  {
+    "id": "F5",
+    "family": "flute-keywork",
+    "model_id": "yamaha-yfl222-c-foot",
+    "configuration": "Yamaha YFL-222 concert C flute; covered keys; offset G; C footjoint; no split-E mechanism",
+    "written_name": "F",
+    "written_octave": 5,
+    "key_states": {
+      "B_thumb": true,
+      "Bb_thumb": false,
+      "L1": true,
+      "L2": true,
+      "L3": true,
+      "G_sharp": false,
+      "R1": true,
+      "R2": false,
+      "R3": false,
+      "Eb": true,
+      "Bb_trill": false,
+      "D_trill": false,
+      "Eb_trill": false,
+      "low_C_sharp": false,
+      "low_C": false
+    },
+    "thumb_choice": "Primary B-natural thumb lever; Bb lever released (selected basic option permitted by WFG T legend)",
+    "register_difference": "Identical selected finger actions for the corresponding verified octave pair; register is produced through air-jet/embouchure control, not an octave key",
+    "verification_status": "reference-supported",
+    "teacher_reviewed": false,
+    "physically_tested": false,
+    "source_row": 6,
+    "sources": [
+      {
+        "file": "model.html",
+        "url": "https://usa.yamaha.com/musical-instruments/brass-woodwinds/products/flutes/400-300-200-series/",
+        "sha256": "31be7113f41c1ee120697832e5c77a5736b40fda1d9a467d039a3e839c4719a0"
+      },
+      {
+        "file": "second.html",
+        "url": "https://www.wfg.woodwind.org/flute/fl_bas_2.html",
+        "sha256": "03796c7caedd07b9ad8a72ff4407675048e4e375a9cc8727266b778a04d435aa"
+      },
+      {
+        "file": "scheme.html",
+        "url": "https://www.wfg.woodwind.org/flute/fl_fing.html",
+        "sha256": "3f9a21dbce039d17a71919a1c0e0dfb0c548323a77091e08223410280b75fa22"
+      },
+      {
+        "file": "yamaha-brochure.pdf",
+        "url": "https://usa.yamaha.com/files/download/brochure/1/1152261/W255UR5_wind_us.pdf",
+        "sha256": "5076b1a91c77c9e45f707c94f5d104315c9609395ac1b72fc9fefb3374735d2e",
+        "reviewed_page": 6
+      }
+    ],
+    "limitations": [
+      "Only the six displayed basic E4/F4/G4/E5/F5/G5 records",
+      "Finger actions, not a mechanical pad/linkage map",
+      "No alternate thumb fingering, high third register, B-foot/Gizmo, split-E, open-hole or modified configuration is enabled"
+    ]
+  },
+  {
+    "id": "G5",
+    "family": "flute-keywork",
+    "model_id": "yamaha-yfl222-c-foot",
+    "configuration": "Yamaha YFL-222 concert C flute; covered keys; offset G; C footjoint; no split-E mechanism",
+    "written_name": "G",
+    "written_octave": 5,
+    "key_states": {
+      "B_thumb": true,
+      "Bb_thumb": false,
+      "L1": true,
+      "L2": true,
+      "L3": true,
+      "G_sharp": false,
+      "R1": false,
+      "R2": false,
+      "R3": false,
+      "Eb": true,
+      "Bb_trill": false,
+      "D_trill": false,
+      "Eb_trill": false,
+      "low_C_sharp": false,
+      "low_C": false
+    },
+    "thumb_choice": "Primary B-natural thumb lever; Bb lever released (selected basic option permitted by WFG T legend)",
+    "register_difference": "Identical selected finger actions for the corresponding verified octave pair; register is produced through air-jet/embouchure control, not an octave key",
+    "verification_status": "reference-supported",
+    "teacher_reviewed": false,
+    "physically_tested": false,
+    "source_row": 9,
+    "sources": [
+      {
+        "file": "model.html",
+        "url": "https://usa.yamaha.com/musical-instruments/brass-woodwinds/products/flutes/400-300-200-series/",
+        "sha256": "31be7113f41c1ee120697832e5c77a5736b40fda1d9a467d039a3e839c4719a0"
+      },
+      {
+        "file": "second.html",
+        "url": "https://www.wfg.woodwind.org/flute/fl_bas_2.html",
+        "sha256": "03796c7caedd07b9ad8a72ff4407675048e4e375a9cc8727266b778a04d435aa"
+      },
+      {
+        "file": "scheme.html",
+        "url": "https://www.wfg.woodwind.org/flute/fl_fing.html",
+        "sha256": "3f9a21dbce039d17a71919a1c0e0dfb0c548323a77091e08223410280b75fa22"
+      },
+      {
+        "file": "yamaha-brochure.pdf",
+        "url": "https://usa.yamaha.com/files/download/brochure/1/1152261/W255UR5_wind_us.pdf",
+        "sha256": "5076b1a91c77c9e45f707c94f5d104315c9609395ac1b72fc9fefb3374735d2e",
+        "reviewed_page": 6
+      }
+    ],
+    "limitations": [
+      "Only the six displayed basic E4/F4/G4/E5/F5/G5 records",
+      "Finger actions, not a mechanical pad/linkage map",
+      "No alternate thumb fingering, high third register, B-foot/Gizmo, split-E, open-hole or modified configuration is enabled"
+    ]
+  }
+]

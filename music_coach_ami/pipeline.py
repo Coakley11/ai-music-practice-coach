@@ -26,6 +26,13 @@ def run_coach_submit(
     from music_coach_ami import warmup_plan as _warmup
     from music_coach_ami.exercise_revision import stale_song_response
 
+    from music_coach_ami.flute_fingering_instructor import handle as flute_fingering_request
+    flute_fingering = flute_fingering_request(question, session_state, ami_ctx)
+    if flute_fingering is not None:
+        req = route_question(question, session_state, ami_ctx=ami_ctx)
+        _conv.record_turn(session_state, question, flute_fingering.direct_answer)
+        return req, flute_fingering
+
     from music_coach_ami.clarinet_fingering_instructor import handle as clarinet_fingering_request
     clarinet_fingering = clarinet_fingering_request(question, session_state, ami_ctx)
     if clarinet_fingering is not None:
