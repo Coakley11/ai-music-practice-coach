@@ -27,6 +27,13 @@ import re
 from typing import Any
 
 _LOG = logging.getLogger(__name__)
+_WARNED: set[str] = set()
+
+
+def _warn_once(message: str) -> None:
+    if message not in _WARNED:  # configuration is read on every check; report each problem once
+        _WARNED.add(message)
+        _LOG.error(message)
 PERSONAL_ENV = "SUITE_PERSONAL_ACCOUNTS"
 ADMIN_ENV = "SUITE_ADMIN_USER_IDS"
 _UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
@@ -67,7 +74,7 @@ def personal_accounts() -> dict[str, str]:
     try:
         items = dict(raw).items()
     except (TypeError, ValueError):
-        _LOG.error("%s is malformed; no personal workspace is attached", PERSONAL_ENV)
+        _warn_once(f"{PERSONAL_ENV} is malformed; no personal workspace is attached")
         return {}
     out: dict[str, str] = {}
     for key, legacy in items:
@@ -76,7 +83,7 @@ def personal_accounts() -> dict[str, str]:
         if uid and _LEGACY_ID_RE.match(ext) and not is_own_workspace_id(ext) and ext != "default":
             out[uid] = ext
         else:
-            _LOG.error("%s: an entry is not '<auth user uuid>': '<legacy id>' and was ignored", PERSONAL_ENV)
+            _warn_once(f"{PERSONAL_ENV}: an entry is not '<auth user uuid>': '<legacy id>' and was ignored")
     counts: dict[str, int] = {}
     for ext in out.values():
         counts[ext] = counts.get(ext, 0) + 1
