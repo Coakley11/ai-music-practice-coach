@@ -229,6 +229,19 @@ class TestAmbiguousOrMalformedPolicy(Base):
         self.assertEqual(pol.admin_user_ids(), frozenset({UID_OWNER}))
 
 
+class TestSecretsBlock(Base):
+    def test_policy_can_come_from_the_streamlit_secrets_block(self):
+        secrets = {"suite_auth": {"admin_user_ids": [UID_OWNER.upper()], "personal_accounts": {UID_OWNER: "daniel"}}}
+        with mock.patch.object(st, "secrets", secrets):
+            self.assertEqual(pol.admin_user_ids(), frozenset({UID_OWNER}))
+            self.assertEqual(pol.personal_accounts(), {UID_OWNER: "daniel"})
+
+    def test_malformed_secrets_block_grants_nothing(self):
+        with mock.patch.object(st, "secrets", {"suite_auth": {"admin_user_ids": "x@y.com", "personal_accounts": "oops"}}):
+            self.assertEqual(pol.admin_user_ids(), frozenset())
+            self.assertEqual(pol.personal_accounts(), {})
+
+
 class TestStaleRegistryRecord(Base):
     CONFIG = {pol.PERSONAL_ENV: json.dumps({UID_OWNER: "daniel"})}
 
