@@ -300,26 +300,63 @@ def normalize_app_key(app: str) -> str:
     return cleaned
 
 
+def _enforce_owned_app_key(app_key: str) -> str:
+    """Refuse a workspace-scoped cloud key the signed-in user is not authorised for.
+
+    Every table call here uses the service key, so row-level security never protects these rows: the
+    application is the only gate. With sign-in enabled, a workspace key (``music``, ``music__<slug>``) is
+    allowed only for an authenticated session whose allowed workspaces contain that slug (an ordinary
+    user: exactly their own; an operator-authorised admin: the admin set). No session -> refused.
+    Internal non-workspace apps (names starting with ``_``) are scoped by ``user_id`` and exempt.
+    """
+    if str(app_key or "").startswith("_"):
+        return app_key
+    try:
+        import streamlit as st  # noqa: WPS433
+        from suite_auth import allowed_workspaces_for_session, is_auth_enabled, is_authenticated
+        from suite_workspace import normalize_workspace_id
+    except ImportError:
+        return app_key
+    if not is_auth_enabled():
+        return app_key
+    ss = st.session_state
+    if not is_authenticated(ss):
+        raise PermissionError("cloud state access requires a signed-in account")
+    suffix = app_key.split("__", 1)[1] if "__" in app_key else "daniel"
+    allowed = {normalize_workspace_id(w) for w in allowed_workspaces_for_session(ss)}
+    if normalize_workspace_id(suffix) not in allowed:
+        raise PermissionError("cloud state key is outside the signed-in account's workspaces")
+    return app_key
+
+
 def _scoped_storage_app(app: str) -> str:
-    """Workspace-scoped cloud key (Daniel keeps legacy unscoped)."""
+    """Workspace-scoped cloud key (Daniel keeps legacy unscoped); always authorisation-checked."""
     app_key = normalize_app_key(app)
     if "__" in app_key:
-        return app_key
+        return _enforce_owned_app_key(app_key)
     try:
         from suite_workspace import scoped_cloud_app_id
 
-        return scoped_cloud_app_id(app_key)
+        scoped = scoped_cloud_app_id(app_key)
     except Exception:
-        return app_key
+        scoped = app_key
+    return _enforce_owned_app_key(scoped)
 
 
 def _workspace_storage_app_keys() -> list[str]:
     try:
         from suite_workspace import workspace_storage_app_keys
 
-        return sorted(workspace_storage_app_keys())
+        keys = sorted(workspace_storage_app_keys())
     except Exception:
-        return [normalize_app_key(app) for app in sorted(ACTIVE_APP_KEYS)]
+        keys = [normalize_app_key(app) for app in sorted(ACTIVE_APP_KEYS)]
+    allowed: list[str] = []
+    for key in keys:  # list queries only ever cover keys this session is authorised for
+        try:
+            allowed.append(_enforce_owned_app_key(key))
+        except PermissionError:
+            continue
+    return allowed
 
 
 def _scoped_user_id() -> str:

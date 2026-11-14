@@ -215,8 +215,11 @@ def load_persisted_workspace_id(*, session_state: dict[str, Any] | None = None) 
     try:
         from suite_auth import is_auth_enabled, is_authenticated
 
+        from music_session_mapping import as_session_mapping
+
         account_aware = (
-            isinstance(session_state, dict)
+            session_state is not None
+            and as_session_mapping(session_state) is session_state
             and is_auth_enabled()
             and is_authenticated(session_state)
         )
