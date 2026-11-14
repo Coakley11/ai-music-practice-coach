@@ -73,6 +73,35 @@ def discard_take(session_state: MutableMapping[str, Any], slot: str) -> bool:
     return had
 
 
+AUTO_OPEN_DECIDED_KEY = "_mt_auto_open_decided"
+AUTO_OPEN_SLOT_KEY = "_mt_auto_open_slot"
+
+
+def auto_open_slot(session_state: MutableMapping[str, Any], slots: Any) -> str:
+    """Which empty layer should start open, so the Record control is visible without a tap.
+
+    Issue 78C. Every layer panel is collapsed while its slot is empty, which is the state a
+    musician is in before their first take - so the recorder was behind a tap, and (before the
+    component's height was fixed) invisible even after it.
+
+    Exactly ONE layer opens: the first slot with no audio. Opening all of them would make the phone
+    page enormous, which is not an improvement. The decision is made once per session and then
+    remembered, so a layer the musician deliberately collapses stays collapsed instead of springing
+    open on the next rerun. If every slot already holds audio there is nothing to open.
+    """
+    if session_state.get(AUTO_OPEN_DECIDED_KEY):
+        return ""
+    session_state[AUTO_OPEN_DECIDED_KEY] = True
+    tracks = session_state.get("mt_tracks")
+    tracks = tracks if isinstance(tracks, dict) else {}
+    for slot in slots or ():
+        if not tracks.get(slot):
+            session_state[AUTO_OPEN_SLOT_KEY] = str(slot)
+            return str(slot)
+    session_state[AUTO_OPEN_SLOT_KEY] = ""
+    return ""
+
+
 def adopt_restored_layers_as_saved(session_state: MutableMapping[str, Any], slots: Any) -> None:
     """Audio that came back from a saved project / cloud workspace is a SAVED layer, not a fresh take.
 
@@ -104,7 +133,10 @@ def take_status_line(session_state: MutableMapping[str, Any], slot: str) -> str:
 
 
 __all__ = [
+    "AUTO_OPEN_DECIDED_KEY",
+    "AUTO_OPEN_SLOT_KEY",
     "TAKE_NONCE_PREFIX",
+    "auto_open_slot",
     "adopt_restored_layers_as_saved",
     "TAKE_SAVED_PREFIX",
     "discard_button_label",

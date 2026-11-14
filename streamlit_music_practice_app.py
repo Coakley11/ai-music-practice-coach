@@ -28389,8 +28389,17 @@ elif _studio_page == "multitrack":
             except Exception:
                 pass
 
+            # Issue 78C: one empty layer starts open so the Record control is discoverable
+            # without a tap. Decided once per session, so a deliberate collapse is not undone.
+            try:
+                from multitrack_takes import auto_open_slot
+
+                _mt_auto_open = auto_open_slot(st.session_state, MT_SLOTS)
+            except Exception:
+                _mt_auto_open = ""
             for slot in MT_SLOTS:
                 _slot_ready = bool(st.session_state.mt_tracks.get(slot))
+                _slot_expanded = _slot_ready or (slot == _mt_auto_open and bool(_mt_auto_open))
                 try:
                     from music_feature_icons import format_icon_html, instrument_icon
 
@@ -28404,7 +28413,7 @@ elif _studio_page == "multitrack":
                     f'{multitrack_layer_badge_html(ready=_slot_ready)}</p>',
                     unsafe_allow_html=True,
                 )
-                with st.expander(f"Layer controls — {slot}", expanded=_slot_ready):
+                with st.expander(f"Layer controls — {slot}", expanded=_slot_expanded):
                     c1, c2, c3 = st.columns([1.2, 1, 1])
 
                     with c1:

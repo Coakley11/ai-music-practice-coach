@@ -34,8 +34,68 @@
       // backing offset is therefore a difference of context frame counters, not of two UI events
       // (the old Play / Record split made the offset whatever the gap between two clicks was).
       const send = (type, data) => window.parent.postMessage(Object.assign({ isStreamlitMessage: true, type }, data), "*");
-      const setHeight = () => send("streamlit:setFrameHeight", { height: document.body.scrollHeight + 4 });
       const $ = (id) => document.getElementById(id);
+
+      // ---- frame height -------------------------------------------------------------------
+      // Issue 78C. This component is mounted inside the per-layer expander on Multitrack, and that
+      // expander is collapsed precisely while the layer is empty. A hidden iframe has no layout, so
+      // document.body.scrollHeight reads 0; publishing that made Streamlit size the frame at four
+      // pixels, and because opening an expander is pure client-side DOM there was no later render to
+      // correct it. The musician saw the top edge of a red button and no control at all.
+      //
+      // So: never publish a height shorter than the control, never publish a measurement taken
+      // while there was no layout, and re-measure as soon as there is one.
+      const MIN_FRAME_H = 52;   // one button row plus its padding - the control's own height
+      let lastSentHeight = 0;
+      let heightPollTimer = null;
+
+      function measuredHeight() {
+        // 0 is not a height here: it is "this document has not been laid out yet".
+        const raw = Math.ceil(document.body ? document.body.scrollHeight : 0);
+        if (raw <= 0) return null;
+        return Math.max(MIN_FRAME_H, raw + 4);
+      }
+
+      function setHeight() {
+        const h = measuredHeight();
+        // Still no layout: hold the floor so the button is visible and tappable regardless.
+        const next = h === null ? Math.max(MIN_FRAME_H, lastSentHeight) : h;
+        if (next === lastSentHeight) return;
+        lastSentHeight = next;
+        send("streamlit:setFrameHeight", { height: next });
+      }
+
+      function stopHeightPoll() {
+        if (heightPollTimer !== null) { clearInterval(heightPollTimer); heightPollTimer = null; }
+      }
+
+      // The fallback, for browsers without ResizeObserver and for the first real layout after the
+      // expander opens. It is self-limiting: once a genuine measurement has been published it stops,
+      // so there is no permanent timer in the page.
+      function startHeightPoll() {
+        if (heightPollTimer !== null) return;
+        let ticks = 0;
+        heightPollTimer = setInterval(() => {
+          ticks += 1;
+          const before = lastSentHeight;
+          setHeight();
+          if (measuredHeight() !== null && lastSentHeight === before && ticks > 1) stopHeightPoll();
+          if (ticks > 40) stopHeightPoll();   // 20 s, then give up and keep the floor
+        }, 500);
+      }
+
+      function watchHeight() {
+        try {
+          if (typeof ResizeObserver === "function" && document.body) {
+            // The body goes from "no layout" to laid out the instant the expander opens, which is
+            // exactly the event that was missing.
+            new ResizeObserver(() => setHeight()).observe(document.body);
+          }
+        } catch (e) {}
+        window.addEventListener("resize", setHeight);
+        document.addEventListener("visibilitychange", setHeight);
+        startHeightPoll();
+      }
 
       // Monitor-asset lifecycle (one request = one fingerprint + one nonce):
       //   idle -> loading -> decoding -> ready | failed
@@ -472,9 +532,13 @@
         args = event.data.args || {};
         if (!rec) render();
         syncBacking();
+        // A layer can be collapsed and reopened at any time, and the reopening sends no render of
+        // its own, so each render re-arms the watch rather than trusting the first one.
+        startHeightPoll();
       });
       send("streamlit:componentReady", { apiVersion: 1 });
       setHeight();
+      watchHeight();
     </script>
   </body>
 </html>
