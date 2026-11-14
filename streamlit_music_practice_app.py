@@ -6434,7 +6434,16 @@ def live_follow_along_component_html(
       if (!clock) return true;
       try {{
         if (cycleOwnsAudio()) {{
-          // Single authority: parent buffer probe (same as cycle Pause/Resume).
+          // One authority with the Key Cycling console: would its Pause button Pause
+          // now? Judged from this frame's own buffer probe, a press during a pause
+          // whose hold flag had been cleared at a take's end became a second Pause,
+          // so Resume never reached the server.
+          try {{
+            if (typeof window.parent.__kcCyclePressPauses === "function") {{
+              return !window.parent.__kcCyclePressPauses();
+            }}
+          }} catch (eAuth) {{}}
+          // Fallback: parent buffer probe (same as cycle Pause/Resume).
           try {{
             if (typeof window.parent.__kcAnyAudibleBuffer === "function"
                 && window.parent.__kcAnyAudibleBuffer()) {{

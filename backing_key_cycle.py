@@ -7562,53 +7562,37 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       try {{ syncVisibleTransport(); }} catch (eV0) {{}}
       return t;
     }};
+    // The live player (the Lead Sheet's Pause / Resume button) presses the Key Cycling
+    // Pause button itself: the same gesture, handler, card command and server toggle as
+    // a click on the console, so the sounding key, the stale-command guard and a press
+    // in a silent handoff gap are handled once, for both controls. Synchronous: the
+    // live player's own delayed click was scheduled on this bridge frame, which a
+    // Streamlit rerun replaces -- the timer died with it, the server stayed Held and the
+    // resumed audio was silenced again 1-3 s later.
+    parentWin.__kcPressCycleTransport = function () {{
+      try {{
+        const all = [...parentDoc.querySelectorAll('[class*="st-key-backing_key_cycle_pause_btn"] button')];
+        const b = all.find((x) => x.offsetParent !== null) || all[0];
+        if (!b || b.disabled) return false;
+        b.click();
+        return true;
+      }} catch (ePress) {{ return false; }}
+    }};
+    // Would a press of the Key Cycling Pause button Pause now (the console's own decision)?
+    function kcLivePressPauses() {{
+      try {{
+        if (typeof parentWin.__kcCyclePressPauses === 'function') return !!parentWin.__kcCyclePressPauses();
+      }} catch (eDec) {{}}
+      try {{
+        return kcPauseBtnMode(parentDoc.querySelector('[class*="st-key-backing_key_cycle_pause_btn"] button')) === 'pause';
+      }} catch (eMode) {{ return false; }}
+    }}
     parentWin.__kcRequestCycleResume = function () {{
-      // Live Resume: kick audio, then leave Streamlit Held exactly once.
-      // Capture Held intent before syncVisibleTransport rewrites the label.
-      let needStreamlitResume = false;
-      try {{
-        const b0 = parentDoc.querySelector(
-          '[class*="st-key-backing_key_cycle_pause_btn"] button'
-        );
-        if (b0) {{
-          if (kcPauseBtnMode(b0) === 'resume') needStreamlitResume = true;
-        }}
-      }} catch (eLab) {{}}
-      try {{
-        if (state.userPaused
-            || parentWin.sessionStorage.getItem('kc_user_paused') === '1') {{
-          needStreamlitResume = true;
-        }}
-      }} catch (eHold) {{}}
-      try {{
-        state.userPaused = false;
-        parentWin.sessionStorage.setItem('kc_user_paused', '0');
-        state.playKickUntil = Date.now() + 4500;
-        parentWin.__kcTransportPaused = false;
-        parentWin.__kcHadAudible = true;
-        state._silentSince = 0;
-      }} catch (eClr) {{}}
-      try {{
-        if (typeof parentWin.__kcResumeAudio === 'function') parentWin.__kcResumeAudio({{ force: true }});
-      }} catch (eR) {{}}
-      try {{ syncVisibleTransport(); }} catch (eV0) {{}}
-      if (!needStreamlitResume) return;
-      // Delay past Live-Pause remount settle — an immediate click was lost while
-      // Streamlit still swapped the Pause widget (SeekAndPlay later cleared Held).
-      window.setTimeout(() => {{
-        try {{
-          const b = parentDoc.querySelector(
-            '[class*="st-key-backing_key_cycle_pause_btn"] button'
-          );
-          if (!b) return;
-          parentWin.__kcSkipPauseHandler = true;
-          try {{ b.click(); }} catch (eClk) {{}}
-          window.setTimeout(() => {{
-            try {{ parentWin.__kcSkipPauseHandler = false; }} catch (eC) {{}}
-            try {{ syncVisibleTransport(); }} catch (eV) {{}}
-          }}, 800);
-        }} catch (eB) {{}}
-      }}, 350);
+      // Live Resume: one press of the console's button, only when that press resumes.
+      if (kcLivePressPauses()) return;  // already playing
+      if (!parentWin.__kcPressCycleTransport()) {{
+        try {{ if (typeof parentWin.__kcResumeAudio === 'function') parentWin.__kcResumeAudio(); }} catch (eR) {{}}
+      }}
     }};
     parentWin.__kcPauseAudio = function () {{
       // Capture hold position BEFORE silencing — Resume must continue here,
@@ -7644,35 +7628,15 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       try {{ syncVisibleTransport(); }} catch (eV) {{}}
     }};
     parentWin.__kcRequestCyclePause = function () {{
-      // Live Stop already paused dual-buffer; click cycle Pause so Streamlit
-      // enters Held. Skip the client toggle (buffers already held).
-      // Read the button BEFORE pausing the audio: __kcPauseAudio marks the user
-      // hold and syncVisibleTransport relabels the button Resume at once, so a
-      // check made afterwards never clicked. Streamlit stayed Running and the
-      // next rerun or handoff brought the audio back 3-15 s later.
-      let wantHeld = false;
-      try {{
-        const b0 = parentDoc.querySelector(
-          '[class*="st-key-backing_key_cycle_pause_btn"] button'
-        );
-        wantHeld = !!b0 && kcPauseBtnMode(b0) === 'pause';
-      }} catch (eB0) {{ wantHeld = false; }}
-      try {{
-        parentWin.__kcPauseAudio();
-      }} catch (eP) {{}}
-      if (!wantHeld) return;
-      try {{
-        const b = parentDoc.querySelector(
-          '[class*="st-key-backing_key_cycle_pause_btn"] button'
-        );
-        if (!b) return;
-        parentWin.__kcProgrammaticPauseClick = true;
-        try {{ b.click(); }} catch (eClk) {{}}
-        window.setTimeout(() => {{
-          try {{ parentWin.__kcProgrammaticPauseClick = false; }} catch (eC) {{}}
-          try {{ syncVisibleTransport(); }} catch (eV) {{}}
-        }}, 800);
-      }} catch (eSt) {{}}
+      // Live Pause: one press of the console's button, only when that press pauses
+      // (a held player is left alone -- the server toggles on that click). It used to
+      // pause the audio itself and send its own click, skipping the card's sounding
+      // key and stale-command guard: a take starting in a handoff gap leaked through
+      // and the paused key could freeze one behind.
+      if (!kcLivePressPauses()) return;  // already paused
+      if (!parentWin.__kcPressCycleTransport()) {{
+        try {{ parentWin.__kcPauseAudio(); }} catch (eP) {{}}
+      }}
     }};
     parentWin.__kcResumeAudio = function (opts) {{
       // Pending Practice Key / arrangement regeneration: the buffer in hand belongs to
@@ -8950,6 +8914,46 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           return;
         }}
       }};
+      // The one decision for every Key Cycling Pause/Resume control -- the console's
+      // button and the Lead Sheet's live player: would a press made now Pause (true)
+      // or Resume (false)? If a buffer is running → Pause (hold place). Otherwise →
+      // Resume. Explicit user hold + silent buffers → Resume (not a no-op).
+      function kcCyclePressPauses(label) {{
+        const prog = !!parentWin.__kcProgrammaticResumeClick;
+        let running = false;
+        try {{
+          running = (typeof anyAudibleBuffer === 'function' && anyAudibleBuffer())
+            || (typeof anyBufferRunning === 'function' && anyBufferRunning());
+        }} catch (eRun) {{ running = false; }}
+        // Do NOT treat playKick alone as running while deciding Pause —
+        // that blocked Pause during the post-Play grace window.
+        let held = false;
+        try {{
+          held = !!(state.userPaused)
+            || parentWin.sessionStorage.getItem('kc_user_paused') === '1';
+        }} catch (eH) {{ held = !!state.userPaused; }}
+        // "Starting…": a Previous / Next (or Play) take is still loading, so
+        // nothing is audible yet, but the transport is running: that press is
+        // a Pause, not a Resume (it used to start the take behind the Pause).
+        const starting = !prog && !running && !held && /^Starting/i.test(String(label || ''));
+        if (starting) running = true;
+        // The transport is playing and the musician is not holding: this press
+        // is a Pause even when nothing is audible at this instant -- the few
+        // milliseconds between one take ending and the next starting at an
+        // automatic key change, or a take still loading. Judged by sound
+        // alone, that press became a Resume no-op and cycling carried on.
+        let tpIntent = '';
+        try {{ tpIntent = String(((parentWin.__backingTransportState || {{}}).transport) || ''); }} catch (eTp) {{ tpIntent = ''; }}
+        if (!prog && !running && !held && tpIntent === 'playing') running = true;
+        return !prog && running;
+      }}
+      parentWin.__kcCyclePressPauses = function () {{
+        let label = '';
+        try {{
+          label = kcPauseBtnLabel(parentDoc.querySelector('[class*="st-key-backing_key_cycle_pause_btn"] button'));
+        }} catch (eL) {{}}
+        return kcCyclePressPauses(label);
+      }};
       parentWin.__kcPauseBtnHandler = function () {{
         const now = kcNow();
         // Live Stop already paused buffers and is clicking Streamlit only to
@@ -8986,35 +8990,8 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           }} catch (eL) {{}}
           try {{ parentWin.__kcLastPauseLabel = label; }} catch (eLb) {{}}
           // Programmatic live-Resume must never flip to Pause mid-gesture.
-          // If a buffer is running → Pause (hold place). Otherwise → Resume.
-          // Explicit user hold + silent buffers → Resume (not a no-op).
           const prog = !!parentWin.__kcProgrammaticResumeClick;
-          let running = false;
-          try {{
-            running = (typeof anyAudibleBuffer === 'function' && anyAudibleBuffer())
-              || (typeof anyBufferRunning === 'function' && anyBufferRunning());
-          }} catch (eRun) {{ running = false; }}
-          // Do NOT treat playKick alone as running while deciding Pause —
-          // that blocked Pause during the post-Play grace window.
-          let held = false;
-          try {{
-            held = !!(state.userPaused)
-              || parentWin.sessionStorage.getItem('kc_user_paused') === '1';
-          }} catch (eH) {{ held = !!state.userPaused; }}
-          // "Starting…": a Previous / Next (or Play) take is still loading, so
-          // nothing is audible yet, but the transport is running: that press is
-          // a Pause, not a Resume (it used to start the take behind the Pause).
-          const starting = !prog && !running && !held && /^Starting/i.test(String(label || ''));
-          if (starting) running = true;
-          // The transport is playing and the musician is not holding: this press
-          // is a Pause even when nothing is audible at this instant -- the few
-          // milliseconds between one take ending and the next starting at an
-          // automatic key change, or a take still loading. Judged by sound
-          // alone, that press became a Resume no-op and cycling carried on.
-          let tpIntent = '';
-          try {{ tpIntent = String(((parentWin.__backingTransportState || {{}}).transport) || ''); }} catch (eTp) {{ tpIntent = ''; }}
-          if (!prog && !running && !held && tpIntent === 'playing') running = true;
-          const doResume = prog || (!running && (held || true)) && !running;
+          const running = kcCyclePressPauses(label);
           // Simplify: running (audible) → Pause; otherwise → Resume.
           if (prog || !running) {{
             // A setting changed while paused: the paused take is obsolete and

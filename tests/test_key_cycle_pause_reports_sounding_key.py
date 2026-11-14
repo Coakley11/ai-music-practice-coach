@@ -251,9 +251,8 @@ class PauseButtonModeIgnoresIconText(unittest.TestCase):
         self.assertLess(js.index("function kcPauseBtnMode(b)"), js.index("__kcRequestCyclePause = function"))
         self.assertNotIn("/^Pause$/i.test(lab", js)
         self.assertNotIn("/^Resume$/i.test(lab", js)
-        self.assertEqual(js.count("kcPauseBtnMode(b0) === 'pause'"), 1)  # live-player Pause, read first
         self.assertEqual(js.count("kcPauseBtnMode(b) !== 'resume'"), 1)  # resume align
-        self.assertEqual(js.count("kcPauseBtnMode(b0) === 'resume'"), 2)  # Resume + Back to loop start
+        self.assertEqual(js.count("kcPauseBtnMode(b0) === 'resume'"), 1)  # Back to loop start
         # The fallback routes (no key class after a remount) read the label without the icon too.
         self.assertIn("const lab = kcPauseBtnLabel(btnHit);", js)
         self.assertIn("const label = kcPauseBtnLabel(btn);", js)
@@ -302,74 +301,170 @@ class PauseButtonModeIgnoresIconText(unittest.TestCase):
             self.assertEqual(got[k]["mode"], mode, (k, got[k]))
 
 
-class LivePlayerPauseReachesTheServer(unittest.TestCase):
-    """The live player's Pause (Lead Sheet stop -> __kcRequestCyclePause) must click the Streamlit
-    Pause button once, so the server enters Held. It used to pause the audio first; that set the
-    user hold and relabelled the button Resume at once, so the later "is it Pause?" check never
-    clicked. The server stayed Running and the audio came back by itself 3-15 s later (browser
-    runs 2026-11-14 on dev 59e77f35 and on the integration merge: 0 clicks per press)."""
+_PLAYING = "() => { window.__backingTransportState = {transport: 'playing'}; sessionStorage.setItem('kc_user_paused', '0'); }"
+_HELD = "() => { window.__backingTransportState = {transport: 'paused'}; sessionStorage.setItem('kc_user_paused', '1'); }"
 
-    _PARENT = (
+
+def _run_bridge(test: unittest.TestCase, label: str, icon: str, setup_js: str, action_js: str) -> dict:
+    """Real bridge in a frame under a Streamlit-shaped Key Cycling Pause button (as components.html
+    mounts it); ``action_js`` runs in the page and returns what it saw."""
+    try:
+        from playwright import sync_api
+    except Exception:  # pragma: no cover - browser tooling not installed
+        test.skipTest("playwright not installed")
+    parent = (
         '<html><body><div class="st-key-backing_key_cycle_pause_btn"><button>'
-        '<span data-testid="stIconMaterial">{icon}</span>'
-        '<div data-testid="stMarkdownContainer"><p>{label}</p></div></button></div>'
+        f'<span data-testid="stIconMaterial">{icon}</span>'
+        f'<div data-testid="stMarkdownContainer"><p>{label}</p></div></button></div>'
         '<iframe id="kc-bridge"></iframe></body></html>'
     )
+    with sync_api.sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        try:
+            page = browser.new_page()
+            errors: list = []
+            page.on("pageerror", lambda e: errors.append(str(e)))
+            page.route("http://kc.test/**", lambda route: route.fulfill(status=200, content_type="text/html", body=parent))
+            page.goto("http://kc.test/app/")
+            page.evaluate(
+                """(html) => { window.__clicks = []; const btn = document.querySelector('button');
+                  window.addEventListener('click', (ev) => {
+                    if (ev.target && ev.target.closest && ev.target.closest('button') === btn)
+                      window.__clicks.push(btn.querySelector('p').textContent); }, true);
+                  document.getElementById('kc-bridge').srcdoc = html; }""",
+                _bridge_js(),
+            )
+            page.wait_for_function("() => typeof window.__kcRequestCyclePause === 'function'", timeout=15000)
+            page.evaluate(setup_js)
+            got = {"at_call": page.evaluate(action_js)}
+            page.wait_for_timeout(900)
+            got.update(page.evaluate(
+                "() => ({clicks: window.__clicks.length, label: document.querySelector('p').textContent,"
+                " userPaused: !!(window.__kcDual || {}).userPaused})"
+            ))
+        finally:
+            browser.close()
+    got["errors"] = errors
+    return got
 
-    def _press(self, label: str, icon: str) -> dict:
+
+class LivePlayerUsesTheConsolePause(unittest.TestCase):
+    """The Lead Sheet's Pause / Resume (__kcRequestCyclePause / __kcRequestCycleResume) press the
+    Key Cycling Pause button itself, once and at once, when the console's own decision agrees.
+
+    Browser runs 2026-11-14 with the real Lead Sheet button, normal speed:
+    - dev 59e77f35 / 2313403a: the live Pause never clicked (it paused the audio first, which
+      relabelled the button Resume), so the server stayed Running and the audio came back.
+    - after reading the button first (e9692f4d): Pause reached the server, but every live Resume
+      was silent: its click waited 350 ms on this bridge frame's timer, a Streamlit rerun replaced
+      the frame, the timer never fired and the server stayed Held -- the kicked audio was paused
+      again 1-3 s later. And the live player still skipped the card's protections (sounding key,
+      stale-command guard), so a take starting in a handoff gap leaked for ~3 s."""
+
+    def test_pause_from_playing_presses_the_console_button_once_and_at_once(self) -> None:
+        got = _run_bridge(self, "Pause", "pause", _PLAYING,
+                          "() => { window.__kcRequestCyclePause(); return window.__clicks.length; }")
+        # One press of the console's button, synchronous (no timer a remount can drop). What that
+        # press does (handler, card command, server) is the console's own, verified in the browser.
+        self.assertEqual(got["at_call"], 1, got)
+        self.assertEqual(got["clicks"], 1, got)
+        self.assertEqual(got["errors"], [], got)
+
+    def test_pause_when_held_does_not_press(self) -> None:
+        # The server toggles on this click (Held -> Resume), so a held player must not press.
+        got = _run_bridge(self, "Resume", "play_arrow", _HELD,
+                          "() => { window.__kcRequestCyclePause(); return window.__clicks.length; }")
+        self.assertEqual(got["clicks"], 0, got)
+        self.assertEqual(got["errors"], [], got)
+
+    def test_resume_when_held_presses_at_once_and_survives_a_bridge_remount(self) -> None:
+        # The frame that made the call is removed straight away, as a Streamlit rerun does.
+        got = _run_bridge(self, "Resume", "play_arrow", _HELD,
+                          "() => { window.__kcRequestCycleResume(); const n = window.__clicks.length;"
+                          " document.getElementById('kc-bridge').remove(); return n; }")
+        self.assertEqual(got["at_call"], 1, got)
+        self.assertEqual(got["clicks"], 1, got)
+        self.assertFalse(got["userPaused"], got)
+        self.assertEqual(got["errors"], [], got)
+
+    def test_resume_when_playing_does_not_press(self) -> None:
+        got = _run_bridge(self, "Pause", "pause", _PLAYING,
+                          "() => { window.__kcRequestCycleResume(); return window.__clicks.length; }")
+        self.assertEqual(got["clicks"], 0, got)
+        self.assertEqual(got["errors"], [], got)
+
+    def test_both_controls_share_one_decision_and_one_press(self) -> None:
+        js = _bridge_js()
+        live = js[js.index("__kcPressCycleTransport = function"):js.index("__kcPauseAudio = function")]
+        live += js[js.index("__kcRequestCyclePause = function"):js.index("__kcResumeAudio = function")]
+        for gone in ("setTimeout", "__kcProgrammaticPauseClick = true", "__kcSkipPauseHandler = true",
+                     "needStreamlitResume", "{ force: true }"):
+            self.assertNotIn(gone, live)
+        self.assertEqual(live.count("if (kcLivePressPauses()) return;  // already playing"), 1)
+        self.assertEqual(live.count("if (!kcLivePressPauses()) return;  // already paused"), 1)
+        self.assertEqual(live.count("parentWin.__kcPressCycleTransport()"), 2)
+        # The console's own press decides from the same function.
+        self.assertIn("const running = kcCyclePressPauses(label);", js)
+        self.assertIn("parentWin.__kcCyclePressPauses = function", js)
+        # The visible button, never a hidden duplicate.
+        self.assertIn("all.find((x) => x.offsetParent !== null) || all[0]", live)
+
+
+class LeadSheetAsksTheConsole(unittest.TestCase):
+    """The Lead Sheet's Pause/Resume button decides (and labels itself) from the console's decision.
+    Judged from its own buffer probe, a press during a pause whose hold flag had been cleared at a
+    take's end (a handoff still marked in flight) became a second Pause (browser run 2026-11-14)."""
+
+    def _press_lead_sheet(self, console_press_pauses: bool) -> dict:
         try:
             from playwright import sync_api
         except Exception:  # pragma: no cover - browser tooling not installed
             self.skipTest("playwright not installed")
-        bridge = _bridge_js()
+        import streamlit_music_practice_app as app
+
+        html = app.live_follow_along_component_html(b"", [], "", audio_url="app/static/kc/aaaa.wav", autoplay=False)
+        stub = (
+            "(args) => { const [html, pauses] = args; window.__calls = [];"
+            " window.__kcDual = {enabled: true, swapping: true, pendingHandoff: true};"  # a handoff marked in flight
+            " window.__kcCyclePressPauses = () => pauses;"
+            " window.__kcRequestCyclePause = () => window.__calls.push('pause');"
+            " window.__kcRequestCycleResume = () => window.__calls.push('resume');"
+            " const f = document.createElement('iframe'); f.id = 'ls'; document.body.appendChild(f); f.srcdoc = html; }"
+        )
         with sync_api.sync_playwright() as p:
             browser = p.chromium.launch(headless=True)
             try:
                 page = browser.new_page()
-                errors: list = []
-                page.on("pageerror", lambda e: errors.append(str(e)))
-                page.set_content(self._PARENT.format(label=label, icon=icon))
-                # The bridge runs in a frame whose parent is the app page, as components.html mounts it.
-                page.evaluate(
-                    """(html) => { window.__clicks = []; const btn = document.querySelector('button');
-                      window.addEventListener('click', (ev) => {
-                        if (ev.target && ev.target.closest && ev.target.closest('button') === btn)
-                          window.__clicks.push(btn.querySelector('p').textContent); }, true);
-                      document.getElementById('kc-bridge').srcdoc = html; }""",
-                    bridge,
-                )
-                page.wait_for_function("() => typeof window.__kcRequestCyclePause === 'function'", timeout=15000)
-                page.evaluate("() => window.__kcRequestCyclePause()")
-                page.wait_for_timeout(300)
-                got = page.evaluate(
-                    "() => ({clicks: window.__clicks, label: document.querySelector('p').textContent,"
-                    " userPaused: !!(window.__kcDual || {}).userPaused})"
-                )
+                page.route("http://kc.test/**", lambda route: route.fulfill(
+                    status=200, content_type="text/html", body="<html><body></body></html>"))
+                page.goto("http://kc.test/app/")
+                page.evaluate(stub, [html, console_press_pauses])
+                frame = None
+                for _ in range(100):
+                    frame = next((f for f in page.frames if f != page.main_frame
+                                  and f.query_selector("#live-stop-btn")), None)
+                    if frame:
+                        break
+                    page.wait_for_timeout(100)
+                self.assertIsNotNone(frame, "Lead Sheet frame did not load")
+                frame.evaluate("() => { try { syncStopResumeLabel(); } catch (e) {} }")
+                label = frame.eval_on_selector("#live-stop-btn", "b => b.textContent")
+                frame.eval_on_selector("#live-stop-btn", "b => b.click()")
+                page.wait_for_timeout(200)
+                calls = page.evaluate("() => window.__calls")
             finally:
                 browser.close()
-        got["errors"] = errors
-        return got
+        return {"label": label, "calls": calls}
 
-    def test_pause_from_playing_clicks_the_server_pause_exactly_once(self) -> None:
-        got = self._press("Pause", "pause")
-        self.assertEqual(len(got["clicks"]), 1, got)
-        self.assertTrue(got["userPaused"], got)
-        self.assertEqual(got["label"], "Resume", got)  # the button shows what the audio does
-        self.assertEqual(got["errors"], [], got)
+    def test_a_held_console_makes_the_lead_sheet_resume(self) -> None:
+        got = self._press_lead_sheet(console_press_pauses=False)
+        self.assertEqual(got["calls"], ["resume"], got)
+        self.assertIn("Resume", got["label"], got)
 
-    def test_pause_when_already_held_does_not_click_and_so_never_resumes(self) -> None:
-        # The server toggles on this click (Held -> Resume), so a held player must not click.
-        got = self._press("Resume", "play_arrow")
-        self.assertEqual(got["clicks"], [], got)
-        self.assertEqual(got["errors"], [], got)
-
-    def test_the_mode_is_read_before_the_audio_is_paused(self) -> None:
-        js = _bridge_js()
-        body = js[js.index("__kcRequestCyclePause = function"):js.index("__kcResumeAudio = function")]
-        self.assertLess(body.index("kcPauseBtnMode(b0) === 'pause'"), body.index("parentWin.__kcPauseAudio();"))
-        self.assertLess(body.index("parentWin.__kcPauseAudio();"), body.index("if (!wantHeld) return;"))
-        self.assertEqual(body.count("b.click()"), 1)
-        self.assertNotIn("kcPauseBtnMode(b) !== 'pause'", body)  # no second, after-the-fact check
+    def test_a_playing_console_makes_the_lead_sheet_pause(self) -> None:
+        got = self._press_lead_sheet(console_press_pauses=True)
+        self.assertEqual(got["calls"], ["pause"], got)
+        self.assertIn("Pause", got["label"], got)
 
 
 if __name__ == "__main__":
