@@ -233,5 +233,74 @@ class TestBackwardCompatibleChannel(_Base):
         self.assertIn("if (!prog && !running && !held && tpIntent === 'playing') running = true;", js)
 
 
+def _bridge_js() -> str:
+    return kc.cycle_persistent_player_bridge_html(cmd_json="{}")
+
+
+class PauseButtonModeIgnoresIconText(unittest.TestCase):
+    """The Key Cycling Pause button carries a Material icon, whose ligature text is part of the
+    button's innerText ("pause Pause" / "play_arrow Resume"). Browser run 2026-11-14 on the
+    integration merge: the live player's Pause (__kcRequestCyclePause) compared that text with
+    /^Pause$/, never matched, and skipped the Streamlit click, so the server stayed Running for
+    22.7 s while the audio was silent. The bridge now asks the button for its mode."""
+
+    def test_no_exact_label_comparison_remains_on_the_pause_button(self) -> None:
+        js = _bridge_js()
+        self.assertIn("function kcPauseBtnLabel(b)", js)
+        self.assertIn("function kcPauseBtnMode(b)", js)
+        self.assertLess(js.index("function kcPauseBtnMode(b)"), js.index("__kcRequestCyclePause = function"))
+        self.assertNotIn("/^Pause$/i.test(lab", js)
+        self.assertNotIn("/^Resume$/i.test(lab", js)
+        self.assertEqual(js.count("kcPauseBtnMode(b) !== 'pause'"), 1)   # live-player Pause
+        self.assertEqual(js.count("kcPauseBtnMode(b) !== 'resume'"), 1)  # resume align
+        self.assertEqual(js.count("kcPauseBtnMode(b0) === 'resume'"), 2)  # Resume + Back to loop start
+        # The fallback routes (no key class after a remount) read the label without the icon too.
+        self.assertIn("const lab = kcPauseBtnLabel(btnHit);", js)
+        self.assertIn("const label = kcPauseBtnLabel(btn);", js)
+        # The state shown on the button is still written by the one transport sync, from the audio.
+        self.assertIn("const glyph = paused ? 'play_arrow' : 'pause';", js)
+
+    def test_mode_is_read_from_streamlit_shaped_buttons_in_a_browser(self) -> None:
+        try:
+            from playwright import sync_api
+        except Exception:  # pragma: no cover - browser tooling not installed
+            self.skipTest("playwright not installed")
+        js = _bridge_js()
+        helpers = js[js.index("  function kcPauseBtnLabel(b)"):js.index("  const KC_HOLDER_HIDDEN_CSS")]
+        icon = '<span data-testid="stIconMaterial">{}</span>'
+        md = '<div data-testid="stMarkdownContainer"><p>{}</p></div>'
+        cases = {
+            # Streamlit 1.59 st.button(icon=...): icon span + markdown label.
+            "pause": (icon.format("pause") + md.format("Pause"), "Pause", "pause"),
+            "resume": (icon.format("play_arrow") + md.format("Resume"), "Resume", "resume"),
+            # Undecorated buttons and a bare label without the markdown wrapper.
+            "plain_pause": (md.format("Pause"), "Pause", "pause"),
+            "bare_resume": (icon.format("play_arrow") + "Resume", "Resume", "resume"),
+            # Other transport buttons are neither.
+            "previous": (icon.format("skip_previous") + md.format("Previous"), "Previous", ""),
+            "stop": (icon.format("stop") + md.format("Stop"), "Stop", ""),
+        }
+        script = (
+            "(cases) => {" + helpers + "\n const out = {};"
+            " for (const [k, html] of Object.entries(cases)) {"
+            "  const b = document.createElement('button'); b.innerHTML = html; document.body.appendChild(b);"
+            "  out[k] = {inner: b.innerText.replace(/\\s+/g, ' ').trim(), label: kcPauseBtnLabel(b), mode: kcPauseBtnMode(b)};"
+            " } return out; }"
+        )
+        with sync_api.sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            try:
+                page = browser.new_page()
+                page.set_content("<html><body></body></html>")
+                got = page.evaluate(script, {k: v[0] for k, v in cases.items()})
+            finally:
+                browser.close()
+        # The defect's precondition: the icon text really is in innerText.
+        self.assertEqual(got["pause"]["inner"], "pause Pause")
+        for k, (_html, label, mode) in cases.items():
+            self.assertEqual(got[k]["label"], label, (k, got[k]))
+            self.assertEqual(got[k]["mode"], mode, (k, got[k]))
+
+
 if __name__ == "__main__":
     unittest.main()

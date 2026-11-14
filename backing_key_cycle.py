@@ -5191,6 +5191,27 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
   const WANT = '{label}';
   const parentWin = window.parent;
   const parentDoc = parentWin.document;
+  // The Key Cycling Pause button's action, independent of how it is decorated: its innerText also holds
+  // the Material icon's ligature text ("pause" / "play_arrow"), so never compare that text exactly.
+  function kcPauseBtnLabel(b) {{
+    if (!b) return '';
+    let el = b.querySelector('[data-testid="stMarkdownContainer"] p') || b.querySelector('p');
+    let t = '';
+    if (el) t = String(el.textContent || '');
+    else {{
+      t = String(b.textContent || '');
+      b.querySelectorAll('[data-testid="stIconMaterial"]').forEach((ic) => {{
+        t = t.replace(String(ic.textContent || ''), ' ');
+      }});
+    }}
+    return t.replace(/\\s+/g, ' ').trim();
+  }}
+  function kcPauseBtnMode(b) {{
+    const t = kcPauseBtnLabel(b).toLowerCase();
+    if (/\\bresume\\b/.test(t)) return 'resume';
+    if (/\\bpause\\b/.test(t)) return 'pause';
+    return '';
+  }}
   const KC_HOLDER_HIDDEN_CSS = '{KC_HOLDER_HIDDEN_CSS}';
 
   function ensurePlayer() {{
@@ -7350,9 +7371,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           '[class*="st-key-backing_key_cycle_pause_btn"] button'
         );
         if (!b) return;
-        const lab = String((b.innerText || b.textContent || ''))
-          .replace(/\\s+/g, ' ').trim();
-        if (!/^Resume$/i.test(lab)) return;
+        if (kcPauseBtnMode(b) !== 'resume') return;
         parentWin.__kcSkipPauseHandler = true;
         try {{ b.click(); }} catch (eClk) {{}}
         window.setTimeout(() => {{
@@ -7372,9 +7391,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           '[class*="st-key-backing_key_cycle_pause_btn"] button'
         );
         if (b0) {{
-          const lab0 = String((b0.innerText || b0.textContent || ''))
-            .replace(/\\s+/g, ' ').trim();
-          if (/^Resume$/i.test(lab0)) needStreamlitResume = true;
+          if (kcPauseBtnMode(b0) === 'resume') needStreamlitResume = true;
         }}
       }} catch (eLab0) {{}}
       try {{
@@ -7554,9 +7571,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           '[class*="st-key-backing_key_cycle_pause_btn"] button'
         );
         if (b0) {{
-          const lab0 = String((b0.innerText || b0.textContent || ''))
-            .replace(/\\s+/g, ' ').trim();
-          if (/^Resume$/i.test(lab0)) needStreamlitResume = true;
+          if (kcPauseBtnMode(b0) === 'resume') needStreamlitResume = true;
         }}
       }} catch (eLab) {{}}
       try {{
@@ -7639,9 +7654,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           '[class*="st-key-backing_key_cycle_pause_btn"] button'
         );
         if (!b) return;
-        const lab = String((b.innerText || b.textContent || ''))
-          .replace(/\\s+/g, ' ').trim();
-        if (!/^Pause$/i.test(lab)) return;
+        if (kcPauseBtnMode(b) !== 'pause') return;
         parentWin.__kcProgrammaticPauseClick = true;
         try {{ b.click(); }} catch (eClk) {{}}
         window.setTimeout(() => {{
@@ -8829,7 +8842,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           const btnHit = (path || []).find((el) => el && el.tagName === 'BUTTON')
             || (raw && raw.closest && raw.closest('button'));
           if (btnHit) {{
-            const lab = (btnHit.innerText || btnHit.textContent || '').replace(/\\s+/g, ' ').trim();
+            const lab = kcPauseBtnLabel(btnHit);
             if (/^(⏸\\s*)?Pause$|^(▶\\s*)?Resume$/i.test(lab)
               || /Pause playback|Resume playback/i.test(lab)) {{
               // Streamlit's button only toggles when the card channel was not
@@ -8888,7 +8901,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         }}
         const btn = t.closest('button') || (t.tagName === 'BUTTON' ? t : null);
         if (!btn) return;
-        const label = (btn.innerText || btn.textContent || '').replace(/\\s+/g, ' ').trim();
+        const label = kcPauseBtnLabel(btn);
         // Cycle Pause/Resume may render without a stable key class after remount.
         if (/^(⏸\\s*)?Pause$|^(▶\\s*)?Resume$/i.test(label)) {{
           if (typeof parentWin.__kcPauseBtnHandler === 'function') {{
@@ -8958,8 +8971,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
             const b = parentDoc.querySelector(
               '[class*="st-key-backing_key_cycle_pause_btn"] button'
             );
-            label = String((b && (b.innerText || b.textContent)) || '')
-              .replace(/\\s+/g, ' ').trim();
+            label = kcPauseBtnLabel(b);
           }} catch (eL) {{}}
           try {{ parentWin.__kcLastPauseLabel = label; }} catch (eLb) {{}}
           // Programmatic live-Resume must never flip to Pause mid-gesture.
