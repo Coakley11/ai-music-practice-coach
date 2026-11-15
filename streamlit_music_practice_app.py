@@ -9029,6 +9029,26 @@ def warn_if_backing_loop_degraded():
         )
 
 
+def _mt_position_context() -> str:
+    """Which song/project/scope a remembered transport position belongs to (Issue 77B)."""
+    try:
+        from multitrack_take_removal import position_context
+
+        return position_context(st.session_state)
+    except Exception:
+        return "multitrack"
+
+
+def _mt_position_token() -> int:
+    """The reset token. Advanced only by a successful Discard Take / Delete Layer (Issue 77B)."""
+    try:
+        from multitrack_take_removal import position_reset_token
+
+        return position_reset_token(st.session_state)
+    except Exception:
+        return 0
+
+
 def _mt_backing_duration_for_recorder(monitor_wav, fallback_sec) -> float:
     """Seconds of monitor backing the recorder should expect, measured from its own bytes.
 
@@ -9216,20 +9236,54 @@ def _render_multitrack_session_setup_panel(
             help="Loops the selected section range while recording.",
         )
     with _kbpm_c3:
-        mt_groove = st.selectbox(
-            action_label("feel", "Groove / feel"),
-            [
-                "Auto",
-                "Pop groove",
-                "Rock groove",
-                "Jazz swing",
-                "Bossa nova",
-                "Funk groove",
-                "Ballad",
-            ],
-            key="mt_groove_style",
-            disabled=_free_layering,
-        )
+        # Issue 77C. This list was seven options written into the page while the backing engine
+        # genuinely plays eleven - Blues groove among them, which a blues song already resolved to
+        # under Auto without the musician being able to see or choose it. The vocabulary now comes
+        # from the application's shared definition, and Auto shows what it resolved to without
+        # changing the stored value, so the choice stays automatic and still follows the song.
+        try:
+            from multitrack_groove_choices import (
+                groove_label,
+                groove_options,
+                meter_fallback_note,
+                normalize_selection,
+            )
+
+            _mt_groove_options = groove_options()
+            _mt_stored_groove = st.session_state.get("mt_groove_style")
+            _mt_safe_groove = normalize_selection(_mt_stored_groove, _mt_groove_options)
+            if _mt_stored_groove is not None and _mt_safe_groove != _mt_stored_groove:
+                # A value this list no longer offers would break the selector outright.
+                st.session_state["mt_groove_style"] = _mt_safe_groove
+            mt_groove = st.selectbox(
+                action_label("feel", "Groove / feel"),
+                _mt_groove_options,
+                key="mt_groove_style",
+                disabled=_free_layering,
+                format_func=lambda value: groove_label(value, song_data),
+                help=(
+                    "The rhythmic feel the backing plays. **Auto** follows the song and shows what "
+                    "it chose."
+                ),
+            )
+            _mt_groove_note = meter_fallback_note(mt_groove, mt_time_sig)
+            if _mt_groove_note and not _free_layering:
+                st.caption(_mt_groove_note)
+        except ImportError:
+            mt_groove = st.selectbox(
+                action_label("feel", "Groove / feel"),
+                [
+                    "Auto",
+                    "Pop groove",
+                    "Rock groove",
+                    "Jazz swing",
+                    "Bossa nova",
+                    "Funk groove",
+                    "Ballad",
+                ],
+                key="mt_groove_style",
+                disabled=_free_layering,
+            )
     section_close_fn(st)
 
     section_open_fn(st, "Count-in", icon="🎙")
@@ -9363,6 +9417,8 @@ def multitrack_studio_html(
     scope_label,
     time_signature="4/4",
     backing_duration_sec=0,
+    position_context="multitrack",
+    position_token=0,
 ):
     tracks_json = json.dumps(tracks)
     from multitrack_layer_chords import transport_clock_script
@@ -9381,6 +9437,11 @@ def multitrack_studio_html(
         "scopeLabel": scope_label,
         "hasBacking": bool(backing_b64),
         "backingDurationSec": backing_duration_sec,
+        # Issue 77B: which music a remembered position belongs to, and the token that invalidates
+        # it. The context keeps a position from leaking into a different song or project; the token
+        # is advanced only by a successful Discard Take / Delete Layer.
+        "positionContext": str(position_context or "multitrack"),
+        "positionToken": str(position_token or 0),
     })
     backing_attr = (
         f'src="data:audio/wav;base64,{backing_b64}"'
@@ -9456,6 +9517,9 @@ def multitrack_studio_html(
     // anything - which is how a second Play used to leave the first run's sources
     // playing underneath it.
     let generation = 0;
+    //: Issue 77B: when the remembered position was last written, so the save is throttled rather
+    //: than run on every animation frame.
+    let lastPosSaveMs = 0;
     // Nothing may be scheduled at the clock's current value: by the time start() is
     // actually called that instant has passed, and Web Audio then plays immediately.
     // Issue 78 measured the first count-in click scheduled ~32 ms behind the clock for
@@ -9596,6 +9660,9 @@ def multitrack_studio_html(
       labelEl.textContent = "Stopped.";
       // Layer chord strips follow this clock; a stopped transport must never advance them.
       mtPublishClock(0, false);
+      // Issue 77B: Stop means the beginning, so there is no position left to remember. (Play calls
+      // this first, which is why pressing Play always starts from the top - unchanged.)
+      try {{ forgetPosition(); }} catch (e) {{}}
     }}
 
     function updateTransport() {{
@@ -9612,6 +9679,13 @@ def multitrack_studio_html(
       beatEl.textContent = String(beatNum);
       const pct = sessionDuration > 0 ? Math.min(100, (t / sessionDuration) * 100) : 0;
       cursorEl.style.width = `${{pct}}%`;
+      // Issue 77B: remember where the music is, a few times a second, so a re-render picks it up
+      // instead of silently starting over. Throttled - this runs every animation frame.
+      const nowMs = Date.now();
+      if (nowMs - lastPosSaveMs > 400) {{
+        lastPosSaveMs = nowMs;
+        savePosition(audioCtx.currentTime - countInStartedAt, true);
+      }}
       rafId = requestAnimationFrame(updateTransport);
     }}
 
@@ -9725,9 +9799,68 @@ def multitrack_studio_html(
       if (cfg.metronomeDuringPlayback) startMetronome(ctx, musicStart, run);
     }}
 
+    // ---------------------------------------------------------------------------------------
+    // Issue 77B: the position survives a re-render, and is reset only when asked.
+    //
+    // Streamlit re-renders this component whenever its arguments change - and every layer's gain
+    // is one of them, so moving a Volume slider restarted this script: the AudioContext died, the
+    // readout went back to 0.0s / bar 1 / beat 1, and the shared clock was left FROZEN with
+    // playing:true, so every chord strip sat highlighting a bar the transport was no longer on.
+    // Measured: Volume 1.00 -> 0.95 took the readout from "4.4s, bar 2 beat 2" to "0.0s, bar 1
+    // beat 1" while the clock stuck at 11.73s and never moved again.
+    //
+    // So the position is remembered against the song/project/scope it belongs to, restored on
+    // mount, and published honestly as NOT playing. Restoring a position is not a command to play:
+    // nothing starts without the musician pressing Play.
+    const POS_KEY = "mtpos::" + String(cfg.positionContext || "multitrack");
+    const POS_TOKEN = String(cfg.positionToken || "0");
+
+    function savePosition(t, playing) {{
+      try {{
+        sessionStorage.setItem(POS_KEY, JSON.stringify({{
+          token: POS_TOKEN, t: Math.max(0, Number(t) || 0), playing: !!playing
+        }}));
+      }} catch (e) {{}}
+    }}
+
+    function forgetPosition() {{
+      try {{ sessionStorage.removeItem(POS_KEY); }} catch (e) {{}}
+    }}
+
+    function restorePosition() {{
+      let saved = null;
+      try {{ saved = JSON.parse(sessionStorage.getItem(POS_KEY) || "null"); }} catch (e) {{ saved = null; }}
+      // A different reset token means a take was discarded or a layer deleted since this position
+      // was taken: back to the beginning, deliberately.
+      if (!saved || String(saved.token) !== POS_TOKEN) {{
+        forgetPosition();
+        mtPublishClock(0, false);
+        return 0;
+      }}
+      const t = Math.max(0, Number(saved.t) || 0);
+      // Show it, and tell the strips where it is - with playing:false, which also overwrites the
+      // stale "still playing" clock a re-render used to leave behind.
+      const music = Math.max(0, t - countInBeats() * beatDuration());
+      const bd = barDuration();
+      timeEl.textContent = `${{music.toFixed(1)}}s`;
+      barEl.textContent = String(Math.floor(music / bd) + 1);
+      beatEl.textContent = String(Math.floor((music % bd) / beatDuration()) + 1);
+      if (sessionDuration > 0) {{
+        cursorEl.style.width = `${{Math.min(100, (music / sessionDuration) * 100)}}%`;
+      }}
+      if (t > 0) labelEl.textContent = "Paused here. Press Play to start from the top.";
+      mtPublishClock(t, false);
+      return t;
+    }}
+
     renderTracks();
     playBtn.addEventListener("click", playSession);
     stopBtn.addEventListener("click", stopAll);
+    restorePosition();
+    // Keep the memory current while playing, and leave a correct one behind when this frame goes.
+    window.addEventListener("pagehide", () => {{
+      if (audioCtx) savePosition(audioCtx.currentTime - countInStartedAt, false);
+    }});
   </script>
 </div>
 """
@@ -28421,6 +28554,16 @@ elif _studio_page == "multitrack":
         restore_multitrack_layers_from_workspace(st.session_state)
     except Exception:
         pass
+    # Issue 77B: layers came back from a project or a workspace, so this session is not an
+    # intentionally empty one - the marker must not survive into it and let a later empty save
+    # overwrite real recordings.
+    try:
+        from multitrack_take_removal import clear_deliberately_empty, live_layer_count
+
+        if live_layer_count(st.session_state, MT_SLOTS) > 0:
+            clear_deliberately_empty(st.session_state)
+    except Exception:
+        pass
     if "mt_tracks" not in st.session_state:
         st.session_state.mt_tracks = {slot: None for slot in MT_SLOTS}
     if "mt_track_filenames" not in st.session_state:
@@ -28901,6 +29044,15 @@ elif _studio_page == "multitrack":
                                 from multitrack_activity import retain_project_source
                                 retain_project_source(st.session_state)
                                 st.session_state.mt_tracks[slot] = _mt_bytes
+                                # Issue 77B: the project is no longer deliberately empty, so the
+                                # autosave's protection against writing an empty layer map over
+                                # real recordings applies again from here on.
+                                try:
+                                    from multitrack_take_removal import clear_deliberately_empty
+
+                                    clear_deliberately_empty(st.session_state)
+                                except ImportError:
+                                    pass
                                 # This layer is audio in the key it was just played in; a
                                 # later Practice Key change cannot transpose it, so stamp it.
                                 try:
@@ -28986,13 +29138,29 @@ elif _studio_page == "multitrack":
                                 "other layers, the backing and saved projects are untouched."
                             ),
                         ):
-                            discard_take(st.session_state, slot)
+                            # Issue 77B. discard_take alone emptied the slot and the next render
+                            # handed the take straight back, decoded from the cached blob the
+                            # landing save had written - because the save that follows a discard
+                            # skips mt_tracks entirely when no layer holds audio. remove_take does
+                            # the whole lifecycle: empty the slot, blank THIS slot in every cache a
+                            # restore reads, drop its timing, record that the empty project is
+                            # deliberate, and ask for one position reset - and it does the last two
+                            # only when something was actually removed.
                             try:
-                                from multitrack_live_recorder import forget_take_timing
+                                from multitrack_take_removal import remove_take as _mt_remove_take
 
-                                forget_take_timing(st.session_state, slot)
-                            except Exception:
-                                pass
+                                _mt_removal = _mt_remove_take(
+                                    st.session_state, slot, slots=MT_SLOTS
+                                )
+                            except ImportError:
+                                discard_take(st.session_state, slot)
+                                _mt_removal = {"removed": True}
+                                try:
+                                    from multitrack_live_recorder import forget_take_timing
+
+                                    forget_take_timing(st.session_state, slot)
+                                except Exception:
+                                    pass
                             try:
                                 from music_persistent_state import force_save_music_state
 
@@ -29325,6 +29493,12 @@ elif _studio_page == "multitrack":
                         )
                         or float(st.session_state.get("mt_backing_duration", mt_backing_duration) or 0.0)
                     ),
+                    # Issue 77B: the transport keeps the musician's position across the re-renders
+                    # that ordinary controls cause, and returns to bar 1 beat 1 only when the token
+                    # advances - which a successful Discard Take or Delete Layer does, and nothing
+                    # else does.
+                    position_context=_mt_position_context(),
+                    position_token=_mt_position_token(),
                 ),
                 height=560,
                 scrolling=True,
