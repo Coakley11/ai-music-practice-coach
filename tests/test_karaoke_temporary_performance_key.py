@@ -74,21 +74,31 @@ class ChangingTheKeyMidPerformance(unittest.TestCase):
         self.assertIn("Bb", km.entry_display_line(km.get_queue(self.session)[0]))
         self.assertNotIn("Ab", km.entry_display_line(km.get_queue(self.session)[0]))
 
-    def test_the_now_editing_path_still_writes_the_saved_key(self) -> None:
+    def test_the_now_editing_path_reports_the_saved_key_and_writes_nothing(self) -> None:
         """``apply_entry_practice_key`` is the setlist-row click, not the performance.
 
-        It writes the song's own Practice Key store so the editing surfaces follow the row, so
-        the temporary key must not travel through it. What the performance sounds in is read
-        from ``current_session_practice_key``, which does see the temporary key - asserted two
-        tests above. This began life asserting "Ab", which was this slice's own defect.
+        It answers with the key the entry is SAVED in, never the temporary one - what the
+        performance sounds in is read from ``current_session_practice_key``, asserted two tests
+        above. And while the performance owns this song's key it writes nothing at all, which
+        is Part 3b; test_karaoke_performance_key_persistence.py has the reasoning.
+
+        This test began life asserting "Ab", which was this slice's own defect, and then
+        asserting that Bb was written to the store, which was the next one.
         """
+        from songs.practice_key_state import PRACTICE_KEY_BY_SOURCE_KEY, saved_practice_concert_key
+
+        pick = km.get_queue(self.session)[0]["pick_key"]
         self.assertEqual(km.apply_entry_practice_key(self.session), "Bb")
+        self.assertEqual(saved_practice_concert_key(self.session, pick), "")
+        self.assertEqual(self.session.get(PRACTICE_KEY_BY_SOURCE_KEY, {}), {})
+
+    def test_it_does_write_for_a_song_the_performance_does_not_own(self) -> None:
+        """The Now Editing path is not broken, only kept off the song being sung."""
         from songs.practice_key_state import saved_practice_concert_key
 
-        self.assertEqual(
-            saved_practice_concert_key(self.session, km.get_queue(self.session)[0]["pick_key"]),
-            "Bb",
-        )
+        other = km.get_queue(self.session)[2]
+        self.assertEqual(km.apply_entry_practice_key(self.session, other), "Ab")
+        self.assertEqual(saved_practice_concert_key(self.session, other["pick_key"]), "Ab")
 
     def test_the_render_generation_moves_so_nothing_stale_survives(self) -> None:
         """A component keyed by the old generation would keep the old key's chart and player."""

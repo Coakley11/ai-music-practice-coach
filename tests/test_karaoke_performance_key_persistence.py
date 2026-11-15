@@ -181,6 +181,38 @@ class WhatMustStillPersist(unittest.TestCase):
         self.assertFalse(karaoke_performance_locks_song_key(session, ""))
 
 
+class TheSetlistRowClickCannotWriteItEither(unittest.TestCase):
+    """Clicking the row of the song being sung is still a karaoke gesture.
+
+    ``commit_entry_practice_key`` is the Now Editing path: it makes the entry's own saved key
+    the song's Practice Key so the editing surfaces follow the row. For the song being sung in
+    a temporary key that would write Bb over the musician's D - a different wrong value from
+    the one Part 3b started with, but the same kind of wrong. The freeze covers it, and this
+    pins that as deliberate.
+    """
+
+    def setUp(self) -> None:
+        self.session = performing_session()
+        km.retune_now_singing_entry(self.session, "Ab")
+
+    def test_the_songs_own_key_survives_a_row_click(self) -> None:
+        entry = km.get_queue(self.session)[0]
+        km.commit_entry_practice_key(self.session, entry)
+        self.assertEqual(saved_practice_concert_key(self.session, SAY), "D")
+
+    def test_a_row_click_on_another_entry_still_commits(self) -> None:
+        entry = km.get_queue(self.session)[2]
+        km.commit_entry_practice_key(self.session, entry)
+        self.assertEqual(saved_practice_concert_key(self.session, PERFECT), "Ab")
+
+    def test_the_low_level_apply_is_refused_for_the_frozen_song(self) -> None:
+        """It writes the store directly rather than through the setter, so it needs its own
+        protection - which it gets by being handed the entry's saved key and then refused."""
+        entry = km.get_queue(self.session)[0]
+        km.apply_entry_practice_key(self.session, entry)
+        self.assertEqual(saved_practice_concert_key(self.session, SAY), "D")
+
+
 class TheSavedKeyCannotBeDeletedEither(unittest.TestCase):
     """Choosing the original key during a performance must not drop the key underneath it."""
 

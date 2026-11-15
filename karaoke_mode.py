@@ -1187,6 +1187,11 @@ def apply_entry_practice_key(session_state: Any, entry: dict[str, Any] | None = 
         # Fixed Key plays the song in its fixed key and keeps the song's own saved key.
         if fixed_key_holds_song_keys(session_state):
             return key
+        # So does a performance key, for the song being sung. This writes the store directly
+        # rather than through set_practice_concert_key, so the guard there does not cover it -
+        # found by a test, after it had written the entry's Bb over the musician's own D.
+        if performance_owns_song_key(session_state, pick_key):
+            return key
         store = session_state.setdefault(PRACTICE_KEY_BY_SOURCE_KEY, {})
         store[pick_key] = key
     except Exception:
