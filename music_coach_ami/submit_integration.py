@@ -59,6 +59,9 @@ def stage_routed_music_coach_insight(
     insight = payload.to_dict()
     insight["canonical_instant"] = True
     insight["coach_submit_diagnostics"] = dict(diagnostics)
+    if "note_name_rows" in coach_resp.diagnostics:
+        import copy
+        insight["note_name_rows"] = copy.deepcopy(coach_resp.diagnostics["note_name_rows"])
     insight["model_name"] = solver_name
     # Solver / router names stay in diagnostics only — not musician-facing copy.
     insight["method"] = ""

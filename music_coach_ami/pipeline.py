@@ -11,7 +11,19 @@ from music_coach_ami.types import CoachIntent, CoachRequest, CoachResponse
 _PIPELINE_INTENTS = frozenset(SOLVER_REGISTRY.keys())
 
 
-def run_coach_submit(
+def run_coach_submit(question, session_state=None, *, ami_ctx=None):
+    from music_coach_ami.session_scope import ensure_owner
+    from music_coach_ami import note_name_display
+    ensure_owner(session_state)
+    display = note_name_display.handle(question, session_state)
+    if display is not None:
+        return route_question(question, session_state, ami_ctx=ami_ctx), display
+    req, response = _run_coach_submit(question, session_state, ami_ctx=ami_ctx)
+    note_name_display.remember(response, session_state)
+    return req, response
+
+
+def _run_coach_submit(
     question: str,
     session_state: dict[str, Any] | None = None,
     *,

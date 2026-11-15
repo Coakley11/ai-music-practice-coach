@@ -377,15 +377,25 @@ def layer_chord_strip_html(
 
       function paint() {{
         const c = clock();
-        // No transport yet, or it is stopped/paused: hold the current highlight, never advance it.
+        // Issue 77B. A stopped or paused transport used to make this strip return early, holding
+        // whatever it had last highlighted. That was fine while the clock only moved forwards, and
+        // wrong in two ways once it can be restored: a strip remounted after an ordinary rerun
+        // showed nothing at all, and a deliberate reset to bar 1 beat 1 left the old chord lit. So
+        // a paused clock now POSITIONS the strip - it still never advances it, because t does not
+        // change while paused - and a transport parked at the top highlights the first chord and
+        // scrolls there, which is what a discard or a delete asks for.
         let idx = -1;
-        if (c && c.playing) {{
-          idx = indexAt(Number(c.t) || 0);
-          state.textContent = idx < 0 ? "count-in" : ("bar " + cells[idx].b);
-        }} else if (c) {{
-          state.textContent = "paused";
-          requestAnimationFrame(paint);
-          return;
+        if (c) {{
+          const ct = Number(c.t) || 0;
+          idx = indexAt(ct);
+          if (!c.playing && ct <= 0) idx = 0;
+          if (c.playing) {{
+            state.textContent = idx < 0 ? "count-in" : ("bar " + cells[idx].b);
+          }} else {{
+            state.textContent = (ct <= 0 || idx < 0)
+              ? "at the start"
+              : ("paused at bar " + cells[idx].b);
+          }}
         }} else {{
           state.textContent = "press Play in the transport";
         }}

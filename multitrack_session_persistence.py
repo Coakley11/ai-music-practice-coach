@@ -214,6 +214,14 @@ def reset_multitrack_working_session(session_state: dict[str, Any]) -> None:
     session_state.pop("multitrack_backing_music_wav", None)
     session_state.pop("_mt_loaded_backing_project_id", None)
     session_state.pop("_mt_tracks_persist_blob", None)
+    # Issue 77B: a different working project begins here, so the remembered transport position of
+    # the one before it must not apply to it. Its identity token goes with it.
+    try:
+        from multitrack_take_removal import clear_working_project_token
+
+        clear_working_project_token(session_state)
+    except ImportError:
+        pass
     session_state.pop("_mt_backing_playback_status", None)
     session_state.pop("_mt_backing_load_error", None)
     for key in list(session_state.keys()):
@@ -468,6 +476,14 @@ def clear_multitrack_persisted_state(session_state: dict[str, Any]) -> None:
     session_state.pop("mt_backing_volume", None)
     session_state["mt_track_controls"] = {}
     session_state.pop("_mt_tracks_persist_blob", None)
+    # Issue 77B: a different working project begins here, so the remembered transport position of
+    # the one before it must not apply to it. Its identity token goes with it.
+    try:
+        from multitrack_take_removal import clear_working_project_token
+
+        clear_working_project_token(session_state)
+    except ImportError:
+        pass
 
     for key in list(session_state.keys()):
         if key.startswith(("mt_vol_", "mt_delay_", "mt_name_", "mt_mute_", "mt_solo_")):
