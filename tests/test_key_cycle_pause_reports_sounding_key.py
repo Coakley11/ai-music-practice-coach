@@ -467,5 +467,138 @@ class LeadSheetAsksTheConsole(unittest.TestCase):
         self.assertIn("Pause", got["label"], got)
 
 
+def _silent_wav(seconds: float = 6.0, sr: int = 8000) -> bytes:
+    import io
+    import struct
+    import wave
+
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(sr)
+        w.writeframes(struct.pack("<h", 0) * int(sr * seconds))
+    return buf.getvalue()
+
+
+_RUNNING = {"enabled": True, "epoch": 9, "cycleId": "cyc-A", "currentUrl": "app/static/kc/bm.wav",
+            "nextUrl": "app/static/kc/em.wav", "currentSounding": "Bm", "nextSounding": "Em",
+            "autoplay": True, "forcePlay": True}
+_SNAP = """() => { const d = window.__kcDual || {};
+  const live = [...document.querySelectorAll('audio[id^="kc-"]')].filter(a => !a.paused && !a.ended);
+  return {enabled: !!d.enabled, epoch: d.epoch, cycle: d.cycleId, stopped: d.stoppedEpoch != null,
+          playing: live.length, plays: window.__plays.length,
+          trace: (window.__kcApplyTrace || []).slice(-4).map(r => r.reason)}; }"""
+
+
+def _run_stop_race(test: unittest.TestCase, ops: list) -> list:
+    """Real bridge on a test origin with real (silent) takes; a running cycle is mounted and
+    mounted, then ``ops`` run in order: "stop" (the page's Key Cycling Stop), ("cmd", command)
+    (a command arriving from the server), ("age", ms) (the Stop is ms older). Returns a
+    snapshot after each op."""
+    try:
+        from playwright import sync_api
+    except Exception:  # pragma: no cover - browser tooling not installed
+        test.skipTest("playwright not installed")
+    import json
+
+    wav = _silent_wav()
+    parent = ('<html><body><div class="st-key-backing_key_cycle_pause_btn"><button><p>Pause</p></button></div>'
+              '<iframe id="kc-bridge"></iframe></body></html>')
+    bridge = kc.cycle_persistent_player_bridge_html(cmd_json=json.dumps(_RUNNING))
+
+    def handle(route):
+        if route.request.url.endswith(".wav"):
+            route.fulfill(status=200, content_type="audio/wav", body=wav)
+        else:
+            route.fulfill(status=200, content_type="text/html", body=parent)
+
+    snaps = []
+    with sync_api.sync_playwright() as p:
+        browser = p.chromium.launch(headless=True, args=["--autoplay-policy=no-user-gesture-required"])
+        try:
+            page = browser.new_page()
+            errors: list = []
+            page.on("pageerror", lambda e: errors.append(str(e)))
+            page.route("http://kc.test/**", handle)
+            page.goto("http://kc.test/app/")
+            page.evaluate("""(html) => { window.__plays = []; const P = HTMLMediaElement.prototype; const o = P.play;
+              P.play = function () { window.__plays.push(this.id); return o.apply(this, arguments); };
+              document.getElementById('kc-bridge').srcdoc = html; }""", bridge)
+            page.wait_for_function("() => typeof window.__kcHardStop === 'function'", timeout=15000)
+            page.wait_for_timeout(1500)
+            snaps.append(page.evaluate(_SNAP))
+            for op in ops:
+                if op == "stop":
+                    page.evaluate("() => window.__kcHardStop()")
+                elif op[0] == "cmd":
+                    page.evaluate("(c) => window.__kcApplyCmd(c)", op[1])
+                elif op[0] == "age":
+                    page.evaluate("(ms) => { window.__kcDual.stoppedAt = Number(window.__kcDual.stoppedAt || Date.now()) - ms; }",
+                                  op[1])
+                page.wait_for_timeout(900)
+                snaps.append(page.evaluate(_SNAP))
+        finally:
+            browser.close()
+    test.assertEqual(errors, [], errors)
+    return snaps
+
+
+class StopOutranksAnEarlierResume(unittest.TestCase):
+    """A Resume pressed shortly before Stop must never undo the Stop.
+
+    Browser trace 2026-11-14 (console and Lead Sheet, dev e4123206 too, 3/4 each): the page
+    stopped at epoch 9; the server -- answering the Resume late -- sent a running Resume command
+    with epoch 10 after the click. The page's Stop guard took "newer epoch" for "after the Stop",
+    cleared itself and played that take until the server's own Stop (epoch 11, off) arrived
+    5.5 s later. Until that off command, a running command of the stopped cycle is stale; a
+    deliberate new Start comes with a new cycle."""
+
+    _STALE_RESUME = dict(_RUNNING, epoch=10, resume=True, autoplay=False, forcePlay=False)
+    _OFF = {"enabled": False, "epoch": 11, "cycleId": "cyc-A"}
+    _NEW_START = dict(_RUNNING, epoch=12, cycleId="cyc-B", restart=True)
+
+    def test_a_resume_built_before_the_servers_stop_does_not_play_after_stop(self) -> None:
+        mounted, stopped, after = _run_stop_race(self, ["stop", ("cmd", self._STALE_RESUME)])
+        self.assertTrue(mounted["enabled"], mounted)
+        self.assertEqual(stopped["playing"], 0, stopped)
+        self.assertEqual(after["playing"], 0, after)
+        self.assertEqual(after["plays"], stopped["plays"], after)  # not even an attempt
+        self.assertIn("before_stop", after["trace"], after)
+        self.assertTrue(after["stopped"], after)  # still waiting for the server's off
+
+    def test_a_running_command_during_an_automatic_change_does_not_play_after_stop(self) -> None:
+        handoff = dict(_RUNNING, epoch=10, currentUrl="app/static/kc/em.wav", nextUrl="app/static/kc/am.wav",
+                       currentSounding="Em", nextSounding="Am", autoplay=True, forcePlay=False)
+        _m, stopped, after = _run_stop_race(self, ["stop", ("cmd", handoff)])
+        self.assertEqual(after["playing"], 0, after)
+        self.assertEqual(after["plays"], stopped["plays"], after)
+
+    def test_after_the_servers_off_a_new_start_plays(self) -> None:
+        _m, stopped, stale, off, start = _run_stop_race(
+            self, ["stop", ("cmd", self._STALE_RESUME), ("cmd", self._OFF), ("cmd", self._NEW_START)])
+        self.assertEqual(stale["playing"], 0, stale)
+        self.assertFalse(off["enabled"], off)
+        self.assertFalse(off["stopped"], off)  # the server's off confirms the Stop
+        self.assertEqual(start["playing"], 1, start)
+        self.assertEqual(start["cycle"], "cyc-B", start)
+
+    def test_a_new_start_before_the_off_arrives_still_plays(self) -> None:
+        _m, _stopped, start = _run_stop_race(self, ["stop", ("cmd", self._NEW_START)])
+        self.assertEqual(start["playing"], 1, start)
+        self.assertFalse(start["stopped"], start)
+
+    def test_stop_after_pause_stays_silent(self) -> None:
+        paused = dict(_RUNNING, epoch=10, paused=True, autoplay=False, forcePlay=False)
+        *_, after = _run_stop_race(self, ["stop", ("cmd", paused), ("cmd", self._STALE_RESUME)])
+        self.assertEqual(after["playing"], 0, after)
+
+    def test_a_stop_the_server_never_received_does_not_silence_the_page_for_good(self) -> None:
+        # Past the 20 s bound the old rule applies again: a newer command re-syncs the page.
+        _m, _stopped, _aged, after = _run_stop_race(self, ["stop", ("age", 21000), ("cmd", self._STALE_RESUME)])
+        self.assertEqual(after["playing"], 1, after)
+        self.assertFalse(after["stopped"], after)
+
+
 if __name__ == "__main__":
     unittest.main()

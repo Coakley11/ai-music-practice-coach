@@ -7297,8 +7297,13 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
     parentWin.__kcHardStop = function () {{
       const t0 = Number(parentWin.__kcClickT0 || kcNow());
       abortTransportPlayback({{ seekZero: false }});
-      // Commands up to this epoch were built before the Stop (see applyCmd).
+      // Commands up to this epoch were built before the Stop (see applyCmd), and
+      // so is every running command of this same cycle until the server's own off.
       state.stoppedEpoch = Number(state.epoch);
+      try {{
+        state.stoppedCycleId = String(state.cycleId || (parentWin.__kcLastCmd || {{}}).cycleId || '');
+      }} catch (eSc) {{ state.stoppedCycleId = ''; }}
+      state.stoppedAt = Date.now();
       parentWin.__kcLastStopMs = kcNow() - t0;
       try {{
         const act = activeAudio();
@@ -11056,10 +11061,25 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       // run replays its Play (same epoch, so the stale check below lets it through).
       // Python bumps the epoch on Stop / Pause / Resume / Play, so every later
       // command is newer and applies normally.
+      // A newer epoch alone is not "after the Stop": a Resume pressed a few seconds
+      // before bumps the epoch, and the server can answer it after the page's Stop.
+      // Browser trace 2026-11-14: Stop with the page at epoch 9; the server's Resume
+      // command (epoch 10, still running) arrived 1.5 s later, cleared this guard and
+      // played until the server's own Stop command (epoch 11, off) 5.5 s after the
+      // click -- 3/4 on dev too. Until the server's off command (or a hard stop)
+      // arrives, a running command of the SAME cycle is from before the Stop; a new
+      // Start comes with a new cycle. Bounded like the other transport guards (20 s):
+      // a Stop the server never received must not leave the page silent for good.
       if (cmd.epoch != null && state.stoppedEpoch != null) {{
-        if (Number(cmd.epoch) > Number(state.stoppedEpoch)) {{
+        const stopCycle = (Date.now() - Number(state.stoppedAt || 0) < 20000) ? String(state.stoppedCycleId || '') : '';
+        const cmdCycle = String(cmd.cycleId || '');
+        const afterStop = !cmd.enabled || !!cmd.hardStop || ((stopCycle && cmdCycle)
+          ? cmdCycle !== stopCycle
+          : Number(cmd.epoch) > Number(state.stoppedEpoch));
+        if (afterStop) {{
           state.stoppedEpoch = null;
-        }} else if (cmd.enabled && state.userPaused && !cmd.hardStop) {{
+          state.stoppedCycleId = '';
+        }} else if (cmd.enabled && !cmd.hardStop) {{
           try {{
             const bag = parentWin.__kcApplyTrace || (parentWin.__kcApplyTrace = []);
             bag.push({{ t: Date.now(), reason: 'before_stop', epoch: cmd.epoch, stoppedEpoch: state.stoppedEpoch }});
@@ -11256,6 +11276,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         state.passId = 0;
         state.epoch = -1;
         state.stoppedEpoch = null;
+        state.stoppedCycleId = '';
         state.handoffSettledToken = null;
         try {{ parentWin.sessionStorage.setItem('kc_user_paused', '0'); }} catch (eSS0) {{}}
         teardownKeyCycleWatchers();
