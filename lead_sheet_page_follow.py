@@ -311,7 +311,7 @@ _CONTROLLER_JS = r"""
     stop.textContent = "■ Stop";
     pz.addEventListener("click", function () {
       var p = transportProvider();
-      if (cardStarting()) { syncBar(); return; }
+      if (cardStarting() || keyCyclingOn()) { syncBar(); return; }
       try { if (p && p.pauseButton && p.pauseButton()) p.pauseButton().click(); } catch (e) {}
       setTimeout(syncBar, 120);
     });
@@ -330,6 +330,12 @@ _CONTROLLER_JS = r"""
     var d = cardTransportDoc(), b = d && d.getElementById("btn");
     return !!b && b.getAttribute("data-state") === "starting";
   }
+  // Key Cycling on (its console, with its own Pause / Resume, is on the page only while a cycle is active): the
+  // bar offers Stop only. Temporary (user, 2026-11-15) until the Key Cycling transport fixes land: a Stop pressed
+  // ~3 s after a bar Resume was undone for 2-3 s (4/6) by that Resume's delayed command.
+  function keyCyclingOn() {
+    return !!doc.querySelector('[class*="st-key-backing_key_cycle_pause_btn"]');
+  }
   function syncBar() {
     var p = transportProvider();
     var bar = doc.getElementById("ls-mini-transport");
@@ -346,7 +352,7 @@ _CONTROLLER_JS = r"""
     var paused = false;
     try { paused = !p.playing(); } catch (e) {}
     var pz = doc.getElementById("ls-mini-pause");
-    pz.style.display = cardStarting() ? "none" : "";
+    pz.style.display = cardStarting() || keyCyclingOn() ? "none" : "";
     var want = paused ? "▶ Resume" : "⏸ Pause";
     if (pz.textContent !== want) pz.textContent = want;
     pz.setAttribute("aria-label", paused ? "Resume" : "Pause");

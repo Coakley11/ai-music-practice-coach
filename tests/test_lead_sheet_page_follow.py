@@ -85,8 +85,21 @@ def test_compact_bar_offers_only_stop_while_the_card_is_starting():
     js = lpf._CONTROLLER_JS
     assert 'getAttribute("data-state") === "starting"' in js
     click = js[js.index('pz.addEventListener("click"'):][:300]
-    assert click.index("if (cardStarting())") < click.index("pauseButton().click()")
-    assert 'pz.style.display = cardStarting() ? "none" : ""' in js
+    assert click.index("if (cardStarting() || keyCyclingOn())") < click.index("pauseButton().click()")
+    assert 'pz.style.display = cardStarting() || keyCyclingOn() ? "none" : ""' in js
+
+
+def test_compact_bar_offers_only_stop_while_key_cycling_is_on():
+    """User, 2026-11-15 (temporary, until the Key Cycling transport fixes land): a Stop pressed ~3 s after a bar
+    Resume was undone for 2-3 s by that Resume's delayed command. While a cycle is active -- its console, with its
+    own Pause / Resume, is only rendered then -- the bar hides Pause / Resume and ignores a press; Stop stays."""
+    js = lpf._CONTROLLER_JS
+    kc = js[js.index("function keyCyclingOn()"):][:160]
+    assert "st-key-backing_key_cycle_pause_btn" in kc
+    bar = js[js.index("function syncBar()"):js.index("var timer = top.setInterval(")]
+    assert "keyCyclingOn()" in bar and 'bar.style.display = show ? "flex" : "none";' in bar   # Stop still shows
+    stop = js[js.index('stop.addEventListener("click"'):][:300]
+    assert "keyCyclingOn" not in stop                                                       # Stop never gated
 
 
 # --- Which notation leads the page (user, 2026-11-14) --------------------------------------------------------
