@@ -643,6 +643,20 @@ def _own_write_revision(storage: Any, storage_app_key: str, token: str) -> int:
         return 0
 
 
+def plan_own_write_recovery(own_rev: int, expected: int, candidate: int) -> tuple[int, int] | None:
+    """Decide whether a refused write is a conflict with THIS session's own earlier write, and how to retry.
+
+    ``own_rev`` is the stored revision when (and only when) the cloud row was last written by this session, else 0.
+    Returns ``(expected, candidate)`` for one retry on top of our own stored revision, or ``None`` for a real conflict.
+    The retry's revision is always above the stored one: a run interrupted after its write landed leaves the cloud at
+    exactly the revision the next run reserves for itself, and that run must not be refused for it.
+    """
+    own, exp, cand = int(own_rev or 0), int(expected or 0), int(candidate or 0)
+    if own <= 0 or own == exp:
+        return None
+    return own, (cand if own < cand else own + 1)
+
+
 def save_cloud_full_session(
     app_id: str,
     state: dict[str, Any],
@@ -820,13 +834,16 @@ def save_cloud_full_session(
             )
             if not cas.get("accepted") and writer_token:
                 own_rev = _own_write_revision(storage, storage_app_key, writer_token)
-                if 0 < own_rev < candidate and own_rev != expected:
+                plan = plan_own_write_recovery(own_rev, expected, candidate)
+                if plan is not None:
                     # The cloud row was last written by THIS session, so the mismatch is our own bookkeeping,
-                    # not another device: either two overlapping script runs wrote from the same base
-                    # (cloud ahead of us), or an earlier attempt advanced the applied revision to its
-                    # candidate and then failed or was interrupted (cloud behind us). Adopt our own stored
-                    # revision as the base and write once more on top of it. A row last written by anyone
-                    # else is never adopted, so a genuine foreign write is still a refused conflict.
+                    # not another device. Two ways that happens: (1) two overlapping script runs wrote from the
+                    # same base (cloud ahead of us); (2) a run was interrupted AFTER its write landed but before
+                    # the result was recorded, so the next run reserves that same revision number again (the cloud
+                    # already holds it, written by us). Adopt our own stored revision as the base and write once
+                    # more on top of it, at a revision above it. A row last written by anyone else is never
+                    # adopted (own_rev is 0 then), so a genuine foreign write is still a refused conflict.
+                    expected, candidate = plan
                     try:
                         from music_device_applied_revision import (
                             set_device_applied_revision_from_authoritative_hydrate,
@@ -837,13 +854,13 @@ def save_cloud_full_session(
                         )
                     except ImportError:
                         pass
-                    expected = own_rev
                     prep = dict(
                         prep,
-                        expected_revision=own_rev,
-                        precondition_expected_revision=own_rev,
-                        device_applied_revision=own_rev,
-                        applied_revision_before_prep=own_rev,
+                        expected_revision=expected,
+                        precondition_expected_revision=expected,
+                        device_applied_revision=expected,
+                        applied_revision_before_prep=expected,
+                        candidate_revision=candidate,
                         own_write_recovered=True,
                     )
                     cas = storage.save_current_state_conditional_cas(
@@ -851,7 +868,7 @@ def save_cloud_full_session(
                         page=page or "",
                         summary=summary or "Last session",
                         metrics=cas_metrics,
-                        expected_workspace_revision=own_rev,
+                        expected_workspace_revision=expected,
                         candidate_workspace_revision=candidate,
                     )
             accepted = bool(cas.get("accepted"))
