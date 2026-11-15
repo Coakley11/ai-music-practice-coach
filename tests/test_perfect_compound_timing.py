@@ -24,6 +24,7 @@ from backing_audio import chord_notes
 from chart_level_arrangement import resolve_level_chart
 from chord_events import sections_dict_to_events, validate_chord_events
 from song_catalog.catalog import curated_song_records
+from music_theory import transpose_sections_dict
 from songs.chart_provenance import chart_fingerprint, versions_fingerprint
 from songs.meter import meter_timing, metronome_accents
 
@@ -164,16 +165,34 @@ class TestTheVerseChorusHarmonicRhythm:
 
 
 class TestTheChartItselfIsUnchanged:
-    """The fix was metadata only - the chords and levels are byte-identical, so
-    saved user charts stay recognised and no revision entry is needed."""
+    """The TIMING fix was metadata only - it changed no chord and no level.
+
+    A LATER, separate commit corrected the stored key from the capo-1 G shapes
+    to the sounding concert Ab, and recorded the old fingerprint pair in
+    songs/chart_revision_table.py. The timing-only property is therefore now
+    checked by undoing that transposition: transpose the chart back to G and
+    the fingerprints are exactly what the catalog had before either commit.
+    See tests/test_perfect_concert_key.py for the key correction itself.
+    """
 
     def test_fingerprints_are_the_known_values(self, perfect):
-        assert chart_fingerprint(perfect["sections"]) == "a921e188a5039794"
-        assert versions_fingerprint(perfect["chart_versions"]) == "52577a3c2ddfbda9"
+        """Current (concert Ab) pair, and the pre-correction G pair underneath."""
+        assert chart_fingerprint(perfect["sections"]) == "774fdeb538765764"
+        assert versions_fingerprint(perfect["chart_versions"]) == "0c8e530dd9ad3a0f"
+        # Undo the key change: the timing fix itself altered no chord data.
+        back = transpose_sections_dict(perfect["sections"], "Ab", "G")
+        assert chart_fingerprint(back) == "a921e188a5039794"
+        back_versions = {lvl: transpose_sections_dict(secs, "Ab", "G")
+                         for lvl, secs in perfect["chart_versions"].items()}
+        assert versions_fingerprint(back_versions) == "52577a3c2ddfbda9"
 
-    def test_the_stored_key_is_untouched(self, perfect):
-        """Concert Ab is a separate, reviewed proposal - not done here."""
-        assert perfect["key"] == "G"
+    def test_the_stored_key_is_concert_ab(self, perfect):
+        """Was G - but those were capo-1 SHAPES, not sounding chords.
+
+        Renamed from test_the_stored_key_is_untouched, which asserted G while
+        the concert-key correction was still only a proposal.
+        """
+        assert perfect["key"] == "Ab"
 
     def test_chord_events_validate(self, perfect):
         ext = perfect["extensions"]
