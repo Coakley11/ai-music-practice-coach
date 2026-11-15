@@ -168,15 +168,40 @@ def _perfect_chart_pack() -> dict[str, Any]:
         },
         "extensions": _ext(
             arrangement_notes=(
-                "**G major** acoustic ballad (~95 BPM, **6/8**). Intro/Outro walk: "
-                "**G–D/F#–Em7–D–Cadd9–D–G**. Verses hold each chord **two full 6/8 bars** "
-                "(**G–Em7–Cadd9–D/F#**, twice per verse). Choruses **Em7–Cadd9–G–D/F#** "
-                "one bar each (×2 per chorus). Form adds **Chorus 3** before the outro. "
-                "Advanced adds maj9, 6/9, and sus extensions."
+                "Acoustic ballad in **6/8**, **dotted quarter = 63** (published piano "
+                "editions notate the same music in **12/8** - one of their bars is two "
+                "of ours). The stored BPM is the **dotted-quarter pulse rate**, which is "
+                "what the engine's compound-meter grid expects (bar = 2 x 60/63 = "
+                "1.905 s). The previous value of 95 was the *quarter-note* rate, so the "
+                "backing played the whole song **1.5x too fast**. "
+                "Chords are written in **G shapes, capo 1**, which is how Sheeran plays "
+                "it; the recording therefore sounds in **concert Ab major** (Wikipedia: "
+                "written in Ab major, 'G major in live performances'). The stored key is "
+                "still G - see OPEN below. "
+                "Intro/Outro walk: **G–D/F#–Em7–D–Cadd9–D–G**. Verses hold each chord "
+                "**two full 6/8 bars** (**G–Em7–Cadd9–D/F#**, twice per verse); choruses "
+                "**Em7–Cadd9–G–D/F#** **one bar each** (×2 per chorus). That split "
+                "harmonic rhythm is corroborated by a published teaching chart (\"the "
+                "timing is in 6/8\"; chorus \"chords 1 measure each\") and measured in the "
+                "rendered audio. Advanced adds maj9, 6/9, and sus extensions. "
+                "**OPEN:** (a) the released single runs **4:23** but these 102 bars are "
+                "**3:14**; two independent chord sources list an **instrumental/solo "
+                "section** before the final chorus that this chart omits, but no source "
+                "gives its bar count, so it has deliberately NOT been invented. "
+                "(b) 'Verse 2' and 'Verse 4' are really the two **pre-choruses**; the "
+                "names are left alone because AMI and saved charts key off them. "
+                "(c) concert-key correction to Ab is proposed separately. Not checked by ear."
             ),
-            default_bpm=95,
+            default_bpm=63,
             default_groove="Ballad",
             time_signature="6/8",
+            # Every level plays the whole song. Beginner previously dropped
+            # Verse 3, Verse 4 AND Chorus 3 (62 of 102 bars) and Intermediate
+            # dropped Chorus 3 - i.e. a verse, a pre-chorus and the final
+            # chorus vanished. Simpler harmony must not mean a shorter song.
+            full_form_levels=["Beginner", "Intermediate"],
+            chart_confidence={"chords": "high", "timing": "high",
+                              "tempo": "high", "form": "medium"},
         ),
     }
 
