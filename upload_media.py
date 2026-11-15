@@ -41,7 +41,14 @@ UPLOAD_DOCUMENT_FILE_TYPES_SET = frozenset(UPLOAD_DOCUMENT_FILE_TYPES)
 # below ``server.maxUploadSize`` (currently 500 MB) - Streamlit rejects anything larger
 # before this code ever runs, and a limit above it could never be enforced.
 # Override with MUSIC_DOCUMENT_MAX_SIZE_MB.
-_DOCUMENT_MAX_SIZE_MB_DEFAULT = 25
+#
+# Raised from 25 MB to 50 MB: a photographed page of sheet music is bigger than a generated one. A
+# 26.5 MB scan was refused by a limit the musician was never shown - the pages that state a limit
+# advertise the 500 MB RECORDING limit above, which belongs to audio and never applied here. 50 MB
+# covers a multi-page phone scan while staying far below the server ceiling, and the work a document
+# can cause stays bounded by DOCUMENT_MAX_PAGES and DOCUMENT_MAX_RENDER_PIXELS, because a byte limit
+# never bounded rendering.
+_DOCUMENT_MAX_SIZE_MB_DEFAULT = 50
 
 
 def _document_max_size_mb() -> int:
@@ -68,6 +75,41 @@ DOCUMENT_MAX_SIZE_BYTES = DOCUMENT_MAX_SIZE_MB * 1024 * 1024
 # about 12 MB of uncompressed pixels before PNG encoding.
 DOCUMENT_MAX_PAGES = 500
 DOCUMENT_MAX_RENDER_PIXELS = 4_000_000
+
+
+def _mb(num_bytes: Any) -> float:
+    try:
+        return max(0.0, float(num_bytes or 0)) / (1024 * 1024)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def document_limit_caption() -> str:
+    """The limit, stated before the musician picks a file.
+
+    Said out loud because it was not: the panel showed no limit at all, so a refusal looked
+    arbitrary, and the only figure visible anywhere was the 500 MB recording limit, which does not
+    apply to documents. Reads the configured value, so an override changes this text too.
+    """
+    return (
+        "Upload PDF reference sheets, exercises or handwritten music — maximum "
+        f"{DOCUMENT_MAX_SIZE_MB} MB per file."
+    )
+
+
+def document_too_large_message(actual_bytes: Any, *, filename: str = "") -> str:
+    """Both numbers, when a document is refused for its size.
+
+    "That file is too large." told the musician nothing: not how large their file was, not what the
+    limit is, and not whether they were close. This states both, from the same configured value the
+    check uses, so the message can never disagree with the rule.
+    """
+    who = str(filename or "").strip()
+    subject = f"**{who}** is" if who else "This file is"
+    return (
+        f"{subject} {_mb(actual_bytes):.1f} MB. The maximum allowed document size is "
+        f"{DOCUMENT_MAX_SIZE_MB} MB."
+    )
 
 VIDEO_EXTENSIONS = frozenset({".mp4", ".mov", ".m4v", ".avi"})
 AUDIO_EXTENSIONS = frozenset({".wav", ".mp3", ".m4a", ".ogg", ".flac", ".aac", ".webm"})
