@@ -7742,10 +7742,33 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           parentWin.__kcLastSeekT = parentWin.__kcFollowForceTime;
         }}
       }} catch (eSeek) {{}}
+      // A take that has finished is never played again: play() on an ended element
+      // restarts it from 0. Paused at (or Resumed within a moment of) its end, the cycle
+      // moves on to the next key through the usual end-of-take path instead (browser
+      // trace 2026-11-14: Resume with 0.4 s left -> the 500 / 1500 ms kicks replayed
+      // the same key from the start).
+      const finished = (el) => {{
+        try {{
+          return !!el && (el.ended || (Number(el.duration || 0) > 1
+            && Number(el.currentTime || 0) >= Number(el.duration) - 0.05));
+        }} catch (eF) {{ return false; }}
+      }};
+      if (finished(act)) {{
+        try {{ act.muted = false; act.volume = 1; }} catch (eUf) {{}}
+        try {{
+          if (typeof parentWin.__kcOnEnded === 'function') {{
+            window.setTimeout(() => {{ try {{ parentWin.__kcOnEnded(); }} catch (eOe) {{}} }}, 0);
+          }}
+        }} catch (eOn) {{}}
+        try {{ syncVisibleTransport(); }} catch (eVf) {{}}
+        return;
+      }}
       try {{ act.muted = false; act.volume = 1; }} catch (eU) {{}}
       const myGen = state.playGen;
       const kick = () => {{
         if (myGen !== state.playGen) return;
+        // The take finished (or the cycle moved to another take) since Resume: leave it.
+        if (finished(act) || act !== activeAudio()) return;
         try {{
           state.userPaused = false;
           parentWin.sessionStorage.setItem('kc_user_paused', '0');
@@ -9019,8 +9042,24 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
             // The key sounding at the press, captured before the audio stops
             // (the card's Pause report carries it to the server).
             try {{
+              // Nothing audible (the silent gap between two takes): the key Resume will
+              // play. The handoff may already have made the incoming take the active one
+              // -- reporting the last audible key then froze the console on Gm while
+              // Resume played Cm (browser trace 2026-11-14). A finished active take
+              // continues to the next key (see __kcResumeAudio).
+              let gapKey = '';
+              try {{
+                const actP = (typeof activeAudio === 'function') ? activeAudio() : null;
+                const srcP = actP ? String(actP.currentSrc || actP.src || '').trim() : '';
+                if (actP && srcP) {{
+                  const doneP = actP.ended || (Number(actP.duration || 0) > 1
+                    && Number(actP.currentTime || 0) >= Number(actP.duration) - 0.05);
+                  gapKey = doneP ? String(state.nextSounding || '') : String(actP.getAttribute('data-kc-sounding') || '');
+                }}
+              }} catch (eGap) {{ gapKey = ''; }}
               parentWin.__kcPauseSounding = {{
                 key: (typeof parentWin.__kcLiveKey === 'function' ? String(parentWin.__kcLiveKey() || '') : '')
+                  || gapKey
                   || String((parentWin.__kcLastLive || {{}}).key || ''),
                 at: Date.now(),
               }};
@@ -11434,6 +11473,31 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         if (detail) detail.textContent = cmd.hardStop ? 'Stopped' : 'Paused';
         return;
       }}
+      // The server's answer to a Resume the page already made (the console's or the
+      // Lead Sheet's press resumed the audio at once): it often arrives seconds later,
+      // after the resumed take has finished and the cycle has moved on. Applying it then
+      // reloaded the paused take -- the cycle stepped back (browser trace 2026-11-14:
+      // Resume on Gm, the page went on to Cm, the answer 11 s later replayed Gm). While
+      // the page is playing, has finished that take, is handing off, or holds another
+      // take, the answer only refreshes the neighbours. A deliberate restart (Play,
+      // Next / Previous) is not an answer and still applies.
+      if (cmd.resume && !cmd.restart && !state.userPaused) {{
+        const actE = activeAudio();
+        const curE = String(cmd.currentUrl || '').trim();
+        const srcE = actE ? String(actE.currentSrc || actE.src || '').trim() : '';
+        const movedOn = !!(srcE && curE && !urlsMatch(actE, curE));
+        if (actE && srcE && (!actE.paused || actE.ended || state.swapping || state.pendingHandoff || movedOn)) {{
+          try {{ noteCmdNeighbors(cmd); }} catch (eNoteEcho) {{}}
+          try {{
+            const bagE = parentWin.__kcApplyTrace || (parentWin.__kcApplyTrace = []);
+            bagE.push({{ t: Date.now(), reason: 'resume_answer_kept', epoch: cmd.epoch, sounding: String(cmd.sounding || ''),
+              movedOn: movedOn, ended: !!actE.ended, playing: !actE.paused }});
+            if (bagE.length > 40) bagE.shift();
+          }} catch (eTrE) {{}}
+          if (detail) detail.textContent = 'Resumed';
+          return;
+        }}
+      }}
       if (cmd.restart || cmd.resume) {{
         cancelPendingPlays();
         state.userPaused = false;
@@ -11457,6 +11521,25 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           return;
         }}
         const actR = actR0 || activeAudio();
+        // A Resume never replays a take that has finished (play() on an ended element
+        // restarts it from 0): the cycle goes on to the next key through the usual
+        // end-of-take path. A deliberate restart still loads and plays from the start.
+        try {{
+          if (actR && cmd.resume && !cmd.restart && sameUrl && (actR.ended || (Number(actR.duration || 0) > 1
+              && Number(actR.currentTime || 0) >= Number(actR.duration) - 0.05))) {{
+            if (typeof parentWin.__kcOnEnded === 'function') {{
+              window.setTimeout(() => {{ try {{ parentWin.__kcOnEnded(); }} catch (eOe2) {{}} }}, 0);
+            }}
+            try {{
+              const bagF = parentWin.__kcApplyTrace || (parentWin.__kcApplyTrace = []);
+              bagF.push({{ t: Date.now(), reason: 'resume_finished_take_continues', epoch: cmd.epoch, sounding: String(cmd.sounding || '') }});
+              if (bagF.length > 40) bagF.shift();
+            }} catch (eTrF) {{}}
+            if (detail) detail.textContent = 'Resumed';
+            try {{ noteCmdNeighbors(cmd); }} catch (eNoteF) {{}}
+            return;
+          }}
+        }} catch (eFin) {{}}
         if (actR) {{
           if (cmd.sounding) {{
             try {{ actR.setAttribute('data-kc-sounding', String(cmd.sounding)); }} catch (eSk) {{}}

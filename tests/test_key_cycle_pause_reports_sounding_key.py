@@ -509,7 +509,18 @@ def _run_stop_race(test: unittest.TestCase, ops: list) -> list:
 
     def handle(route):
         if route.request.url.endswith(".wav"):
-            route.fulfill(status=200, content_type="audio/wav", body=wav)
+            # Byte ranges, as a static file server answers them: without them Chromium cannot seek.
+            rng = (route.request.headers.get("range") or "").replace("bytes=", "")
+            if rng:
+                a, _, b = rng.partition("-")
+                start = int(a or 0)
+                end = int(b) if b else len(wav) - 1
+                route.fulfill(status=206, body=wav[start:end + 1], headers={
+                    "Content-Type": "audio/wav", "Accept-Ranges": "bytes",
+                    "Content-Range": f"bytes {start}-{end}/{len(wav)}", "Content-Length": str(end - start + 1)})
+            else:
+                route.fulfill(status=200, body=wav, headers={"Content-Type": "audio/wav", "Accept-Ranges": "bytes",
+                                                             "Content-Length": str(len(wav))})
         else:
             route.fulfill(status=200, content_type="text/html", body=parent)
 
@@ -545,6 +556,104 @@ def _run_stop_race(test: unittest.TestCase, ops: list) -> list:
             browser.close()
     test.assertEqual(errors, [], errors)
     return snaps
+
+
+_START = dict(_RUNNING, epoch=10, restart=True, sounding="Bm")  # a deliberate start: the Bm take plays
+_ACTIVE_JS = """() => { const d = window.__kcDual || {}; const a = document.getElementById(d.active === 1 ? 'kc-buf-1' : 'kc-buf-0');
+  return a ? {src: String(a.currentSrc || a.src || '').split('/').pop(), ct: Number(a.currentTime || 0), paused: a.paused,
+              ended: a.ended, key: a.getAttribute('data-kc-sounding') || '', up: !!d.userPaused} : null; }"""
+# Run the take to 0.3 s before its end, Pause and Resume there (the page's own Resume), then wait.
+_RESUME_AT_END_JS = """async () => { const d = window.__kcDual; d.sequence = ['Bm', 'Em', 'Am'];
+  const a = document.getElementById(d.active === 1 ? 'kc-buf-1' : 'kc-buf-0');
+  a.currentTime = Math.max(0, a.duration - 0.3); await new Promise(r => setTimeout(r, 50));
+  window.__kcPauseAudio(); await new Promise(r => setTimeout(r, 300));
+  window.__kcResumeAudio(); await new Promise(r => setTimeout(r, 2600));
+  const live = ['kc-buf-0', 'kc-buf-1'].map(i => document.getElementById(i)).filter(x => x && !x.paused && !x.ended)
+    .map(x => String(x.currentSrc || x.src).split('/').pop());
+  return {src: String(a.currentSrc || a.src).split('/').pop(), ct: Number(a.currentTime), paused: a.paused, ended: a.ended, live}; }"""
+_FINISH_JS = """async () => { const d = window.__kcDual; const a = document.getElementById(d.active === 1 ? 'kc-buf-1' : 'kc-buf-0');
+  a.currentTime = Math.max(0, a.duration - 0.2); await new Promise(r => setTimeout(r, 900));
+  return {ended: a.ended, ct: Number(a.currentTime)}; }"""
+
+
+class LateResumeNeverReplaysAFinishedTake(unittest.TestCase):
+    """Browser trace 2026-11-14 (Lead Sheet and console, Resume 0.8 s before a take's end):
+    Gm, Gm, Cm, Gm. (1) The page's own Resume kept kicking play() at 0 / 500 / 1500 ms; once the
+    take had ended, play() restarted it from 0 -- the same key again. (2) The server's answer to
+    that Resume arrived 11 s later, after the page had moved on to Cm, and reloaded Gm -- a step
+    back. A finished take must continue to the next key; a late answer must not touch the audio."""
+
+    def _assert_not_replayed(self, got: dict) -> None:
+        # A replay is the same take playing again from near its start.
+        self.assertFalse(got["src"] == "bm.wav" and not got["paused"] and got["ct"] < 2.0, got)
+
+    def test_resume_just_before_the_end_does_not_replay_the_take(self) -> None:
+        got = _run_stop_race(self, [("cmd", _START), ("eval", _RESUME_AT_END_JS)])[-1]["eval"]
+        self._assert_not_replayed(got)
+        self.assertEqual(got["live"], ["em.wav"], got)  # the cycle went on to the next key
+
+    def test_a_late_answer_after_the_take_finished_does_not_replay_it(self) -> None:
+        snaps = _run_stop_race(self, [("cmd", _START), ("eval", _FINISH_JS),
+                                      ("cmd", dict(_START, epoch=11, restart=False, resume=True)), ("eval", _ACTIVE_JS)])
+        self.assertTrue(snaps[2]["eval"]["ended"], snaps[2])
+        self._assert_not_replayed(snaps[-1]["eval"])
+
+    def test_a_late_answer_after_the_cycle_moved_on_does_not_step_back(self) -> None:
+        # The page is playing the next take; the server's answer still names the paused one.
+        moved = dict(_START, epoch=11, restart=True, currentUrl="app/static/kc/em.wav", sounding="Em",
+                     nextUrl="app/static/kc/am.wav", nextSounding="Am")
+        late = dict(_START, epoch=12, restart=False, resume=True, currentUrl="app/static/kc/bm.wav", sounding="Bm")
+        snaps = _run_stop_race(self, [("cmd", _START), ("cmd", moved), ("cmd", late), ("eval", _ACTIVE_JS)])
+        got = snaps[-1]["eval"]
+        self.assertEqual(got["src"], "em.wav", got)
+        self.assertEqual(got["key"], "Em", got)
+        self.assertFalse(got["paused"], got)
+
+    def test_a_deliberate_restart_after_the_take_finished_still_plays_it(self) -> None:
+        snaps = _run_stop_race(self, [("cmd", _START), ("eval", _FINISH_JS),
+                                      ("cmd", dict(_START, epoch=11)), ("eval", _ACTIVE_JS)])
+        got = snaps[-1]["eval"]
+        self.assertEqual(got["src"], "bm.wav", got)
+        self.assertFalse(got["paused"], got)
+        self.assertLess(got["ct"], 2.0, got)  # from the start, as asked
+
+    def test_the_servers_resume_still_resumes_a_page_that_is_still_held(self) -> None:
+        # Not an answer to the page's own Resume (the page is still paused): it applies as before.
+        snaps = _run_stop_race(self, [("cmd", _START), ("eval", "() => { window.__kcPauseAudio(); return true; }"),
+                                      ("cmd", dict(_START, epoch=11, restart=False, resume=True)), ("eval", _ACTIVE_JS)])
+        got = snaps[-1]["eval"]
+        self.assertEqual(got["src"], "bm.wav", got)
+        self.assertFalse(got["paused"], got)
+        self.assertFalse(got["up"], got)
+
+
+class PauseInTheSilentGapReportsTheKeyResumePlays(unittest.TestCase):
+    """Browser trace 2026-11-14 (final candidate): a Pause in the gap between two takes reported the
+    last AUDIBLE key (Gm), so the server and console held Gm -- but the handoff had already made the
+    incoming Cm take the active one, and Resume played Cm. The Pause now reports the key Resume will
+    play: the active take's, or the next key when the active take has finished."""
+
+    _GAP = """async (mode) => { const d = window.__kcDual; await new Promise(r => setTimeout(r, 300));
+      if (typeof window.__kcPauseBtnHandler !== 'function') return 'no handler';
+      const a = document.getElementById(d.active === 1 ? 'kc-buf-1' : 'kc-buf-0');
+      a.pause();
+      if (mode === 'finished') { a.currentTime = Math.max(0, a.duration - 0.02); d.nextSounding = 'Em'; }
+      else { a.currentTime = 0; a.setAttribute('data-kc-sounding', 'Em'); }  // the incoming take, not started yet
+      await new Promise(r => setTimeout(r, 150));
+      window.__kcLastLive = {key: 'Bm', at: Date.now()};  // the last key heard
+      window.__backingTransportState = {transport: 'playing'}; d.userPaused = false;
+      try { sessionStorage.setItem('kc_user_paused', '0'); } catch (e) {}
+      window.__kcPauseToggleAt = 0;
+      window.__kcPauseBtnHandler();
+      return (window.__kcPauseSounding || {}).key || ''; }"""
+
+    def test_a_finished_active_take_reports_the_next_key(self) -> None:
+        got = _run_stop_race(self, [("cmd", _START), ("eval", "(" + self._GAP + ")('finished')")])[-1]["eval"]
+        self.assertEqual(got, "Em", got)
+
+    def test_an_incoming_take_already_active_reports_its_own_key(self) -> None:
+        got = _run_stop_race(self, [("cmd", _START), ("eval", "(" + self._GAP + ")('incoming')")])[-1]["eval"]
+        self.assertEqual(got, "Em", got)
 
 
 class PauseCancelsAHandoffInFlight(unittest.TestCase):
