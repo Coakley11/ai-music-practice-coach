@@ -8417,32 +8417,40 @@ def _requested_verified_song_records() -> list[dict[str, Any]]:
             "Soul",
             "Db",
             {
-                "Intro / Groove": ["Db", "C7", "Fm", "Ebm", "Ab7", "Db", "C7", "Fm"],
-                "Verse": ["Db", "C7", "Fm", "Ebm", "Ab7", "Db", "C7", "Fm"],
-                "Chorus": ["Db", "C7", "Fm", "Ebm", "Ab7", "Db", "C7", "Fm"],
+                # The turnaround is four bars, the ii and the V sharing the fourth:
+                # Db | C7 | Fm | Ebm Ab7. A bar each made it five, so the eight-bar
+                # section stopped three bars into its second pass.
+                "Intro / Groove": ["Db", "C7", "Fm", "Ebm:2|Ab7:2", "Db", "C7", "Fm", "Ebm:2|Ab7:2"],
+                "Verse": ["Db", "C7", "Fm", "Ebm:2|Ab7:2", "Db", "C7", "Fm", "Ebm:2|Ab7:2"],
+                "Chorus": ["Db", "C7", "Fm", "Ebm:2|Ab7:2", "Db", "C7", "Fm", "Ebm:2|Ab7:2"],
                 "Bridge": ["Bbm", "Eb7", "Ab", "Db", "Gb", "C7", "Fm", "Ab7"],
-                "Solo": ["Db", "C7", "Fm", "Ebm", "Ab7", "Db", "C7", "Fm"],
-                "Outro": ["Db", "C7", "Fm", "Ebm", "Ab7", "Db", "Db"],
+                "Solo": ["Db", "C7", "Fm", "Ebm:2|Ab7:2", "Db", "C7", "Fm", "Ebm:2|Ab7:2"],
+                # Seven bars still: the turnaround, then the fade on the tonic.
+                "Outro": ["Db", "C7", "Fm", "Ebm:2|Ab7:2", "Db", "Db", "Db"],
             },
             {
-                "Intro / Groove": ["Dbmaj7", "C7", "Fm7", "Ebm7", "Ab7", "Dbmaj7", "C7", "Fm7"],
-                "Verse": ["Dbmaj7", "C7", "Fm7", "Ebm7", "Ab7", "Dbmaj7", "C7", "Fm7"],
-                "Chorus": ["Dbmaj7", "C7", "Fm7", "Ebm7", "Ab7", "Dbmaj7", "C7", "Fm7"],
+                "Intro / Groove": ["Dbmaj7", "C7", "Fm7", "Ebm7:2|Ab7:2", "Dbmaj7", "C7", "Fm7", "Ebm7:2|Ab7:2"],
+                "Verse": ["Dbmaj7", "C7", "Fm7", "Ebm7:2|Ab7:2", "Dbmaj7", "C7", "Fm7", "Ebm7:2|Ab7:2"],
+                "Chorus": ["Dbmaj7", "C7", "Fm7", "Ebm7:2|Ab7:2", "Dbmaj7", "C7", "Fm7", "Ebm7:2|Ab7:2"],
                 "Bridge": ["Bbm7", "Eb9", "Abmaj7", "Dbmaj7", "Gbmaj7", "C7", "Fm7", "Ab7"],
-                "Solo": ["Dbmaj7", "C7", "Fm7", "Ebm7", "Ab7", "Dbmaj7", "C7", "Fm7"],
-                "Outro": ["Dbmaj7", "C7", "Fm7", "Ebm7", "Ab7", "Dbmaj7", "Dbmaj7"],
+                "Solo": ["Dbmaj7", "C7", "Fm7", "Ebm7:2|Ab7:2", "Dbmaj7", "C7", "Fm7", "Ebm7:2|Ab7:2"],
+                "Outro": ["Dbmaj7", "C7", "Fm7", "Ebm7:2|Ab7:2", "Dbmaj7", "Dbmaj7", "Dbmaj7"],
             },
             advanced={
-                "Intro / Groove": ["Dbmaj9", "C7b9", "Fm9", "Ebm9", "Ab13", "Dbmaj9", "C7b9", "Fm9"],
-                "Verse": ["Dbmaj9", "C7b9", "Fm9", "Ebm9", "Ab13", "Dbmaj9", "C7b9", "Fm9"],
-                "Chorus": ["Dbmaj9", "C7b9", "Fm9", "Ebm9", "Ab13", "Dbmaj9", "C7b9", "Fm9"],
+                "Intro / Groove": ["Dbmaj9", "C7b9", "Fm9", "Ebm9:2|Ab13:2", "Dbmaj9", "C7b9", "Fm9", "Ebm9:2|Ab13:2"],
+                "Verse": ["Dbmaj9", "C7b9", "Fm9", "Ebm9:2|Ab13:2", "Dbmaj9", "C7b9", "Fm9", "Ebm9:2|Ab13:2"],
+                "Chorus": ["Dbmaj9", "C7b9", "Fm9", "Ebm9:2|Ab13:2", "Dbmaj9", "C7b9", "Fm9", "Ebm9:2|Ab13:2"],
                 "Bridge": ["Bbm9", "Eb13", "Abmaj9", "Dbmaj9", "Gbmaj9", "C7b9", "Fm9", "Ab13"],
-                "Solo": ["Dbmaj9", "C7b9", "Fm9", "Ebm9", "Ab13", "Dbmaj9", "C7b9", "Fm9"],
-                "Outro": ["Dbmaj9", "C7b9", "Fm9", "Ebm9", "Ab13", "Dbmaj9", "Dbmaj9"],
+                "Solo": ["Dbmaj9", "C7b9", "Fm9", "Ebm9:2|Ab13:2", "Dbmaj9", "C7b9", "Fm9", "Ebm9:2|Ab13:2"],
+                "Outro": ["Dbmaj9", "C7b9", "Fm9", "Ebm9:2|Ab13:2", "Dbmaj9", "Dbmaj9", "Dbmaj9"],
             },
             composer="Bill Withers, William Salter & Ralph MacDonald",
             lyric_cues={"Intro / Groove": ["electric piano and sax texture"], "Verse": ["smooth conversational phrase"], "Chorus": ["two-person hook"], "Bridge": ["brighter harmonic lift"], "Solo": ["sax lead over main groove"], "Outro": ["fade on main groove"]},
-            notes="Soul-jazz practice chart in Db; keeps the Dbmaj7-C7-Fm7 color and ii-V movement into Db.",
+            notes=(
+                "Soul-jazz practice chart in Db; keeps the Dbmaj7-C7-Fm7 color and ii-V movement "
+                "into Db. The turnaround is four bars with Ebm7 and Ab7 sharing the fourth "
+                "(two beats each), so each section holds whole passes of it."
+            ),
         ),
         v(
             "Rocket Man",
