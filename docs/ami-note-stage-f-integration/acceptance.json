@@ -1,0 +1,211 @@
+{
+  "clean_baseline": "e41232060ad61e67cc904c1228d2c941906952af",
+  "note_name_verified_remote": "543863fb5d95bd9b62c5622f2d8a00aef03edb4c",
+  "stage_f_tested_merge": "f7d94f9ac7f1b6c4c242313be9c414e7f2b4a0fc",
+  "isolated_stage_f_merge": "8cd521640f83f475dba896d63f820ce6bd004a84",
+  "python": "3.12.8",
+  "baseline": {
+    "files": 104,
+    "passed": 3954,
+    "failed": 9,
+    "skipped": 1,
+    "passing_subtests": 3116
+  },
+  "combined": {
+    "files": 106,
+    "passed": 3999,
+    "failed": 9,
+    "skipped": 1,
+    "passing_subtests": 3116
+  },
+  "comparison": {
+    "baseline_matches_previous_accepted_head": true,
+    "baseline_files": 104,
+    "combined_files": 106,
+    "shared": 3964,
+    "changed": [],
+    "missing": [],
+    "new": 45,
+    "new_failed": [],
+    "failures_match": true,
+    "skips_match": true,
+    "failures": [
+      [
+        "tests/test_backing_context.py::TestBackingContext::test_custom_progression_context",
+        "call"
+      ],
+      [
+        "tests/test_backing_context.py::TestBackingContext::test_sections_from_custom_progression_ignores_style_jam",
+        "call"
+      ],
+      [
+        "tests/test_backing_handoff_authority.py::TestBackingHandoffAuthority::test_refresh_restores_custom_not_catalog",
+        "call"
+      ],
+      [
+        "tests/test_composition_activation_nav.py::TestNavButtonKeys::test_jam_sets_entry_mode",
+        "call"
+      ],
+      [
+        "tests/test_cs_fa_phrase_editor_single_score.py::TestPhraseEditorSingleScore::test_armed_renders_exactly_one_synced_score",
+        "call"
+      ],
+      [
+        "tests/test_cs_fa_phrase_editor_single_score.py::TestPhraseEditorSingleScore::test_unarmed_renders_exactly_one_static_score",
+        "call"
+      ],
+      [
+        "tests/test_music_canonical_insight_submit.py::TestMusicCanonicalInsightSubmit::test_metrics_include_ami_insight_when_canonical_present",
+        "call"
+      ],
+      [
+        "tests/test_song_card_guidance.py::TestCardDetailsAndHtml::test_card_html_shows_setup_and_the_four_guidance_rows",
+        "call"
+      ],
+      [
+        "tests/test_tab_missions_render_regression.py::TestTabMissionsRenderRegression::test_tab_missions_body_with_example_and_recording_expander",
+        "call"
+      ]
+    ],
+    "skips": [
+      [
+        "tests/test_issue78c_frame_height_browser.py::TheRecorderIsNeverFourPixelsTall::test_a_hidden_recorder_still_publishes_a_usable_height",
+        "call"
+      ]
+    ],
+    "collection_errors": [],
+    "same_python": true,
+    "source_hash_changes": [],
+    "failure_and_subtest_ledger_matches": true,
+    "combined_failure_ledger": [
+      "FAILED tests/test_backing_context.py::TestBackingContext::test_custom_progression_context",
+      "FAILED tests/test_backing_context.py::TestBackingContext::test_sections_from_custom_progression_ignores_style_jam",
+      "FAILED tests/test_backing_handoff_authority.py::TestBackingHandoffAuthority::test_refresh_restores_custom_not_catalog",
+      "FAILED tests/test_composition_activation_nav.py::TestNavButtonKeys::test_jam_sets_entry_mode",
+      "FAILED tests/test_cs_fa_phrase_editor_single_score.py::TestPhraseEditorSingleScore::test_armed_renders_exactly_one_synced_score",
+      "FAILED tests/test_cs_fa_phrase_editor_single_score.py::TestPhraseEditorSingleScore::test_unarmed_renders_exactly_one_static_score",
+      "FAILED tests/test_music_canonical_insight_submit.py::TestMusicCanonicalInsightSubmit::test_metrics_include_ami_insight_when_canonical_present",
+      "FAILED tests/test_song_card_guidance.py::TestCardDetailsAndHtml::test_card_html_shows_setup_and_the_four_guidance_rows",
+      "FAILED tests/test_tab_missions_render_regression.py::TestTabMissionsRenderRegression::test_tab_missions_body_with_example_and_recording_expander"
+    ]
+  },
+  "focused": {
+    "note_isolated": 109,
+    "instruments_combined": 398,
+    "stage_f_isolated": 398
+  },
+  "browser_requests": {
+    "note": 18,
+    "stage-f": 10,
+    "notation": 8,
+    "four-instruments": 8,
+    "note-visual": 7
+  },
+  "recorder_actual_browser_test_passed": 1,
+  "visual_observations": [
+    {
+      "selected_level": "Beginner",
+      "viewport": 1440,
+      "checked": true,
+      "text": "Show note names",
+      "scroll": 128,
+      "width": 128,
+      "height": 21
+    },
+    {
+      "selected_level": "Beginner",
+      "viewport": 390,
+      "checked": true,
+      "text": "Show note names",
+      "scroll": 128,
+      "width": 128,
+      "height": 21
+    },
+    {
+      "selected_level": "Intermediate",
+      "viewport": 1440,
+      "checked": false,
+      "text": "Show note names",
+      "scroll": 128,
+      "width": 128,
+      "height": 21
+    },
+    {
+      "selected_level": "Intermediate",
+      "viewport": 390,
+      "checked": false,
+      "text": "Show note names",
+      "scroll": 128,
+      "width": 128,
+      "height": 21
+    },
+    {
+      "mobile_score_end_accessible": true,
+      "clientWidth": 318,
+      "scrollWidth": 766,
+      "scrollLeft": 448,
+      "tabIndex": 0
+    },
+    {
+      "explicit_toggle_level": "Beginner",
+      "checkbox_show_hide_verified": true,
+      "staff_plan_history_unchanged": true
+    },
+    {
+      "explicit_toggle_level": "Intermediate",
+      "checkbox_show_hide_verified": true,
+      "staff_plan_history_unchanged": true
+    },
+    {
+      "explicit_toggle_level": "Advanced",
+      "checkbox_show_hide_verified": true,
+      "staff_plan_history_unchanged": true
+    }
+  ],
+  "source_checks_after_tests_and_browsers": {
+    "ami-nf-current-combined": {
+      "files": 2171,
+      "changed": []
+    },
+    "ami-nf-current-stage-f-isolated": {
+      "files": 2168,
+      "changed": []
+    }
+  },
+  "newer_recorder_files_preserved": [
+    "docs/issue77a-recording-reliability.md",
+    "media_multitrack_catalog.py",
+    "mission_recorder_component/index.html",
+    "multitrack_audio_validation.py",
+    "multitrack_live_recorder.py",
+    "multitrack_monitor_assets.py",
+    "scripts/_accept_issue77a_recording.py",
+    "scripts/_i77a_testlist_matched.txt",
+    "scripts/run_issue77a_app.sh",
+    "streamlit_music_practice_app.py",
+    "tests/test_issue77a_asset_failure_browser.py",
+    "tests/test_issue77a_recording_reliability.py"
+  ],
+  "specialized_sax_generation_enabled": false,
+  "teacher_or_physical_validation_claimed": false,
+  "preexisting_intermittent_phrasing_failure": {
+    "baseline_candidate_identical_failure_seeds": [
+      63,
+      86
+    ],
+    "actual_breathless_bars": "21/8",
+    "test_limit": "5/2",
+    "affected_source_unchanged": true,
+    "forty_other_controlled_inputs_equal": true
+  },
+  "test_input_control": {
+    "controlled_fixture": "tests.test_song_coach_examples._composition_ctx",
+    "control": "Only UUID input within this fixture: UUID(int=1), UUID(int=2), etc.; original fixture and all assertions retained. Other test UUID generation is untouched.",
+    "reason": "Composition identity participates in the example seed; unfixed UUIDs reproduce an existing intermittent 21/8 > 5/2 phrasing failure on clean dev and candidate alike.",
+    "source_modified": false
+  },
+  "evidence_root": "D:\\AMIWorktrees\\flexible-evidence-20261112",
+  "paid_api_calls": false,
+  "force_push": false,
+  "deployment": false
+}
