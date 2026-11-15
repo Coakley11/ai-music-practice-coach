@@ -8079,6 +8079,11 @@ def _requested_verified_song_records() -> list[dict[str, Any]]:
         for _field in ("concert_key", "guitar_friendly_key", "capo_note"):
             if ref.get(_field):
                 ext_patch[_field] = str(ref[_field])
+        # A reference may declare which levels keep the whole form.  Without
+        # this the field would be dropped here and the level trim would still
+        # drop the song's final chorus.
+        if ref.get("full_form_levels"):
+            ext_patch["full_form_levels"] = [str(x) for x in ref["full_form_levels"]]
         if ext_patch:
             row["extensions"] = ext_patch
         if ref.get("section_order"):

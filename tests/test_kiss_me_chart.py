@@ -25,7 +25,11 @@ from chart_level_arrangement import resolve_level_chart
 from song_catalog.catalog import curated_song_records
 from songs.meter import meter_timing
 
-BARS = {"Beginner": 59, "Intermediate": 63, "Advanced": 88}
+# W23: every level now plays the whole 88-bar form.  The old 59/63 were a
+# snapshot of the generic level trim, which dropped "Chorus 3" (the final
+# chorus) at Beginner AND Intermediate; the record's own duration (3:30 vs
+# 88 bars = 3:31) says 88 is the form.  See test_kiss_me_form_and_chorus.py.
+BARS = {"Beginner": 88, "Intermediate": 88, "Advanced": 88}
 
 
 class KissMeTempoTests(unittest.TestCase):
