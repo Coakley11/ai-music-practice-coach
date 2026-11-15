@@ -19,7 +19,8 @@ import html
 from collections.abc import Mapping, Sequence
 from typing import Any, Callable, Iterable
 
-from music_feature_icons import FEATURE_ICONS, feature_label
+from music_feature_icons import FEATURE_ICONS, action_label, feature_label
+from songs.music_source import SOURCE_CATALOG, SOURCE_COMPOSITION, SOURCE_CUSTOM
 
 import karaoke_mode as km
 from backing_transport_intent import begin_playback, continue_playback, stop_playback
@@ -211,6 +212,43 @@ def render_add_to_queue_button(
 # ---------------------------------------------------------------------------
 
 
+#: Part 7: the three kinds of material a setlist can hold, each with its own colour class
+#: and its own spoken name. Keyed on the entry's stored ``source``, which
+#: ``karaoke_mode._infer_source`` derives from the pick key - so it cannot be fooled by a
+#: title. Catalog is red here and purple elsewhere: Karaoke's whole stage is purple, so a
+#: purple row would read as "this is Karaoke", not "this came from the Catalog".
+_SOURCE_ROW_STYLES: dict[str, tuple[str, str]] = {
+    SOURCE_CATALOG: ("src-catalog", "Catalog"),
+    SOURCE_CUSTOM: ("src-custom", "Custom"),
+    SOURCE_COMPOSITION: ("src-composition", "Composition"),
+}
+
+
+def _entry_source_style(entry: Mapping[str, Any] | None) -> tuple[str, str]:
+    """``(css class, readable name)`` for a setlist entry's kind of material.
+
+    Reads the entry's stored ``source`` first and falls back to re-deriving it from the pick
+    key, so an entry saved before that field existed is still coloured correctly rather than
+    silently painted as a Catalog song.
+    """
+    if not isinstance(entry, Mapping):
+        return "", ""
+    source = str(entry.get("source") or "").strip()
+    if source not in _SOURCE_ROW_STYLES:
+        # Re-derive from the pick key, but only when there IS one. _infer_source answers
+        # "catalog_song" for an empty string, and an entry with neither a source nor an
+        # identity is not a Catalog song - it is an entry we know nothing about, and saying
+        # "Catalog" about it would be a guess dressed as a fact.
+        pick = str(entry.get("pick_key") or "").strip()
+        if not pick:
+            return "", ""
+        try:
+            source = str(km._infer_source(pick) or "")
+        except Exception:
+            source = ""
+    return _SOURCE_ROW_STYLES.get(source, ("", ""))
+
+
 def render_karaoke_setlist_panel(
     st: Any,
     *,
@@ -373,8 +411,23 @@ def render_karaoke_setlist_panel(
                 marker_cls = ""
                 wrap_state = "is-idle"
 
-            marker_html = (
-                f'<span class="ui-karaoke-row-marker {marker_cls}">'
+            # Part 7: which of the three kinds of material this entry is, taken from the
+            # entry's own stored metadata and never from its title - a Catalog song called
+            # "A Minor Progression" would otherwise be painted as a Custom one. Catalog is
+            # red *inside Karaoke* because Karaoke's own theme is the purple that Catalog
+            # wears elsewhere, so purple here would say "Karaoke", not "Catalog".
+            source_cls, source_name = _entry_source_style(entry)
+            # The name is rendered as well as the colour, so the distinction does not depend
+            # on seeing colour at all.
+            source_html = (
+                f'<span class="ui-karaoke-row-source {source_cls}">'
+                f"{html.escape(source_name)}"
+                "</span>"
+                if source_name
+                else ""
+            )
+            marker_html = source_html + (
+                f'<span class="ui-karaoke-row-marker {marker_cls} {source_cls}">'
                 f"{html.escape(marker_text)}"
                 "</span>"
                 if marker_text
@@ -388,8 +441,9 @@ def render_karaoke_setlist_panel(
                 c_pick, c_plays, c_up, c_dn, c_rm = st.columns([6.5, 1.5, 1, 1, 1])
                 with c_pick:
                     st.markdown(
-                        f'<div class="ui-karaoke-pick-wrap {wrap_state}" '
-                        f'data-row="{idx}">{marker_html}</div>',
+                        f'<div class="ui-karaoke-pick-wrap {wrap_state} {source_cls}" '
+                        f'data-row="{idx}" data-source="{html.escape(source_name.lower())}">'
+                        f"{marker_html}</div>",
                         unsafe_allow_html=True,
                     )
                     # Primary row label includes the entry's saved Practice Key so
@@ -498,7 +552,7 @@ def render_karaoke_setlist_panel(
             c_start, c_stop, c_clear, c_auto = st.columns([2, 2, 2, 3])
             with c_start:
                 if st.button(
-                    feature_label("karaoke", km.voice_wording("start_session_button", voice=True)),
+                    action_label("play", km.voice_wording("start_session_button", voice=True)),
                     key="karaoke_start_session",
                     disabled=active or not queue,
                     type="primary",
@@ -515,7 +569,7 @@ def render_karaoke_setlist_panel(
                     st.rerun()
             with c_stop:
                 if st.button(
-                    km.voice_wording("stop_session_button", voice=True),
+                    action_label("stop", km.voice_wording("stop_session_button", voice=True)),
                     key="karaoke_stop_session",
                     disabled=not active,
                     use_container_width=True,
@@ -524,7 +578,7 @@ def render_karaoke_setlist_panel(
                     st.rerun()
             with c_clear:
                 if st.button(
-                    "Clear Setlist",
+                    action_label("delete", "Clear Setlist"),
                     key="karaoke_clear_queue",
                     use_container_width=True,
                     disabled=not queue,
@@ -823,7 +877,7 @@ def render_karaoke_skip_controls(
         c_prev, c_skip, c_end, _spacer = st.columns([2, 3, 2, 3])
         with c_prev:
             st.button(
-                "\u23EE  Previous song",
+                action_label("previous", " Previous song"),
                 key="karaoke_previous_song",
                 use_container_width=True,
                 help="Step back to the previous song in your karaoke set.",
@@ -833,7 +887,7 @@ def render_karaoke_skip_controls(
             )
         with c_skip:
             st.button(
-                f"\u23ED  {KARAOKE_SKIP_BUTTON_TEXT}",
+                action_label("next", f" {KARAOKE_SKIP_BUTTON_TEXT}"),
                 key="karaoke_skip_to_next",
                 use_container_width=True,
                 help="Advance to the next song in your karaoke set.",
@@ -843,7 +897,7 @@ def render_karaoke_skip_controls(
             )
         with c_end:
             clicked_end = st.button(
-                "End karaoke set",
+                action_label("stop", "End karaoke set"),
                 key="karaoke_inline_end_set",
                 use_container_width=True,
                 help="Stop the karaoke session (your setlist stays saved).",

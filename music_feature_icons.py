@@ -187,6 +187,16 @@ ACTION_ICONS: dict[str, str] = {
     "load": FEATURE_ICONS["action_load"],
     # Play is the same transport triangle as preview; one glyph for one gesture.
     "play": "▶️",
+    # Karaoke transport. "End Karaoke Set" read as a heading rather than a command - a
+    # label saying where the set ends, not a button that stops it - so the stop square
+    # the app already uses for transport does the telling. It stays distinct from
+    # "delete" (🗑️) on Clear Setlist, because ending a performance and throwing the
+    # setlist away are emphatically not the same act.
+    "stop": FEATURE_ICONS["action_stop"],
+    # The same two glyphs the karaoke player's transport already prints inline, moved
+    # into the map so the setlist and the player cannot drift apart.
+    "next": "\u23ed",
+    "previous": "\u23ee",
 }
 
 

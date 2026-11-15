@@ -8437,6 +8437,107 @@ div[data-testid="stTabs"] [data-baseweb="tab-highlight"] {
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
 }
 
+/* ------------------------------------------------------------------
+   Part 7: which of the three kinds of material a setlist row holds.
+
+   Catalog entries are published songs; a Custom Progression may be four
+   chords with no lyrics and no form; a Composition Studio entry may be an
+   original song with its own melody and words. Those are not the same thing
+   and must not look the same.
+
+   Catalog is RED here and purple everywhere else in the app on purpose:
+   Karaoke's whole stage is that purple, so a purple row would say "this is
+   Karaoke", not "this came from the Catalog". Custom keeps its green and
+   Composition its black, as they wear elsewhere.
+
+   Only the EDITING row's rectangle and its marker are re-coloured. Now
+   Singing keeps its one unmistakable neon treatment, because on stage the
+   question it answers is "which song is playing", not "where did it come
+   from" - that is what the always-present source chip is for.
+   ------------------------------------------------------------------ */
+
+/* The source chip: rendered for every row, with the name spelled out, so the
+   distinction never depends on seeing colour. */
+.st-key-karaoke_stage .ui-karaoke-row-source {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.56rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  padding: 1px 7px;
+  margin-right: 0.3rem;
+  border-radius: 999px;
+  line-height: 1.6;
+  color: #fdf4ff;
+  background: rgba(168, 85, 247, 0.26);
+  border: 1px solid rgba(216, 180, 254, 0.34);
+}
+.st-key-karaoke_stage .ui-karaoke-row-source.src-catalog {
+  color: #fff1f2;
+  background: rgba(220, 38, 38, 0.82);
+  border-color: rgba(254, 202, 202, 0.72);
+}
+.st-key-karaoke_stage .ui-karaoke-row-source.src-custom {
+  color: #f0fdf4;
+  background: rgba(21, 128, 61, 0.86);
+  border-color: rgba(187, 247, 208, 0.70);
+}
+.st-key-karaoke_stage .ui-karaoke-row-source.src-composition {
+  color: #f8fafc;
+  background: rgba(15, 17, 21, 0.92);
+  border-color: rgba(203, 213, 225, 0.55);
+}
+
+/* The NOW EDITING marker takes the same colour as its source, so the chip
+   and the marker agree instead of arguing. */
+.st-key-karaoke_stage .ui-karaoke-row-marker.marker-editing.src-catalog {
+  color: #fff1f2;
+  background: rgba(220, 38, 38, 0.34);
+  border: 1px solid rgba(254, 202, 202, 0.58);
+}
+.st-key-karaoke_stage .ui-karaoke-row-marker.marker-editing.src-custom {
+  color: #f0fdf4;
+  background: rgba(21, 128, 61, 0.38);
+  border: 1px solid rgba(187, 247, 208, 0.55);
+}
+.st-key-karaoke_stage .ui-karaoke-row-marker.marker-editing.src-composition {
+  color: #f8fafc;
+  background: rgba(15, 17, 21, 0.72);
+  border: 1px solid rgba(203, 213, 225, 0.48);
+}
+
+/* The editing row's rectangle. Text stays white on all three, and each keeps
+   the inset accent stripe the magenta version established so the row is still
+   recognisable as the selected one. */
+.st-key-karaoke_stage .ui-karaoke-pick-wrap.is-editing.src-catalog + div .stButton > button {
+  background: linear-gradient(180deg, #dc2626 0%, #7f1d1d 100%) !important;
+  border: 1px solid rgba(254, 202, 202, 0.62) !important;
+  color: #ffffff !important;
+  box-shadow:
+    0 8px 22px -8px rgba(220, 38, 38, 0.55),
+    inset 0 0 0 1px rgba(254, 202, 202, 0.28),
+    inset 4px 0 0 0 rgba(254, 226, 226, 0.90) !important;
+}
+.st-key-karaoke_stage .ui-karaoke-pick-wrap.is-editing.src-custom + div .stButton > button {
+  background: linear-gradient(180deg, #16a34a 0%, #14532d 100%) !important;
+  border: 1px solid rgba(187, 247, 208, 0.62) !important;
+  color: #ffffff !important;
+  box-shadow:
+    0 8px 22px -8px rgba(22, 163, 74, 0.55),
+    inset 0 0 0 1px rgba(187, 247, 208, 0.28),
+    inset 4px 0 0 0 rgba(220, 252, 231, 0.90) !important;
+}
+.st-key-karaoke_stage .ui-karaoke-pick-wrap.is-editing.src-composition + div .stButton > button {
+  background: linear-gradient(180deg, #1f2937 0%, #000000 100%) !important;
+  border: 1px solid rgba(203, 213, 225, 0.55) !important;
+  color: #ffffff !important;
+  box-shadow:
+    0 8px 22px -8px rgba(0, 0, 0, 0.70),
+    inset 0 0 0 1px rgba(203, 213, 225, 0.22),
+    inset 4px 0 0 0 rgba(226, 232, 240, 0.90) !important;
+}
+
 /* Square icon controls (up / down / remove). One thin pill per
    action, centered glyph, clearly distinct from the title row. */
 .st-key-karaoke_stage .ui-karaoke-ctrl-wrap {
