@@ -626,6 +626,36 @@ class StopOutranksAnEarlierResume(unittest.TestCase):
         kc.render_backing_key_cycle_controls(_St(session, cycling="On"), session)
         self.assertTrue(kc.is_cycle_active(session))
 
+    def test_a_card_resume_still_pending_at_stop_is_not_applied_after_it(self) -> None:
+        """Server side: callbacks run before the page applies the card's command, so the Resume
+        pressed just before Stop was applied after it and started playback (trace 2026-11-14:
+        Stop at +1.4 s, that Resume at +3.2 s). The console's Stop now supersedes it."""
+        from backing_transport_intent import PLAYING
+        from tests.test_backing_key_cycle_ui_contract import _ControlsSt, _session
+
+        for action in ("resume", "pause"):
+            session = _session()
+            session["_kc_cycle_user_toggled"] = True
+            kc.render_backing_key_cycle_controls(_ControlsSt(session, cycling="On"), session)
+            self.assertTrue(kc.is_cycle_active(session))
+            session[BACKING_CARD_TRANSPORT_KEY] = {"action": action, "session": "s1", "nonce": 7}
+            self.assertEqual(cards.pending_card_command(session), (action, "s1:7"))
+            kc._stop_key_cycle_from_button(session)
+            # What the page does with the card's command later in the same (or the next) run.
+            pending, token = cards.pending_card_command(session)
+            if pending:
+                cards.apply_card_command(session, pending, token, has_chords=True, stop_backing=lambda _i: False)
+            self.assertEqual(pending, "", action)
+            self.assertNotEqual(transport_intent(session), PLAYING, action)
+            self.assertFalse(kc.is_cycle_active(session), action)
+            self.assertFalse(session.get("_backing_autoplay"), action)
+            self.assertEqual(cards.card_echo_token(session), "s1:7", action)  # echoed, so the card clears its intent
+        # A Play pressed with the Stop is not swallowed.
+        session = _session()
+        session[BACKING_CARD_TRANSPORT_KEY] = {"action": "play", "session": "s1", "nonce": 8}
+        kc._stop_key_cycle_from_button(session)
+        self.assertEqual(cards.pending_card_command(session), ("play", "s1:8"))
+
     def test_a_stop_the_server_never_received_does_not_silence_the_page_for_good(self) -> None:
         # Past the 20 s bound the old rule applies again: a newer command re-syncs the page.
         _m, _stopped, _aged, after = _run_stop_race(self, ["stop", ("age", 21000), ("cmd", self._STALE_RESUME)])

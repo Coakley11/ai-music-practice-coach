@@ -14012,6 +14012,20 @@ def _stop_key_cycle_from_button(session: dict[str, Any]) -> None:
     page's teardown mounts the disabled player in this same run (the flags
     below), which cancels the dual-buffer and any prepared handoff.
     """
+    # Widget callbacks run before the page applies the card's command, so a card
+    # Pause / Resume pressed just before this Stop is still pending here. Applied
+    # after the Stop, that Resume started playback again (browser trace
+    # 2026-11-14: Stop at +1.4 s, the earlier Resume applied at +3.2 s). Stop
+    # supersedes it: commit it unapplied (its echo also clears the card's own
+    # pending intent). A Play is not touched.
+    try:
+        from backing_card_commands import commit_card_command, pending_card_command
+
+        _card_action, _card_token = pending_card_command(session)
+        if _card_action in ("pause", "resume") and _card_token:
+            commit_card_command(session, _card_token)
+    except Exception:
+        pass
     stop_key_cycle(session)
     session["_kc_force_player_off"] = True
     session["_kc_player_needs_teardown"] = True
