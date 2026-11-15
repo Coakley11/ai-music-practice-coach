@@ -9107,20 +9107,54 @@ def _render_multitrack_session_setup_panel(
             help="Loops the selected section range while recording.",
         )
     with _kbpm_c3:
-        mt_groove = st.selectbox(
-            action_label("feel", "Groove / feel"),
-            [
-                "Auto",
-                "Pop groove",
-                "Rock groove",
-                "Jazz swing",
-                "Bossa nova",
-                "Funk groove",
-                "Ballad",
-            ],
-            key="mt_groove_style",
-            disabled=_free_layering,
-        )
+        # Issue 77C. This list was seven options written into the page while the backing engine
+        # genuinely plays eleven - Blues groove among them, which a blues song already resolved to
+        # under Auto without the musician being able to see or choose it. The vocabulary now comes
+        # from the application's shared definition, and Auto shows what it resolved to without
+        # changing the stored value, so the choice stays automatic and still follows the song.
+        try:
+            from multitrack_groove_choices import (
+                groove_label,
+                groove_options,
+                meter_fallback_note,
+                normalize_selection,
+            )
+
+            _mt_groove_options = groove_options()
+            _mt_stored_groove = st.session_state.get("mt_groove_style")
+            _mt_safe_groove = normalize_selection(_mt_stored_groove, _mt_groove_options)
+            if _mt_stored_groove is not None and _mt_safe_groove != _mt_stored_groove:
+                # A value this list no longer offers would break the selector outright.
+                st.session_state["mt_groove_style"] = _mt_safe_groove
+            mt_groove = st.selectbox(
+                action_label("feel", "Groove / feel"),
+                _mt_groove_options,
+                key="mt_groove_style",
+                disabled=_free_layering,
+                format_func=lambda value: groove_label(value, song_data),
+                help=(
+                    "The rhythmic feel the backing plays. **Auto** follows the song and shows what "
+                    "it chose."
+                ),
+            )
+            _mt_groove_note = meter_fallback_note(mt_groove, mt_time_sig)
+            if _mt_groove_note and not _free_layering:
+                st.caption(_mt_groove_note)
+        except ImportError:
+            mt_groove = st.selectbox(
+                action_label("feel", "Groove / feel"),
+                [
+                    "Auto",
+                    "Pop groove",
+                    "Rock groove",
+                    "Jazz swing",
+                    "Bossa nova",
+                    "Funk groove",
+                    "Ballad",
+                ],
+                key="mt_groove_style",
+                disabled=_free_layering,
+            )
     section_close_fn(st)
 
     section_open_fn(st, "Count-in", icon="🎙")
