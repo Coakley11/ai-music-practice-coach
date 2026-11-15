@@ -96,3 +96,34 @@ Near-term mitigations that keep recovery working: (1) tell users to log out on s
 row and clears the tab); (2) follow-up change: refuse stored sessions older than N days using the row's `updated_at`
 (already selected by the query) and drop `suite_sid` from the address bar once restored; (3) the token-encryption redesign
 stays on the separate QA branch.
+
+## Production release checklist
+Nothing below has been run. Each step needs its own approval.
+1. **Target and commit.** Confirm in Streamlit Cloud -> Manage app -> Settings which repo/branch the production app tracks
+   and the commit it is on. Record both. Deploy only a branch that contains this hotfix (merge commit id recorded here).
+2. **Sign-up status (read only).** Supabase dashboard of the project used by that app -> Authentication -> Sign In / Providers
+   -> Email: note "Allow new users to sign up" and "Confirm email". Authentication -> Users: note the count and look for
+   accounts nobody recognises. Do not change anything yet.
+3. **Authorised mappings.** Decide, in writing, who is Daniel's account, Ariel's account and the administrator(s). Copy each
+   person's User UID from Authentication -> Users. Paste into Streamlit Secrets (`[suite_auth]`), never into chat/source.
+   Admin is granted only to ids you name. Run `scripts/check_access_policy.py`.
+4. **Backup before deploy (read only).** In the SQL editor run SELECTs (export to CSV, store privately) for:
+   `suite_users` (external_id in daniel, ariel, default), `suite_app_current_state` (app = 'music' or like 'music\_\_%'),
+   `suite_saved_items` and `suite_user_settings` for those users, and the non-music apps' unscoped rows for the same users.
+   Restoration check: import the CSVs into the QA project and open them with the hotfix and the owner mapping.
+5. **Deploy to staging first** (non-production Supabase, same settings shape) and run the owner/attacker checks.
+6. **Smoke test immediately after production deploy:** sign in as Daniel -> songs/compositions present, save works;
+   sign in as Ariel -> only Ariel's data, no workspace switching; sign in with a spare ordinary account (one you own) ->
+   empty workspace, cannot reach either; signed-out visit shows only the login gate.
+7. **Watch** the app log for `PermissionError` and "malformed" policy lines for 24 h.
+
+## If the release goes wrong (never reactivate the vulnerability)
+* **Wrong or missing mapping:** fix forward in Secrets. Takes effect on the next run, touches no data.
+* **Need to restrict access now:** Streamlit Cloud -> Settings -> Sharing -> restrict viewers (or pause the app), and/or
+  disable sign-ups in Supabase. Both are reversible and neither changes data.
+* **Old code must never be redeployed** while sign-in is enabled: it restores the email-derived identity and admin. If code
+  must go back, go to an earlier commit that still contains `suite_access_policy.py` (`git merge-base --is-ancestor <hotfix> <target>`
+  must succeed) and tag the release (`access-control-hotfix-v1`) so it is easy to verify.
+* **Honest limit:** the platform cannot stop someone choosing an old commit in the dashboard. The tag, this checklist and the
+  restriction levers above are the controls; there is no automatic guard against that.
+* **Do not** use a sign-in-disabled deployment with a shared Daniel workspace as a substitute: every visitor would be Daniel.
