@@ -113,7 +113,7 @@ class TestCreativeContext(unittest.TestCase):
     def test_catalog_context_from_the_creative_page(self) -> None:
         session, _improv, ctx = _ctx()
         self.assertTrue(ctx.available, ctx.reason)
-        self.assertEqual((ctx.song_title, ctx.concert_key, ctx.chart_key, ctx.written_key), ("Perfect", "G", "G", ""))
+        self.assertEqual((ctx.song_title, ctx.concert_key, ctx.chart_key, ctx.written_key), ("Perfect", "Ab", "Ab", ""))
         self.assertEqual(ctx.chart_label, "Verified chord chart")  # from the catalog row, not selected_song
         self.assertEqual(chart_key_label(session, ctx), "")
 
@@ -133,13 +133,13 @@ class TestCreativeContext(unittest.TestCase):
 
     def test_alto_sax_written_key(self) -> None:
         session, _improv, ctx = _ctx(instrument="Saxophone", written=True)
-        self.assertEqual((ctx.concert_key, ctx.chart_key, ctx.written_key), ("G", "E", "E"))
+        self.assertEqual((ctx.concert_key, ctx.chart_key, ctx.written_key), ("Ab", "F", "F"))
         self.assertEqual(chart_key_label(session, ctx), "Written key")
         note, chord = projectors(ctx)
         self.assertEqual(note(SimpleNamespace(pc=7, name="G")), "E")
-        self.assertEqual(note(SimpleNamespace(pc=6, name="F#")), "D#")
+        self.assertEqual(note(SimpleNamespace(pc=6, name="F#")), "Eb")
         self.assertEqual(chord("Cadd9"), "Aadd9")
-        self.assertEqual(chord("D/F#"), "B/D#")
+        self.assertEqual(chord("D/F#"), "B/Eb")
 
     def test_guitar_capo_is_a_shape_key(self) -> None:
         session, _improv, ctx = _ctx(instrument="Guitar")

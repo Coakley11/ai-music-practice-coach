@@ -98,9 +98,13 @@ def _wmggw_beginner() -> dict[str, list[str]]:
 
 
 def _perfect_chart_pack() -> dict[str, Any]:
-    """Perfect — Ed Sheeran (G major, acoustic pop ballad)."""
-    walk = ["G", "D/F#", "Em7", "D", "Cadd9", "D", "G"]
-    chorus = ["Em7", "Cadd9", "G", "D/F#", "Em7", "Cadd9", "G", "D/F#"]
+    """Perfect — Ed Sheeran (concert Ab major, acoustic pop ballad)."""
+    # Concert (sounding) chords. Sheeran plays G shapes with a capo on fret 1,
+    # so the shapes a guitarist grips are a semitone BELOW these symbols. Capo
+    # mode (shape key G, which is the auto-default for Ab) and Practice Key G
+    # both reproduce the old G chart exactly.
+    walk = ["Ab", "Eb/G", "Fm7", "Eb", "Dbadd9", "Eb", "Ab"]
+    chorus = ["Fm7", "Dbadd9", "Ab", "Eb/G", "Fm7", "Dbadd9", "Ab", "Eb/G"]
 
     def _hold_two_bars(chords: list[str]) -> list[str]:
         out: list[str] = []
@@ -111,7 +115,7 @@ def _perfect_chart_pack() -> dict[str, Any]:
     def _verse_bars(cycle: list[str]) -> list[str]:
         return _hold_two_bars(cycle) * 2
 
-    verse_cycle = ["G", "Em7", "Cadd9", "D/F#"]
+    verse_cycle = ["Ab", "Fm7", "Dbadd9", "Eb/G"]
     verse = _verse_bars(verse_cycle)
     base = {
         "Intro": list(walk),
@@ -125,10 +129,10 @@ def _perfect_chart_pack() -> dict[str, Any]:
         "Outro": list(walk),
     }
     intermediate = dict(base)
-    verse_adv_cycle = ["G6", "Em9", "Cmaj9", "D13sus4"]
-    chorus_adv = ["Em9", "C6/9", "Gmaj9/B", "D13sus4"] * 2
+    verse_adv_cycle = ["Ab6", "Fm9", "Dbmaj9", "Eb13sus4"]
+    chorus_adv = ["Fm9", "Db6/9", "Abmaj9/C", "Eb13sus4"] * 2
     advanced = {
-        "Intro": ["Gmaj9", "D/F#", "Em9", "D13sus4", "C6/9", "Dadd9", "Gmaj9"],
+        "Intro": ["Abmaj9", "Eb/G", "Fm9", "Eb13sus4", "Db6/9", "Ebadd9", "Abmaj9"],
         "Verse 1": _verse_bars(verse_adv_cycle),
         "Verse 2": _verse_bars(verse_adv_cycle),
         "Chorus 1": list(chorus_adv),
@@ -136,7 +140,7 @@ def _perfect_chart_pack() -> dict[str, Any]:
         "Verse 4": _verse_bars(verse_adv_cycle),
         "Chorus 2": list(chorus_adv),
         "Chorus 3": list(chorus_adv),
-        "Outro": ["Gmaj9", "D/F#", "Em9", "D13sus4", "C6/9", "Dadd9", "Gmaj9"],
+        "Outro": ["Abmaj9", "Eb/G", "Fm9", "Eb13sus4", "Db6/9", "Ebadd9", "Abmaj9"],
     }
     section_order = [
         "Intro",
@@ -150,13 +154,13 @@ def _perfect_chart_pack() -> dict[str, Any]:
         "Outro",
     ]
     return {
-        "key": "G",
+        "key": "Ab",
         "sections": intermediate,
         "chart_versions": _levels(beginner=base, intermediate=intermediate, advanced=advanced),
         "chart_status": "practice_level_verified",
         "section_order": section_order,
         "lyric_cues": {
-            "Intro": ["Instrumental — G · D/F# · Em7 · D · Cadd9 · D · G"],
+            "Intro": ["Instrumental — Ab · Eb/G · Fm7 · Eb · Dbadd9 · Eb · Ab"],
             "Verse 1": ["I found a love for me…", "Darling just dive right in…"],
             "Verse 2": ["Well I found a girl, beautiful and sweet…"],
             "Chorus 1": ["Baby, I'm dancing in the dark…"],
@@ -164,19 +168,60 @@ def _perfect_chart_pack() -> dict[str, Any]:
             "Verse 4": ["Barefoot on the grass, listening to our favourite song…"],
             "Chorus 2": ["Baby, I'm dancing in the dark…"],
             "Chorus 3": ["Final chorus — same lift as Chorus 2"],
-            "Outro": ["Tag — walkdown G · D/F# · Em7 · D · Cadd9 · D · G"],
+            "Outro": ["Tag — walkdown Ab · Eb/G · Fm7 · Eb · Dbadd9 · Eb · Ab"],
         },
         "extensions": _ext(
             arrangement_notes=(
-                "**G major** acoustic ballad (~95 BPM, **6/8**). Intro/Outro walk: "
-                "**G–D/F#–Em7–D–Cadd9–D–G**. Verses hold each chord **two full 6/8 bars** "
-                "(**G–Em7–Cadd9–D/F#**, twice per verse). Choruses **Em7–Cadd9–G–D/F#** "
-                "one bar each (×2 per chorus). Form adds **Chorus 3** before the outro. "
-                "Advanced adds maj9, 6/9, and sus extensions."
+                "Acoustic ballad in **6/8**, **dotted quarter = 63** (published piano "
+                "editions notate the same music in **12/8** - one of their bars is two "
+                "of ours). The stored BPM is the **dotted-quarter pulse rate**, which is "
+                "what the engine's compound-meter grid expects (bar = 2 x 60/63 = "
+                "1.905 s). The previous value of 95 was the *quarter-note* rate, so the "
+                "backing played the whole song **1.5x too fast**; a teaching handout "
+                "independently marks the song 12/8 at 64 BPM. "
+                "**These symbols are CONCERT (sounding) chords in Ab major, not guitar "
+                "shapes.** Sheeran plays **G shapes with a capo on fret 1**, so a "
+                "guitarist grips shapes a semitone lower than these names; the chart used "
+                "to store those shapes as if they were sounding chords, which put the "
+                "whole song a semitone below the record. Sources: Wikipedia (\"written in "
+                "the key of Ab major\", though also \"G major in live performances\"), a "
+                "Musicnotes edition (\"Original Published Key: Ab Major\"), a guitar "
+                "lesson (\"capo on fret 1, sounding in Ab major; chords are written in G "
+                "major\") and a chart giving the concert chords as Ab/Fm7/Db/Eb. "
+                "**Nothing in G is lost:** Capo mode auto-picks shape key **G at fret 1** "
+                "for Ab (lowest-fret shape), and **Practice Key G reproduces the previous "
+                "chart exactly**, at all three levels. "
+                "Intro/Outro walk: **Ab-Eb/G-Fm7-Eb-Dbadd9-Eb-Ab**. Verses hold each "
+                "chord **two full 6/8 bars** (**Ab-Fm7-Dbadd9-Eb/G**, twice per verse); "
+                "choruses **Fm7-Dbadd9-Ab-Eb/G** **one bar each** (x2 per chorus). That "
+                "split harmonic rhythm is corroborated by a published teaching chart "
+                "(\"the timing is in 6/8\"; chorus \"chords 1 measure each\") and measured "
+                "in the rendered audio. Advanced adds maj9, 6/9 and sus extensions. "
+                "**OPEN - the form is NOT a verified complete studio arrangement.** The "
+                "released single runs **4:23**; these 102 bars run **3:14**. A guitar "
+                "lesson gives the form as Verse / Pre-Chorus / Chorus / Instrumental link "
+                "/ Verse / Pre-Chorus / Chorus / **guitar solo (once around the verse "
+                "progression)** / Chorus / Outro (chorus progression) / Ending (link "
+                "progression) - so the gap is probably a solo plus a repeated link and a "
+                "longer tag. **No published source gives bar counts**, so none of it has "
+                "been invented here. "
+                "**OPEN:** 'Verse 2' and 'Verse 4' are really the two **pre-choruses** "
+                "(two independent lesson sources name them so, and one says the "
+                "pre-chorus harmony differs - it returns to the tonic in its 4th bar). "
+                "The names are left alone because renaming changes the chart fingerprint "
+                "and the section intensities section-aware backing keys off. "
+                "Not checked by ear."
             ),
-            default_bpm=95,
+            default_bpm=63,
             default_groove="Ballad",
             time_signature="6/8",
+            # Every level plays the whole song. Beginner previously dropped
+            # Verse 3, Verse 4 AND Chorus 3 (62 of 102 bars) and Intermediate
+            # dropped Chorus 3 - i.e. a verse, a pre-chorus and the final
+            # chorus vanished. Simpler harmony must not mean a shorter song.
+            full_form_levels=["Beginner", "Intermediate"],
+            chart_confidence={"chords": "high", "timing": "high",
+                              "tempo": "high", "form": "medium"},
         ),
     }
 

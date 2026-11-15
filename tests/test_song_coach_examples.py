@@ -364,7 +364,7 @@ class TestMotifIdentity(unittest.TestCase):
         _ch, ex = next((c, e) for c, e in zip(_plan("perfect").challenges, _examples("perfect"))
                        if e.kind == "connect" and e.segments and e.segments[0].start_bar == 5)
         self.assertTrue(ex.continuity["same_rhythm_cell"])
-        self.assertEqual(ex.segments[0].chords, ("Cadd9", "D/F#"))
+        self.assertEqual(ex.segments[0].chords, ("Dbadd9", "Eb/G"))
 
     def test_roadmap_travels_window_by_window(self) -> None:
         for name, windows in (("perfect", 2), ("ipanema", 2), ("autumn", 3), ("blues", 4)):

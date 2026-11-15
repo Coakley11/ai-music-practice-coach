@@ -2230,7 +2230,7 @@ class TestKaraokeOwnershipModel(unittest.TestCase):
     """
 
     FP = {
-        "Perfect": ("G", 9, 102),
+        "Perfect": ("Ab", 9, 102),  # concert Ab; the old G was the capo-1 shape key
         "The Scientist": ("F", 11, 89),
         "Gravity": ("G", 5, 32),
     }
@@ -3147,10 +3147,10 @@ class TestKaraokeOwnershipModel(unittest.TestCase):
         or Cm. Asserts the whole card describes one song at every entry.
         """
         expected = [
-            (self.T_PERF, "G", "G"),
+            (self.T_PERF, "Ab", "G"),
             (self.T_SCI, "F", "Cm"),
             (self.T_GRAV, "G", "Eb"),
-            (self.T_PERF, "G", "A"),
+            (self.T_PERF, "Ab", "A"),
         ]
         ss = self._session()
         km.start_session(ss)
@@ -3374,7 +3374,7 @@ class TestKaraokeOwnershipModel(unittest.TestCase):
         fixed = build(bypass_guard=False)
 
         self.assertEqual(
-            str(leaked.get("original_key") or ""), "G",
+            str(leaked.get("original_key") or ""), "Ab",
             "expected the pre-fix key leak to reproduce; if it no longer does, "
             "the assertion below guards nothing",
         )

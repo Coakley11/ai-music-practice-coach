@@ -203,7 +203,7 @@ class Slice1CaseACustomVisitOverPerfectGA(unittest.TestCase):
         # Bare read follows Active / Global Active again.
         self.assertEqual(get_practice_concert_key(ss), "C")
         orig = resolve_sidebar_original_key_for_caption(ss, current_original="G")
-        self.assertTrue(str(orig).upper().startswith("G"), orig)
+        self.assertTrue(str(orig).upper().startswith("AB"), orig)
 
         _enter_sbi_custom(ss)
         self.assertTrue(custom_sbi_owns_sidebar_practice_key(ss))

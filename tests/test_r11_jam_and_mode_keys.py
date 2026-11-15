@@ -154,7 +154,7 @@ class TestFreshJamStartsFromTheGlobalSongKey(_Base):
         session = self.new_session()
         self.activate_catalog(session, *PERFECT)
         session["improv_jam_key"] = "Eb"          # the old hard-coded default
-        self.assertEqual(self._blob_key(session, "jam_session_generator"), "G")
+        self.assertEqual(self._blob_key(session, "jam_session_generator"), "Ab")
 
     def test_unkeyed_style_jam_over_a_minor_song_starts_in_its_minor_key(self) -> None:
         session = self.new_session()

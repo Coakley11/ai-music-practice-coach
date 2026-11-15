@@ -1,6 +1,6 @@
 """R11 SBIKEY: Song-Based Improvisation lanes keep their own Practice Keys.
 
-Human report: with Perfect (G/G) globally active, previewing Custom (C, then D)
+Human report: with Perfect (Ab/Ab) globally active, previewing Custom (C, then D)
 in SBI and switching lanes left Perfect at C or D on "Active song", and the
 Composition lane showed Custom's D -- while the Composition lane itself was
 still the "not available" stub.
@@ -33,7 +33,7 @@ PERFECT_PICK_TITLE = "Perfect — Ed Sheeran"
 
 class _LaneBase(_Base):
     def perfect_with_composition_in_library(self):
-        """Perfect globally active (G/G); My Composition exists but is not active."""
+        """Perfect globally active (Ab/Ab); My Composition exists but is not active."""
         session = self.new_session()
         comp_pick, _doc = self.activate_composition(session)
         perfect = self.activate_catalog(session, *PERFECT)
@@ -150,7 +150,7 @@ class TestSbiKeyMatrix(_LaneBase):
         self.assertEqual(session.get(COMPOSITION_LANE_WIDGET), "C",
                          "Custom's D leaked into the Composition lane")
         self.assertEqual(self.store(session, comp), "")
-        self.assertEqual(self.store(session, perfect), "G")
+        self.assertEqual(self.store(session, perfect), "Ab")
 
     def test_sbikey6_composition_eb_stays_in_composition(self) -> None:
         from sbi_lane_practice_key import commit_composition_lane_practice_key, composition_lane_keys
@@ -163,7 +163,7 @@ class TestSbiKeyMatrix(_LaneBase):
 
         self.assertEqual(composition_lane_keys(session), (comp, "C", "Eb"))
         self.assertEqual(self.custom_lane_key(session), "D", "Custom keeps its own D")
-        self.assertEqual(self.store(session, perfect), "G")
+        self.assertEqual(self.store(session, perfect), "Ab")
 
         self.click_lane(session, "Custom progression")            # SBIKEY6: back to Custom
         self.assertEqual(self.custom_lane_key(session), "D")
@@ -185,15 +185,15 @@ class TestSbiKeyMatrix(_LaneBase):
         self.assertEqual(session.get("_pk_user_commit_pick"), comp)
 
         # While the Composition lane is on screen, Perfect is read, not rewritten.
-        self.assertEqual(self.reconcile_active(session), "G")
-        self.assertEqual(self.store(session, perfect), "G")
+        self.assertEqual(self.reconcile_active(session), "Ab")
+        self.assertEqual(self.store(session, perfect), "Ab")
 
         self.click_lane(session, "Active song")                   # SBIKEY7
         session["display_key"] = "Eb"  # leftover lane output, not Perfect's authority
         session["concert_key"] = "Eb"
-        self.assertEqual(self.reconcile_active(session), "G",
+        self.assertEqual(self.reconcile_active(session), "Ab",
                          "a Composition-scoped commit token became Perfect's key")
-        self.assertEqual(self.store(session, perfect), "G")
+        self.assertEqual(self.store(session, perfect), "Ab")
 
     def test_sbikey8_repeated_switching_keeps_each_lane(self) -> None:
         from sbi_lane_practice_key import commit_composition_lane_practice_key, composition_lane_keys
@@ -207,7 +207,7 @@ class TestSbiKeyMatrix(_LaneBase):
             for lane in ("Custom progression", "Active song", "Composition", "Active song"):
                 self.click_lane(session, lane)
                 self.reconcile_active(session)
-                self.assertEqual(self.store(session, perfect), "G", lane)
+                self.assertEqual(self.store(session, perfect), "Ab", lane)
                 self.assertEqual(self.custom_lane_key(session), "D", lane)
                 self.assertEqual(composition_lane_keys(session)[2], "Eb", lane)
 
@@ -223,11 +223,11 @@ class TestSbiKeyMatrix(_LaneBase):
         self.goto(session, "practice")                            # SBIKEY9
         self.reconcile_active(session)
         self.assertEqual(self.owner(session), "catalog")
-        self.assertEqual(self.store(session, perfect), "G")
-        self.assertEqual(self.original_key(session), "G")
+        self.assertEqual(self.store(session, perfect), "Ab")
+        self.assertEqual(self.original_key(session), "Ab")
 
         self.assertEqual(self.enter_creative(session), "Active song")   # SBIKEY10
-        self.assertEqual(self.store(session, perfect), "G")
+        self.assertEqual(self.store(session, perfect), "Ab")
 
 
 class TestPreviewKeysLastOneCreativeSession(_LaneBase):
@@ -250,7 +250,7 @@ class TestPreviewKeysLastOneCreativeSession(_LaneBase):
         for lane in ("Active song", "Custom progression", "Composition", "Active song"):
             self.click_lane(session, lane)
             self.reconcile_active(session)
-            self.assertEqual(self.store(session, perfect), "G", lane)
+            self.assertEqual(self.store(session, perfect), "Ab", lane)
             self.assertEqual(self.custom_lane_key(session), "D", lane)
             self.assertEqual(composition_lane_keys(session)[2], "Eb", lane)
 
@@ -260,9 +260,9 @@ class TestPreviewKeysLastOneCreativeSession(_LaneBase):
         self.custom_lane_edit(session, "D")       # leaves D in display_key
         for tab in ("Live Coach", "Harmony Map", "Deep Harmony", "Missions"):
             session["improv_intelligence_tab"] = tab
-            self.assertEqual(self.reconcile_active(session), "G",
+            self.assertEqual(self.reconcile_active(session), "Ab",
                              f"{tab}: Custom's preview D was taken as Perfect's key")
-            self.assertEqual(self.store(session, perfect), "G", tab)
+            self.assertEqual(self.store(session, perfect), "Ab", tab)
 
     def test_preview_edits_never_reach_the_durable_source_store(self) -> None:
         session, _perfect, comp = self._experiment()
@@ -276,12 +276,12 @@ class TestPreviewKeysLastOneCreativeSession(_LaneBase):
         self.goto(session, "practice")                            # SBISESSION2
         self.reconcile_active(session)
         self.assertEqual(self.owner(session), "catalog")
-        self.assertEqual(self.store(session, perfect), "G")
+        self.assertEqual(self.store(session, perfect), "Ab")
         self.assertNotIn(PREVIEW_LANE_KEYS, session)
 
         self.assertEqual(self.enter_creative(session), "Active song")   # SBISESSION3
         self.enter_sbi(session)
-        self.assertEqual(self.store(session, perfect), "G")
+        self.assertEqual(self.store(session, perfect), "Ab")
         self.click_lane(session, "Custom progression")
         self.assertEqual(self.custom_lane_key(session), "C", "the old Custom D came back")
         self.click_lane(session, "Composition")

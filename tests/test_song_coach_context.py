@@ -159,7 +159,7 @@ class TestBuildContext(unittest.TestCase):
         self.assertEqual(ctx.chart_confidence, CHART_VERIFIED)
         self.assertEqual([n for n, _ in ctx.sections], rec["section_order"])
         self.assertEqual(ctx.section_map()["Verse 1"], rec["sections"]["Verse 1"])
-        self.assertEqual((ctx.concert_key, ctx.chart_key, ctx.written_key), ("G", "E", "E"))
+        self.assertEqual((ctx.concert_key, ctx.chart_key, ctx.written_key), ("Ab", "E", "E"))
         self.assertEqual(ctx.unavailable_message, "")
 
     def test_practice_key_move_is_accepted_only_when_the_chart_moved_with_it(self) -> None:
@@ -169,7 +169,7 @@ class TestBuildContext(unittest.TestCase):
         self.assertEqual(moved.section_map()["Chorus 1"][:4], ["F#m7", "Dadd9", "A", "E/G#"])
         stale = _catalog_ctx(rec, key="A", sections=rec["sections"])  # chart still in G
         self.assertEqual((stale.available, stale.reason), (False, REASON_KEY_OUT_OF_SYNC))
-        wrong = _catalog_ctx(rec, key="A", sections=transpose_sections_dict(rec["sections"], "G", "Bb"))
+        wrong = _catalog_ctx(rec, key="A", sections=transpose_sections_dict(rec["sections"], rec["key"], "Bb"))
         self.assertEqual(wrong.reason, REASON_KEY_OUT_OF_SYNC)
 
     def test_minor_key_song_moves(self) -> None:
@@ -237,7 +237,7 @@ class TestCatalogSession(unittest.TestCase):
         before = copy.deepcopy(session)
         ctx = song_coach_context_from_session(
             session,
-            concert_sections=transpose_sections_dict(rec["sections"], "G", "A"),
+            concert_sections=transpose_sections_dict(rec["sections"], rec["key"], "A"),
             concert_key="A",
             chart_key="F#",
             written_key="F#",
@@ -299,7 +299,7 @@ class TestCatalogSession(unittest.TestCase):
             }
         )
         self.assertEqual(source_owner(session), SOURCE_CATALOG)
-        ctx = song_coach_context_from_session(session, concert_sections=rec["sections"], concert_key="G")
+        ctx = song_coach_context_from_session(session, concert_sections=rec["sections"], concert_key=rec["key"])
         self.assertTrue(ctx.available, ctx.reason)
         self.assertEqual(ctx.identity, f"catalog|{PERFECT_PICK}")
         refused = song_coach_context_from_session(session, concert_sections=TRIAL_IN_E, concert_key="E")

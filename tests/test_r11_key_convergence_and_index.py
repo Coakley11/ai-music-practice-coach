@@ -31,7 +31,7 @@ import unittest
 from types import SimpleNamespace
 
 PERFECT = ("Pop", "Perfect — Ed Sheeran")
-PERFECT_ORIGINAL = "G"
+PERFECT_ORIGINAL = "Ab"  # concert Ab; the old G was the capo-1 shape key
 
 COMP_IN_C = ["C", "Am", "F", "G"]
 
@@ -705,7 +705,7 @@ class TestCatalogPreviewIsolation(_Base):
         self.assertEqual(resolve_custom_saved_original_key(session), "C")
         self.assertEqual(
             self.original_key(session), PERFECT_ORIGINAL,
-            "Perfect's Original Key must stay G during the preview",
+            "Perfect's Original Key must stay Ab during the preview",
         )
         del pick
 

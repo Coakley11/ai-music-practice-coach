@@ -89,15 +89,15 @@ class TestCatalogActivationResetsPracticeKey(_ActBase):
         session = self.new_session()
         pick = self.activate_catalog(session, *PERFECT)
         self.converge(session)
-        self.assertEqual(self.original_key(session), "G")
-        self.assert_map_in_key(session, "G", "ACTKEY1")
+        self.assertEqual(self.original_key(session), "Ab")
+        self.assert_map_in_key(session, "Ab", "ACTKEY1")
 
     def test_actkey2_explicit_change_takes_effect_immediately(self) -> None:
         session = self.new_session()
         pick = self.activate_catalog(session, *PERFECT)
         self.converge(session)
         self.set_practice(session, pick, "A")
-        self.assert_converged(session, pick, "G", "A", "ACTKEY2")
+        self.assert_converged(session, pick, "Ab", "A", "ACTKEY2")
 
     def test_actkey3_every_creative_page_stays_at_a(self) -> None:
         session = self.new_session()
@@ -105,7 +105,7 @@ class TestCatalogActivationResetsPracticeKey(_ActBase):
         self.converge(session)
         self.set_practice(session, pick, "A")
         self.enter_creative(session)
-        self.assert_converged_on_every_tab(session, pick, "G", "A")
+        self.assert_converged_on_every_tab(session, pick, "Ab", "A")
 
     def test_actkey4_refresh_on_the_same_source_keeps_a(self) -> None:
         session = self.new_session()
@@ -116,7 +116,7 @@ class TestCatalogActivationResetsPracticeKey(_ActBase):
         for _ in range(3):
             self.converge(session)
             self.sidebar_token(session)
-        self.assert_converged(session, pick, "G", "A", "ACTKEY4")
+        self.assert_converged(session, pick, "Ab", "A", "ACTKEY4")
 
     def test_actkey5_temporary_preview_neither_resets_nor_contaminates(self) -> None:
         session = self.new_session()
@@ -131,13 +131,13 @@ class TestCatalogActivationResetsPracticeKey(_ActBase):
             self.owner(session), "catalog",
             "a preview is not an activation",
         )
-        self.assertEqual(self.original_key(session), "G")
+        self.assertEqual(self.original_key(session), "Ab")
         self.assertEqual(self.saved_practice(session, pick), "A")
 
         self.goto(session, "practice")
         self.assert_converged(
-            session, pick, "G", "A",
-            "ACTKEY5 after leaving the preview (must not reset to G)",
+            session, pick, "Ab", "A",
+            "ACTKEY5 after leaving the preview (must not reset to Ab)",
         )
 
     def test_actkey6_global_round_trip_resets_to_original(self) -> None:
@@ -153,13 +153,13 @@ class TestCatalogActivationResetsPracticeKey(_ActBase):
         pick2 = self.activate_catalog(session, *PERFECT)
         self.converge(session)
 
-        self.assertEqual(self.original_key(session), "G")
+        self.assertEqual(self.original_key(session), "Ab")
         self.assertNotEqual(
             self.saved_practice(session, pick2), "A",
             "the A experiment from the previous activation session came back",
         )
-        self.assert_map_in_key(session, "G", "ACTKEY6 after reactivation")
-        self.assertEqual(self.root_of(self.sidebar_token(session)), self.root_of("G"))
+        self.assert_map_in_key(session, "Ab", "ACTKEY6 after reactivation")
+        self.assertEqual(self.root_of(self.sidebar_token(session)), self.root_of("Ab"))
 
     def _radio_back_to_catalog(self, session: dict) -> None:
         """The musician's own path: Songs page source radio -> Song Selection.
@@ -201,7 +201,7 @@ class TestCatalogActivationResetsPracticeKey(_ActBase):
         self.converge(session)
 
         self.assertEqual(self.owner(session), "catalog")
-        self.assertEqual(self.original_key(session), "G")
+        self.assertEqual(self.original_key(session), "Ab")
         self.assertEqual(self.saved_practice(session, pick), "A")
         self.assertEqual(self.root_of(self.sidebar_token(session)), self.root_of("A"))
         self.assert_map_in_key(session, "A", "ACTKEY6b saved choice after radio return")
@@ -219,7 +219,7 @@ class TestCatalogActivationResetsPracticeKey(_ActBase):
         self.goto(session, "practice")
         for _ in range(2):
             self.converge(session)
-        self.assert_converged(session, pick, "G", "A", "ACTKEY6c")
+        self.assert_converged(session, pick, "Ab", "A", "ACTKEY6c")
 
     def test_actkey7_a_fresh_change_after_reactivation_sticks(self) -> None:
         session = self.new_session()
@@ -233,7 +233,7 @@ class TestCatalogActivationResetsPracticeKey(_ActBase):
 
         self.set_practice(session, pick2, "F")
         self.enter_creative(session)
-        self.assert_converged_on_every_tab(session, pick2, "G", "F")
+        self.assert_converged_on_every_tab(session, pick2, "Ab", "F")
 
 
 class TestCompositionActivationResetsPracticeKey(_ActBase):
@@ -307,9 +307,9 @@ class TestCompositionActivationResetsPracticeKey(_ActBase):
 
         pick2 = self.activate_catalog(session, *PERFECT)
         self.converge(session)
-        self.assertEqual(self.original_key(session), "G")
+        self.assertEqual(self.original_key(session), "Ab")
         self.assert_map_in_key(
-            session, "G", "Perfect must not stay projected in the Composition's Eb"
+            session, "Ab", "Perfect must not stay projected in the Composition's Eb"
         )
         del pick2
 
@@ -362,22 +362,22 @@ class TestOriginalKeyIsImmutableSourceMetadata(_ActBase):
         self.converge(session)
 
         self.set_practice(session, pick, "A")
-        self.assertEqual(self.original_key(session), "G", "after Practice A")
+        self.assertEqual(self.original_key(session), "Ab", "after Practice A")
 
         self.enter_creative(session)
         self.load_custom(session)
         self.preview_custom(session)
         self.assertEqual(
-            self.original_key(session), "G",
+            self.original_key(session), "Ab",
             "Custom's Original C leaked into Perfect during the preview",
         )
         self.goto(session, "creative")
         for tab in ALL_CREATIVE_TABS:
             self.open_tab(session, tab)
-            self.assertEqual(self.original_key(session), "G", f"{tab}")
+            self.assertEqual(self.original_key(session), "Ab", f"{tab}")
 
         self.set_practice(session, pick, "F")
-        self.assertEqual(self.original_key(session), "G", "after Practice F")
+        self.assertEqual(self.original_key(session), "Ab", "after Practice F")
         self.assertNotEqual(self.original_key(session), "C")
 
     def test_composition_original_stays_c(self) -> None:

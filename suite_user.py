@@ -24,6 +24,8 @@ def get_external_user_id() -> str:
             ext = str(resolve_auth_external_id(st.session_state) or "").strip()
             if ext:
                 return ext
+            # Signed in but no resolvable identity: never fall through to the shared default account.
+            return "unresolved_account"
     except Exception:
         pass
     env_id = os.environ.get("SUITE_USER_ID", "").strip()
@@ -135,6 +137,28 @@ def last_account_error() -> str:
     return str(_ACCOUNT_UID_FAILURE.get("error") or "")
 
 
+def _cloud_identity_unverified(external: str) -> bool:
+    """With sign-in enabled, no cloud row access without an authenticated, resolved account.
+
+    Cloud rows are reached with the server's service key, so the application is the only gate. An
+    unauthenticated request (or one whose identity could not be resolved) is confined to local storage and
+    never reaches the shared ``default`` account or another user's rows.
+    """
+    try:
+        import streamlit as st  # noqa: WPS433
+        from suite_auth import is_auth_enabled, is_authenticated
+
+        if not is_auth_enabled():
+            return False
+        if not is_authenticated(st.session_state):
+            return True
+        return external in ("", "default", "unresolved_account")
+    except ImportError:
+        return False
+    except Exception:
+        return True
+
+
 def _resolve_account_user_id() -> str:
     """
     Return Supabase user UUID when cloud is configured, else ``local:{external_id}``.
@@ -147,6 +171,8 @@ def _resolve_account_user_id() -> str:
     external = get_external_user_id()
     cfg = get_cloud_config()
     if cfg is None:
+        return f"local:{external}"
+    if _cloud_identity_unverified(external):
         return f"local:{external}"
     cached = _ACCOUNT_UID_CACHE.get(external)
     if cached:
