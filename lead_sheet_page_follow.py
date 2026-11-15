@@ -352,7 +352,11 @@ _CONTROLLER_JS = r"""
     var paused = false;
     try { paused = !p.playing(); } catch (e) {}
     var pz = doc.getElementById("ls-mini-pause");
-    pz.style.display = cardStarting() || keyCyclingOn() ? "none" : "";
+    // Hidden AND disabled: Key Cycling's page-wide click listener matches any "Pause" / "Resume" button by its label,
+    // so even a hidden button's click would reach Key Cycling; a disabled button sends no click at all.
+    var only = cardStarting() || keyCyclingOn();
+    pz.style.display = only ? "none" : "";
+    pz.disabled = only;
     var want = paused ? "▶ Resume" : "⏸ Pause";
     if (pz.textContent !== want) pz.textContent = want;
     pz.setAttribute("aria-label", paused ? "Resume" : "Pause");

@@ -86,7 +86,8 @@ def test_compact_bar_offers_only_stop_while_the_card_is_starting():
     assert 'getAttribute("data-state") === "starting"' in js
     click = js[js.index('pz.addEventListener("click"'):][:300]
     assert click.index("if (cardStarting() || keyCyclingOn())") < click.index("pauseButton().click()")
-    assert 'pz.style.display = cardStarting() || keyCyclingOn() ? "none" : ""' in js
+    assert "var only = cardStarting() || keyCyclingOn();" in js
+    assert 'pz.style.display = only ? "none" : "";' in js and "pz.disabled = only;" in js
 
 
 def test_compact_bar_offers_only_stop_while_key_cycling_is_on():
