@@ -162,7 +162,7 @@ class TestHarmonicTimeline(unittest.TestCase):
         scope = build_scope(_catalog("Perfect"), "verse-1", 1, 8)
         self.assertEqual(
             [(e.chord, e.start_beat, e.beats, e.start_bar) for e in scope.events],
-            [("G", 0.0, 8.0, 1), ("Em7", 8.0, 8.0, 3), ("Cadd9", 16.0, 8.0, 5), ("D/F#", 24.0, 8.0, 7)],
+            [("Ab", 0.0, 8.0, 1), ("Fm7", 8.0, 8.0, 3), ("Dbadd9", 16.0, 8.0, 5), ("Eb/G", 24.0, 8.0, 7)],
         )
         r = scope.rhythm
         self.assertEqual((r.changes, r.distinct_chords, r.beats_per_change), (4, 4, 8.0))
@@ -211,7 +211,7 @@ class TestSpanChain(unittest.TestCase):
 
     def test_perfect_verse_pairs_its_changes(self) -> None:
         scope = build_scope(_catalog("Perfect"), "verse-1", 1, 8)
-        self.assertEqual(_chain(scope), [(("G", "Em7"), 1, 4), (("Cadd9", "D/F#"), 5, 8)])
+        self.assertEqual(_chain(scope), [(("Ab", "Fm7"), 1, 4), (("Dbadd9", "Eb/G"), 5, 8)])
         self.assertTrue(all(link.exact_bar_timing for link in scope.chain))
 
     def test_no_chord_breaks_the_chain_and_split_bars_are_flagged(self) -> None:
