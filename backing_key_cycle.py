@@ -13673,8 +13673,11 @@ def render_backing_key_cycle_controls(st: Any, session: dict[str, Any]) -> None:
         active_enter=active,
         base=base,
     )
-    # Stale force-off from a prior stop must not clobber a same-session user On.
-    if force_off and user_toggled and str(session.get(mode_key) or "") == "On":
+    explicit_stop = bool(session.pop("_kc_explicit_stop_force_off", False))
+    # Stale force-off from a prior stop must not clobber a same-session user On --
+    # but the console's Stop is never stale here: a toggle recorded with it is the
+    # same click's widget echo; a real On after it arrives in a later run.
+    if force_off and user_toggled and not explicit_stop and str(session.get(mode_key) or "") == "On":
         force_off = False
     if force_off:
         session[mode_key] = "Off"
@@ -14012,6 +14015,12 @@ def _stop_key_cycle_from_button(session: dict[str, Any]) -> None:
     stop_key_cycle(session)
     session["_kc_force_player_off"] = True
     session["_kc_player_needs_teardown"] = True
+    # The Stop's force-off must win on the next controls render. The click that
+    # stops also posts every widget's value; a radio the server had no value for
+    # then "changes" to On in this same callback batch and marks a user toggle,
+    # which let the force-off be cancelled and started a new cycle 2 s after
+    # Stop (browser trace 2026-11-14, 4/4 with a Resume still pending).
+    session["_kc_explicit_stop_force_off"] = True
 
 
 def _step_key_cycle_from_button(session: dict[str, Any], steps: int) -> None:

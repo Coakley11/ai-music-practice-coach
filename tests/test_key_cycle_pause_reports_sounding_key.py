@@ -593,6 +593,39 @@ class StopOutranksAnEarlierResume(unittest.TestCase):
         *_, after = _run_stop_race(self, ["stop", ("cmd", paused), ("cmd", self._STALE_RESUME)])
         self.assertEqual(after["playing"], 0, after)
 
+    def test_the_stops_widget_echo_does_not_start_a_new_cycle(self) -> None:
+        """Server side: the Stop click also posts the Off/On radio's value. With no stored value
+        for it, Streamlit fires its on_change in the Stop's own callback batch, which marked a
+        user toggle and cancelled the Stop's force-off: render_backing_key_cycle_controls then
+        saw On with no active cycle and called start_key_cycle 2 s after Stop (4/4 with a
+        Resume still pending)."""
+        from tests.test_backing_key_cycle_ui_contract import _ControlsSt, _session
+
+        class _St(_ControlsSt):
+            # Streamlit returns the value the script set before the widget, as the force-off relies on.
+            def radio(self, label, *, options, key, **kwargs):
+                if str(label or "").endswith("Key cycling") or str(label or "") == "Key cycling":
+                    return self.session.get(key) or self.cycling
+                return super().radio(label, options=options, key=key, **kwargs)
+
+        mode = "backing_key_cycle_enabled_ui"
+        session = _session()
+        session["_kc_cycle_user_toggled"] = True
+        kc.render_backing_key_cycle_controls(_ControlsSt(session, cycling="On"), session)
+        self.assertTrue(kc.is_cycle_active(session))
+        # The console's Stop, and in the same callback batch the radio's echo of "On".
+        kc._stop_key_cycle_from_button(session)
+        session[mode] = "On"
+        session["_kc_cycle_user_toggled"] = True
+        kc.render_backing_key_cycle_controls(_St(session, cycling="On"), session)
+        self.assertFalse(kc.is_cycle_active(session))
+        self.assertEqual(session.get(mode), "Off")
+        # A deliberate On afterwards (its own click, a later run) still starts cycling.
+        session[mode] = "On"
+        session["_kc_cycle_user_toggled"] = True
+        kc.render_backing_key_cycle_controls(_St(session, cycling="On"), session)
+        self.assertTrue(kc.is_cycle_active(session))
+
     def test_a_stop_the_server_never_received_does_not_silence_the_page_for_good(self) -> None:
         # Past the 20 s bound the old rule applies again: a newer command re-syncs the page.
         _m, _stopped, _aged, after = _run_stop_race(self, ["stop", ("age", 21000), ("cmd", self._STALE_RESUME)])
