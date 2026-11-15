@@ -151,10 +151,10 @@ class TestCasesValidate(unittest.TestCase):
 class TestSongSpecificCoaching(unittest.TestCase):
     def test_perfect_reads_cadd9_as_a_major_chord_with_a_ninth(self) -> None:
         plan = _plan("perfect", "Advanced", FOCUS_MELODIC)
-        self.assertIn("Cadd9: not a dominant chord (no ♭7)", plan.reading_notes)
+        self.assertIn("Dbadd9: not a dominant chord (no ♭7)", plan.reading_notes)
         connect = [c for c in _plan("perfect", "Beginner", FOCUS_MELODIC).challenges if c.kind == KIND_CONNECT]
-        self.assertEqual(connect[0].chords, ("G", "Em7"))
-        self.assertIn("G changes to Em7", connect[0].steps[0].render())
+        self.assertEqual(connect[0].chords, ("Ab", "Fm7"))
+        self.assertIn("Ab changes to Fm7", connect[0].steps[0].render())
 
     def test_ipanema_follows_the_ii_subv_i(self) -> None:
         plan = _plan("ipanema", "Advanced", FOCUS_CHORD_TONE)
@@ -283,9 +283,9 @@ class TestPersonalization(unittest.TestCase):
 class TestMaterial(unittest.TestCase):
     def test_scale_recommendations_are_justified_against_the_chords(self) -> None:
         perfect = _plan("perfect", "Beginner", FOCUS_MELODIC)
-        self.assertEqual(perfect.material.name, "G major pentatonic")
+        self.assertEqual(perfect.material.name, "Ab major pentatonic")
         self.assertEqual(perfect.material.verdict, "fits_with_care")
-        self.assertTrue(any("no F# (the chord's 3rd)" in ln.render() for ln in perfect.material.lines))
+        self.assertTrue(any("no G (the chord's 3rd)" in ln.render() for ln in perfect.material.lines))
         self.assertTrue(any(ln.basis == BASIS_STYLE for ln in perfect.material.lines))
 
     def test_no_generic_pentatonic_where_it_clashes(self) -> None:

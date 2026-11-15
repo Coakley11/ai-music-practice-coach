@@ -704,7 +704,7 @@ class TestSidebarOriginalKeySbiCustomNotCatalogG(unittest.TestCase):
         }
         self.assertTrue(sidebar_force_catalog_original_key(session))
         caption = resolve_sidebar_original_key_for_caption(session, current_original="D")
-        self.assertEqual(caption, "G")
+        self.assertEqual(caption, "Ab")
 
     def test_return_to_sbi_custom_restores_trial_original_and_practice(self) -> None:
         from source_session_state import resolve_sidebar_original_key_for_caption
@@ -797,7 +797,7 @@ class TestB4CatalogPracticeKeySurvivesCustomJamReturn(unittest.TestCase):
         self.assertTrue(out["map"].startswith("C"), out)
         self.assertTrue(out["display"].startswith("C"), out)
         self.assertTrue(out["canonical"].startswith("C"), out)
-        self.assertTrue(out["orig"].startswith("G") or out["orig"] == "", out)
+        self.assertTrue(out["orig"].startswith("Ab") or out["orig"] == "", out)
         self.assertTrue(out["trial"].startswith("F"), out)
 
     def test_perfect_c_survives_leftover_jam_c_without_override_flag(self) -> None:
