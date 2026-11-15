@@ -5732,6 +5732,11 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
               try {{
                 var ts = window.__backingTransportState;
                 if (ts && ts.transport && ts.transport !== 'playing') return;
+                // The musician's hold (Pause / Stop) is the page's own and immediate;
+                // the server's transport state above confirms it seconds later.
+                var dual = window.__kcDual;
+                if (dual && dual.userPaused) return;
+                try {{ if (window.sessionStorage.getItem('kc_user_paused') === '1') return; }} catch (eUp) {{}}
                 var owner = window.__kcNavOwnerEl;
                 if (typeof window.__kcNavPending === 'function' && window.__kcNavPending() && owner && owner !== el) return;
                 el.muted = false;
@@ -7269,6 +7274,12 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       // (audio stays paused, labels stay Pause, userPaused=false).
       try {{ state.playKickUntil = 0; }} catch (eKick) {{}}
       try {{ parentWin.__kcTransportPaused = true; }} catch (eTP) {{}}
+      // Cancel a handoff already in flight: its callbacks (beginPlay / kickPlay,
+      // the seek fallback, the re-kick) each check only that the token is still
+      // theirs. Browser trace 2026-11-14: a Pause ~1 s before an automatic
+      // change let that handoff start the next take behind the Pause (heard Dm,
+      // Gm sounding 1 s later, server frozen on Gm) in 3 of 6 Lead Sheet rounds.
+      state.handoffToken = null;
       state.pendingHandoff = null;
       state.swapping = false;
       state.ending = false;

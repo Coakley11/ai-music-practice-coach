@@ -533,6 +533,9 @@ def _run_stop_race(test: unittest.TestCase, ops: list) -> list:
                     page.evaluate("() => window.__kcHardStop()")
                 elif op[0] == "cmd":
                     page.evaluate("(c) => window.__kcApplyCmd(c)", op[1])
+                elif op[0] == "eval":
+                    snaps.append({"eval": page.evaluate(op[1])})
+                    continue
                 elif op[0] == "age":
                     page.evaluate("(ms) => { window.__kcDual.stoppedAt = Number(window.__kcDual.stoppedAt || Date.now()) - ms; }",
                                   op[1])
@@ -542,6 +545,44 @@ def _run_stop_race(test: unittest.TestCase, ops: list) -> list:
             browser.close()
     test.assertEqual(errors, [], errors)
     return snaps
+
+
+class PauseCancelsAHandoffInFlight(unittest.TestCase):
+    """Browser trace 2026-11-14 (final candidate, real Lead Sheet button, 3 of 6 rounds): a Pause
+    about 1 s before an automatic change let the handoff that had already begun start the next
+    take behind the Pause (heard Dm; Gm sounding 1 s later; the server then froze Gm). Its
+    callbacks (beginPlay / kickPlay, the seek fallback, the re-kick) check only that the
+    handoff token is still theirs, and Pause did not change it. A parent-page play retry then
+    unmuted a refused take while the server still reported "playing"."""
+
+    def test_pause_invalidates_the_handoff_token(self) -> None:
+        got = _run_stop_race(self, [("eval", "() => { window.__kcDual.handoffToken = 'h-in-flight';"
+                                               " window.__kcPauseAudio(); return window.__kcDual.handoffToken; }")])
+        self.assertIsNone(got[-1]["eval"], got)
+
+    def test_stop_invalidates_the_handoff_token_too(self) -> None:
+        got = _run_stop_race(self, [("eval", "() => { window.__kcDual.handoffToken = 'h-in-flight';"
+                                               " window.__kcHardStop(); return window.__kcDual.handoffToken; }")])
+        self.assertIsNone(got[-1]["eval"], got)
+
+    def test_the_play_retry_never_restarts_a_take_the_musician_paused(self) -> None:
+        # A take whose play() is refused (unsupported source) while the page is held; the server's
+        # transport state still says "playing" (it confirms a Pause seconds later).
+        probe = """async (held) => {
+          if (!HTMLMediaElement.prototype.__kcPlayRetryPatched) return 'retry patch not installed';
+          window.__backingTransportState = {transport: 'playing'};
+          window.__kcDual.userPaused = held;
+          try { sessionStorage.setItem('kc_user_paused', held ? '1' : '0'); } catch (e) {}
+          const a = document.createElement('audio'); a.id = 'kc-buf-test'; a.muted = true;
+          a.src = 'data:audio/wav;base64,AAAA'; document.body.appendChild(a);
+          try { await a.play(); } catch (e) {}
+          await new Promise(r => setTimeout(r, 400));
+          return {muted: a.muted, autoplay: a.autoplay};
+        }"""
+        held = _run_stop_race(self, [("eval", "() => (" + probe + ")(true)")])[-1]["eval"]
+        self.assertEqual(held, {"muted": True, "autoplay": False}, held)
+        playing = _run_stop_race(self, [("eval", "() => (" + probe + ")(false)")])[-1]["eval"]
+        self.assertEqual(playing, {"muted": False, "autoplay": True}, playing)  # the retry itself still works
 
 
 class StopOutranksAnEarlierResume(unittest.TestCase):
