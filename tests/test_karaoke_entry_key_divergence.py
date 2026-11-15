@@ -99,8 +99,25 @@ class TheTwoAuthoritiesExist(unittest.TestCase):
                 if assign.search(line):
                     writers.append(f"{path.name}:{n}")
         self.assertEqual(
-            [w.split(":")[0] for w in writers], ["karaoke_mode.py", "karaoke_mode.py"],
-            f"the only writers should be the retune and its rollback: {writers}",
+            writers, [],
+            "nothing may move a queued entry's saved key: a key change during a performance is "
+            f"a temporary layer over it, not a write to it. Found: {writers}",
+        )
+        # The third turn of this test's history, and why zero is the right answer again rather
+        # than a regression to the first state.
+        #
+        # It began asserting that nothing wrote a queued key. True, and a defect: a musician
+        # changing key mid-performance had nowhere for the change to go. So one authorized writer
+        # was named - the retune - and the count became two with its rollback. That gave them the
+        # change and made it permanent: Say, saved in Bb and sung once in Ab, was Ab from then on,
+        # and the setlist row said so.
+        #
+        # Both halves are wanted at once: the performance follows the new key, and the setlist
+        # keeps the key the musician saved. A session-scoped performance key over the top of the
+        # entry does that, and needs no writer here at all.
+        self.assertTrue(
+            hasattr(km, "set_performance_key") and hasattr(km, "performance_keys"),
+            "the change still has to live somewhere, and the temporary layer is where",
         )
 
     def test_a_direct_store_write_still_does_not_move_the_performance(self):

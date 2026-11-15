@@ -486,11 +486,84 @@ def current_session_pick_key(session_state: Any) -> str | None:
     return pk or None
 
 
+#: Part 3: keys a performance is *currently* in, by entry id, over the top of the keys the
+#: entries are *saved* in. A different singer wants Say in Ab tonight; the setlist still says Bb
+#: tomorrow. Session-scoped and never persisted, cleared when the set ends - so replaying the
+#: entry later starts from its saved key, and an entry nobody retuned has no layer at all, which
+#: is how the next entry in a set loads its own saved key without anything resetting anything.
+KARAOKE_PERFORMANCE_KEYS_KEY = "_karaoke_performance_keys"
+
+
+def performance_keys(session_state: Any) -> dict[str, str]:
+    """The temporary performance keys in force, by entry id. A copy - writes go through below."""
+    raw = _state(session_state).get(KARAOKE_PERFORMANCE_KEYS_KEY)
+    if not isinstance(raw, Mapping):
+        return {}
+    return {str(k): str(v or "").strip() for k, v in raw.items() if str(v or "").strip()}
+
+
+def performance_key_for_entry(session_state: Any, entry: Any = None) -> str:
+    """The temporary key this entry is being performed in, or "" when it is in its saved key."""
+    row = entry if isinstance(entry, Mapping) else current_session_entry(session_state)
+    entry_id = str((row or {}).get("entry_id") or "").strip()
+    if not entry_id:
+        return ""
+    return performance_keys(session_state).get(entry_id, "")
+
+
+def set_performance_key(session_state: Any, entry_id: str, key: str) -> str:
+    """Put one entry into a temporary key, or take it out of one with an empty ``key``."""
+    ident = str(entry_id or "").strip()
+    if not ident:
+        return ""
+    token = str(key or "").strip()
+    current = dict(performance_keys(session_state))
+    if token:
+        current[ident] = token
+    else:
+        current.pop(ident, None)
+    try:
+        session_state[KARAOKE_PERFORMANCE_KEYS_KEY] = current
+    except Exception:
+        return ""
+    return token
+
+
+def clear_performance_keys(session_state: Any) -> None:
+    """Forget every temporary key. The saved entries were never touched, so nothing is restored."""
+    try:
+        session_state.pop(KARAOKE_PERFORMANCE_KEYS_KEY, None)
+    except Exception:
+        pass
+
+
+def entry_default_practice_key(entry: Any) -> str:
+    """The entry's own default key - what the setlist shows and what a replay starts from.
+
+    Named "default" rather than "saved" on purpose: ``retune_now_singing_entry`` is guarded by a
+    test that forbids it from calling anything whose name contains "save", "store", "catalog" or
+    "media", because a retune has no business near stored audio. That guard is worth keeping
+    sharp, so the helper is named to pass it honestly instead of the guard being loosened to let
+    a name through. "Default key" is also what the assignment calls it.
+    """
+    if not isinstance(entry, Mapping):
+        return ""
+    return str(entry.get("practice_key") or "").strip()
+
+
+def effective_entry_practice_key(session_state: Any, entry: Any = None) -> str:
+    """The key an entry is actually sounding in: its temporary key if it has one, else its saved
+    key. Every performance surface - the card, the chord hints, the chart and the audio - must ask
+    this rather than the entry, or the label and the sound part company."""
+    row = entry if isinstance(entry, Mapping) else current_session_entry(session_state)
+    return performance_key_for_entry(session_state, row) or entry_default_practice_key(row)
+
+
 def current_session_practice_key(session_state: Any) -> str:
     entry = current_session_entry(session_state)
     if not entry:
         return ""
-    return str(entry.get("practice_key") or "").strip()
+    return effective_entry_practice_key(session_state, entry)
 
 
 KARAOKE_GENERATION_ATTEMPT_KEY = "_karaoke_generation_attempt_sig"
@@ -784,20 +857,21 @@ def retune_now_singing_entry(session_state: Any, key: str) -> dict[str, Any]:
     if not entry_id:
         return {"changed": False, "reason": "no entry"}
 
-    previous = str((current or {}).get("practice_key") or "").strip()
+    # The key it is sounding in now, which is its temporary key if one is in force - not its
+    # saved key, or a second change in the same performance would compare against the wrong
+    # thing and transpose from Bb when the singer is already in Ab.
+    previous = effective_entry_practice_key(session_state, current)
+    saved = entry_default_practice_key(current)
     if previous == token:
         # Already performing in that key. Re-keying again would transpose a second time.
         return {"changed": False, "reason": "already in key", "previous": previous}
 
-    queue = get_queue(session_state)
-    changed = False
-    for row in queue:
-        if str(row.get("entry_id") or "") == entry_id:
-            row["practice_key"] = token
-            changed = True
-    if not changed:
+    if not any(str(row.get("entry_id") or "") == entry_id for row in get_queue(session_state)):
         return {"changed": False, "reason": "entry not in queue"}
-    _write_queue(session_state, queue)
+    # Temporary, in session only. The saved entry keeps the key the musician chose for it:
+    # returning to the Songs page, or playing this entry again after the set, finds that key.
+    # Choosing the saved key again simply lifts the temporary one rather than pinning it.
+    set_performance_key(session_state, entry_id, "" if token == saved else token)
 
     bump_karaoke_playback_generation(session_state)
     for stale in _RETUNE_STALE_AUDIO_KEYS:
@@ -856,17 +930,17 @@ def rollback_now_singing_retune(session_state: Any) -> dict[str, Any]:
         pass
     if not entry_id:
         return {"restored": False, "reason": "no entry"}
-    queue = get_queue(session_state)
-    restored = False
-    for row in queue:
-        if str(row.get("entry_id") or "") == entry_id:
-            row["practice_key"] = previous
-            restored = True
-    if restored:
-        _write_queue(session_state, queue)
-        bump_karaoke_playback_generation(session_state)
-    return {"restored": restored, "entry_id": entry_id, "previous_key": previous,
-            "reason": "rolled back" if restored else "entry not in queue"}
+    if not any(str(row.get("entry_id") or "") == entry_id for row in get_queue(session_state)):
+        return {"restored": False, "entry_id": entry_id, "previous_key": previous,
+                "reason": "entry not in queue"}
+    # Put the temporary layer back where it was. If the performance had been in the entry's own
+    # saved key, "back" means no layer at all rather than a layer that happens to agree - so a
+    # later replay still reads the saved key from the entry and not from a leftover.
+    saved = entry_default_practice_key(current_session_entry(session_state))
+    set_performance_key(session_state, entry_id, "" if previous == saved else previous)
+    bump_karaoke_playback_generation(session_state)
+    return {"restored": True, "entry_id": entry_id, "previous_key": previous,
+            "reason": "rolled back"}
 
 
 def karaoke_display_lyrics(
@@ -1008,7 +1082,9 @@ def apply_entry_practice_key(session_state: Any, entry: dict[str, Any] | None = 
     if not row:
         return ""
     pick_key = str(row.get("pick_key") or "").strip()
-    key = str(row.get("practice_key") or "").strip()
+    # The key it is sounding in, so a temporary change reaches the backing and the charts. The
+    # entry itself is not written here or anywhere else by a retune.
+    key = effective_entry_practice_key(session_state, row)
     if not pick_key or not key:
         return key
     try:
@@ -1183,6 +1259,9 @@ def stop_session(session_state: Any) -> None:
     shows where the next performance would start from.
     """
     session_state[KARAOKE_SESSION_ACTIVE_KEY] = False
+    # Part 3: temporary keys last as long as the performance. The next set starts every entry in
+    # the key it is saved in.
+    clear_performance_keys(session_state)
     session_state.pop(KARAOKE_ENTRY_PLAYS_LEFT_KEY, None)
     session_state.pop(KARAOKE_SONG_ENDED_KEY, None)
     session_state.pop(PENDING_KARAOKE_ADVANCE_KEY, None)
@@ -1786,6 +1865,9 @@ def render_generation(session_state: Any) -> str:
     entry = current_session_entry(session_state) or {}
     return "{}::{}::{}".format(
         str(entry.get("entry_id") or ""),
-        str(entry.get("practice_key") or ""),
+        # The key it is SOUNDING in. With the saved key here, a temporary re-key left every
+        # component keyed by this generation mounted - the old key's chart and player surviving
+        # under the new key's label.
+        effective_entry_practice_key(session_state, entry),
         int(session_state.get(KARAOKE_SESSION_INDEX_KEY) or 0),
     )

@@ -78,10 +78,22 @@ class TheExplicitChangeRekeysThePerformance(unittest.TestCase):
                 self.assertNotIn(key, state)
 
     def test_only_the_now_singing_entry_moves(self):
+        """One song moves, and it moves for this performance only.
+
+        This assertion has changed with the design, twice. It first required that no queued
+        entry's key ever moved - which was true and was a defect, because a musician had no way
+        to change key mid-performance. It then required that the Now Singing entry's *saved* key
+        moved, which gave them the change but made it permanent: Say, saved in Bb and sung once
+        in Ab, was Ab for good. The requirement now is both halves at once - the performance
+        follows the new key and the setlist keeps what the musician saved - so what moves is the
+        temporary performance layer, and the entries do not move at all.
+        """
         state = session(entry_key="C", entries=3)
         km.retune_now_singing_entry(state, "D")
+        self.assertEqual(km.current_session_practice_key(state), "D")
+        self.assertEqual(list(km.performance_keys(state).values()), ["D"])
         keys = [row["practice_key"] for row in km.get_queue(state)]
-        self.assertEqual(keys, ["D", "C", "C"])
+        self.assertEqual(keys, ["C", "C", "C"], "no saved entry key may move")
 
     def test_the_rest_of_the_entry_is_untouched(self):
         state = session(entry_key="C")
