@@ -130,10 +130,19 @@ class ShapeOfYouFullFormTests(unittest.TestCase):
 
 class ScopeTests(unittest.TestCase):
     def test_other_songs_keep_their_intermediate_trim(self) -> None:
-        perfect = _song("Perfect ")
-        self.assertFalse(keeps_full_form(perfect, "Intermediate"))
-        order, _ = _level(perfect, "Intermediate")
-        self.assertNotIn("Chorus 3", order)
+        # The control song used to be Perfect, but Perfect now declares
+        # full_form_levels itself: its Intermediate was dropping Chorus 3 and
+        # its Beginner was dropping Verse 3, Verse 4 AND Chorus 3 - a missing
+        # verse, pre-chorus and final chorus rather than a trim.
+        #
+        # Gravity replaces it because what Gravity drops at Intermediate is
+        # only instrumental - "Lift / Turnaround" and "Solo". That is a
+        # defensible simplification rather than an incomplete song, so it
+        # should keep its trim and remain a valid negative control.
+        gravity = _song("Gravity ")
+        self.assertFalse(keeps_full_form(gravity, "Intermediate"))
+        order, _ = _level(gravity, "Intermediate")
+        self.assertNotIn("Solo", order)
 
     def test_advanced_always_keeps_the_full_form(self) -> None:
         self.assertTrue(keeps_full_form({}, "Advanced"))
