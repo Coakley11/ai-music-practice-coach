@@ -2104,6 +2104,9 @@ def render_applied_math_insight_panel(
             conclusion = conclusion or str(data.get("conclusion") or "").strip()
             if app == "music" or data.get("canonical_instant"):
                 if conclusion:
+                    if app == "music":
+                        from music_coach_ami.note_name_display import clean_markdown
+                        conclusion = clean_markdown(conclusion)
                     st.markdown(conclusion)
                     markdown_rendered = True
             else:
@@ -2237,6 +2240,9 @@ def render_applied_math_insight_panel(
                 notation_staff_rendered = True
         _render_open_in_missions_action(st, data, app=app)
         _render_warmup_nav(st, data, app=app)
+        if app == "music" and (abc_text or abc_sections):
+            from music_coach_ami.note_name_display import render as render_note_name_display
+            render_note_name_display(st, data, "")
         assumptions = data.get("assumptions") or []
         if show_details and assumptions:
             st.markdown("**Assumptions:**")
@@ -2333,6 +2339,8 @@ def _render_warmup_nav(st: Any, data: dict, *, app: str) -> None:
             data["notation_abc"] = str(resp.notation_abc or "")
             data["notation_abc_sections"] = [str(x) for x in resp.notation_abc_sections if str(x).strip()]
             data["warmup_nav"] = dict(resp.diagnostics.get("warmup_nav") or {})
+            from music_coach_ami.note_name_display import rows_for
+            data["note_name_rows"] = rows_for(resp, st.session_state)
             data["bass_tab_sections"]=list(resp.diagnostics.get("bass_tab_sections") or [])
             data["fingering_instruction"]=list(resp.diagnostics.get("fingering_instruction") or [])
             st.session_state[SESSION_PENDING_KEY] = data
