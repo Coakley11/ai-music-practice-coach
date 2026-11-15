@@ -856,6 +856,274 @@ class PauseCancelsAHandoffInFlight(unittest.TestCase):
         self.assertEqual(playing, {"muted": False, "autoplay": True}, playing)  # the retry itself still works
 
 
+_SEQ_GM = ["Gm", "Cm", "Fm", "Bbm", "Ebm"]
+# What is heard: every Key Cycling take that is playing, unmuted, at a volume above zero.
+_HEARD_JS = """() => { const d = window.__kcDual || {};
+  const tail = (x) => String(x.src || x.currentSrc || '').split('/').pop();  // src: currentSrc lags a switch
+  const heard = [...document.querySelectorAll('audio[id^="kc-"]')]
+    .filter(x => !x.paused && !x.ended && !x.muted && Number(x.volume) > 0.01).map(tail);
+  const running = [...document.querySelectorAll('audio[id^="kc-"]')].filter(x => !x.paused && !x.ended)
+    .map(x => ({src: tail(x), muted: x.muted, volume: Number(x.volume)}));
+  const a = document.getElementById(d.active === 1 ? 'kc-buf-1' : 'kc-buf-0');
+  return {heard, running, active: a ? tail(a) : '', key: a ? (a.getAttribute('data-kc-sounding') || '') : '',
+          next: String(d.nextSounding || ''), nextUrl: String(d.nextUrl || '').split('/').pop(),
+          restored: (window.__kcPlayDiag || []).filter(r => r.ev === 'audible_restored').map(r => r.why)}; }"""
+_FINISH_ACTIVE_JS = """async () => { const d = window.__kcDual; const a = document.getElementById(d.active === 1 ? 'kc-buf-1' : 'kc-buf-0');
+  a.currentTime = Math.max(0, a.duration - 0.2); await new Promise(r => setTimeout(r, 900)); return {ended: a.ended}; }"""
+
+
+def _take(key: str) -> str:
+    return f"app/static/kc/{key.lower().replace('#', 's')}.wav"
+
+
+def _kc_cmd(epoch: int, sounding: str, nxt: str = "", following: str = "", **extra) -> dict:
+    cmd = {"enabled": True, "epoch": epoch, "cycleId": "cyc-A", "sequence": list(_SEQ_GM),
+           "sounding": sounding, "currentUrl": _take(sounding)}
+    if nxt:
+        cmd.update(nextUrl=_take(nxt), nextSounding=nxt)
+    if following:
+        cmd.update(followingUrl=_take(following), followingSounding=following)
+    cmd.update(extra)
+    return cmd
+
+
+class ATakeMarkedPlayingIsHeard(unittest.TestCase):
+    """Browser trace 2026-11-15 (candidate 0ed8062b, console Resume, six-second Mission takes):
+    Cm ended with no next take prepared; the server's late answer named Fm and the page loaded
+    it cold into a slot it had silenced as idle (muted, volume 0). The cold start plays muted and
+    unmutes when play() resolves, leaving the volume to kickPlay -- which returns once the handoff
+    has settled. Fm played its whole six seconds at volume 0 while the server said Running."""
+
+    def _late_answer_after_cm_ended(self, extra_js: str = "") -> dict:
+        start = _kc_cmd(10, "Cm", restart=True, autoplay=True, forcePlay=True)  # nothing prepared after Cm
+        silence_idle = """() => { const d = window.__kcDual; d.sequence = %s;
+          const idle = document.getElementById(d.active === 1 ? 'kc-buf-0' : 'kc-buf-1');
+          // As after the switch into Cm: the outgoing slot is emptied and parked muted at volume 0.
+          try { idle.pause(); idle.removeAttribute('src'); idle.removeAttribute('data-kc-url');
+                idle.removeAttribute('data-kc-sounding'); idle.load(); } catch (e) {}
+          idle.muted = true; idle.volume = 0;
+          d.nextUrl = ''; d.nextSounding = ''; %s return true; }""" % (__import__("json").dumps(_SEQ_GM), extra_js)
+        # The recorded chain: the late answer starts the switch into Fm; a rerun replaces the bridge
+        # frame mid-switch and its mount reloads the active take, so Fm's muted cold start is
+        # "interrupted by a new load request" (AbortError) and only the rejection handler runs;
+        # the parent page's retry then starts it.
+        late = _kc_cmd(11, "Cm", "Fm", resume=True, restart=False, autoplay=False)
+        answer_and_remount = """async () => { const d = window.__kcDual;
+          // The parent page's own start of the switched-in take is in flight (it sets this shared
+          // flag around its play()), so the bridge's kickPlay -- the only place this path set the
+          // volume -- returns early and the handoff settles through the parent page.
+          d._kcPlayInFlight = true;
+          window.__kcApplyCmd(%s);
+          let act = null;
+          for (let i = 0; i < 400; i++) {
+            act = document.getElementById(d.active === 1 ? 'kc-buf-1' : 'kc-buf-0');
+            if (d.swapping && act && String(act.getAttribute('data-kc-url') || '').endsWith('/fm.wav')) break;
+            await new Promise(r => setTimeout(r, 5));
+          }
+          // The rerun replaces the bridge frame: the frame-side timers and intervals (the page's own
+          // "one audible take" sweep among them) die with it, as they do in the app. Its mount
+          // reloads the active take, interrupting the muted start.
+          const frame = document.getElementById('kc-bridge');
+          const html = frame.srcdoc; frame.srcdoc = '';
+          act.src = 'app/static/kc/fm.wav'; act.load();
+          await new Promise(r => setTimeout(r, 50));
+          frame.srcdoc = html;
+          await new Promise(r => setTimeout(r, 3000)); return true; }""" % __import__("json").dumps(late)
+        snaps = _run_stop_race(self, [("cmd", start), ("eval", silence_idle), ("eval", _FINISH_ACTIVE_JS),
+                                      ("eval", answer_and_remount), ("eval", _HEARD_JS)])
+        return snaps[-1]["eval"]
+
+    def test_a_cold_take_started_from_a_silenced_slot_is_heard(self) -> None:
+        got = self._late_answer_after_cm_ended()
+        self.assertEqual((got["active"], got["key"]), ("fm.wav", "Fm"), got)
+        self.assertEqual(got["heard"], ["fm.wav"], got)  # heard, and the only take heard
+
+    # __kcEnsureAudible on the playing take, after `setup` (which may await). The musician's own
+    # setting is a touch on the player's media controls, then the change.
+    _ON_PLAYING = """async () => { const d = window.__kcDual;
+      const act = document.getElementById(d.active === 1 ? 'kc-buf-1' : 'kc-buf-0');
+      const touch = () => act.dispatchEvent(new PointerEvent('pointerdown', {bubbles: true}));
+      const wait = (ms) => new Promise(r => setTimeout(r, ms));
+      await wait(2500);  // past the start's own play kicks (they set volume 1 at fixed delays)
+      %s
+      const restored = window.__kcEnsureAudible(act, 'test');
+      return {restored, muted: act.muted, volume: Number(act.volume)}; }"""
+
+    def _on_playing(self, setup: str) -> dict:
+        start = _kc_cmd(10, "Cm", "Fm", restart=True, autoplay=True, forcePlay=True)
+        return _run_stop_race(self, [("cmd", start), ("eval", self._ON_PLAYING % setup)])[-1]["eval"]
+
+    def test_a_volume_control_level_is_left_alone(self) -> None:
+        # Only a ZERO volume is restored; a level that is already set is never raised to 100%.
+        got = self._on_playing("act.muted = true; act.volume = 0.4;")
+        self.assertEqual(got, {"restored": True, "muted": False, "volume": 0.4}, got)
+
+    def test_a_level_the_musician_set_is_the_level_restored(self) -> None:
+        # The musician sets 0.5; later the page parks the take at 0 (no touch): back to 0.5, not 1.0.
+        got = self._on_playing("touch(); act.volume = 0.5; await wait(1700); act.muted = true; act.volume = 0;")
+        self.assertEqual(got, {"restored": True, "muted": False, "volume": 0.5}, got)
+
+    def test_a_mute_the_musician_chose_is_kept(self) -> None:
+        # __kcEnsureAudible leaves it alone (recorded as the musician's mute). Pre-existing and not
+        # changed here: the page's one-audible-take sweep unmutes the active take within ~250 ms
+        # anyway, so a mute on the native controls does not hold (KC follow-up).
+        got = self._on_playing("touch(); act.muted = true; await wait(120); const um = !!d.userMuted;"
+                               " act.muted = true; const r0 = window.__kcEnsureAudible(act, 'test');"
+                               " return {restored: r0, userMuted: um, mutedAfter: act.muted};")
+        self.assertEqual(got, {"restored": False, "userMuted": True, "mutedAfter": True}, got)
+
+    def test_only_the_active_take_is_ever_made_audible(self) -> None:
+        # The idle slot (silenced, muted) is never touched: only the take that is playing.
+        probe = """async () => { const d = window.__kcDual;
+          const idle = document.getElementById(d.active === 1 ? 'kc-buf-0' : 'kc-buf-1');
+          idle.muted = true; idle.volume = 0;
+          const r = window.__kcEnsureAudible(idle, 'test_idle');
+          return {restored: r, muted: idle.muted, volume: Number(idle.volume)}; }"""
+        got = _run_stop_race(self, [("cmd", _kc_cmd(10, "Cm", "Fm", restart=True, autoplay=True, forcePlay=True)),
+                                    ("eval", probe)])[-1]["eval"]
+        self.assertEqual(got, {"restored": False, "muted": True, "volume": 0}, got)
+
+    def test_nothing_is_made_audible_while_paused(self) -> None:
+        probe = """async () => { const d = window.__kcDual;
+          const a = document.getElementById(d.active === 1 ? 'kc-buf-1' : 'kc-buf-0');
+          window.__kcPauseAudio(); await new Promise(r => setTimeout(r, 200));
+          a.muted = true; a.volume = 0;
+          return {restored: window.__kcEnsureAudible(a, 'test_paused'), muted: a.muted, volume: Number(a.volume)}; }"""
+        got = _run_stop_race(self, [("cmd", _kc_cmd(10, "Cm", "Fm", restart=True, autoplay=True, forcePlay=True)),
+                                    ("eval", probe)])[-1]["eval"]
+        self.assertEqual(got, {"restored": False, "muted": True, "volume": 0}, got)
+
+
+class ResumePreparesTheNextKeyWithoutTheServer(unittest.TestCase):
+    """Browser trace 2026-11-15 (same round): Gm ended inside the Pause, so the server held the
+    start of Cm (the boundary rule) and Resume played Cm. The server's answer to the Resume --
+    the command naming Cm's next key -- came 6.5 s later, after Cm had ended. The page had armed
+    the server's "next" (Fm) as next-after-Gm; the end-of-take check refused it and dropped it,
+    so nothing was prepared after Cm. The page now maps a server one key ahead onto its own
+    neighbours, so Fm is prepared while Cm plays and starts at Cm's end without that answer."""
+
+    _PAUSE_AT_GM_END = """async () => { const d = window.__kcDual; d.sequence = %s;
+      const a = document.getElementById(d.active === 1 ? 'kc-buf-1' : 'kc-buf-0');
+      // Run into the end naturally (Cm is warm-started muted in the other slot), Pause 0.3 s before it.
+      a.currentTime = Math.max(0, a.duration - 1.4);
+      for (let i = 0; i < 40 && Number(a.currentTime) < a.duration - 0.3; i++) await new Promise(r => setTimeout(r, 50));
+      window.__kcPauseAudio(); await new Promise(r => setTimeout(r, 100));
+      a.currentTime = a.duration;  // Gm reaches its end inside the Pause
+      await new Promise(r => setTimeout(r, 300)); return {ended: a.ended}; }"""
+    _RESUME = """async () => { window.__kcResumeAudio(); await new Promise(r => setTimeout(r, 1500)); return true; }"""
+
+    def _resume_without_answer(self, seq, held, after_resume_ops=()):
+        start = _kc_cmd(10, "Gm", "Cm", restart=True, autoplay=True, forcePlay=True, sequence=list(seq))
+        pause = self._PAUSE_AT_GM_END % __import__("json").dumps(list(seq))
+        return _run_stop_race(self, [("cmd", start), ("eval", pause), ("cmd", held), ("eval", self._RESUME),
+                                     ("eval", _HEARD_JS), *after_resume_ops, ("eval", _FINISH_ACTIVE_JS),
+                                     ("eval", "async () => { await new Promise(r => setTimeout(r, 2500)); return true; }"),
+                                     ("eval", _HEARD_JS)])
+
+    def _held_cm(self, **extra):
+        # The server's paused command after the boundary Pause: current Cm, its next Fm.
+        return _kc_cmd(11, "Cm", "Fm", paused=True, autoplay=False, forcePlay=False, restart=False, **extra)
+
+    def test_fm_is_prepared_while_cm_plays_and_follows_it_audibly(self) -> None:
+        snaps = self._resume_without_answer(_SEQ_GM, self._held_cm())
+        resumed, after = snaps[5]["eval"], snaps[-1]["eval"]
+        self.assertEqual((resumed["active"], resumed["heard"]), ("cm.wav", ["cm.wav"]), resumed)
+        self.assertEqual(resumed["next"], "Fm", resumed)  # prepared before any server answer
+        self.assertEqual((after["key"], after["heard"]), ("Fm", ["fm.wav"]), after)
+
+    def test_a_following_key_in_the_held_command_is_not_skipped_to(self) -> None:
+        snaps = self._resume_without_answer(_SEQ_GM, self._held_cm(followingUrl=_take("Bbm"), followingSounding="Bbm"))
+        resumed, after = snaps[5]["eval"], snaps[-1]["eval"]
+        self.assertEqual(resumed["next"], "Fm", resumed)
+        self.assertEqual((after["key"], after["heard"]), ("Fm", ["fm.wav"]), after)  # Cm, then Fm: never Bbm
+
+    def test_stop_after_the_resume_prepares_and_plays_nothing(self) -> None:
+        snaps = self._resume_without_answer(_SEQ_GM, self._held_cm(),
+                                            [("eval", "() => { window.__kcHardStop(); return true; }")])
+        after = snaps[-1]["eval"]
+        self.assertEqual(after["heard"], [], after)
+        self.assertEqual(after["running"], [], after)
+
+    def test_pause_after_the_resume_does_not_advance(self) -> None:
+        snaps = self._resume_without_answer(_SEQ_GM, self._held_cm(),
+                                            [("eval", "() => { window.__kcPauseAudio(); return true; }")])
+        after = snaps[-1]["eval"]
+        self.assertEqual(after["heard"], [], after)
+        self.assertNotIn("fm.wav", [r["src"] for r in after["running"]], after)
+
+    def test_the_final_key_plays_once_and_then_the_cycle_ends(self) -> None:
+        # Gm (second-last) ends inside the Pause, so the start of the final key Cm is held. The held
+        # command used to latch "final key" from the SERVER's key while the page's take was still Gm,
+        # so Resume stopped the cycle (final_key_stop) and Cm was never heard (b65d278a and before).
+        seq = ["Gm", "Cm"]
+        held = _kc_cmd(11, "Cm", paused=True, autoplay=False, forcePlay=False, restart=False, sequence=seq)
+        snaps = self._resume_without_answer(seq, held)
+        resumed, after = snaps[5]["eval"], snaps[-1]["eval"]
+        self.assertEqual((resumed["key"], resumed["heard"]), ("Cm", ["cm.wav"]), resumed)  # from its start
+        self.assertEqual(after["heard"], [], after)  # Cm was the last key: no wrap to Gm
+        self.assertEqual(after["running"], [], after)  # and Cm is not started again
+        self.assertEqual(after["key"], "Cm", after)
+
+
+class FinalKeyEndsOnlyWhenItsTakeCompletes(unittest.TestCase):
+    """The final key selected (or prepared) is not the final key completed: only the completion of
+    the final key's own take ends the sequence. Two-key cycle Gm -> Cm, starting on Cm."""
+
+    _SEQ = ["Gm", "Cm"]
+
+    def _start_cm(self) -> dict:
+        return _kc_cmd(10, "Cm", restart=True, autoplay=True, forcePlay=True, sequence=list(self._SEQ))
+
+    def _seq(self) -> str:
+        return "() => { window.__kcDual.sequence = %s; return true; }" % __import__("json").dumps(self._SEQ)
+
+    def test_pause_and_resume_during_the_final_key_continue_it(self) -> None:
+        probe = """async () => { const d = window.__kcDual;
+          const a = document.getElementById(d.active === 1 ? 'kc-buf-1' : 'kc-buf-0');
+          a.currentTime = 2.0; await new Promise(r => setTimeout(r, 80));
+          window.__kcPauseAudio(); await new Promise(r => setTimeout(r, 400));
+          window.__kcResumeAudio(); await new Promise(r => setTimeout(r, 500));
+          return {ct: Number(a.currentTime), paused: a.paused}; }"""
+        snaps = _run_stop_race(self, [("cmd", self._start_cm()), ("eval", self._seq()), ("eval", probe),
+                                      ("eval", _HEARD_JS), ("eval", _FINISH_ACTIVE_JS),
+                                      ("eval", "async () => { await new Promise(r => setTimeout(r, 2500)); return true; }"),
+                                      ("eval", _HEARD_JS)])
+        resumed, heard, after = snaps[3]["eval"], snaps[4]["eval"], snaps[-1]["eval"]
+        self.assertFalse(resumed["paused"], resumed)
+        self.assertGreater(resumed["ct"], 2.0, resumed)  # continued, not restarted
+        self.assertEqual(heard["heard"], ["cm.wav"], heard)
+        self.assertEqual((after["heard"], after["running"]), ([], []), after)  # ended after Cm completed
+
+    def test_the_final_key_completing_ends_the_cycle_without_wrapping(self) -> None:
+        snaps = _run_stop_race(self, [("cmd", self._start_cm()), ("eval", self._seq()), ("eval", _HEARD_JS),
+                                      ("eval", _FINISH_ACTIVE_JS),
+                                      ("eval", "async () => { await new Promise(r => setTimeout(r, 2500)); return true; }"),
+                                      ("eval", _HEARD_JS)])
+        playing, after = snaps[3]["eval"], snaps[-1]["eval"]
+        self.assertEqual(playing["heard"], ["cm.wav"], playing)  # the final key playing does not end anything
+        self.assertEqual((after["heard"], after["running"], after["key"]), ([], [], "Cm"), after)
+
+    def test_stop_during_the_final_key_silences_it(self) -> None:
+        snaps = _run_stop_race(self, [("cmd", self._start_cm()), ("eval", self._seq()), "stop",
+                                      ("eval", _FINISH_ACTIVE_JS),
+                                      ("eval", "async () => { await new Promise(r => setTimeout(r, 2000)); return true; }"),
+                                      ("eval", _HEARD_JS)])
+        after = snaps[-1]["eval"]
+        self.assertEqual((after["heard"], after["running"]), ([], []), after)
+
+    def test_a_new_start_after_the_cycle_ended_plays(self) -> None:
+        new_start = dict(_kc_cmd(12, "Gm", "Cm", restart=True, autoplay=True, forcePlay=True,
+                                 sequence=list(self._SEQ)), cycleId="cyc-B")
+        snaps = _run_stop_race(self, [("cmd", self._start_cm()), ("eval", self._seq()), ("eval", _FINISH_ACTIVE_JS),
+                                      ("eval", "async () => { await new Promise(r => setTimeout(r, 2000)); return true; }"),
+                                      ("eval", _HEARD_JS), ("cmd", new_start),
+                                      ("eval", "async () => { await new Promise(r => setTimeout(r, 1200)); return true; }"),
+                                      ("eval", _HEARD_JS)])
+        ended, started = snaps[5]["eval"], snaps[-1]["eval"]
+        self.assertEqual(ended["heard"], [], ended)
+        self.assertEqual((started["key"], started["heard"]), ("Gm", ["gm.wav"]), started)
+
+
 class StopOutranksAnEarlierResume(unittest.TestCase):
     """A Resume pressed shortly before Stop must never undo the Stop.
 

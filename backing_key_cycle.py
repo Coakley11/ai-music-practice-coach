@@ -5617,10 +5617,57 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         // key (browser trace 2026-11-14: playing Dm, expected Gm, armed Dm) and the cycle
         // replayed or stepped back. Then the server's "following" key is the page's next.
         let pageCurN = '';
+        let pageCurEnded = false;
         try {{
           const actN = activeAudio();
           if (actN && String(actN.currentSrc || actN.src || '').trim()) pageCurN = String(actN.getAttribute('data-kc-sounding') || '');
+          const durN = actN ? Number(actN.duration || 0) : 0;
+          pageCurEnded = !!(actN && (actN.ended || (durN > 0 && Number(actN.currentTime || 0) >= durN)));
         }} catch (eCurN) {{ pageCurN = ''; }}
+        // The mirror case: a server one key AHEAD. A take that ended inside a Pause holds the
+        // server at the start of the next key (the boundary rule) while the page's active take is
+        // still the finished one. The server's current take is then the page's next, and its
+        // "next" the one after. Arming the server's "next" made the end-of-take check refuse it
+        // and drop it, so nothing was prepared after the Resume; the late Resume answer then
+        // loaded it cold (browser trace 2026-11-15: Gm ended in the Pause, Cm resumed, Fm silent).
+        // Only when the page stays where it is (no restart / forced play moving it to that take).
+        const expectN = pageCurN ? expectedNextInSequence(pageCurN) : '';
+        if (pageCurN && pageCurEnded && expectN && cmd.currentUrl && String(cmd.sounding || '') === expectN
+            && !cmd.restart && !cmd.forcePlay
+            && (!cmd.cycleId || !state.cycleId || String(cmd.cycleId) === String(state.cycleId))) {{
+          parentWin.__kcUrlToKey[String(cmd.currentUrl)] = expectN;
+          state.nextUrl = String(cmd.currentUrl);
+          state.nextSounding = expectN;
+          if (cmd.currentChartHtml) parentWin.__kcChartByKey[expectN] = String(cmd.currentChartHtml);
+          const fKey = String(cmd.nextSounding || '');
+          if (cmd.nextUrl && fKey && fKey !== expectN && fKey !== pageCurN) {{
+            parentWin.__kcUrlToKey[String(cmd.nextUrl)] = fKey;
+            state.followingUrl = String(cmd.nextUrl);
+            state.followingSounding = fKey;
+            state.followingChartHtml = String(cmd.nextChartHtml || '');
+            const aKey = String(cmd.followingSounding || '');
+            if (cmd.followingUrl && aKey && aKey !== fKey && aKey !== expectN) {{
+              parentWin.__kcUrlToKey[String(cmd.followingUrl)] = aKey;
+              state.aheadUrl = String(cmd.followingUrl);
+              state.aheadSounding = aKey;
+              state.aheadChartHtml = String(cmd.followingChartHtml || '');
+            }}
+          }}
+          try {{
+            parentWin.__kcPlayDiag = parentWin.__kcPlayDiag || [];
+            parentWin.__kcPlayDiag.push({{ t: kcNow(), ev: 'neighbors_server_one_ahead', page: pageCurN,
+              next: expectN, following: String(state.followingSounding || ''), ahead: String(state.aheadSounding || '') }});
+          }} catch (eD1) {{}}
+          if (cmd.prevUrl && cmd.prevSounding) {{
+            parentWin.__kcUrlToKey[String(cmd.prevUrl)] = String(cmd.prevSounding);
+          }}
+          if (Array.isArray(cmd.liveUrls)) {{
+            parentWin.__kcLiveUrls = cmd.liveUrls.map((u) => String(u || '')).filter(Boolean);
+            retireUnlistedParked();
+          }}
+          ensureNeighborDecode();
+          return;
+        }}
         if (pageCurN && cmd.nextSounding && String(cmd.nextSounding) === pageCurN
             && String(cmd.sounding || '') !== pageCurN) {{
           if (cmd.followingUrl && cmd.followingSounding && String(cmd.followingSounding) !== pageCurN) {{
@@ -5765,7 +5812,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           parentWin.__kcEndedWatch
           && (
             typeof parentWin.__kcFinishPendingHandoff !== 'function'
-            || parentWin.__kcWatchVersion !== 31
+            || parentWin.__kcWatchVersion !== 32
           )
         );
         if (needReinstall) {{
@@ -5780,7 +5827,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       }} catch (e) {{}}
       if (parentWin.__kcEndedWatchInstalled && parentWin.__kcEndedWatch
           && typeof parentWin.__kcFinishPendingHandoff === 'function'
-          && parentWin.__kcWatchVersion === 31) return;
+          && parentWin.__kcWatchVersion === 32) return;
       try {{
         const boot = parentDoc.createElement('script');
         boot.textContent = `
@@ -5889,6 +5936,66 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
     }} catch (e) {{}}
   }};
   window.__kcAttachEndedListeners();
+  // A take the cycle has made its playing take must be heard. A slot silenced as idle
+  // (muted, volume 0) and then started by a path that only unmutes it -- a play() rejected
+  // or interrupted by a new load, or a settle that beat kickPlay -- played its whole take
+  // at volume 0 while the server reported Running (browser trace 2026-11-15, Fm). Only a
+  // muted flag and a ZERO volume are restored, to the player's intended level; any other
+  // level a volume control set is left alone. Never while paused or just after a Stop.
+  // The visible take carries the browser's own media controls. A mute or level the musician sets
+  // there is THEIR choice: a volume change within 1.5 s of their touching the player is recorded
+  // as the intended level (st.intendedVolume) or as a mute (st.userMuted). The page's own
+  // writes (idle parking, the mute-then-play start) come without a touch and are not recorded.
+  // Listened for once on the document, in the capture phase (which also sees the non-bubbling
+  // volumechange), so players the page recreates are covered without hooking each one.
+  window.__kcArmUserVolumeIntent = function() {{
+    try {{
+      var doc = window.document;
+      if (doc.__kcVolIntentHooked) return;
+      doc.__kcVolIntentHooked = true;
+      var isKc = function(el) {{ return !!(el && el.tagName === 'AUDIO' && /^kc-buf-/.test(String(el.id || ''))); }};
+      var mark = function(ev) {{ if (isKc(ev.target)) ev.target.__kcUserTouchAt = Date.now(); }};
+      doc.addEventListener('pointerdown', mark, true);
+      doc.addEventListener('keydown', mark, true);
+      doc.addEventListener('volumechange', function(ev) {{
+        var el = ev.target;
+        if (!isKc(el) || Date.now() - Number(el.__kcUserTouchAt || 0) > 1500) return;
+        var st = window.__kcDual;
+        if (!st) return;
+        var v = Number(el.volume);
+        st.userMuted = !!el.muted || !(v > 0.01);
+        if (v > 0.01) st.intendedVolume = v;
+        window.__kcPlayDiag = window.__kcPlayDiag || [];
+        window.__kcPlayDiag.push({{ t: performance.now(), ev: 'user_volume_intent', id: el.id,
+          muted: !!el.muted, volume: v }});
+      }}, true);
+    }} catch (eHook) {{}}
+  }};
+  window.__kcArmUserVolumeIntent();
+  window.__kcEnsureAudible = function(el, why) {{
+    try {{
+      window.__kcArmUserVolumeIntent();
+      var st = window.__kcDual;
+      if (!st || !el || st.enabled === false) return false;
+      var act = window.document.getElementById(st.active === 0 ? 'kc-buf-0' : 'kc-buf-1');
+      if (el !== act || el.paused || el.ended) return false;
+      var held = !!st.userPaused;
+      try {{ held = held || window.sessionStorage.getItem('kc_user_paused') === '1'; }} catch (eUP) {{}}
+      if (held) return false;
+      if (st.stoppedCycleId && (Date.now() - Number(st.stoppedAt || 0)) < 20000) return false;
+      if (st.userMuted) return false;  // the musician muted the player: keep it that way
+      var wasMuted = !!el.muted;
+      var wasVol = Number(el.volume);
+      if (!wasMuted && wasVol > 0.01) return false;
+      var iv = Number(st.intendedVolume);
+      if (wasMuted) el.muted = false;
+      if (!(wasVol > 0.01)) el.volume = (iv > 0.01 && iv <= 1) ? iv : 1;
+      window.__kcPlayDiag = window.__kcPlayDiag || [];
+      window.__kcPlayDiag.push({{ t: performance.now(), ev: 'audible_restored', why: String(why || ''), id: el.id,
+        key: String(el.getAttribute('data-kc-sounding') || ''), wasMuted: wasMuted, wasVolume: wasVol, volume: Number(el.volume) }});
+      return true;
+    }} catch (e) {{ return false; }}
+  }};
   window.__kcFinishPendingHandoff = function(reason) {{
     try {{
       var st = window.__kcDual;
@@ -5906,9 +6013,11 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         return false;
       }}
       var ph = st.pendingHandoff;
+      var actS = window.document.getElementById(st.active === 0 ? 'kc-buf-0' : 'kc-buf-1');
       if (st.handoffSettledToken && st.handoffSettledToken === ph.token) {{
         st.swapping = false;
         st.pendingHandoff = null;
+        window.__kcEnsureAudible(actS, 'finish_settled:' + (reason || ''));
         return true;
       }}
       if (window.__kcLastGapMs != null && window.__kcLastHandoffAck
@@ -5916,6 +6025,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           && st.handoffSettledToken === ph.token) {{
         st.swapping = false;
         st.pendingHandoff = null;
+        window.__kcEnsureAudible(actS, 'finish_acked:' + (reason || ''));
         return true;
       }}
       var doc = window.document;
@@ -5926,6 +6036,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       // paused can lag while currentTime advances after play() on recycled buffers.
       var playing = !act.ended && ct >= 0.02 && (!act.paused || ct >= 0.05);
       if (!playing) return false;
+      window.__kcEnsureAudible(act, 'finish:' + (reason || ''));
       var endedAt = Number(ph.endedAt || st.endedAt || 0);
       var playingAt = performance.now();
       var swapAt = Number(st.swapStartedAt || 0);
@@ -6080,7 +6191,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
     }}
   }};
   if (window.__kcEndedWatch) return;
-  window.__kcWatchVersion = 31;
+  window.__kcWatchVersion = 32;
   window.__kcEndedWatchInstalled = true;
   window.__kcEndedWatch = window.setInterval(function(){{
     try {{
@@ -6090,6 +6201,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       var doc = window.document;
       var act = doc.getElementById(st.active === 0 ? 'kc-buf-0' : 'kc-buf-1');
       var idle = doc.getElementById(st.active === 0 ? 'kc-buf-1' : 'kc-buf-0');
+      try {{ if (typeof window.__kcArmUserVolumeIntent === 'function') window.__kcArmUserVolumeIntent(); }} catch (eAv) {{}}
       // Tell Python the CURRENT cycle/epoch is genuinely (audibly) playing, once per
       // cycle:epoch. Python uses it to end the spurious-Off remount guard; it is not a
       // key handoff and never advances the cycle. Runs in the parent realm because
@@ -7176,8 +7288,21 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           state.sequence = seq;
           state.displaySequence = (labels.length === seq.length) ? labels : seq;
           // Track final-key so onEnded cannot wrap to the first neighbor.
+          // From the page's OWN active take, as the applyCmd latch does: the server's key is the
+          // key selected, not the take playing. A second-last take that ended inside a Pause holds
+          // the server at the start of the final key; latching "final" from that ended the cycle
+          // at Resume and the final key was never heard (test 2026-11-15, Gm -> Cm). The final key
+          // ends the sequence only when ITS take completes (onEnded on the final key's take).
+          // The server's key is used only while no take is loaded.
           try {{
-            const cur = String(sounding || state.sounding || parentWin.__kcLastSounding || '').trim();
+            let pageKey = '';
+            try {{
+              const actF = activeAudio();
+              if (actF && String(actF.getAttribute('src') || '').trim()) {{
+                pageKey = String(actF.getAttribute('data-kc-sounding') || '').trim();
+              }}
+            }} catch (eActF) {{ pageKey = ''; }}
+            const cur = pageKey || String(sounding || state.sounding || parentWin.__kcLastSounding || '').trim();
             if (seq.length && cur && cur === String(seq[seq.length - 1] || '').trim()) {{
               state.atFinalKey = true;
             }} else if (seq.length && cur && cur !== String(seq[seq.length - 1] || '').trim()) {{
@@ -9805,10 +9930,16 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       if (nextUrl) state.playingUrl = nextUrl;
       try {{
         if (now && nextUrl) {{
+          // Ask BEFORE stamping the URL: urlsMatch trusts data-kc-url, so asked afterwards it
+          // was always true and this load never ran. A switch into an emptied slot then
+          // started nothing, and into a stale one played that take under the new key's label
+          // (browser trace 2026-11-15: Fm only loaded when a remounted bridge reloaded it,
+          // interrupting its muted start -- the silent-Fm chain).
+          const holdsNext = urlsMatch(now, nextUrl);
           now.setAttribute('data-kc-url', nextUrl);
           if (playingKeyAtFlip) now.setAttribute('data-kc-sounding', playingKeyAtFlip);
           // Cold swap: idle may never have been armed (nextReady stayed 0). Load now.
-          if (!urlsMatch(now, nextUrl)) {{
+          if (!holdsNext) {{
             now.preload = 'auto';
             now.src = nextUrl;
             try {{ now.load(); }} catch (eLdN) {{}}
@@ -10508,6 +10639,10 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           return;
         }}
         if (timing.playingAt == null) timing.playingAt = kcNow();
+        // This handoff now counts as playing: make sure it is heard (see __kcEnsureAudible).
+        try {{
+          if (typeof parentWin.__kcEnsureAudible === 'function') parentWin.__kcEnsureAudible(now, 'handoff_playing');
+        }} catch (eEa) {{}}
         commitVisualSync(key);
         const gapMs = Math.max(0, timing.playingAt - timing.endedAt);
         publishAck(gapMs);
@@ -10609,8 +10744,24 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
               if (pm && pm.then) {{
                 pm.then(() => {{
                   try {{ now.muted = false; }} catch (eM) {{}}
+                  // kickPlay returns early once the handoff has settled, and it is the only
+                  // place this path set the volume back.
+                  try {{
+                    if (state.handoffToken === handoffToken && typeof parentWin.__kcEnsureAudible === 'function') {{
+                      parentWin.__kcEnsureAudible(now, 'begin_play_resolved');
+                    }}
+                  }} catch (eEa1) {{}}
                   kickPlay();
-                }}).catch(() => {{ try {{ now.muted = false; }} catch (eM2) {{}} }});
+                }}).catch(() => {{
+                  try {{ now.muted = false; }} catch (eM2) {{}}
+                  // Rejected (e.g. interrupted by a new load): whatever plays it later settles
+                  // through onPlaying / the parent's finish, which restore the volume too.
+                  try {{
+                    if (state.handoffToken === handoffToken && typeof parentWin.__kcEnsureAudible === 'function') {{
+                      parentWin.__kcEnsureAudible(now, 'begin_play_rejected');
+                    }}
+                  }} catch (eEa2) {{}}
+                }});
               }}
             }} catch (eM0) {{}}
           }}
@@ -10798,9 +10949,42 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
               nextUrl: String(state.nextUrl || '').slice(-40),
             }});
           }} catch (eStale) {{}}
+          // The armed take one step too far (a server one key ahead) is still the take after
+          // expectNext: keep it as "following" so it is prepared as soon as expectNext plays,
+          // not left for the server's answer to the Resume, which can arrive after expectNext
+          // has already ended (browser trace 2026-11-15: Fm then loaded cold and played silent).
+          try {{
+            if (state.nextUrl && expectedNextInSequence(expectNext) === armedNext && kcUrlIsLive(state.nextUrl)) {{
+              const oldF = String(state.followingSounding || '');
+              const oldFUrl = String(state.followingUrl || '');
+              const oldFChart = String(state.followingChartHtml || '');
+              state.followingUrl = String(state.nextUrl);
+              state.followingSounding = armedNext;
+              state.followingChartHtml = String(state.nextChartHtml || '');
+              if (oldF && oldFUrl && oldF !== armedNext && oldF === expectedNextInSequence(armedNext)) {{
+                state.aheadUrl = oldFUrl;
+                state.aheadSounding = oldF;
+                state.aheadChartHtml = oldFChart;
+              }}
+            }}
+          }} catch (eKeepF) {{}}
           // Drop the wrong neighbor; wait for Python/prefetch to arm expectNext.
           state.nextUrl = '';
           state.nextSounding = '';
+          // The idle slot must not hand the refused take in through trySwap's fallback (that
+          // would skip expectNext): name expectNext's own take when the server has sent exactly one.
+          try {{
+            const idleS = idleAudio();
+            const idleKey = idleS ? String(idleS.getAttribute('data-kc-sounding') || '') : '';
+            if (idleKey && idleKey !== expectNext) {{
+              const map = parentWin.__kcUrlToKey || {{}};
+              const cands = Object.keys(map).filter((u) => map[u] === expectNext && kcUrlIsLive(u));
+              if (cands.length === 1) {{
+                state.nextUrl = cands[0];
+                state.nextSounding = expectNext;
+              }}
+            }}
+          }} catch (eIdleS) {{}}
           // Fall through to trySwap which will wait for late prep.
         }}
         // Empty / unloaded buffers must not count as a completed pass.
