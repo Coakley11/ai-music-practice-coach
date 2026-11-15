@@ -233,6 +233,84 @@ class TestBackwardCompatibleChannel(_Base):
         self.assertIn("if (!prog && !running && !held && tpIntent === 'playing') running = true;", js)
 
 
+class TestServerFollowsVerifiedTransitions(_Base):
+    """KC-F1 as traced 2026-11-14: after every Pause/Resume the first natural ack was rejected as
+    stale_epoch (Pause and Resume each bump the epoch, but neither moves the cycle), the next ack
+    was then two steps ahead and the skip guard refused it, so the server stayed a key behind and
+    its commands pulled the page back (Dm at the end -> Gm -> Cm -> back to Gm)."""
+
+    def _ack(self, playing: str, from_key: str, epoch: int, pass_id: int) -> dict:
+        self.nonce += 1
+        return {"kind": "playing", "ackId": f"a{self.nonce}", "cycleId": self.cycle, "epoch": epoch,
+                "playingKey": playing, "fromKey": from_key, "passId": pass_id}
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.cycle = self._cycle()  # C F Bb Eb Ab ...
+
+    def test_a_pause_and_resume_do_not_make_a_real_handoff_ack_stale(self) -> None:
+        from backing_key_cycle_handoff import validate_playing_ack
+
+        e0 = int(self.ss.get("_kc_player_cmd_epoch") or 0)
+        kc.pause_key_cycle(self.ss)
+        kc.resume_key_cycle(self.ss)
+        ok, why = validate_playing_ack(self.ss, self._ack("F", "C", e0, 1))
+        self.assertTrue(ok, why)
+
+    def test_a_position_change_still_makes_an_older_ack_stale(self) -> None:
+        from backing_key_cycle_handoff import validate_playing_ack
+
+        e0 = int(self.ss.get("_kc_player_cmd_epoch") or 0)
+        kc.pause_key_cycle(self.ss)  # transport only
+        self.ss["_kc_player_cmd_epoch"] = int(self.ss["_kc_player_cmd_epoch"]) + 1  # a Next / Previous
+        self.ss["_kc_player_cmd_epoch"] = int(self.ss["_kc_player_cmd_epoch"]) + 1  # and a Play
+        ok, why = validate_playing_ack(self.ss, self._ack("F", "C", e0, 1))
+        self.assertFalse(ok)
+        self.assertEqual(why, "stale_epoch")
+
+    def test_a_stop_is_not_transport_only(self) -> None:
+        from backing_key_cycle_handoff import validate_playing_ack
+
+        e0 = int(self.ss.get("_kc_player_cmd_epoch") or 0)
+        kc.hard_stop_key_cycle_audio(self.ss)
+        self.ss["_kc_player_cmd_epoch"] = int(self.ss["_kc_player_cmd_epoch"]) + 1
+        ok, why = validate_playing_ack(self.ss, self._ack("F", "C", e0, 1))
+        self.assertFalse(ok)
+        self.assertEqual(why, "stale_epoch")
+
+    def test_a_chained_ack_from_the_expected_key_follows_both_steps(self) -> None:
+        # The server is on C (expected F); the F confirmation was lost; the page now plays Bb, from F.
+        changed, _ = kc._confirm_owner_cycle_to_playing_key(self.ss, "Bb", from_key="F", pass_id=2)
+        self.assertTrue(changed)
+        self.assertEqual(self._key(), "Bb")
+
+    def test_a_jump_that_is_not_proven_is_still_refused(self) -> None:
+        for playing, from_key in (("Bb", "C"), ("Bb", ""), ("Eb", "F"), ("Ab", "Bb")):
+            ss_before = self._key()
+            changed, _ = kc._confirm_owner_cycle_to_playing_key(self.ss, playing, from_key=from_key, pass_id=2)
+            self.assertFalse(changed, (playing, from_key))
+            self.assertEqual(self._key(), ss_before, (playing, from_key))
+
+    def test_a_late_single_step_ack_after_the_chain_cannot_step_again(self) -> None:
+        kc._confirm_owner_cycle_to_playing_key(self.ss, "Bb", from_key="F", pass_id=2)
+        changed, _ = kc._confirm_owner_cycle_to_playing_key(self.ss, "F", from_key="C", pass_id=1)
+        self.assertFalse(changed)
+        self.assertEqual(self._key(), "Bb")
+
+    def test_a_pause_at_the_end_of_a_take_holds_the_start_of_the_next_key(self) -> None:
+        # Server on C, one confirmation behind: the page finished F, so the paused position is Bb.
+        self._apply("pause", kc={"sounding": "Bb", "cycleId": self.cycle, "from": "F"})
+        self.assertEqual(self._status(), kc.STATUS_HELD)
+        self.assertEqual(self._key(), "Bb")
+
+    def test_a_pause_report_two_ahead_without_the_finished_take_is_refused(self) -> None:
+        self._apply("pause", kc={"sounding": "Bb", "cycleId": self.cycle})
+        self.assertEqual(self._key(), "C")
+        self._apply("resume")
+        self._apply("pause", kc={"sounding": "Bb", "cycleId": self.cycle, "from": "C"})
+        self.assertEqual(self._key(), "C")
+
+
 def _bridge_js() -> str:
     return kc.cycle_persistent_player_bridge_html(cmd_json="{}")
 
@@ -593,10 +671,13 @@ class LateResumeNeverReplaysAFinishedTake(unittest.TestCase):
         self.assertEqual(got["live"], ["em.wav"], got)  # the cycle went on to the next key
 
     def test_a_late_answer_after_the_take_finished_does_not_replay_it(self) -> None:
-        snaps = _run_stop_race(self, [("cmd", _START), ("eval", _FINISH_JS),
+        # Bm finishes and the cycle hands off to Em on its own; the server's late answer still names Bm.
+        seq = "() => { window.__kcDual.sequence = ['Bm', 'Em', 'Am']; return true; }"
+        snaps = _run_stop_race(self, [("cmd", _START), ("eval", seq), ("eval", _FINISH_JS),
                                       ("cmd", dict(_START, epoch=11, restart=False, resume=True)), ("eval", _ACTIVE_JS)])
-        self.assertTrue(snaps[2]["eval"]["ended"], snaps[2])
-        self._assert_not_replayed(snaps[-1]["eval"])
+        got = snaps[-1]["eval"]
+        self._assert_not_replayed(got)
+        self.assertEqual((got["src"], got["paused"]), ("em.wav", False), got)
 
     def test_a_late_answer_after_the_cycle_moved_on_does_not_step_back(self) -> None:
         # The page is playing the next take; the server's answer still names the paused one.
@@ -633,11 +714,12 @@ class PauseInTheSilentGapReportsTheKeyResumePlays(unittest.TestCase):
     incoming Cm take the active one, and Resume played Cm. The Pause now reports the key Resume will
     play: the active take's, or the next key when the active take has finished."""
 
-    _GAP = """async (mode) => { const d = window.__kcDual; await new Promise(r => setTimeout(r, 300));
+    _GAP = """async (mode) => { const d = window.__kcDual; d.sequence = ['Bm', 'Em', 'Am'];
+      await new Promise(r => setTimeout(r, 300));
       if (typeof window.__kcPauseBtnHandler !== 'function') return 'no handler';
       const a = document.getElementById(d.active === 1 ? 'kc-buf-1' : 'kc-buf-0');
       a.pause();
-      if (mode === 'finished') { a.currentTime = Math.max(0, a.duration - 0.02); d.nextSounding = 'Em'; }
+      if (mode === 'finished') { a.currentTime = a.duration; d.nextSounding = 'Em'; }
       else { a.currentTime = 0; a.setAttribute('data-kc-sounding', 'Em'); }  // the incoming take, not started yet
       await new Promise(r => setTimeout(r, 150));
       window.__kcLastLive = {key: 'Bm', at: Date.now()};  // the last key heard
@@ -654,6 +736,85 @@ class PauseInTheSilentGapReportsTheKeyResumePlays(unittest.TestCase):
     def test_an_incoming_take_already_active_reports_its_own_key(self) -> None:
         got = _run_stop_race(self, [("cmd", _START), ("eval", "(" + self._GAP + ")('incoming')")])[-1]["eval"]
         self.assertEqual(got, "Em", got)
+
+
+class PauseAtATakeBoundaryHasOnePosition(unittest.TestCase):
+    """The boundary rule, decided when Pause takes effect (no time margin): a take that has not
+    ended keeps its key and position; one that has ended pauses at the start of the next key; the
+    final key keeps its completed end state. Recorded failures 2026-11-14 (Lead Sheet, normal speed):
+    Dm / Gm / Cm paused at the very end froze the finished key while Resume moved on; Bbm with 0.26 s
+    and G#m with 0.28 s left were replayed after Resume."""
+
+    _PRESS = """async ([seq, left, ended]) => { const d = window.__kcDual; d.sequence = seq;
+      await new Promise(r => setTimeout(r, 300));
+      const a = document.getElementById(d.active === 1 ? 'kc-buf-1' : 'kc-buf-0');
+      if (ended) { a.pause(); a.currentTime = a.duration; }
+      else { a.currentTime = Math.max(0, a.duration - left); }
+      await new Promise(r => setTimeout(r, 60));
+      window.__backingTransportState = {transport: 'playing'}; d.userPaused = false;
+      try { sessionStorage.setItem('kc_user_paused', '0'); } catch (e) {}
+      window.__kcPauseToggleAt = 0;
+      const before = Number(a.currentTime);
+      window.__kcPauseBtnHandler();
+      const stash = window.__kcPauseSounding || {};
+      return {key: stash.key || '', from: stash.from || '', at: before, held: Number(window.__kcLastPauseT),
+              dur: Number(a.duration)}; }"""
+
+    def _press(self, seq, left, ended):
+        return _run_stop_race(self, [("cmd", _START), ("eval", "(" + self._PRESS + ")(" + __import__("json").dumps([seq, left, ended]) + ")")])[-1]["eval"]
+
+    def test_bbm_with_0_26_s_left_keeps_its_key_and_the_remaining_0_26_s(self) -> None:
+        got = self._press(["Bm", "Em", "Am"], 0.26, False)
+        self.assertEqual((got["key"], got["from"]), ("Bm", ""), got)
+        self.assertAlmostEqual(got["held"], got["dur"] - 0.26, delta=0.12)  # the position is kept
+
+    def test_g_sharp_m_with_0_28_s_left_keeps_its_key(self) -> None:
+        got = self._press(["Bm", "Em", "Am"], 0.28, False)
+        self.assertEqual((got["key"], got["from"]), ("Bm", ""), got)
+
+    def test_a_take_that_has_ended_pauses_at_the_start_of_the_next_key(self) -> None:
+        got = self._press(["Bm", "Em", "Am"], 0, True)
+        self.assertEqual((got["key"], got["from"]), ("Em", "Bm"), got)
+
+    def test_the_final_key_keeps_its_completed_end_state(self) -> None:
+        got = self._press(["Am", "Bm"], 0, True)
+        self.assertEqual((got["key"], got["from"]), ("Bm", ""), got)
+
+    def test_resume_continues_the_kept_position(self) -> None:
+        probe = """async () => { const d = window.__kcDual; d.sequence = ['Bm', 'Em', 'Am'];
+          await new Promise(r => setTimeout(r, 300));
+          const a = document.getElementById(d.active === 1 ? 'kc-buf-1' : 'kc-buf-0');
+          a.currentTime = 2.0; await new Promise(r => setTimeout(r, 80));
+          window.__kcPauseAudio(); await new Promise(r => setTimeout(r, 400));
+          window.__kcResumeAudio(); await new Promise(r => setTimeout(r, 500));
+          return {src: String(a.currentSrc || a.src).split('/').pop(), ct: Number(a.currentTime), paused: a.paused}; }"""
+        got = _run_stop_race(self, [("cmd", _START), ("eval", probe)])[-1]["eval"]
+        self.assertEqual(got["src"], "bm.wav", got)
+        self.assertFalse(got["paused"], got)
+        self.assertGreater(got["ct"], 2.0, got)  # continued from 2.0 s, not restarted
+        self.assertLess(got["ct"], 3.5, got)
+
+
+class ThePageNeverArmsItsOwnKeyAsNext(unittest.TestCase):
+    """KC-F1 page side (trace 2026-11-14: playing Dm, expected Gm, armed Dm): a server one
+    confirmation behind names the key the page is already playing as "next"; the end-of-take
+    check then refused the real next key and the cycle replayed or stepped back."""
+
+    def test_a_server_one_behind_arms_its_following_key_as_next(self) -> None:
+        playing_em = dict(_START, epoch=11, restart=True, currentUrl="app/static/kc/em.wav", sounding="Em",
+                          nextUrl="app/static/kc/am.wav", nextSounding="Am")
+        behind = {"enabled": True, "epoch": 12, "cycleId": "cyc-A", "sounding": "Bm", "currentUrl": "app/static/kc/bm.wav",
+                  "nextUrl": "app/static/kc/em.wav", "nextSounding": "Em",
+                  "followingUrl": "app/static/kc/am.wav", "followingSounding": "Am",
+                  "aheadUrl": "app/static/kc/dm.wav", "aheadSounding": "Dm"}
+        snaps = _run_stop_race(self, [("cmd", _START), ("cmd", playing_em), ("cmd", behind),
+                                      ("eval", "() => ({next: window.__kcDual.nextSounding, following: window.__kcDual.followingSounding})"),
+                                      ("eval", _ACTIVE_JS)])
+        got = snaps[-2]["eval"]
+        self.assertEqual(got["next"], "Am", got)
+        self.assertNotEqual(got["following"], "Am", got)  # never the same take twice
+        active = snaps[-1]["eval"]  # and the take the page is playing stays
+        self.assertEqual((active["src"], active["key"], active["paused"]), ("em.wav", "Em", False), active)
 
 
 class PauseCancelsAHandoffInFlight(unittest.TestCase):
@@ -679,7 +840,8 @@ class PauseCancelsAHandoffInFlight(unittest.TestCase):
         # transport state still says "playing" (it confirms a Pause seconds later).
         probe = """async (held) => {
           if (!HTMLMediaElement.prototype.__kcPlayRetryPatched) return 'retry patch not installed';
-          window.__backingTransportState = {transport: 'playing'};
+          if (held) window.__kcPauseAudio();  // the musician's Pause (the page's own hold)
+          window.__backingTransportState = {transport: 'playing'};  // the server has not confirmed it yet
           window.__kcDual.userPaused = held;
           try { sessionStorage.setItem('kc_user_paused', held ? '1' : '0'); } catch (e) {}
           const a = document.createElement('audio'); a.id = 'kc-buf-test'; a.muted = true;

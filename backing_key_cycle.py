@@ -3554,6 +3554,12 @@ def pause_key_cycle(session: dict[str, Any]) -> dict[str, Any] | None:
     data["status"] = STATUS_HELD
     _put_owner_cycle_session(session, owner, data)
     session["_kc_player_cmd_epoch"] = int(session.get("_kc_player_cmd_epoch") or 0) + 1
+    try:
+        from backing_key_cycle_handoff import note_transport_only_epoch
+
+        note_transport_only_epoch(session)
+    except Exception:
+        pass
     session.pop("_kc_resume_play", None)
     session.pop("_kc_restart_play", None)
     # A queued "prepare and play the next take" (Next / Previous to a cold key)
@@ -3588,6 +3594,12 @@ def resume_key_cycle(session: dict[str, Any]) -> dict[str, Any] | None:
     data.pop(CYCLE_SESSION_OVER, None)
     _put_owner_cycle_session(session, owner, data)
     session["_kc_player_cmd_epoch"] = int(session.get("_kc_player_cmd_epoch") or 0) + 1
+    try:
+        from backing_key_cycle_handoff import note_transport_only_epoch
+
+        note_transport_only_epoch(session)
+    except Exception:
+        pass
     session.pop("_backing_transport_user_stopped", None)
     session.pop("_kc_hard_stop", None)
     session.pop("_kc_pause_audio", None)
@@ -3708,6 +3720,13 @@ def hard_stop_key_cycle_audio(session: dict[str, Any]) -> dict[str, Any] | None:
     not seek to t=0. Turn off cycling remains the separate disable action.
     """
     data = pause_key_cycle(session)
+    # A Stop is not transport-only: acks built before it stay stale.
+    try:
+        from backing_key_cycle_handoff import forget_transport_only_epoch
+
+        forget_transport_only_epoch(session)
+    except Exception:
+        pass
     session["_kc_hard_stop"] = True
     session["_kc_pause_audio"] = True
     session.pop("_kc_resume_play", None)
@@ -4430,6 +4449,38 @@ def _confirm_owner_cycle_to_playing_key(
             }
         return changed, after
 
+    # KC-F1: the confirmation for ``expected`` never landed (browser trace 2026-11-14: the
+    # first natural ack after a Pause/Resume was rejected as stale_epoch), so the page's next
+    # one is two steps ahead and the skip guard below refused it -- the server stayed a key
+    # behind and its commands pulled the page back. A natural ack proves the step in between
+    # only when it comes FROM the expected key and plays the key after it, in this cycle:
+    # then the server follows exactly those two steps. Any other jump is still refused.
+    if not manual and from_key and _keys_equivalent(from_key, expected):
+        after_expected = str(peek_cycle_key_at_delta(session, steps=2) or "").strip()
+        if after_expected and _keys_equivalent(after_expected, want):
+            after = _step_owner_cycle(
+                session, steps=2, force=False, queue_continue=False, allow_wrap=False
+            )
+            after_key = str((after or {}).get("current_playback_key") or "")
+            changed = bool(after_key and not _keys_equivalent(after_key, before))
+            _log_cycle_key_write(
+                session,
+                trigger="playing_ack_advance_chained",
+                old_key=before,
+                new_key=after_key or want,
+                cycle_id=cycle_id,
+                pass_id=pass_id,
+                extra={"fromKey": from_key, "expected": expected},
+            )
+            if changed:
+                session["_kc_last_playing_confirm"] = {
+                    "key": after_key or want,
+                    "passId": pass_id,
+                    "cycleId": cycle_id,
+                    "t": __import__("time").time(),
+                }
+            return changed, after
+
     # Manual Previous: the browser already switched audio one step BACK. Python must
     # follow it, or the next republish snaps the highlight/sheet back to the old key.
     if manual:
@@ -4675,7 +4726,9 @@ def _hold_cycle_at_next_key(
     return True
 
 
-def adopt_sounding_key_at_pause(session: dict[str, Any], sounding: str, *, cycle_id: str = "") -> bool:
+def adopt_sounding_key_at_pause(
+    session: dict[str, Any], sounding: str, *, cycle_id: str = "", from_key: str = ""
+) -> bool:
     """Pause froze the key that was SOUNDING (the card's Pause report carries it).
 
     A Pause within ~0.5 s of an automatic key change interrupts that handoff
@@ -4701,6 +4754,16 @@ def adopt_sounding_key_at_pause(session: dict[str, Any], sounding: str, *, cycle
     if _keys_equivalent(before, want):
         return False
     expected = str(next_cycle_playback_key(session) or "").strip()
+    # Paused at the end of a take: the paused position is the start of the key after it.
+    # When the server is also a confirmation behind (KC-F1), that is two steps ahead -- proven
+    # only when the report names the finished take as the expected key and the paused key as
+    # the one after it, in this cycle.
+    fk = str(from_key or "").strip()
+    if (fk and _keys_equivalent(fk, expected) and not session.get("_kc_arr_key_lock")
+            and _keys_equivalent(want, str(peek_cycle_key_at_delta(session, steps=2) or "").strip())):
+        _hold_cycle_at_next_key(session, owner, data, expected, trigger="pause_report_adopt_finished_take")
+        data2 = get_owner_cycle_session(session, owner) or data
+        return _hold_cycle_at_next_key(session, owner, data2, want, trigger="pause_report_adopt_sounding_key")
     if not _keys_equivalent(want, expected) or session.get("_kc_arr_key_lock"):
         _log_cycle_key_write(
             session,
@@ -5549,7 +5612,23 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         if (cmd.stepCharts && typeof cmd.stepCharts === 'object') {{
           Object.keys(cmd.stepCharts).forEach((k) => keepChart(k, cmd.stepCharts[k]));
         }}
-        if (cmd.nextUrl && cmd.nextSounding && String(cmd.nextSounding) !== String(cmd.sounding || '')) {{
+        // A server one confirmation behind (KC-F1) names the key the page is already
+        // playing as "next". Arming that made the end-of-take check refuse the real next
+        // key (browser trace 2026-11-14: playing Dm, expected Gm, armed Dm) and the cycle
+        // replayed or stepped back. Then the server's "following" key is the page's next.
+        let pageCurN = '';
+        try {{
+          const actN = activeAudio();
+          if (actN && String(actN.currentSrc || actN.src || '').trim()) pageCurN = String(actN.getAttribute('data-kc-sounding') || '');
+        }} catch (eCurN) {{ pageCurN = ''; }}
+        if (pageCurN && cmd.nextSounding && String(cmd.nextSounding) === pageCurN
+            && String(cmd.sounding || '') !== pageCurN) {{
+          if (cmd.followingUrl && cmd.followingSounding && String(cmd.followingSounding) !== pageCurN) {{
+            parentWin.__kcUrlToKey[String(cmd.followingUrl)] = String(cmd.followingSounding);
+            state.nextUrl = String(cmd.followingUrl);
+            state.nextSounding = String(cmd.followingSounding);
+          }}
+        }} else if (cmd.nextUrl && cmd.nextSounding && String(cmd.nextSounding) !== String(cmd.sounding || '')) {{
           parentWin.__kcUrlToKey[String(cmd.nextUrl)] = String(cmd.nextSounding);
           state.nextUrl = String(cmd.nextUrl);
           state.nextSounding = String(cmd.nextSounding);
@@ -5565,7 +5644,15 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
             parentWin.__kcChartByKey[String(cmd.prevSounding)] = String(cmd.prevChartHtml);
           }}
         }}
-        if (cmd.followingUrl && cmd.followingSounding) {{
+        if (cmd.followingUrl && cmd.followingSounding
+            && String(cmd.followingSounding) === String(state.nextSounding || '')
+            && String(cmd.nextSounding || '') === pageCurN) {{
+          // Shifted one step above (server one behind): the take after next is "ahead".
+          if (cmd.aheadUrl && cmd.aheadSounding) {{
+            state.followingUrl = String(cmd.aheadUrl);
+            state.followingSounding = String(cmd.aheadSounding);
+          }}
+        }} else if (cmd.followingUrl && cmd.followingSounding) {{
           parentWin.__kcUrlToKey[String(cmd.followingUrl)] = String(cmd.followingSounding);
           state.followingUrl = String(cmd.followingUrl);
           state.followingSounding = String(cmd.followingSounding);
@@ -7743,14 +7830,14 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         }}
       }} catch (eSeek) {{}}
       // A take that has finished is never played again: play() on an ended element
-      // restarts it from 0. Paused at (or Resumed within a moment of) its end, the cycle
-      // moves on to the next key through the usual end-of-take path instead (browser
+      // restarts it from 0. Finished (ended, not "nearly ended" -- no time margin), the
+      // cycle moves on to the next key through the usual end-of-take path instead (browser
       // trace 2026-11-14: Resume with 0.4 s left -> the 500 / 1500 ms kicks replayed
       // the same key from the start).
       const finished = (el) => {{
         try {{
-          return !!el && (el.ended || (Number(el.duration || 0) > 1
-            && Number(el.currentTime || 0) >= Number(el.duration) - 0.05));
+          return !!el && (el.ended || (Number(el.duration || 0) > 0
+            && Number(el.currentTime || 0) >= Number(el.duration)));
         }} catch (eF) {{ return false; }}
       }};
       if (finished(act)) {{
@@ -9047,20 +9134,43 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
               // -- reporting the last audible key then froze the console on Gm while
               // Resume played Cm (browser trace 2026-11-14). A finished active take
               // continues to the next key (see __kcResumeAudio).
-              let gapKey = '';
+              // One authoritative paused position, decided when Pause takes effect:
+              // - the active take has not ended: its key (and position) stays;
+              // - it has ended: the start of the next key -- unless it was the
+              //   final key, which keeps its completed end state (no wrap);
+              // - the incoming take already became active in a handoff: that key.
+              // Resume plays exactly this (see __kcResumeAudio); the report carries
+              // the finished take as ``from`` so the server can verify the step.
+              let pauseKey = '';
+              let pauseFrom = '';
               try {{
                 const actP = (typeof activeAudio === 'function') ? activeAudio() : null;
                 const srcP = actP ? String(actP.currentSrc || actP.src || '').trim() : '';
                 if (actP && srcP) {{
-                  const doneP = actP.ended || (Number(actP.duration || 0) > 1
-                    && Number(actP.currentTime || 0) >= Number(actP.duration) - 0.05);
-                  gapKey = doneP ? String(state.nextSounding || '') : String(actP.getAttribute('data-kc-sounding') || '');
+                  const curP = String(actP.getAttribute('data-kc-sounding') || '');
+                  const doneP = actP.ended || (Number(actP.duration || 0) > 0
+                    && Number(actP.currentTime || 0) >= Number(actP.duration));
+                  if (!doneP) {{
+                    pauseKey = curP;
+                  }} else {{
+                    const seqKnown = Array.isArray(state.sequence) && state.sequence.length > 0;
+                    const nextP = seqKnown
+                      ? (typeof expectedNextInSequence === 'function' ? expectedNextInSequence(curP) : '')
+                      : (state.nextSounding && state.nextSounding !== curP ? String(state.nextSounding) : '');
+                    if (nextP) {{
+                      pauseKey = nextP;
+                      pauseFrom = curP;
+                    }} else {{
+                      pauseKey = curP;  // the final key, completed
+                    }}
+                  }}
                 }}
-              }} catch (eGap) {{ gapKey = ''; }}
+              }} catch (eGap) {{ pauseKey = ''; pauseFrom = ''; }}
               parentWin.__kcPauseSounding = {{
-                key: (typeof parentWin.__kcLiveKey === 'function' ? String(parentWin.__kcLiveKey() || '') : '')
-                  || gapKey
+                key: pauseKey
+                  || (typeof parentWin.__kcLiveKey === 'function' ? String(parentWin.__kcLiveKey() || '') : '')
                   || String((parentWin.__kcLastLive || {{}}).key || ''),
+                from: pauseFrom,
                 at: Date.now(),
               }};
             }} catch (ePs) {{}}
@@ -11525,8 +11635,8 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         // restarts it from 0): the cycle goes on to the next key through the usual
         // end-of-take path. A deliberate restart still loads and plays from the start.
         try {{
-          if (actR && cmd.resume && !cmd.restart && sameUrl && (actR.ended || (Number(actR.duration || 0) > 1
-              && Number(actR.currentTime || 0) >= Number(actR.duration) - 0.05))) {{
+          if (actR && cmd.resume && !cmd.restart && sameUrl && (actR.ended || (Number(actR.duration || 0) > 0
+              && Number(actR.currentTime || 0) >= Number(actR.duration)))) {{
             if (typeof parentWin.__kcOnEnded === 'function') {{
               window.setTimeout(() => {{ try {{ parentWin.__kcOnEnded(); }} catch (eOe2) {{}} }}, 0);
             }}
@@ -11803,6 +11913,10 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       // Same-key arrangement replace (new BPM/feel/scope file) is NOT a handoff.
       let liveHandoff = false;
       let browserSounding = '';
+      // Declared outside the try below: it is read after it (needsReplace). As a const inside,
+      // every command for another take than the page's (a server one confirmation behind) threw
+      // a ReferenceError here and the rest of the command was never applied.
+      let sameKeyNewFile = false;
       try {{
         const actUrl = act ? (act.getAttribute('data-kc-url') || '') : '';
         browserSounding = act
@@ -11826,7 +11940,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         const pythonMatchesBrowser = !!(
           cmdSounding && browserSounding && cmdSounding === browserSounding
         );
-        const sameKeyNewFile = !!(
+        sameKeyNewFile = !!(
           pythonMatchesBrowser
           && cur
           && act

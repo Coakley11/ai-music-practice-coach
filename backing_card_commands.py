@@ -92,7 +92,11 @@ def pending_card_cycle_report(session: Any) -> dict[str, str]:
     sounding = str(kc.get("sounding") or "").strip()
     if not sounding:
         return {}
-    return {"sounding": sounding, "cycleId": str(kc.get("cycleId") or "").strip()}
+    out = {"sounding": sounding, "cycleId": str(kc.get("cycleId") or "").strip()}
+    finished = str(kc.get("from") or "").strip()
+    if finished:  # optional: the take that finished when the paused position moved on
+        out["from"] = finished
+    return out
 
 
 def commit_card_command(session: Any, token: str) -> None:
@@ -201,7 +205,10 @@ def apply_card_command(
                 report = pending_card_cycle_report(session)
                 if report:
                     adopt_sounding_key_at_pause(
-                        session, report["sounding"], cycle_id=report.get("cycleId", "")
+                        session,
+                        report["sounding"],
+                        cycle_id=report.get("cycleId", ""),
+                        from_key=report.get("from", ""),
                     )
         except Exception:
             pass

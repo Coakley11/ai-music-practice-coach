@@ -173,7 +173,10 @@
           if (!key && last && Date.now() - Number(last.at || 0) < 700) key = String(last.key || "");
           if (!key && typeof p.__kcLiveKey === "function") key = String(p.__kcLiveKey() || "");
           if (!key) return null;
-          return { sounding: key, cycleId: String(((p.__kcLastCmd || {}).cycleId) || "") };
+          const out = { sounding: key, cycleId: String(((p.__kcLastCmd || {}).cycleId) || "") };
+          // The take that finished when the paused position moved to the next key (optional).
+          if (stash && Date.now() - Number(stash.at || 0) < 1500 && stash.from) out.from = String(stash.from);
+          return out;
         } catch (e) {
           return null;
         }
