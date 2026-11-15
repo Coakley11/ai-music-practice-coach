@@ -19,6 +19,7 @@ parser.add_argument("--port",type=int,default=8596)
 parser.add_argument("--probe",action="store_true")
 parser.add_argument("--notation-polish-only",action="store_true")
 parser.add_argument("--note-name-display-only",action="store_true")
+parser.add_argument("--adaptive-cells-only",action="store_true")
 parser.add_argument("--song-only",action="store_true")
 parser.add_argument("--technique-only",action="store_true")
 parser.add_argument("--technique-parser-only",action="store_true")
@@ -153,10 +154,11 @@ def request(page,q,cue,tag):
     assert len(staff)==len(expected), "Rendered score count differs from the response"
     for actual,abc in zip(staff,expected):
         assert actual["abc"]==abc
-        assert len(actual["notes"])==len(read_abc(re.sub(r'"[^"\n]*"', "", abc))), "Drawn note count differs from independent ABC reading"
+        assert len(actual["notes"])==len(read_abc(re.sub(r'\[K:[^\]]+\]', '', re.sub(r'"[^"\n]*"', "", abc)))), "Drawn note count differs from independent ABC reading"
     if record.get("plan") and not record["response"].get("diagnostics",{}).get("fingering_lookup"):
         view=record.get("history",{}).get("view",{})
-        visible_rows=record["plan"]["items"]
+        displayed_plan=record["plan"].get("original",record["plan"]) if view.get("mode")=="original" else record["plan"]
+        visible_rows=displayed_plan["items"]
         if view.get("mode")=="item":visible_rows=[visible_rows[view["index"]]]
         for actual,row in zip(staff,visible_rows):
             if row.get("written_notes"):
@@ -210,7 +212,10 @@ try:
             page.get_by_test_id("stMainBlockContainer").get_by_role("textbox",name="Question",exact=True).wait_for(timeout=90000)
             idle(page)
             (OUT/"practice-start.txt").write_text(page.locator("body").inner_text(),encoding="utf-8")
-            if args.flute_fingering_only:
+            if args.adaptive_cells_only:
+                from ami_adaptive_cells_browser_cases import run as run_cells
+                run_cells(page,request,select,OUT)
+            elif args.flute_fingering_only:
                 from ami_flute_fingering_browser_cases import run as run_flute_fingering
                 run_flute_fingering(page,request,select,OUT)
             elif args.clarinet_fingering_only:
@@ -336,11 +341,14 @@ try:
                     articulation,_=request(page,"Give me a warmup.","warmup","15-articulation-focus")
                     assert set(articulation["plan"]["spec"]["families"])=={"articulation","scale"}
         except Exception:
+            (OUT/"failure-primary.json").write_text(json.dumps({"error":__import__("traceback").format_exc(),"results":results},indent=2),encoding="utf-8")
             for i,frame in enumerate(page.frames):
                 try:(OUT/f"failure-frame-{i}.html").write_text(frame.content(),encoding="utf-8")
                 except Exception:pass
-            page.screenshot(path=str(OUT/"failure.png"),full_page=True)
-            (OUT/"failure-body.txt").write_text(page.locator("body").inner_text(),encoding="utf-8")
+            try:page.screenshot(path=str(OUT/"failure.png"),full_page=True)
+            except Exception as capture_error:(OUT/"failure-capture-error.txt").write_text(str(capture_error),encoding="utf-8")
+            try:(OUT/"failure-body.txt").write_text(page.locator("body").inner_text(),encoding="utf-8")
+            except Exception:pass
             raise
         finally:
             browser.close()

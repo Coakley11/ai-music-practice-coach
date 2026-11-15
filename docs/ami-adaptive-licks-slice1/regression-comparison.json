@@ -1,0 +1,46 @@
+{
+  "integrated_baseline_tested_merge": "f7d94f9ac7f1b6c4c242313be9c414e7f2b4a0fc",
+  "integrated_verified_dev": "f8a5b43ced70e6fb59b51d8c8da27695e5ca12b5",
+  "baseline_equivalence": "The verified dev head differs from the tested merge only by its acceptance documentation; all 2171 shared source files remain unchanged.",
+  "same_clean_recorder_baseline": "e41232060ad61e67cc904c1228d2c941906952af",
+  "against_integrated": {
+    "shared": 4009,
+    "changed": [],
+    "missing": [],
+    "new": 66,
+    "new_failed": []
+  },
+  "against_same_clean_baseline": {
+    "shared": 3964,
+    "changed": [],
+    "missing": [],
+    "new": 111,
+    "new_failed": []
+  },
+  "same_python": true,
+  "collection_errors": [],
+  "failure_subtest_ledger_matches": true,
+  "failure_ledger": [
+    "FAILED tests/test_backing_context.py::TestBackingContext::test_custom_progression_context",
+    "FAILED tests/test_backing_context.py::TestBackingContext::test_sections_from_custom_progression_ignores_style_jam",
+    "FAILED tests/test_backing_handoff_authority.py::TestBackingHandoffAuthority::test_refresh_restores_custom_not_catalog",
+    "FAILED tests/test_composition_activation_nav.py::TestNavButtonKeys::test_jam_sets_entry_mode",
+    "FAILED tests/test_cs_fa_phrase_editor_single_score.py::TestPhraseEditorSingleScore::test_armed_renders_exactly_one_synced_score",
+    "FAILED tests/test_cs_fa_phrase_editor_single_score.py::TestPhraseEditorSingleScore::test_unarmed_renders_exactly_one_static_score",
+    "FAILED tests/test_music_canonical_insight_submit.py::TestMusicCanonicalInsightSubmit::test_metrics_include_ami_insight_when_canonical_present",
+    "FAILED tests/test_song_card_guidance.py::TestCardDetailsAndHtml::test_card_html_shows_setup_and_the_four_guidance_rows",
+    "FAILED tests/test_tab_missions_render_regression.py::TestTabMissionsRenderRegression::test_tab_missions_body_with_example_and_recording_expander"
+  ],
+  "source_checks": {
+    "adaptive-slice1-final": {
+      "count": 2174,
+      "changes": []
+    },
+    "ami-nf-current-combined": {
+      "count": 2171,
+      "changes": []
+    }
+  },
+  "identical_uuid_input_control": true,
+  "skips_match": true
+}
