@@ -35,6 +35,9 @@ def _reply(text, plan=None, session=None, failed=""):
 
 
 def _response(plan, session, lead=""):
+    if plan["spec"].get("adaptive_cell"):
+        from music_coach_ami.adaptive_cells import response
+        return response(plan, session, lead)
     if plan["spec"].get("flute_fingering"):
         from music_coach_ami.flute_fingering_instructor import practice_response
         return practice_response(plan, session, lead)
@@ -82,6 +85,9 @@ def _window(player, level, register):
 
 
 def build(spec: dict) -> dict:
+    if spec.get("adaptive_cell"):
+        from music_coach_ami.adaptive_cells import build as build_cell
+        return build_cell(spec)
     if spec.get("flute_fingering"):
         from music_coach_ami.flute_fingering_instructor import build_practice
         return build_practice(spec)
@@ -232,6 +238,10 @@ def handle(question: str, session, ami_ctx: dict | None = None) -> CoachResponse
     if session is None:
         return None
     q = question.lower().strip(" .!?")
+    from music_coach_ami import adaptive_cells
+    cell = adaptive_cells.handle(question, session, ami_ctx)
+    if cell is not None:
+        return cell
     # M1d owns explicit scale patterns, modes, bar counts and their revisions.
     if re.search(r"\bscale[ -]patterns?\b", q):
         return None
@@ -253,9 +263,12 @@ def handle(question: str, session, ami_ctx: dict | None = None) -> CoachResponse
     technique_response = instrument_technique.handle(question, session, ami_ctx)
     if technique_response is not None:
         return technique_response
+    interval = adaptive_cells.handle(question, session, ami_ctx, bare_only=True)
+    if interval is not None:
+        return interval
     ctx = ami_ctx or {}
     plan = wp.current(session)
-    active = bool(plan and plan["spec"].get("single"))
+    active = bool(plan and plan["spec"].get("single") and not plan["spec"].get("adaptive_cell"))
     fresh = bool(re.search(r"\b(?:give|generate|write|create|build|want|need)\b", q))
     full = bool(re.search(r"warm[ -]?up|routine", q))
     song = bool(re.search(r"\b(?:over|song|verse|bridge|chorus|chord changes|prepares? me for)\b", q))
