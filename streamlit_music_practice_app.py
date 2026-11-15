@@ -2722,6 +2722,7 @@ def render_abc(abc_text, *, measure_sync=None):
 
         sync_json = _json.dumps(measure_sync)
         _pm_debug = "true" if _os.environ.get("PM_SYNC_DEBUG") else "false"
+        from lead_sheet_page_follow import MELODY_PRIORITY as _pm_follow_priority
         from lead_sheet_page_follow import page_follow_controller_js as _pm_follow_ctl
 
         _pm_follow_js = _pm_follow_ctl()
@@ -2751,6 +2752,12 @@ def render_abc(abc_text, *, measure_sync=None):
       let lastNoteKey = null;
       let debugEl = null;
       let boxEl = null;
+      let pmPlaying = false;   // the Backing take this staff follows is playing
+      let pmMatched = false;   // a measure of this staff is playing now
+      // What the page follows: the measure's highlight box (the whole measure, not one notehead).
+      function pmFollowTarget() {{
+        return (boxEl && boxEl.isConnected && boxEl.style.display !== 'none') ? boxEl : null;
+      }}
       if (DEBUG) {{
         debugEl = document.createElement('div');
         debugEl.id = 'pm-debug-readout';
@@ -2864,7 +2871,14 @@ def render_abc(abc_text, *, measure_sync=None):
           const m = measureTimeline[i];
           if (t >= m.start && t < m.end) {{ match = m; break; }}
         }}
-        if (!match) return 'no-match-for-t=' + t.toFixed(2);
+        if (!match) {{
+          // Nothing of this staff plays now (an intro bar, a section another staff shows): the page
+          // controller lets the Lead Sheet lead meanwhile, and the next lit measure asks for the page again.
+          pmMatched = false;
+          lastKey = null;
+          return 'no-match-for-t=' + t.toFixed(2);
+        }}
+        pmMatched = true;
         if (match.key === lastKey) {{
           highlightNote(match, t);
           return 'same-key=' + match.key;
@@ -2883,7 +2897,8 @@ def render_abc(abc_text, *, measure_sync=None):
         if (firstCurrent) {{
           // M4: scrollIntoView here also scrolled the PAGE, pulling it back every measure (even over a
           // manual scroll). This frame now only scrolls itself; the page moves through the one page
-          // controller, which honours the six-second manual hold and lets an open Lead Sheet lead.
+          // controller, which honours the six-second manual hold. An open, lit melody staff leads the page
+          // over the Lead Sheet (user, 2026-11-14).
           try {{
             const de = document.scrollingElement || document.documentElement;
             if (de.scrollHeight > de.clientHeight + 4) {{
@@ -2892,7 +2907,7 @@ def render_abc(abc_text, *, measure_sync=None):
             }}
           }} catch (eIn) {{}}
           try {{
-            if (window.top.__lsFollow) window.top.__lsFollow.request('practice-melody', firstCurrent, {{why: 'measure'}});
+            if (window.top.__lsFollow) window.top.__lsFollow.request('practice-melody', pmFollowTarget() || firstCurrent, {{why: 'measure'}});
           }} catch (ePf) {{}}
         }}
         return 'NEW-HIGHLIGHT key=' + match.key + ' notes=' + (match.note_end - match.note_start);
@@ -2978,6 +2993,7 @@ def render_abc(abc_text, *, measure_sync=None):
               status = 'direct pos.t=' + t.toFixed(2) + ' paused=' + paused;
             }}
           }}
+          pmPlaying = t !== null && !paused;
           if (t !== null && !paused) {{
             status += ' -> ' + highlightFor(t);
           }}
@@ -2994,6 +3010,25 @@ def render_abc(abc_text, *, measure_sync=None):
       // property read + DOM class toggles only, not a competing clock.
       const watchdog = setInterval(tick, 100);
       window.addEventListener('beforeunload', () => clearInterval(watchdog));
+      // This staff is aligned to the Backing timeline: it registers with the one page controller, which
+      // follows it ahead of the Lead Sheet while it is open on screen and has a measure lit.
+      let pmRegTries = 0;
+      function pmRegister() {{
+        try {{
+          const ctl = window.top.__lsFollow, fe = window.frameElement;
+          if (ctl && fe && ctl.register) {{
+            ctl.register({{
+              id: 'practice-melody', priority: {_pm_follow_priority}, frame: fe, transport: false,
+              playing: () => pmPlaying,
+              hasCurrent: () => pmMatched && !!document.querySelector('.pm-current-measure'),
+              current: () => (pmMatched ? (pmFollowTarget() || document.querySelector('.pm-current-measure')) : null),
+            }});
+            return;
+          }}
+        }} catch (eReg) {{}}
+        if (++pmRegTries < 40) setTimeout(pmRegister, 250);
+      }}
+      pmRegister();
     }})();
     </script>
     """

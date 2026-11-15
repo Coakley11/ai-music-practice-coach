@@ -1,10 +1,17 @@
 """One page-scroll controller for everything that follows the music down the page (M4).
 
 The Backing Lead Sheet is drawn at its full height (no inner scroll box), so following the music means moving
-the *page*. Two surfaces want that: the Lead Sheet (the current chord) and the Practice Melody staff (the current
-measure). Each lives in its own components.html iframe, so they cannot share a Python object; instead the first
-iframe that loads installs a single controller on the top window (``window.top.__lsFollow``) and every surface
-asks it to follow. That is the only code that moves the page, and it holds still for six seconds after any
+the *page*. Two surfaces want that: the Lead Sheet (the current chord) and the melody staff -- the Practice Melody,
+or a Composition's Original Melody, one staff per section (the current measure). Each lives in its own
+components.html iframe, so they cannot share a Python object; instead the first iframe that loads installs a
+single controller on the top window (``window.top.__lsFollow``) and every surface registers with it and asks it
+to follow. Only one surface leads at a time (user, 2026-11-14): a melody staff that is open on screen and has the
+playing measure lit (its measures are aligned to the Backing timeline) leads; otherwise the Lead Sheet; otherwise
+nothing moves the page. Collapsing the melody hands the page back to the Lead Sheet at once, and among several
+section staves the one that lit a measure most recently leads. A melody with no measure alignment (an uploaded
+PDF, a staff without a timeline) never registers, so it never claims the page.
+
+That is the only code that moves the page, and it holds still for six seconds after any
 manual scroll, touch, key or click (each new one restarts the six seconds), never moves while a pointer is down,
 and never moves while the music is paused or stopped. When the six seconds run out during playback it returns
 smoothly to the current measure.
@@ -14,13 +21,17 @@ audio element, the follow timeline or the highlight, so it cannot change what is
 
 While the Lead Sheet is open it also shows a compact Pause / Resume and Stop bar fixed to the bottom of the
 window (hidden while the card's own transport row is on screen). Its buttons click the existing controls -- the
-sheet's own Pause / Resume button and the card's Stop -- so there is still exactly one transport.
+sheet's own Pause / Resume button and the card's Stop -- so there is still exactly one transport. The bar belongs
+to the Lead Sheet whichever staff the page is following.
 """
 
 from __future__ import annotations
 
 HOLD_MS = 6000
-CONTROLLER_VERSION = 1
+CONTROLLER_VERSION = 2
+# Who leads the page when both are open and playing (higher wins).
+LEAD_SHEET_PRIORITY = 10
+MELODY_PRIORITY = 20
 
 # Plain string (not an f-string): it is inserted into the components' f-string templates as a value.
 _CONTROLLER_JS = r"""
@@ -29,10 +40,13 @@ _CONTROLLER_JS = r"""
   var top;
   try { top = window.top; void top.document.body; } catch (e) { return; }
   if (top.__lsFollow && Number(top.__lsFollow.v) >= V) return;
+  // An older controller on this page (an update while the page stayed open): take over its surfaces.
+  var inherited = [];
+  try { inherited = (top.__lsFollow && top.__lsFollow.providers) || []; } catch (eI) {}
   try { if (top.__lsFollow && top.__lsFollow.destroy) top.__lsFollow.destroy(); } catch (eD) {}
   var doc = top.document;
   var C = { v: V, holdMs: HOLD_MS, lastInteraction: 0, lastKind: "", pointerDown: false,
-            selfScrollUntil: 0, providers: [], moves: [], wasSuspended: false };
+            selfScrollUntil: 0, providers: inherited.slice(), moves: [], wasSuspended: false, leader: "", seq: 0 };
   function now() { return Date.now(); }
 
   // ---- the page scroller (Streamlit scrolls stMain; fall back to the document) ----
@@ -129,17 +143,84 @@ _CONTROLLER_JS = r"""
     });
     return C.providers;
   }
+  // On screen: the frame has a size and is not inside a collapsed expander (a closed <details>).
+  function shown(p) {
+    try {
+      var f = p.frame, r = f.getBoundingClientRect();
+      if (r.height < 20 || r.width < 20) return false;
+      if (f.closest && f.closest("details:not([open])")) return false;
+      var w = f.ownerDocument.defaultView;
+      while (w && w !== top) {            // a frame inside a hidden frame is hidden too
+        var fe = w.frameElement;
+        if (!fe) break;
+        var fr = fe.getBoundingClientRect();
+        if (fr.height < 20 || fr.width < 20) return false;
+        w = w.parent;
+      }
+      return true;
+    } catch (e) { return false; }
+  }
+  // Has something lit to follow (a melody staff with no lit measure -- an intro bar, a section it does not
+  // show -- lets the Lead Sheet lead meanwhile).
+  function lit(p) {
+    try { return p.hasCurrent ? !!p.hasCurrent() : true; } catch (e) { return false; }
+  }
+  // The surface that leads the page: open, lit, highest priority; among equals (one staff per section) the one
+  // that asked most recently.
   function activeProvider() {
     var best = null;
-    liveProviders().forEach(function (p) { if (!best || p.priority >= best.priority) best = p; });
+    liveProviders().forEach(function (p) {
+      if (!shown(p) || !lit(p)) return;
+      var pr = Number(p.priority) || 0, bp = best ? (Number(best.priority) || 0) : -1;
+      if (!best || pr > bp || (pr === bp && (p.lastAt || p.at || 0) >= (best.lastAt || best.at || 0))) best = p;
+    });
     return best;
   }
+  // The surface whose Pause / Resume the compact bar presses (the Lead Sheet), whichever one leads the page.
+  function transportProvider() {
+    var best = null;
+    liveProviders().forEach(function (p) {
+      if (p.transport && (!best || (Number(p.priority) || 0) >= (Number(best.priority) || 0))) best = p;
+    });
+    return best;
+  }
+  function uid(p) { return p ? String(p.id) + "#" + String(p.at || 0) : ""; }
   C.register = function (p) {
     liveProviders();
-    C.providers = C.providers.filter(function (q) { return q.frame !== p.frame && q.id !== p.id; });
+    C.providers = C.providers.filter(function (q) { return q.frame !== p.frame; });
+    p.at = now() + (++C.seq) / 1000;
     C.providers.push(p);
     watchAll();
   };
+  C.leading = function () { var p = activeProvider(); return p ? p.id : ""; };
+  // Extra space under the page's content so the last rows can reach the reading position: an empty block placed
+  // as the LAST child of the page scroller itself (padding on an inner container did not lengthen the scroll in
+  // every layout: measured +0 px on A Sky Full of Stars at 1500 px). It grows by the shortfall, only as far as is
+  // needed, and never past 70 % of the window. Only scroll room; nothing on the page moves or changes size.
+  C.room = 0;
+  C.roomLog = [];
+  function spacer(sc) {
+    var sp = doc.getElementById("ls-follow-room");
+    if (!sp) {
+      sp = doc.createElement("div"); sp.id = "ls-follow-room"; sp.setAttribute("aria-hidden", "true");
+      sp.style.cssText = "display:block;width:100%;height:0;margin:0;padding:0;border:0;pointer-events:none;flex:none;";
+    }
+    if (sp.parentNode !== sc || sc.lastElementChild !== sp) sc.appendChild(sp);  // re-attach after a re-render
+    sp.style.height = Math.round(C.room) + "px";
+    return sp;
+  }
+  function roomBelow(sc, px) {
+    var cap = Math.round(0.7 * top.innerHeight);
+    var need = Math.min(C.room + Math.ceil(px) + 24, cap);
+    if (need <= C.room) return;
+    try {
+      var before = sc.scrollHeight;
+      C.room = need;
+      spacer(sc);
+      C.roomLog.push({ t: now(), room: C.room, before: before, after: sc.scrollHeight });
+      if (C.roomLog.length > 20) C.roomLog.shift();
+    } catch (e) {}
+  }
   // Bring el into the reading band (upper part of the window, room below for read-ahead). Returns true if moved.
   C.follow = function (el, opts) {
     opts = opts || {};
@@ -152,6 +233,11 @@ _CONTROLLER_JS = r"""
     var bandTop = vt + 0.04 * avail, bandBottom = vt + 0.62 * avail;
     if (r.top >= bandTop && r.bottom <= bandBottom) return false;
     var want = sc.scrollTop + (r.top - (vt + 0.18 * avail));
+    // The last rows of a chart near the end of the page: the page cannot scroll far enough to bring them up to
+    // the reading position (measured: the chord sat at 91-93 % of the window, under the compact bar, and the
+    // page never moved). Give the page just enough room below, once, so it can.
+    if (C.room > 0) spacer(sc);
+    if (want > sc.scrollHeight - sc.clientHeight + 4) roomBelow(sc, want - (sc.scrollHeight - sc.clientHeight));
     want = Math.max(0, Math.min(want, sc.scrollHeight - sc.clientHeight));
     if (Math.abs(want - sc.scrollTop) < 4) return false;
     C.selfScrollUntil = now() + 1200;
@@ -160,10 +246,16 @@ _CONTROLLER_JS = r"""
     try { sc.scrollTo({ top: want, behavior: opts.instant ? "auto" : "smooth" }); } catch (e) { sc.scrollTop = want; }
     return true;
   };
-  // A surface asks to follow; only the highest-priority surface on the page moves it.
+  // A surface asks to follow; only the leading surface moves the page.
   C.request = function (id, el, opts) {
+    var me = null;
+    try {
+      var fe = el && el.ownerDocument && el.ownerDocument.defaultView && el.ownerDocument.defaultView.frameElement;
+      liveProviders().forEach(function (q) { if (q.frame === fe) me = q; });
+    } catch (e) {}
+    if (me) me.lastAt = now();
     var p = activeProvider();
-    if (p && p.id !== id) return false;
+    if (p && (me ? p !== me : p.id !== id)) return false;
     return C.follow(el, opts);
   };
 
@@ -198,7 +290,7 @@ _CONTROLLER_JS = r"""
     stop.type = "button"; stop.id = "ls-mini-stop"; stop.style.cssText = BTN_CSS + "background:#f1f5f9;color:#0f172a;";
     stop.textContent = "■ Stop";
     pz.addEventListener("click", function () {
-      var p = activeProvider();
+      var p = transportProvider();
       if (cardStarting()) { syncBar(); return; }
       try { if (p && p.pauseButton && p.pauseButton()) p.pauseButton().click(); } catch (e) {}
       setTimeout(syncBar, 120);
@@ -219,7 +311,7 @@ _CONTROLLER_JS = r"""
     return !!b && b.getAttribute("data-state") === "starting";
   }
   function syncBar() {
-    var p = activeProvider();
+    var p = transportProvider();
     var bar = doc.getElementById("ls-mini-transport");
     if (!p || !p.transport) { if (bar) bar.style.display = "none"; return; }
     bar = ensureBar();
@@ -245,6 +337,19 @@ _CONTROLLER_JS = r"""
     try {
       watchAll();
       var s = C.suspended();
+      // The leading surface changed (the melody opened, closed, or another section's staff lit up): go to
+      // its playing measure now, unless the person is scrolling (then the return after the hold does it).
+      var lead = activeProvider(), leadId = uid(lead);
+      if (leadId !== C.leader) {
+        C.leader = leadId;
+        if (lead && !s) {
+          var playingNow = false;
+          try { playingNow = !!lead.playing(); } catch (eP) {}
+          var cur = null;
+          try { cur = lead.current(); } catch (eC) {}
+          if (playingNow && cur) C.follow(cur, { why: "switch" });
+        }
+      }
       if (s) { C.wasSuspended = true; }
       else if (C.wasSuspended) {
         var p = activeProvider();
@@ -263,6 +368,8 @@ _CONTROLLER_JS = r"""
     try { top.clearInterval(timer); } catch (e) {}
     var bar = doc.getElementById("ls-mini-transport");
     if (bar) bar.remove();
+    var room = doc.getElementById("ls-follow-room");
+    if (room) room.remove();
   };
   top.__lsFollow = C;
   watchAll();
