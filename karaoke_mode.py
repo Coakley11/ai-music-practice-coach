@@ -608,6 +608,19 @@ def performance_owns_song_key(session_state: Any, pick_key: str = "") -> bool:
     return wanted == str(entry.get("pick_key") or "").strip()
 
 
+def performance_key_for_pick(session_state: Any, pick_key: str = "") -> str:
+    """Tonight's key for ``pick_key``, if that is the song being sung in one. "" otherwise.
+
+    This is the read side of the freeze. Everything that asks "what key does this song play
+    in" has to see it, or the musician re-keys the performance and the control they used goes
+    back to showing the song's saved key - measured in a browser, Ab chosen and D displayed.
+    """
+    pick = str(pick_key or "").strip()
+    if not pick or not performance_owns_song_key(session_state, pick):
+        return ""
+    return performance_key_for_entry(session_state, _performance_entry(session_state))
+
+
 def performance_song_pick(session_state: Any) -> str:
     """The pick_key of the song being sung under the performance's own key, else ""."""
     if not performance_owns_song_key(session_state):

@@ -77,6 +77,34 @@ def karaoke_performance_locks_song_key(session: dict[str, Any], pick_key: str) -
     return _karaoke_performance_locks_song_key(session, pick_key)
 
 
+def _karaoke_performance_key(session: dict[str, Any], pick_key: str = "") -> str:
+    """Tonight's key for the song being sung, for readers of "the key this song plays in".
+
+    The read counterpart of the freeze above. Without it, refusing to write Ab over the
+    musician's saved D left every reader - the sidebar control included - resolving D while
+    the performance sounded in Ab.
+    """
+    try:
+        from karaoke_mode import performance_key_for_pick
+    except ImportError:
+        return ""
+    pick = str(pick_key or "").strip()
+    try:
+        if not pick:
+            # A bare read asks about the active song, which is what the sidebar control does.
+            pick = str(resolve_practice_source_pick(session) or "").strip()
+        if not pick:
+            return ""
+        return str(performance_key_for_pick(session, pick) or "").strip()
+    except Exception:
+        return ""
+
+
+def karaoke_performance_key(session: dict[str, Any], pick_key: str = "") -> str:
+    """Public form: the temporary key this song is being performed in, or ""."""
+    return _karaoke_performance_key(session, pick_key)
+
+
 _LOCK_CHECK_DEPTH = [0]
 
 
@@ -795,6 +823,12 @@ def get_practice_concert_key(
     major or minor side (from the song's mode) is what every reader sees.
     """
     key = saved_practice_concert_key(session, pick_key, default=default)
+    # A karaoke performance in tonight's key: the song plays in it while its own saved key
+    # stays underneath, exactly as Fixed Key does below. Checked first because it is cheap
+    # when no set is running, and Fixed Key - a deliberate global mode - still outranks it.
+    perf = _karaoke_performance_key(session, pick_key)
+    if perf and not fixed_key_holds_song_keys(session):
+        return perf
     if str(session.get("practice_key_mode") or "").strip() != "fixed":
         return key
     active = str(resolve_practice_source_pick(session) or "").strip()
@@ -1605,6 +1639,7 @@ __all__ = [
     "heal_write_lands_in_creative_jam_store",
     "is_song_source_pick",
     "mark_force_bpm_sync",
+    "karaoke_performance_key",
     "karaoke_performance_locks_song_key",
     "mark_practice_key_user_override",
     "pick_key_from_bpm_sync_id",

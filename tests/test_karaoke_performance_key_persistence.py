@@ -32,6 +32,7 @@ from songs.practice_key_state import (
     PRACTICE_KEY_BY_SOURCE_KEY,
     PRACTICE_KEY_USER_OVERRIDE_PICKS_KEY,
     clear_practice_concert_key,
+    get_practice_concert_key,
     karaoke_performance_locks_song_key,
     mark_practice_key_user_override,
     saved_practice_concert_key,
@@ -125,6 +126,74 @@ class TheReportedDefect(unittest.TestCase):
         km.retune_now_singing_entry(self.session, "Ab")
         durable_commit(self.session, SAY, "Ab")
         self.assertEqual(km.get_queue(self.session)[0]["practice_key"], "Bb")
+
+
+class TheLiveKeyIsReadFromTheLayer(unittest.TestCase):
+    """Part 3c. If the saved key cannot be written, the live key has to be READ from the layer.
+
+    Found in a browser with the app's own retune trace on: the gesture reached the app, the
+    retune ran, the performance moved Bb -> Ab, and then the sidebar control went back to D.
+    The cause was this freeze: Say's saved key is D, the write is refused, so the next render
+    resolved D and re-seeded the control with it. Protecting the saved key had cost the
+    musician the sight of the key they just chose.
+
+    Fixed Key already shows the shape - a temporary override every reader sees, over a saved
+    key that stays put - so the write freeze gets its read counterpart at the same chokepoint.
+    """
+
+    def setUp(self) -> None:
+        self.session = performing_session()
+
+    def test_before_any_retune_both_answers_are_the_saved_key(self) -> None:
+        self.assertEqual(get_practice_concert_key(self.session, SAY), "D")
+        self.assertEqual(saved_practice_concert_key(self.session, SAY), "D")
+
+    def test_the_key_the_song_plays_in_is_tonights(self) -> None:
+        km.retune_now_singing_entry(self.session, "Ab")
+        self.assertEqual(get_practice_concert_key(self.session, SAY), "Ab")
+
+    def test_the_key_the_musician_saved_is_still_theirs(self) -> None:
+        km.retune_now_singing_entry(self.session, "Ab")
+        self.assertEqual(saved_practice_concert_key(self.session, SAY), "D")
+
+    def test_a_bare_read_follows_the_active_song(self) -> None:
+        """What the sidebar control does: it asks without naming a pick."""
+        km.retune_now_singing_entry(self.session, "Ab")
+        self.assertEqual(get_practice_concert_key(self.session), "Ab")
+
+    def test_another_song_is_not_dragged_into_it(self) -> None:
+        self.session[PRACTICE_KEY_BY_SOURCE_KEY][PERFECT] = "F"
+        km.retune_now_singing_entry(self.session, "Ab")
+        self.assertEqual(get_practice_concert_key(self.session, PERFECT), "F")
+
+    def test_the_layer_goes_when_the_set_does(self) -> None:
+        km.retune_now_singing_entry(self.session, "Ab")
+        km.stop_session(self.session)
+        self.assertEqual(get_practice_concert_key(self.session, SAY), "D")
+
+    def test_playing_the_set_in_the_saved_keys_changes_no_read(self) -> None:
+        """No retune, no layer: every read is exactly what it was before karaoke existed."""
+        self.assertEqual(get_practice_concert_key(self.session, SAY), "D")
+        km.advance_session(self.session)
+        self.assertEqual(get_practice_concert_key(self.session, SAY), "D")
+
+    def test_fixed_key_still_outranks_it(self) -> None:
+        """Fixed Key is a deliberate global mode; tonight's key does not override it."""
+        km.retune_now_singing_entry(self.session, "Ab")
+        self.session["practice_key_mode"] = "fixed"
+        read = get_practice_concert_key(self.session, SAY)
+        self.assertNotEqual(
+            read, "Ab",
+            "with Fixed Key on, the fixed pair decides - not the karaoke layer",
+        )
+
+    def test_the_public_helper_answers_the_same_question(self) -> None:
+        from songs.practice_key_state import karaoke_performance_key
+
+        self.assertEqual(karaoke_performance_key(self.session, SAY), "")
+        km.retune_now_singing_entry(self.session, "Ab")
+        self.assertEqual(karaoke_performance_key(self.session, SAY), "Ab")
+        self.assertEqual(karaoke_performance_key(self.session, PERFECT), "")
 
 
 class WhatMustStillPersist(unittest.TestCase):
