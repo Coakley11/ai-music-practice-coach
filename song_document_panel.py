@@ -142,14 +142,29 @@ def _cached_helpers(st: Any):
 def _upload_form(st: Any, session: Any, owner: dict) -> None:
     from song_document_catalog import save_song_document
 
+    from upload_media import (
+        DOCUMENT_MAX_SIZE_MB,
+        UPLOAD_DOCUMENT_FILE_TYPES,
+        document_limit_caption,
+    )
+
     with st.form(f"{KEY_PREFIX}form", clear_on_submit=True):
         files = st.file_uploader(
             "Add PDFs for this song",
-            type=["pdf"],
+            type=list(UPLOAD_DOCUMENT_FILE_TYPES),
             accept_multiple_files=True,
             key=UPLOAD_KEY,
+            # Streamlit prints its own size hint inside the drop zone, and without this it quotes
+            # server.maxUploadSize - so the control said "500MB per file" while the real document
+            # limit was 25, and now 50. Two contradictory numbers in one panel is worse than one
+            # wrong one, and this is the only way to make Streamlit's own text agree with the rule.
+            max_upload_size=DOCUMENT_MAX_SIZE_MB,
             help="Licks, exercises, sheet music, handwritten pages, your own notes.",
         )
+        # The limit, before a file is chosen. It was stated nowhere, so a refusal looked arbitrary -
+        # and the only size the musician could see anywhere was the 500 MB recording limit, which
+        # has nothing to do with documents.
+        st.caption(document_limit_caption())
         cols = st.columns([2, 1, 1])
         name = cols[0].text_input(
             "Name (optional)", key=f"{KEY_PREFIX}new_title",
@@ -163,7 +178,13 @@ def _upload_form(st: Any, session: Any, owner: dict) -> None:
             "Key tag", key=f"{KEY_PREFIX}new_key", placeholder="Eb",
             help="A label on the document. It does not change your Practice Key.",
         )
-        if not st.form_submit_button("Save to this song", use_container_width=True):
+        try:
+            from music_feature_icons import action_label
+
+            _save_label = action_label("save", "Save to this song")
+        except ImportError:
+            _save_label = "Save to this song"
+        if not st.form_submit_button(_save_label, use_container_width=True):
             return
         if not files:
             st.warning("Choose at least one PDF first.")
@@ -187,17 +208,42 @@ def _upload_form(st: Any, session: Any, owner: dict) -> None:
                     local_only += 1
                 st.session_state[SELECTED_KEY] = result["row"]["document_id"]
             else:
-                failed.append((getattr(item, "name", "file"), result.get("error")))
+                # The byte count travels with the failure: a size refusal must be able to say how
+                # large the file actually was, and this loop is the last place that knows.
+                failed.append((
+                    getattr(item, "name", "file"),
+                    result.get("error"),
+                    len(data) if isinstance(data, (bytes, bytearray)) else 0,
+                ))
         notice = []
         if saved:
             notice.append(("warn" if local_only else "ok",
                            f"Saved {saved} reference{'s' if saved != 1 else ''}"
                            + (f", {local_only} on this device only" if local_only else "")
                            + "."))
-        for filename, error in failed:
-            notice.append(("error", f"{filename}: {_explain(error)}"))
+        for filename, error, size in failed:
+            notice.append(("error", _explain_failure(filename, error, size)))
         st.session_state[NOTICE_KEY] = notice
         st.rerun()
+
+
+def _explain_failure(filename: Any, error: Any, size_bytes: Any = 0) -> str:
+    """One refusal the musician can act on.
+
+    A size refusal gets BOTH numbers - their file's size and the configured limit - because
+    "that file is too large." never said how large, what the limit was, or whether they were close.
+    Everything else keeps its existing sentence, prefixed with the filename as before.
+    """
+    code = str(error or "")
+    who = str(filename or "file")
+    if code == "document_too_large":
+        try:
+            from upload_media import document_too_large_message
+
+            return document_too_large_message(size_bytes, filename=who)
+        except ImportError:
+            pass
+    return f"{who}: {_explain(code)}"
 
 
 def _explain(error: Any) -> str:
