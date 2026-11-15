@@ -94,6 +94,36 @@ def body(page: Page) -> str:
     return page.inner_text("body") or ""
 
 
+def main_body(page: Page) -> str:
+    """The page's OWN content, with the sidebar excluded.
+
+    Navigation proof has to be read from here. The sidebar lists every page by name, so a proof
+    string like "practice" - or "creative", which cost a run in Issue 78C - is satisfied on every
+    page in the app, and ``open_studio_page`` would report a successful navigation while the main
+    area had not changed at all. It once returned True for a proof string that was invented on the
+    spot. Falls back to the whole body only when no main container can be found, so a Streamlit
+    version without these test ids degrades to the old behaviour rather than failing outright.
+    """
+    for selector in ('[data-testid="stMain"]', 'section.main', '[data-testid="block-container"]'):
+        try:
+            if page.locator(selector).count():
+                return page.locator(selector).first.inner_text() or ""
+        except Exception:
+            continue
+    try:
+        return page.evaluate(
+            """() => {
+                const side = document.querySelector('[data-testid="stSidebar"]');
+                if (!side) return document.body.innerText || '';
+                const clone = document.body.cloneNode(true);
+                for (const s of clone.querySelectorAll('[data-testid="stSidebar"]')) s.remove();
+                return clone.innerText || '';
+            }"""
+        ) or ""
+    except Exception:
+        return body(page)
+
+
 GEOMETRY_JS = r"""(slot) => {
     const s = slot.toLowerCase();
     // The recorder that belongs to THIS layer: the iframe inside the layer's own details element.
@@ -487,7 +517,7 @@ def open_studio_page(page: Page, label: str, proof: str, tries: int = 5) -> bool
     ever reached Multitrack because the app restores the page it last persisted.
     """
     for _ in range(tries):
-        if proof in low(body(page)):
+        if proof in low(main_body(page)):
             return True
         try:
             expand_pages_nav(page)
@@ -514,11 +544,11 @@ def open_studio_page(page: Page, label: str, proof: str, tries: int = 5) -> bool
             label,
         )
         settle(page, 8)
-        if proof in low(body(page)):
+        if proof in low(main_body(page)):
             return True
         if not clicked:
             settle(page, 3)
-    return proof in low(body(page))
+    return proof in low(main_body(page))
 
 
 def goto_multitrack(page: Page) -> bool:
