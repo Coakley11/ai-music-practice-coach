@@ -1,0 +1,19 @@
+{
+  "native_requests_verified": 32,
+  "exact_counts": [
+    4,
+    5,
+    6
+  ],
+  "separate_diatonic_and_key_operations": true,
+  "whole_step_and_fourths": true,
+  "exact_undo_redo": true,
+  "read_only_first_lick_explain_note_names": true,
+  "range_refusal_preserves_plan_history": true,
+  "instrument_offsets": {
+    "alto": 9,
+    "clarinet": 2,
+    "flute": 0
+  },
+  "desktop_mobile_checked": true
+}
