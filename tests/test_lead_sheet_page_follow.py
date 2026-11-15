@@ -139,16 +139,27 @@ def test_the_last_rows_get_room_to_reach_the_reading_position():
     the page could not scroll further. The controller adds scroll room below the content before it clamps: an empty
     spacer that is the scroller's own last child (padding on an inner container lengthened the scroll by 0 px on
     A Sky Full of Stars), grown by the shortfall each time it is short (the first version compared the new need with
-    the room it had already added, so it never grew twice), at most 70 % of the window. Nothing else moves or resizes."""
+    the room it had already added, so it never grew twice), at most 70 % of the window. Nothing else moves or resizes.
+
+    Its HEIGHT is not the room: the full-height Lead Sheet sizes its own iframe past Streamlit's element container,
+    so the scroll end is the chart's bottom edge and a block after the content hid behind it (measured: 591 px of
+    spacer, +0 px of scroll, on Composition 390 px and A Sky Full of Stars 1500 / 390 px). The block is sized from
+    where the content really ends -- the later of its own top and the bottom of a registered surface's frame (not any
+    iframe: a fixed / sticky frame would chase the scroll end) -- plus the room, and re-sized every tick, so a chart
+    that grows, shrinks or closes never leaves extra blank space."""
     js = lpf._CONTROLLER_JS
     fol = js[js.index("C.follow = function"):js.index("C.request = function")]
     assert fol.index("roomBelow(sc, ") < fol.index("want = Math.max(0, Math.min(want")
     assert fol.index("if (C.room > 0) spacer(sc);") < fol.index("roomBelow(sc, ")
     room = js[js.index("function roomBelow(sc, px)"):js.index("C.follow = function")]
     assert "var cap = Math.round(0.7 * top.innerHeight);" in room
-    assert "Math.min(C.room + Math.ceil(px) + 24, cap)" in room and "if (need <= C.room) return;" in room
+    assert "Math.min(C.room + Math.ceil(px) + 24, cap)" in room and "if (want <= C.room) return;" in room
     sp = js[js.index("function spacer(sc)"):js.index("function roomBelow(sc, px)")]
     assert 'sp.id = "ls-follow-room"' in sp and "pointer-events:none" in sp
     assert "sc.lastElementChild !== sp" in sp and "sc.appendChild(sp)" in sp
+    assert "liveProviders().forEach" in sp and "sc.contains(f)" in sp and "querySelectorAll(\"iframe\")" not in sp
+    assert "Math.round(end + C.room - spTop)" in sp
+    tick = js[js.index("var timer = top.setInterval"):js.index("C.destroy = function")]
+    assert "if (C.room > 0) spacer(scroller());" in tick
     assert "padding-bottom" not in js
     assert 'doc.getElementById("ls-follow-room")' in js[js.index("C.destroy = function"):]

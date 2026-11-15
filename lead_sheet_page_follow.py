@@ -194,9 +194,13 @@ _CONTROLLER_JS = r"""
   };
   C.leading = function () { var p = activeProvider(); return p ? p.id : ""; };
   // Extra space under the page's content so the last rows can reach the reading position: an empty block placed
-  // as the LAST child of the page scroller itself (padding on an inner container did not lengthen the scroll in
-  // every layout: measured +0 px on A Sky Full of Stars at 1500 px). It grows by the shortfall, only as far as is
-  // needed, and never past 70 % of the window. Only scroll room; nothing on the page moves or changes size.
+  // as the LAST child of the page scroller itself. Its height is not the room it gives: the full-height Lead Sheet
+  // sizes its own iframe past Streamlit's element container, so the page's scroll end is the chart's bottom edge and
+  // a block after the content sits behind the chart until it is taller than that overhang (measured: 591 px of
+  // spacer, +0 px of scroll). So the block is sized from where the content really ends (the later of the block's
+  // own top and the bottom of a registered follow surface's frame) plus the room wanted, and re-sized every tick: if the chart
+  // grows, shrinks or closes, the room below stays C.room and never turns into extra blank space. C.room grows by
+  // the shortfall only, at most 70 % of the window. Nothing on the page moves or resizes; it takes no clicks/touches.
   C.room = 0;
   C.roomLog = [];
   function spacer(sc) {
@@ -206,18 +210,34 @@ _CONTROLLER_JS = r"""
       sp.style.cssText = "display:block;width:100%;height:0;margin:0;padding:0;border:0;pointer-events:none;flex:none;";
     }
     if (sp.parentNode !== sc || sc.lastElementChild !== sp) sc.appendChild(sp);  // re-attach after a re-render
-    sp.style.height = Math.round(C.room) + "px";
+    var h = 0;
+    if (C.room > 0) {
+      var origin = sc.getBoundingClientRect().top - sc.scrollTop;   // the scroller's content top, in window terms
+      var spTop = sp.getBoundingClientRect().top - origin, end = spTop;
+      // only the registered surfaces (the full-height Lead Sheet, melody staves): they are what overhangs, and a
+      // fixed / sticky frame elsewhere would otherwise chase the scroll end and grow the block every tick
+      liveProviders().forEach(function (p) {
+        try {
+          var f = p.frame; if (!f || !sc.contains(f)) return;
+          var r = f.getBoundingClientRect();
+          if (r.height > 0 && r.bottom - origin > end) end = r.bottom - origin;
+        } catch (e) {}
+      });
+      h = Math.max(0, Math.round(end + C.room - spTop));
+    }
+    if (Math.abs((parseFloat(sp.style.height) || 0) - h) > 1) sp.style.height = h + "px";
     return sp;
   }
   function roomBelow(sc, px) {
     var cap = Math.round(0.7 * top.innerHeight);
-    var need = Math.min(C.room + Math.ceil(px) + 24, cap);
-    if (need <= C.room) return;
+    var want = Math.min(C.room + Math.ceil(px) + 24, cap);
+    if (want <= C.room) return;
     try {
-      var before = sc.scrollHeight;
-      C.room = need;
-      spacer(sc);
-      C.roomLog.push({ t: now(), room: C.room, before: before, after: sc.scrollHeight });
+      var before = sc.scrollHeight, wanted = want - C.room;
+      C.room = want;
+      var sp = spacer(sc);
+      C.roomLog.push({ t: now(), wanted: wanted, before: before, after: sc.scrollHeight, room: C.room,
+                       spH: Math.round(sp.getBoundingClientRect().height) });
       if (C.roomLog.length > 20) C.roomLog.shift();
     } catch (e) {}
   }
@@ -361,6 +381,7 @@ _CONTROLLER_JS = r"""
         // Paused / stopped: stay put; the next measure change after Resume follows (no 6 s debt).
         else if (p) C.wasSuspended = false;
       }
+      if (C.room > 0) spacer(scroller());   // keep the room below at C.room as the chart / page changes size
       syncBar();
     } catch (e) {}
   }, 250);
