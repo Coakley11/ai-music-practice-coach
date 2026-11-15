@@ -1,0 +1,1884 @@
+{
+  "four": {
+    "question": "Give me a four-note lick in G major.",
+    "written_notes": [
+      "G4",
+      "A4",
+      "B4",
+      "D5"
+    ],
+    "written_midi": [
+      67,
+      69,
+      71,
+      74
+    ],
+    "cells": [
+      {
+        "starting_degree": 1,
+        "concert_key": "G",
+        "written_key": "G",
+        "written_midi": [
+          67,
+          69,
+          71,
+          74
+        ]
+      }
+    ],
+    "abc": "X:1\nT:4-note diatonic cell - single (ascending)\nM:4/4\nL:1/4\nQ:1/4=72\nK:G clef=treble\nG/2A/2 B/2d/2 z2 |",
+    "matches_native_browser_music": true
+  },
+  "five-jazz": {
+    "question": "Give me a five-note jazz lick in G major.",
+    "written_notes": [
+      "G4",
+      "B4",
+      "D5",
+      "F#5",
+      "A5"
+    ],
+    "written_midi": [
+      67,
+      71,
+      74,
+      78,
+      81
+    ],
+    "cells": [
+      {
+        "starting_degree": 1,
+        "concert_key": "G",
+        "written_key": "G",
+        "written_midi": [
+          67,
+          71,
+          74,
+          78,
+          81
+        ]
+      }
+    ],
+    "abc": "X:1\nT:5-note jazz cell - single (ascending)\nM:4/4\nL:1/4\nQ:1/4=72\nK:G clef=treble\nG/2B/2 d/2f/2 a/2 z z/2 |",
+    "matches_native_browser_music": true
+  },
+  "six-blues": {
+    "question": "Give me a six-note blues lick in G major.",
+    "written_notes": [
+      "G4",
+      "Bb4",
+      "C5",
+      "Db5",
+      "D5",
+      "F5"
+    ],
+    "written_midi": [
+      67,
+      70,
+      72,
+      73,
+      74,
+      77
+    ],
+    "cells": [
+      {
+        "concert_key": "G",
+        "written_key": "G",
+        "written_midi": [
+          67,
+          70,
+          72,
+          73,
+          74,
+          77
+        ]
+      }
+    ],
+    "abc": "X:1\nT:6-note blues cell - single (ascending)\nM:4/4\nL:1/4\nQ:1/4=72\nK:G clef=treble\nG/2_B/2 c/2_d/2 =d/2=f/2 z |",
+    "matches_native_browser_music": true
+  },
+  "sixths": {
+    "question": "Give me sixths in G major.",
+    "written_notes": [
+      "G4",
+      "E5",
+      "A4",
+      "F#5",
+      "B4",
+      "G5",
+      "C5",
+      "A5",
+      "D5",
+      "B5",
+      "E5",
+      "C6",
+      "F#5",
+      "D6",
+      "D6",
+      "F#5",
+      "C6",
+      "E5",
+      "B5",
+      "D5",
+      "A5",
+      "C5",
+      "G5",
+      "B4",
+      "F#5",
+      "A4",
+      "E5",
+      "G4"
+    ],
+    "written_midi": [
+      67,
+      76,
+      69,
+      78,
+      71,
+      79,
+      72,
+      81,
+      74,
+      83,
+      76,
+      84,
+      78,
+      86,
+      86,
+      78,
+      84,
+      76,
+      83,
+      74,
+      81,
+      72,
+      79,
+      71,
+      78,
+      69,
+      76,
+      67
+    ],
+    "cells": [
+      {
+        "degrees": [
+          0,
+          5
+        ],
+        "written_midi": [
+          67,
+          76
+        ]
+      },
+      {
+        "degrees": [
+          1,
+          6
+        ],
+        "written_midi": [
+          69,
+          78
+        ]
+      },
+      {
+        "degrees": [
+          2,
+          7
+        ],
+        "written_midi": [
+          71,
+          79
+        ]
+      },
+      {
+        "degrees": [
+          3,
+          8
+        ],
+        "written_midi": [
+          72,
+          81
+        ]
+      },
+      {
+        "degrees": [
+          4,
+          9
+        ],
+        "written_midi": [
+          74,
+          83
+        ]
+      },
+      {
+        "degrees": [
+          5,
+          10
+        ],
+        "written_midi": [
+          76,
+          84
+        ]
+      },
+      {
+        "degrees": [
+          6,
+          11
+        ],
+        "written_midi": [
+          78,
+          86
+        ]
+      },
+      {
+        "degrees": [
+          11,
+          6
+        ],
+        "written_midi": [
+          86,
+          78
+        ]
+      },
+      {
+        "degrees": [
+          10,
+          5
+        ],
+        "written_midi": [
+          84,
+          76
+        ]
+      },
+      {
+        "degrees": [
+          9,
+          4
+        ],
+        "written_midi": [
+          83,
+          74
+        ]
+      },
+      {
+        "degrees": [
+          8,
+          3
+        ],
+        "written_midi": [
+          81,
+          72
+        ]
+      },
+      {
+        "degrees": [
+          7,
+          2
+        ],
+        "written_midi": [
+          79,
+          71
+        ]
+      },
+      {
+        "degrees": [
+          6,
+          1
+        ],
+        "written_midi": [
+          78,
+          69
+        ]
+      },
+      {
+        "degrees": [
+          5,
+          0
+        ],
+        "written_midi": [
+          76,
+          67
+        ]
+      }
+    ],
+    "abc": "X:1\nT:Sixths - G major (up and down)\nM:4/4\nL:1/4\nQ:1/4=72\nK:G clef=treble\nG/2e/2 A/2f/2 B/2g/2 c/2a/2 | d/2b/2 e/2c'/2 f/2d'/2 d'/2f/2 | c'/2e/2 b/2d/2 a/2c/2 g/2B/2 | f/2A/2 e/2G/2 z2 |",
+    "matches_native_browser_music": true
+  },
+  "diatonic": {
+    "question": "Move it through all seven degrees.",
+    "cells": [
+      {
+        "starting_degree": 1,
+        "concert_key": "G",
+        "written_key": "G",
+        "written_midi": [
+          67,
+          69,
+          71,
+          74
+        ]
+      },
+      {
+        "starting_degree": 2,
+        "concert_key": "G",
+        "written_key": "G",
+        "written_midi": [
+          69,
+          71,
+          72,
+          76
+        ]
+      },
+      {
+        "starting_degree": 3,
+        "concert_key": "G",
+        "written_key": "G",
+        "written_midi": [
+          71,
+          72,
+          74,
+          78
+        ]
+      },
+      {
+        "starting_degree": 4,
+        "concert_key": "G",
+        "written_key": "G",
+        "written_midi": [
+          72,
+          74,
+          76,
+          79
+        ]
+      },
+      {
+        "starting_degree": 5,
+        "concert_key": "G",
+        "written_key": "G",
+        "written_midi": [
+          74,
+          76,
+          78,
+          81
+        ]
+      },
+      {
+        "starting_degree": 6,
+        "concert_key": "G",
+        "written_key": "G",
+        "written_midi": [
+          76,
+          78,
+          79,
+          83
+        ]
+      },
+      {
+        "starting_degree": 7,
+        "concert_key": "G",
+        "written_key": "G",
+        "written_midi": [
+          78,
+          79,
+          81,
+          84
+        ]
+      }
+    ],
+    "written_notes": [
+      "G4",
+      "A4",
+      "B4",
+      "D5",
+      "A4",
+      "B4",
+      "C5",
+      "E5",
+      "B4",
+      "C5",
+      "D5",
+      "F#5",
+      "C5",
+      "D5",
+      "E5",
+      "G5",
+      "D5",
+      "E5",
+      "F#5",
+      "A5",
+      "E5",
+      "F#5",
+      "G5",
+      "B5",
+      "F#5",
+      "G5",
+      "A5",
+      "C6"
+    ],
+    "abc": "X:1\nT:4-note diatonic cell - diatonic (ascending)\nM:4/4\nL:1/4\nQ:1/4=72\nK:G clef=treble\nG/2A/2 B/2d/2 z2 | A/2B/2 c/2e/2 z2 | B/2c/2 d/2f/2 z2 | c/2d/2 e/2g/2 z2 |\nd/2e/2 f/2a/2 z2 | e/2f/2 g/2b/2 z2 | f/2g/2 a/2c'/2 z2 |"
+  },
+  "half-step": {
+    "question": "Move it through twelve keys, ascending.",
+    "cells": [
+      {
+        "concert_key": "G",
+        "written_key": "G",
+        "requested_written_key": "G",
+        "octave_adjustment": 0,
+        "written_midi": [
+          67,
+          69,
+          71,
+          74
+        ],
+        "checks": [
+          {
+            "name": "bars_add_up",
+            "ok": true,
+            "detail": "1 bars of 4"
+          },
+          {
+            "name": "written_inside_level_window",
+            "ok": true,
+            "detail": "62-91, notes 67-74"
+          },
+          {
+            "name": "written_inside_playable_range",
+            "ok": true,
+            "detail": "60-96"
+          },
+          {
+            "name": "inside_the_key",
+            "ok": true,
+            "detail": "G major"
+          },
+          {
+            "name": "sounding_equals_written_minus_offset",
+            "ok": true,
+            "detail": "written \u2212 0 semitones, octave included"
+          },
+          {
+            "name": "notation_validation",
+            "ok": true,
+            "detail": "passed"
+          }
+        ]
+      },
+      {
+        "concert_key": "Ab",
+        "written_key": "Ab",
+        "requested_written_key": "Ab",
+        "octave_adjustment": 0,
+        "written_midi": [
+          68,
+          70,
+          72,
+          75
+        ],
+        "checks": [
+          {
+            "name": "bars_add_up",
+            "ok": true,
+            "detail": "1 bars of 4"
+          },
+          {
+            "name": "written_inside_level_window",
+            "ok": true,
+            "detail": "62-91, notes 68-75"
+          },
+          {
+            "name": "written_inside_playable_range",
+            "ok": true,
+            "detail": "60-96"
+          },
+          {
+            "name": "inside_the_key",
+            "ok": true,
+            "detail": "Ab major"
+          },
+          {
+            "name": "sounding_equals_written_minus_offset",
+            "ok": true,
+            "detail": "written \u2212 0 semitones, octave included"
+          },
+          {
+            "name": "notation_validation",
+            "ok": true,
+            "detail": "passed"
+          }
+        ]
+      },
+      {
+        "concert_key": "A",
+        "written_key": "A",
+        "requested_written_key": "A",
+        "octave_adjustment": 0,
+        "written_midi": [
+          69,
+          71,
+          73,
+          76
+        ],
+        "checks": [
+          {
+            "name": "bars_add_up",
+            "ok": true,
+            "detail": "1 bars of 4"
+          },
+          {
+            "name": "written_inside_level_window",
+            "ok": true,
+            "detail": "62-91, notes 69-76"
+          },
+          {
+            "name": "written_inside_playable_range",
+            "ok": true,
+            "detail": "60-96"
+          },
+          {
+            "name": "inside_the_key",
+            "ok": true,
+            "detail": "A major"
+          },
+          {
+            "name": "sounding_equals_written_minus_offset",
+            "ok": true,
+            "detail": "written \u2212 0 semitones, octave included"
+          },
+          {
+            "name": "notation_validation",
+            "ok": true,
+            "detail": "passed"
+          }
+        ]
+      },
+      {
+        "concert_key": "Bb",
+        "written_key": "Bb",
+        "requested_written_key": "Bb",
+        "octave_adjustment": 0,
+        "written_midi": [
+          70,
+          72,
+          74,
+          77
+        ],
+        "checks": [
+          {
+            "name": "bars_add_up",
+            "ok": true,
+            "detail": "1 bars of 4"
+          },
+          {
+            "name": "written_inside_level_window",
+            "ok": true,
+            "detail": "62-91, notes 70-77"
+          },
+          {
+            "name": "written_inside_playable_range",
+            "ok": true,
+            "detail": "60-96"
+          },
+          {
+            "name": "inside_the_key",
+            "ok": true,
+            "detail": "Bb major"
+          },
+          {
+            "name": "sounding_equals_written_minus_offset",
+            "ok": true,
+            "detail": "written \u2212 0 semitones, octave included"
+          },
+          {
+            "name": "notation_validation",
+            "ok": true,
+            "detail": "passed"
+          }
+        ]
+      },
+      {
+        "concert_key": "B",
+        "written_key": "B",
+        "requested_written_key": "B",
+        "octave_adjustment": 0,
+        "written_midi": [
+          71,
+          73,
+          75,
+          78
+        ],
+        "checks": [
+          {
+            "name": "bars_add_up",
+            "ok": true,
+            "detail": "1 bars of 4"
+          },
+          {
+            "name": "written_inside_level_window",
+            "ok": true,
+            "detail": "62-91, notes 71-78"
+          },
+          {
+            "name": "written_inside_playable_range",
+            "ok": true,
+            "detail": "60-96"
+          },
+          {
+            "name": "inside_the_key",
+            "ok": true,
+            "detail": "B major"
+          },
+          {
+            "name": "sounding_equals_written_minus_offset",
+            "ok": true,
+            "detail": "written \u2212 0 semitones, octave included"
+          },
+          {
+            "name": "notation_validation",
+            "ok": true,
+            "detail": "passed"
+          }
+        ]
+      },
+      {
+        "concert_key": "C",
+        "written_key": "C",
+        "requested_written_key": "C",
+        "octave_adjustment": 0,
+        "written_midi": [
+          72,
+          74,
+          76,
+          79
+        ],
+        "checks": [
+          {
+            "name": "bars_add_up",
+            "ok": true,
+            "detail": "1 bars of 4"
+          },
+          {
+            "name": "written_inside_level_window",
+            "ok": true,
+            "detail": "62-91, notes 72-79"
+          },
+          {
+            "name": "written_inside_playable_range",
+            "ok": true,
+            "detail": "60-96"
+          },
+          {
+            "name": "inside_the_key",
+            "ok": true,
+            "detail": "C major"
+          },
+          {
+            "name": "sounding_equals_written_minus_offset",
+            "ok": true,
+            "detail": "written \u2212 0 semitones, octave included"
+          },
+          {
+            "name": "notation_validation",
+            "ok": true,
+            "detail": "passed"
+          }
+        ]
+      },
+      {
+        "concert_key": "Db",
+        "written_key": "Db",
+        "requested_written_key": "Db",
+        "octave_adjustment": 0,
+        "written_midi": [
+          73,
+          75,
+          77,
+          80
+        ],
+        "checks": [
+          {
+            "name": "bars_add_up",
+            "ok": true,
+            "detail": "1 bars of 4"
+          },
+          {
+            "name": "written_inside_level_window",
+            "ok": true,
+            "detail": "62-91, notes 73-80"
+          },
+          {
+            "name": "written_inside_playable_range",
+            "ok": true,
+            "detail": "60-96"
+          },
+          {
+            "name": "inside_the_key",
+            "ok": true,
+            "detail": "Db major"
+          },
+          {
+            "name": "sounding_equals_written_minus_offset",
+            "ok": true,
+            "detail": "written \u2212 0 semitones, octave included"
+          },
+          {
+            "name": "notation_validation",
+            "ok": true,
+            "detail": "passed"
+          }
+        ]
+      },
+      {
+        "concert_key": "D",
+        "written_key": "D",
+        "requested_written_key": "D",
+        "octave_adjustment": 0,
+        "written_midi": [
+          74,
+          76,
+          78,
+          81
+        ],
+        "checks": [
+          {
+            "name": "bars_add_up",
+            "ok": true,
+            "detail": "1 bars of 4"
+          },
+          {
+            "name": "written_inside_level_window",
+            "ok": true,
+            "detail": "62-91, notes 74-81"
+          },
+          {
+            "name": "written_inside_playable_range",
+            "ok": true,
+            "detail": "60-96"
+          },
+          {
+            "name": "inside_the_key",
+            "ok": true,
+            "detail": "D major"
+          },
+          {
+            "name": "sounding_equals_written_minus_offset",
+            "ok": true,
+            "detail": "written \u2212 0 semitones, octave included"
+          },
+          {
+            "name": "notation_validation",
+            "ok": true,
+            "detail": "passed"
+          }
+        ]
+      },
+      {
+        "concert_key": "Eb",
+        "written_key": "Eb",
+        "requested_written_key": "Eb",
+        "octave_adjustment": 0,
+        "written_midi": [
+          75,
+          77,
+          79,
+          82
+        ],
+        "checks": [
+          {
+            "name": "bars_add_up",
+            "ok": true,
+            "detail": "1 bars of 4"
+          },
+          {
+            "name": "written_inside_level_window",
+            "ok": true,
+            "detail": "62-91, notes 75-82"
+          },
+          {
+            "name": "written_inside_playable_range",
+            "ok": true,
+            "detail": "60-96"
+          },
+          {
+            "name": "inside_the_key",
+            "ok": true,
+            "detail": "Eb major"
+          },
+          {
+            "name": "sounding_equals_written_minus_offset",
+            "ok": true,
+            "detail": "written \u2212 0 semitones, octave included"
+          },
+          {
+            "name": "notation_validation",
+            "ok": true,
+            "detail": "passed"
+          }
+        ]
+      },
+      {
+        "concert_key": "E",
+        "written_key": "E",
+        "requested_written_key": "E",
+        "octave_adjustment": 0,
+        "written_midi": [
+          76,
+          78,
+          80,
+          83
+        ],
+        "checks": [
+          {
+            "name": "bars_add_up",
+            "ok": true,
+            "detail": "1 bars of 4"
+          },
+          {
+            "name": "written_inside_level_window",
+            "ok": true,
+            "detail": "62-91, notes 76-83"
+          },
+          {
+            "name": "written_inside_playable_range",
+            "ok": true,
+            "detail": "60-96"
+          },
+          {
+            "name": "inside_the_key",
+            "ok": true,
+            "detail": "E major"
+          },
+          {
+            "name": "sounding_equals_written_minus_offset",
+            "ok": true,
+            "detail": "written \u2212 0 semitones, octave included"
+          },
+          {
+            "name": "notation_validation",
+            "ok": true,
+            "detail": "passed"
+          }
+        ]
+      },
+      {
+        "concert_key": "F",
+        "written_key": "F",
+        "requested_written_key": "F",
+        "octave_adjustment": 0,
+        "written_midi": [
+          77,
+          79,
+          81,
+          84
+        ],
+        "checks": [
+          {
+            "name": "bars_add_up",
+            "ok": true,
+            "detail": "1 bars of 4"
+          },
+          {
+            "name": "written_inside_level_window",
+            "ok": true,
+            "detail": "62-91, notes 77-84"
+          },
+          {
+            "name": "written_inside_playable_range",
+            "ok": true,
+            "detail": "60-96"
+          },
+          {
+            "name": "inside_the_key",
+            "ok": true,
+            "detail": "F major"
+          },
+          {
+            "name": "sounding_equals_written_minus_offset",
+            "ok": true,
+            "detail": "written \u2212 0 semitones, octave included"
+          },
+          {
+            "name": "notation_validation",
+            "ok": true,
+            "detail": "passed"
+          }
+        ]
+      },
+      {
+        "concert_key": "F#",
+        "written_key": "F#",
+        "requested_written_key": "F#",
+        "octave_adjustment": 0,
+        "written_midi": [
+          78,
+          80,
+          82,
+          85
+        ],
+        "checks": [
+          {
+            "name": "bars_add_up",
+            "ok": true,
+            "detail": "1 bars of 4"
+          },
+          {
+            "name": "written_inside_level_window",
+            "ok": true,
+            "detail": "62-91, notes 78-85"
+          },
+          {
+            "name": "written_inside_playable_range",
+            "ok": true,
+            "detail": "60-96"
+          },
+          {
+            "name": "inside_the_key",
+            "ok": true,
+            "detail": "F# major"
+          },
+          {
+            "name": "sounding_equals_written_minus_offset",
+            "ok": true,
+            "detail": "written \u2212 0 semitones, octave included"
+          },
+          {
+            "name": "notation_validation",
+            "ok": true,
+            "detail": "passed"
+          }
+        ]
+      }
+    ],
+    "written_notes": [
+      "G4",
+      "A4",
+      "B4",
+      "D5",
+      "Ab4",
+      "Bb4",
+      "C5",
+      "Eb5",
+      "A4",
+      "B4",
+      "C#5",
+      "E5",
+      "Bb4",
+      "C5",
+      "D5",
+      "F5",
+      "B4",
+      "C#5",
+      "D#5",
+      "F#5",
+      "C5",
+      "D5",
+      "E5",
+      "G5",
+      "Db5",
+      "Eb5",
+      "F5",
+      "Ab5",
+      "D5",
+      "E5",
+      "F#5",
+      "A5",
+      "Eb5",
+      "F5",
+      "G5",
+      "Bb5",
+      "E5",
+      "F#5",
+      "G#5",
+      "B5",
+      "F5",
+      "G5",
+      "A5",
+      "C6",
+      "F#5",
+      "G#5",
+      "A#5",
+      "C#6"
+    ],
+    "abc": "X:1\nT:4-note diatonic cell - keys (ascending)\nM:4/4\nL:1/4\nQ:1/4=72\nK:G clef=treble\nG/2A/2 B/2d/2 z2 |\n[K:Ab clef=treble] A/2B/2 c/2e/2 z2 |\n[K:A clef=treble] A/2B/2 c/2e/2 z2 |\n[K:Bb clef=treble] B/2c/2 d/2f/2 z2 |\n[K:B clef=treble] B/2c/2 d/2f/2 z2 |\n[K:C clef=treble] c/2d/2 e/2g/2 z2 |\n[K:Db clef=treble] d/2e/2 f/2a/2 z2 |\n[K:D clef=treble] d/2e/2 f/2a/2 z2 |\n[K:Eb clef=treble] e/2f/2 g/2b/2 z2 |\n[K:E clef=treble] e/2f/2 g/2b/2 z2 |\n[K:F clef=treble] f/2g/2 a/2c'/2 z2 |\n[K:F# clef=treble] f/2g/2 a/2c'/2 z2 |"
+  },
+  "whole-step": {
+    "question": "Move it by whole steps.",
+    "cells": [
+      {
+        "concert_key": "G",
+        "written_key": "G",
+        "requested_written_key": "G",
+        "octave_adjustment": 0,
+        "written_midi": [
+          67,
+          69,
+          71,
+          74
+        ],
+        "checks": [
+          {
+            "name": "bars_add_up",
+            "ok": true,
+            "detail": "1 bars of 4"
+          },
+          {
+            "name": "written_inside_level_window",
+            "ok": true,
+            "detail": "62-91, notes 67-74"
+          },
+          {
+            "name": "written_inside_playable_range",
+            "ok": true,
+            "detail": "60-96"
+          },
+          {
+            "name": "inside_the_key",
+            "ok": true,
+            "detail": "G major"
+          },
+          {
+            "name": "sounding_equals_written_minus_offset",
+            "ok": true,
+            "detail": "written \u2212 0 semitones, octave included"
+          },
+          {
+            "name": "notation_validation",
+            "ok": true,
+            "detail": "passed"
+          }
+        ]
+      },
+      {
+        "concert_key": "A",
+        "written_key": "A",
+        "requested_written_key": "A",
+        "octave_adjustment": 0,
+        "written_midi": [
+          69,
+          71,
+          73,
+          76
+        ],
+        "checks": [
+          {
+            "name": "bars_add_up",
+            "ok": true,
+            "detail": "1 bars of 4"
+          },
+          {
+            "name": "written_inside_level_window",
+            "ok": true,
+            "detail": "62-91, notes 69-76"
+          },
+          {
+            "name": "written_inside_playable_range",
+            "ok": true,
+            "detail": "60-96"
+          },
+          {
+            "name": "inside_the_key",
+            "ok": true,
+            "detail": "A major"
+          },
+          {
+            "name": "sounding_equals_written_minus_offset",
+            "ok": true,
+            "detail": "written \u2212 0 semitones, octave included"
+          },
+          {
+            "name": "notation_validation",
+            "ok": true,
+            "detail": "passed"
+          }
+        ]
+      },
+      {
+        "concert_key": "B",
+        "written_key": "B",
+        "requested_written_key": "B",
+        "octave_adjustment": 0,
+        "written_midi": [
+          71,
+          73,
+          75,
+          78
+        ],
+        "checks": [
+          {
+            "name": "bars_add_up",
+            "ok": true,
+            "detail": "1 bars of 4"
+          },
+          {
+            "name": "written_inside_level_window",
+            "ok": true,
+            "detail": "62-91, notes 71-78"
+          },
+          {
+            "name": "written_inside_playable_range",
+            "ok": true,
+            "detail": "60-96"
+          },
+          {
+            "name": "inside_the_key",
+            "ok": true,
+            "detail": "B major"
+          },
+          {
+            "name": "sounding_equals_written_minus_offset",
+            "ok": true,
+            "detail": "written \u2212 0 semitones, octave included"
+          },
+          {
+            "name": "notation_validation",
+            "ok": true,
+            "detail": "passed"
+          }
+        ]
+      },
+      {
+        "concert_key": "Db",
+        "written_key": "Db",
+        "requested_written_key": "Db",
+        "octave_adjustment": 0,
+        "written_midi": [
+          73,
+          75,
+          77,
+          80
+        ],
+        "checks": [
+          {
+            "name": "bars_add_up",
+            "ok": true,
+            "detail": "1 bars of 4"
+          },
+          {
+            "name": "written_inside_level_window",
+            "ok": true,
+            "detail": "62-91, notes 73-80"
+          },
+          {
+            "name": "written_inside_playable_range",
+            "ok": true,
+            "detail": "60-96"
+          },
+          {
+            "name": "inside_the_key",
+            "ok": true,
+            "detail": "Db major"
+          },
+          {
+            "name": "sounding_equals_written_minus_offset",
+            "ok": true,
+            "detail": "written \u2212 0 semitones, octave included"
+          },
+          {
+            "name": "notation_validation",
+            "ok": true,
+            "detail": "passed"
+          }
+        ]
+      },
+      {
+        "concert_key": "Eb",
+        "written_key": "Eb",
+        "requested_written_key": "Eb",
+        "octave_adjustment": 0,
+        "written_midi": [
+          75,
+          77,
+          79,
+          82
+        ],
+        "checks": [
+          {
+            "name": "bars_add_up",
+            "ok": true,
+            "detail": "1 bars of 4"
+          },
+          {
+            "name": "written_inside_level_window",
+            "ok": true,
+            "detail": "62-91, notes 75-82"
+          },
+          {
+            "name": "written_inside_playable_range",
+            "ok": true,
+            "detail": "60-96"
+          },
+          {
+            "name": "inside_the_key",
+            "ok": true,
+            "detail": "Eb major"
+          },
+          {
+            "name": "sounding_equals_written_minus_offset",
+            "ok": true,
+            "detail": "written \u2212 0 semitones, octave included"
+          },
+          {
+            "name": "notation_validation",
+            "ok": true,
+            "detail": "passed"
+          }
+        ]
+      },
+      {
+        "concert_key": "F",
+        "written_key": "F",
+        "requested_written_key": "F",
+        "octave_adjustment": 0,
+        "written_midi": [
+          77,
+          79,
+          81,
+          84
+        ],
+        "checks": [
+          {
+            "name": "bars_add_up",
+            "ok": true,
+            "detail": "1 bars of 4"
+          },
+          {
+            "name": "written_inside_level_window",
+            "ok": true,
+            "detail": "62-91, notes 77-84"
+          },
+          {
+            "name": "written_inside_playable_range",
+            "ok": true,
+            "detail": "60-96"
+          },
+          {
+            "name": "inside_the_key",
+            "ok": true,
+            "detail": "F major"
+          },
+          {
+            "name": "sounding_equals_written_minus_offset",
+            "ok": true,
+            "detail": "written \u2212 0 semitones, octave included"
+          },
+          {
+            "name": "notation_validation",
+            "ok": true,
+            "detail": "passed"
+          }
+        ]
+      }
+    ],
+    "written_notes": [
+      "G4",
+      "A4",
+      "B4",
+      "D5",
+      "A4",
+      "B4",
+      "C#5",
+      "E5",
+      "B4",
+      "C#5",
+      "D#5",
+      "F#5",
+      "Db5",
+      "Eb5",
+      "F5",
+      "Ab5",
+      "Eb5",
+      "F5",
+      "G5",
+      "Bb5",
+      "F5",
+      "G5",
+      "A5",
+      "C6"
+    ],
+    "abc": "X:1\nT:4-note diatonic cell - keys (ascending)\nM:4/4\nL:1/4\nQ:1/4=72\nK:G clef=treble\nG/2A/2 B/2d/2 z2 |\n[K:A clef=treble] A/2B/2 c/2e/2 z2 |\n[K:B clef=treble] B/2c/2 d/2f/2 z2 |\n[K:Db clef=treble] d/2e/2 f/2a/2 z2 |\n[K:Eb clef=treble] e/2f/2 g/2b/2 z2 |\n[K:F clef=treble] f/2g/2 a/2c'/2 z2 |"
+  },
+  "fourths": {
+    "question": "Move it around the circle of fourths.",
+    "cells": [
+      {
+        "concert_key": "G",
+        "written_key": "G",
+        "requested_written_key": "G",
+        "octave_adjustment": 0,
+        "written_midi": [
+          67,
+          69,
+          71,
+          74
+        ],
+        "checks": [
+          {
+            "name": "bars_add_up",
+            "ok": true,
+            "detail": "1 bars of 4"
+          },
+          {
+            "name": "written_inside_level_window",
+            "ok": true,
+            "detail": "62-91, notes 67-74"
+          },
+          {
+            "name": "written_inside_playable_range",
+            "ok": true,
+            "detail": "60-96"
+          },
+          {
+            "name": "inside_the_key",
+            "ok": true,
+            "detail": "G major"
+          },
+          {
+            "name": "sounding_equals_written_minus_offset",
+            "ok": true,
+            "detail": "written \u2212 0 semitones, octave included"
+          },
+          {
+            "name": "notation_validation",
+            "ok": true,
+            "detail": "passed"
+          }
+        ]
+      },
+      {
+        "concert_key": "C",
+        "written_key": "C",
+        "requested_written_key": "C",
+        "octave_adjustment": 0,
+        "written_midi": [
+          72,
+          74,
+          76,
+          79
+        ],
+        "checks": [
+          {
+            "name": "bars_add_up",
+            "ok": true,
+            "detail": "1 bars of 4"
+          },
+          {
+            "name": "written_inside_level_window",
+            "ok": true,
+            "detail": "62-91, notes 72-79"
+          },
+          {
+            "name": "written_inside_playable_range",
+            "ok": true,
+            "detail": "60-96"
+          },
+          {
+            "name": "inside_the_key",
+            "ok": true,
+            "detail": "C major"
+          },
+          {
+            "name": "sounding_equals_written_minus_offset",
+            "ok": true,
+            "detail": "written \u2212 0 semitones, octave included"
+          },
+          {
+            "name": "notation_validation",
+            "ok": true,
+            "detail": "passed"
+          }
+        ]
+      },
+      {
+        "concert_key": "F",
+        "written_key": "F",
+        "requested_written_key": "F",
+        "octave_adjustment": 0,
+        "written_midi": [
+          77,
+          79,
+          81,
+          84
+        ],
+        "checks": [
+          {
+            "name": "bars_add_up",
+            "ok": true,
+            "detail": "1 bars of 4"
+          },
+          {
+            "name": "written_inside_level_window",
+            "ok": true,
+            "detail": "62-91, notes 77-84"
+          },
+          {
+            "name": "written_inside_playable_range",
+            "ok": true,
+            "detail": "60-96"
+          },
+          {
+            "name": "inside_the_key",
+            "ok": true,
+            "detail": "F major"
+          },
+          {
+            "name": "sounding_equals_written_minus_offset",
+            "ok": true,
+            "detail": "written \u2212 0 semitones, octave included"
+          },
+          {
+            "name": "notation_validation",
+            "ok": true,
+            "detail": "passed"
+          }
+        ]
+      },
+      {
+        "concert_key": "Bb",
+        "written_key": "Bb",
+        "requested_written_key": "Bb",
+        "octave_adjustment": 0,
+        "written_midi": [
+          82,
+          84,
+          86,
+          89
+        ],
+        "checks": [
+          {
+            "name": "bars_add_up",
+            "ok": true,
+            "detail": "1 bars of 4"
+          },
+          {
+            "name": "written_inside_level_window",
+            "ok": true,
+            "detail": "62-91, notes 82-89"
+          },
+          {
+            "name": "written_inside_playable_range",
+            "ok": true,
+            "detail": "60-96"
+          },
+          {
+            "name": "inside_the_key",
+            "ok": true,
+            "detail": "Bb major"
+          },
+          {
+            "name": "sounding_equals_written_minus_offset",
+            "ok": true,
+            "detail": "written \u2212 0 semitones, octave included"
+          },
+          {
+            "name": "notation_validation",
+            "ok": true,
+            "detail": "passed"
+          }
+        ]
+      },
+      {
+        "concert_key": "Eb",
+        "written_key": "Eb",
+        "requested_written_key": "Eb",
+        "octave_adjustment": -12,
+        "written_midi": [
+          75,
+          77,
+          79,
+          82
+        ],
+        "checks": [
+          {
+            "name": "bars_add_up",
+            "ok": true,
+            "detail": "1 bars of 4"
+          },
+          {
+            "name": "written_inside_level_window",
+            "ok": true,
+            "detail": "62-91, notes 75-82"
+          },
+          {
+            "name": "written_inside_playable_range",
+            "ok": true,
+            "detail": "60-96"
+          },
+          {
+            "name": "inside_the_key",
+            "ok": true,
+            "detail": "Eb major"
+          },
+          {
+            "name": "sounding_equals_written_minus_offset",
+            "ok": true,
+            "detail": "written \u2212 0 semitones, octave included"
+          },
+          {
+            "name": "notation_validation",
+            "ok": true,
+            "detail": "passed"
+          }
+        ]
+      },
+      {
+        "concert_key": "Ab",
+        "written_key": "Ab",
+        "requested_written_key": "Ab",
+        "octave_adjustment": 0,
+        "written_midi": [
+          80,
+          82,
+          84,
+          87
+        ],
+        "checks": [
+          {
+            "name": "bars_add_up",
+            "ok": true,
+            "detail": "1 bars of 4"
+          },
+          {
+            "name": "written_inside_level_window",
+            "ok": true,
+            "detail": "62-91, notes 80-87"
+          },
+          {
+            "name": "written_inside_playable_range",
+            "ok": true,
+            "detail": "60-96"
+          },
+          {
+            "name": "inside_the_key",
+            "ok": true,
+            "detail": "Ab major"
+          },
+          {
+            "name": "sounding_equals_written_minus_offset",
+            "ok": true,
+            "detail": "written \u2212 0 semitones, octave included"
+          },
+          {
+            "name": "notation_validation",
+            "ok": true,
+            "detail": "passed"
+          }
+        ]
+      },
+      {
+        "concert_key": "Db",
+        "written_key": "Db",
+        "requested_written_key": "Db",
+        "octave_adjustment": -12,
+        "written_midi": [
+          73,
+          75,
+          77,
+          80
+        ],
+        "checks": [
+          {
+            "name": "bars_add_up",
+            "ok": true,
+            "detail": "1 bars of 4"
+          },
+          {
+            "name": "written_inside_level_window",
+            "ok": true,
+            "detail": "62-91, notes 73-80"
+          },
+          {
+            "name": "written_inside_playable_range",
+            "ok": true,
+            "detail": "60-96"
+          },
+          {
+            "name": "inside_the_key",
+            "ok": true,
+            "detail": "Db major"
+          },
+          {
+            "name": "sounding_equals_written_minus_offset",
+            "ok": true,
+            "detail": "written \u2212 0 semitones, octave included"
+          },
+          {
+            "name": "notation_validation",
+            "ok": true,
+            "detail": "passed"
+          }
+        ]
+      },
+      {
+        "concert_key": "F#",
+        "written_key": "F#",
+        "requested_written_key": "F#",
+        "octave_adjustment": 0,
+        "written_midi": [
+          78,
+          80,
+          82,
+          85
+        ],
+        "checks": [
+          {
+            "name": "bars_add_up",
+            "ok": true,
+            "detail": "1 bars of 4"
+          },
+          {
+            "name": "written_inside_level_window",
+            "ok": true,
+            "detail": "62-91, notes 78-85"
+          },
+          {
+            "name": "written_inside_playable_range",
+            "ok": true,
+            "detail": "60-96"
+          },
+          {
+            "name": "inside_the_key",
+            "ok": true,
+            "detail": "F# major"
+          },
+          {
+            "name": "sounding_equals_written_minus_offset",
+            "ok": true,
+            "detail": "written \u2212 0 semitones, octave included"
+          },
+          {
+            "name": "notation_validation",
+            "ok": true,
+            "detail": "passed"
+          }
+        ]
+      },
+      {
+        "concert_key": "B",
+        "written_key": "B",
+        "requested_written_key": "B",
+        "octave_adjustment": 0,
+        "written_midi": [
+          83,
+          85,
+          87,
+          90
+        ],
+        "checks": [
+          {
+            "name": "bars_add_up",
+            "ok": true,
+            "detail": "1 bars of 4"
+          },
+          {
+            "name": "written_inside_level_window",
+            "ok": true,
+            "detail": "62-91, notes 83-90"
+          },
+          {
+            "name": "written_inside_playable_range",
+            "ok": true,
+            "detail": "60-96"
+          },
+          {
+            "name": "inside_the_key",
+            "ok": true,
+            "detail": "B major"
+          },
+          {
+            "name": "sounding_equals_written_minus_offset",
+            "ok": true,
+            "detail": "written \u2212 0 semitones, octave included"
+          },
+          {
+            "name": "notation_validation",
+            "ok": true,
+            "detail": "passed"
+          }
+        ]
+      },
+      {
+        "concert_key": "E",
+        "written_key": "E",
+        "requested_written_key": "E",
+        "octave_adjustment": -12,
+        "written_midi": [
+          76,
+          78,
+          80,
+          83
+        ],
+        "checks": [
+          {
+            "name": "bars_add_up",
+            "ok": true,
+            "detail": "1 bars of 4"
+          },
+          {
+            "name": "written_inside_level_window",
+            "ok": true,
+            "detail": "62-91, notes 76-83"
+          },
+          {
+            "name": "written_inside_playable_range",
+            "ok": true,
+            "detail": "60-96"
+          },
+          {
+            "name": "inside_the_key",
+            "ok": true,
+            "detail": "E major"
+          },
+          {
+            "name": "sounding_equals_written_minus_offset",
+            "ok": true,
+            "detail": "written \u2212 0 semitones, octave included"
+          },
+          {
+            "name": "notation_validation",
+            "ok": true,
+            "detail": "passed"
+          }
+        ]
+      },
+      {
+        "concert_key": "A",
+        "written_key": "A",
+        "requested_written_key": "A",
+        "octave_adjustment": 0,
+        "written_midi": [
+          81,
+          83,
+          85,
+          88
+        ],
+        "checks": [
+          {
+            "name": "bars_add_up",
+            "ok": true,
+            "detail": "1 bars of 4"
+          },
+          {
+            "name": "written_inside_level_window",
+            "ok": true,
+            "detail": "62-91, notes 81-88"
+          },
+          {
+            "name": "written_inside_playable_range",
+            "ok": true,
+            "detail": "60-96"
+          },
+          {
+            "name": "inside_the_key",
+            "ok": true,
+            "detail": "A major"
+          },
+          {
+            "name": "sounding_equals_written_minus_offset",
+            "ok": true,
+            "detail": "written \u2212 0 semitones, octave included"
+          },
+          {
+            "name": "notation_validation",
+            "ok": true,
+            "detail": "passed"
+          }
+        ]
+      },
+      {
+        "concert_key": "D",
+        "written_key": "D",
+        "requested_written_key": "D",
+        "octave_adjustment": -12,
+        "written_midi": [
+          74,
+          76,
+          78,
+          81
+        ],
+        "checks": [
+          {
+            "name": "bars_add_up",
+            "ok": true,
+            "detail": "1 bars of 4"
+          },
+          {
+            "name": "written_inside_level_window",
+            "ok": true,
+            "detail": "62-91, notes 74-81"
+          },
+          {
+            "name": "written_inside_playable_range",
+            "ok": true,
+            "detail": "60-96"
+          },
+          {
+            "name": "inside_the_key",
+            "ok": true,
+            "detail": "D major"
+          },
+          {
+            "name": "sounding_equals_written_minus_offset",
+            "ok": true,
+            "detail": "written \u2212 0 semitones, octave included"
+          },
+          {
+            "name": "notation_validation",
+            "ok": true,
+            "detail": "passed"
+          }
+        ]
+      }
+    ],
+    "written_notes": [
+      "G4",
+      "A4",
+      "B4",
+      "D5",
+      "C5",
+      "D5",
+      "E5",
+      "G5",
+      "F5",
+      "G5",
+      "A5",
+      "C6",
+      "Bb5",
+      "C6",
+      "D6",
+      "F6",
+      "Eb5",
+      "F5",
+      "G5",
+      "Bb5",
+      "Ab5",
+      "Bb5",
+      "C6",
+      "Eb6",
+      "Db5",
+      "Eb5",
+      "F5",
+      "Ab5",
+      "F#5",
+      "G#5",
+      "A#5",
+      "C#6",
+      "B5",
+      "C#6",
+      "D#6",
+      "F#6",
+      "E5",
+      "F#5",
+      "G#5",
+      "B5",
+      "A5",
+      "B5",
+      "C#6",
+      "E6",
+      "D5",
+      "E5",
+      "F#5",
+      "A5"
+    ],
+    "abc": "X:1\nT:4-note diatonic cell - keys (ascending)\nM:4/4\nL:1/4\nQ:1/4=72\nK:G clef=treble\nG/2A/2 B/2d/2 z2 |\n[K:C clef=treble] c/2d/2 e/2g/2 z2 |\n[K:F clef=treble] f/2g/2 a/2c'/2 z2 |\n[K:Bb clef=treble] b/2c'/2 d'/2f'/2 z2 |\n[K:Eb clef=treble] e/2f/2 g/2b/2 z2 |\n[K:Ab clef=treble] a/2b/2 c'/2e'/2 z2 |\n[K:Db clef=treble] d/2e/2 f/2a/2 z2 |\n[K:F# clef=treble] f/2g/2 a/2c'/2 z2 |\n[K:B clef=treble] b/2c'/2 d'/2f'/2 z2 |\n[K:E clef=treble] e/2f/2 g/2b/2 z2 |\n[K:A clef=treble] a/2b/2 c'/2e'/2 z2 |\n[K:D clef=treble] d/2e/2 f/2a/2 z2 |"
+  }
+}
