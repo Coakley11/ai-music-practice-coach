@@ -74,9 +74,21 @@ class ChangingTheKeyMidPerformance(unittest.TestCase):
         self.assertIn("Bb", km.entry_display_line(km.get_queue(self.session)[0]))
         self.assertNotIn("Ab", km.entry_display_line(km.get_queue(self.session)[0]))
 
-    def test_the_live_key_applied_for_playback_is_the_new_one(self) -> None:
-        """apply_entry_practice_key is what makes the backing and charts follow."""
-        self.assertEqual(km.apply_entry_practice_key(self.session), "Ab")
+    def test_the_now_editing_path_still_writes_the_saved_key(self) -> None:
+        """``apply_entry_practice_key`` is the setlist-row click, not the performance.
+
+        It writes the song's own Practice Key store so the editing surfaces follow the row, so
+        the temporary key must not travel through it. What the performance sounds in is read
+        from ``current_session_practice_key``, which does see the temporary key - asserted two
+        tests above. This began life asserting "Ab", which was this slice's own defect.
+        """
+        self.assertEqual(km.apply_entry_practice_key(self.session), "Bb")
+        from songs.practice_key_state import saved_practice_concert_key
+
+        self.assertEqual(
+            saved_practice_concert_key(self.session, km.get_queue(self.session)[0]["pick_key"]),
+            "Bb",
+        )
 
     def test_the_render_generation_moves_so_nothing_stale_survives(self) -> None:
         """A component keyed by the old generation would keep the old key's chart and player."""

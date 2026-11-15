@@ -46,6 +46,37 @@ def fixed_key_holds_song_keys(session: dict[str, Any]) -> bool:
         return True
 
 
+def _karaoke_performance_locks_song_key(session: dict[str, Any], pick_key: str) -> bool:
+    """A karaoke performance is singing this song in tonight's key, so its saved key is frozen.
+
+    The same shape as Fixed Key above, and for the same reason: a temporary override plays the
+    song in another key without replacing the key the musician saved for it. One sidebar gesture
+    during a performance runs both halves - the karaoke retune and the ordinary durable commit -
+    and without this the durable half wrote tonight's key into the song's own Practice Key, so
+    transposing Say for one evening left Say transposed for good.
+
+    Narrow on purpose. It is the song being sung, after the musician has re-keyed it during this
+    set, and nothing else: another song's key, or this song's key with no set running, persists
+    exactly as it always did.
+    """
+    pick = str(pick_key or "").strip()
+    if not pick:
+        return False
+    try:
+        from karaoke_mode import performance_owns_song_key
+    except ImportError:
+        return False
+    try:
+        return bool(performance_owns_song_key(session, pick))
+    except Exception:
+        return False
+
+
+def karaoke_performance_locks_song_key(session: dict[str, Any], pick_key: str) -> bool:
+    """Public form of the guard: is this song's saved Practice Key frozen by a performance?"""
+    return _karaoke_performance_locks_song_key(session, pick_key)
+
+
 _LOCK_CHECK_DEPTH = [0]
 
 
@@ -71,6 +102,9 @@ def mark_practice_key_user_override(session: dict[str, Any], pick_key: str) -> N
     """Durable: this pick's saved Practice Key is a genuine user edit, not residue."""
     pick = str(pick_key or "").strip()
     if not pick or _song_key_locked(session, pick):
+        return
+    # Tonight's karaoke key is not a user edit of this song's saved key.
+    if _karaoke_performance_locks_song_key(session, pick):
         return
     picks = _user_override_picks(session)
     picks.add(pick)
@@ -850,6 +884,9 @@ def set_practice_concert_key(
     # Fixed Key overrides the song's key without replacing it.
     if _song_key_locked(session, pk):
         return
+    # So does a karaoke performance key, for the song being sung.
+    if _karaoke_performance_locks_song_key(session, pk):
+        return
     # Gate 12 leave: leftover Mission tokens must not stamp a different catalog
     # sticky. A genuine sidebar Practice Key edit on Missions / Mission Backing
     # *is* this catalog song's pick-scoped Practice Key and must persist.
@@ -1288,6 +1325,9 @@ def clear_practice_concert_key(
         return False
     if not force and _song_key_locked(session, pk):
         return False
+    # A karaoke retune to the original key must not delete the saved key underneath it.
+    if not force and _karaoke_performance_locks_song_key(session, pk):
+        return False
     if (
         not force
         and _pick_kind(pk) in {"catalog", "custom"}
@@ -1565,6 +1605,7 @@ __all__ = [
     "heal_write_lands_in_creative_jam_store",
     "is_song_source_pick",
     "mark_force_bpm_sync",
+    "karaoke_performance_locks_song_key",
     "mark_practice_key_user_override",
     "pick_key_from_bpm_sync_id",
     "resolve_creative_settings_pick",
