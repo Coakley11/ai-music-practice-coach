@@ -479,6 +479,14 @@ _REFERENCE_BY_KEY: dict[tuple[str, str], dict[str, Any]] = {
         "beginner": _KISS_BEGINNER,
         "advanced": _KISS_ADVANCED,
         "lyric_cues": _KISS_LYRIC_CUES,
+        # Every level plays the whole form.  The generic Beginner trim dropped
+        # "Chorus 3" (the FINAL chorus) and "Harmonica / Accordion", and the
+        # Intermediate trim dropped "Chorus 3" too, so neither level reached the
+        # song's last chorus.  Safe here because the 88-bar form is verified
+        # against the record by duration: 88 bars at 100 BPM = 3:31 against the
+        # 3:30 album version (ratio 1.006).  All three tiers already carry
+        # identical bar counts, so nothing resyncs.
+        "full_form_levels": ["Beginner", "Intermediate"],
         # Concert-pitch fingerings, as the other capo-corrected songs carry.
         # Every shape here is one this repo already uses for that chord name;
         # the Advanced extensions (Ebadd9, Ebmaj9, Eb9, Abadd9, Abmaj9, Fm9,
@@ -520,7 +528,29 @@ _REFERENCE_BY_KEY: dict[tuple[str, str], dict[str, Any]] = {
             "intro as four one-chord bars inside repeat signs and the instrumental's "
             "eight chords across four bars, i.e. two to a bar. Regridded to match: "
             "88 Advanced bars = 3:31. No chord was removed — repeated pairs became "
-            "one bar, differing pairs became within-bar changes."
+            "one bar, differing pairs became within-bar changes. "
+            "KEY AND TEMPO VERIFIED (W23): the Musicnotes piano/vocal edition gives "
+            "the original published key as **Eb major** in 4/4, and Wikipedia's "
+            "infobox gives a 3:30 album version. The stored **100 BPM** is the "
+            "better of the two candidate tempos — 88 bars at 100 BPM is 3:31 "
+            "(ratio 1.006), while the published score's q=96 marking would run "
+            "3:40 (1.048) — and three audio-analysis sources independently report "
+            "99.9-100 BPM. "
+            "FORM VERIFIED (W23): the 9-bar chorus, the single whole-bar IV, and "
+            "the shared sus4/triad final bar all match the bellandcomusic.com "
+            "bar-formatted chart slot for slot, and every level now plays all "
+            "88 bars (full_form_levels). "
+            "TWO CHORUS CHORDS REMAIN OPEN (W23), in bars 6-7 of the chorus. We "
+            "hold **Eb|Eb/D · Cm7|Eb/Bb**, a descending Eb-D-C-Bb bass under a "
+            "prolonged tonic, which follows the one source that notates "
+            "inversions (capo-1 D shapes: D · D/C# · D/B · D/A; note D/B is "
+            "pitch-identical to our Cm7). Three sources that use no slash "
+            "notation at all print root-position names instead: "
+            "**Eb|Gm · Cm7|Cm7/Bb** (bellandcomusic.com, in its capo-3 C shapes "
+            "C · Em · Am7 · Am7/G) or plain **Bb** for that last slot. All four "
+            "sources agree the bar-7 bass is Bb; they disagree on the chord above "
+            "it, and chord-name charts cannot settle it. Not changed without a "
+            "licensed score or a listening decision."
         ),
     },
 }
