@@ -191,7 +191,15 @@ class PagePlayerAutoplayTests(unittest.TestCase):
     def test_page_player_mount_uses_the_stable_prop(self) -> None:
         self.assertIn("_page_autoplay = page_player_autoplay(st.session_state, _wav_path)", _APP)
         self.assertEqual(_APP.count("autoplay=_page_autoplay,"), 2)
-        self.assertIn("(not _leadsheet_open or _sheet_taking_over)", _APP)
+        # Karaoke lyrics mount this same component with the Lead Sheet CLOSED, so the page
+        # player stands down for either surface that owns the audio. Both gates read the one
+        # value, which is what makes "exactly one audible player" structural rather than a
+        # coincidence of two conditions that could drift apart.
+        self.assertIn(
+            "_surface_owns_audio = bool(_leadsheet_open or _karaoke_needs_surface)", _APP
+        )
+        self.assertIn("not _surface_owns_audio or _sheet_taking_over", _APP)
+        self.assertIn("if _leadsheet_controls_ready and _surface_owns_audio:", _APP)
 
 
 class TransportHandoffContractTests(unittest.TestCase):

@@ -6441,11 +6441,12 @@ def live_follow_along_component_html(
       // window itself (rectInTop), so a line inside a scrolled iframe is still found.
       let pageMoved = false;
       try {{
-        const ctl = window.top.__lsFollow;
-        if (ctl && ctl.request) {{
+        if (window.top.__lsFollow && window.top.__lsFollow.request) {{
           const why = el.classList && el.classList.contains("karaoke-lp-lyric-line")
             ? "karaoke-lyric" : "chord";
-          pageMoved = !!ctl.request("lead-sheet", el, {{ why: why }});
+          // Spelled out rather than through a local alias: the one-page-mover test counts
+          // these call sites textually, and a site it cannot see is a site it cannot guard.
+          pageMoved = !!window.top.__lsFollow.request("lead-sheet", el, {{ why: why }});
         }}
       }} catch (ePf) {{}}
       lastBoxTarget = el;

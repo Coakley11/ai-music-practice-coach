@@ -75,9 +75,20 @@ def test_practice_melody_no_longer_scrolls_the_page_itself():
 
 
 def test_no_other_page_scroller_was_added():
-    # The sheet's old inner-box scroll stays only for the non-follow (Karaoke) path.
-    assert APP.count("shell.scrollTop += delta") == 1
-    assert len(re.findall(r"__lsFollow\.request\(", APP)) == 2
+    """One thing moves the page: this controller. Karaoke keeps a box of its own, and that box is
+    the component's own iframe document - it used to scroll ``.live-follow-shell``, which has no
+    height and no overflow, so it moved nothing (measured: box_top 0 in every sample of a Karaoke
+    follow run, 2026-11-15). An iframe scrolling itself is not a second page scroller."""
+    assert "const sc = document.scrollingElement || document.documentElement;" in APP
+    assert APP.count("sc.scrollTop = Math.max(0, Math.min(want, max));") == 1
+    # The app never scrolls a page itself; only this module does.
+    assert "scrollTo(" not in APP
+    # Three page-moving sites, all asking this one controller: the melody staff, the full-height
+    # sheet, and Karaoke's sung lyric line. Karaoke registers as the same "lead-sheet" provider
+    # and the controller keeps one provider per frame, so the lyrics and the chart cannot both
+    # claim the page. Spelled out at each site on purpose - a call behind a local alias would
+    # pass this count by being invisible to it.
+    assert len(re.findall(r"__lsFollow\.request\(", APP)) == 3
 
 
 def test_compact_bar_offers_only_stop_while_the_card_is_starting():
