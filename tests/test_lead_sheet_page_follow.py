@@ -33,6 +33,20 @@ def test_hold_is_six_seconds_and_counts_from_the_last_interaction():
     assert "C.pointerDown ||" in js                              # never moves while a press is held
 
 
+def test_opening_or_closing_a_panel_hands_over_without_the_hold():
+    """Measured: closing the Practice Melody kept the page still for 6.4 s, because the header click counted as
+    manual scrolling. A tap / click on an expander header (<summary>) no longer starts the hold; a drag or wheel that
+    starts there still does (touchmove and wheel are never excused)."""
+    js = lpf._CONTROLLER_JS
+    w = js[js.index("function panelToggle(ev)"):js.index("// The page and every same-origin iframe")]
+    assert 't.closest("summary")' in w
+    assert "var TOGGLE_KINDS = { touchstart: 1 };" in w            # only the tap's start, never touchmove / wheel
+    assert "if (TOGGLE_KINDS[k] && panelToggle(ev)) return; interact(k);" in w
+    assert 'if (panelToggle(ev)) return;\n      C.pointerDown = true; interact("pointerdown");' in w
+    assert "C.pointerDown = false; if (!panelToggle(ev)) interact(k);" in w
+    assert 'C.pointerDown = false; if (!panelToggle(ev)) interact("touchend");' in w
+
+
 def test_controller_only_scrolls_never_touches_audio_or_the_highlight():
     js = lpf._CONTROLLER_JS
     for forbidden in (".play(", ".pause(", "currentTime =", "currentTime=", "classList.add", "__karaokeTimeline"):

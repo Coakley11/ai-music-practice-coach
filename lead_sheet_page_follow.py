@@ -13,7 +13,8 @@ and among several section staves the one that lit a measure most recently leads.
 PDF, a staff without a timeline) never registers, so it never claims the page.
 
 That is the only code that moves the page, and it holds still for six seconds after any
-manual scroll, touch, key or click (each new one restarts the six seconds), never moves while a pointer is down,
+manual scroll, touch, key or click (each new one restarts the six seconds) -- except a click / tap that opens or
+closes a panel, which hands over to the notation that now leads at once -- never moves while a pointer is down,
 and never moves while the music is paused or stopped. When the six seconds run out during playback it returns
 smoothly to the current measure.
 
@@ -149,17 +150,29 @@ _CONTROLLER_JS = r"""
     }
   }
   var KINDS = ["wheel", "touchstart", "touchmove", "keydown"];
+  // Opening or closing a panel (a click / tap on an expander's header) is not scrolling: the page hands over to
+  // the notation that now leads at once instead of holding 6 s (measured: 6.4 s after closing the Practice Melody).
+  // A drag or wheel that starts on a header still holds -- touchmove and wheel always count.
+  function panelToggle(ev) {
+    try { var t = ev && ev.target; return !!(t && t.closest && t.closest("summary")); } catch (e) { return false; }
+  }
+  var TOGGLE_KINDS = { touchstart: 1 };
   var seen = new WeakSet();
   function watch(d) {
     if (!d || seen.has(d)) return;
     seen.add(d);
     var opts = { capture: true, passive: true };
-    KINDS.forEach(function (k) { d.addEventListener(k, function () { interact(k); }, opts); });
-    d.addEventListener("pointerdown", function () { C.pointerDown = true; interact("pointerdown"); }, opts);
-    ["pointerup", "pointercancel"].forEach(function (k) {
-      d.addEventListener(k, function () { C.pointerDown = false; interact(k); }, opts);
+    KINDS.forEach(function (k) {
+      d.addEventListener(k, function (ev) { if (TOGGLE_KINDS[k] && panelToggle(ev)) return; interact(k); }, opts);
     });
-    d.addEventListener("touchend", function () { C.pointerDown = false; interact("touchend"); }, opts);
+    d.addEventListener("pointerdown", function (ev) {
+      if (panelToggle(ev)) return;
+      C.pointerDown = true; interact("pointerdown");
+    }, opts);
+    ["pointerup", "pointercancel"].forEach(function (k) {
+      d.addEventListener(k, function (ev) { C.pointerDown = false; if (!panelToggle(ev)) interact(k); }, opts);
+    });
+    d.addEventListener("touchend", function (ev) { C.pointerDown = false; if (!panelToggle(ev)) interact("touchend"); }, opts);
   }
   // The page and every same-origin iframe on it (controls live in their own frames).
   function watchAll() {
