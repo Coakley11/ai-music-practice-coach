@@ -303,6 +303,19 @@ def restore_drafts(session: MutableMapping[str, Any], slots: Iterable[str], *,
     restored = []
     for slot in slots or ():
         if tracks.get(slot):
+            # The live audio came back some other way - the persist blob restores a short take
+            # itself - but nothing recorded whether it was SAVED, and adopt_restored_layers_as_saved
+            # would then promote an unsaved take. If the live bytes ARE this slot's draft, take the
+            # state from the file. Only when no state is recorded yet: a state set this session wins.
+            if f"mt_take_saved_{slot}" not in session:
+                raw, meta, _why = read_draft(session, slot, st=st)
+                if raw is not None and meta is not None and raw == bytes(tracks.get(slot) or b""):
+                    try:
+                        from multitrack_takes import mark_take_saved, mark_take_unsaved
+
+                        (mark_take_saved if meta.get("saved") else mark_take_unsaved)(session, slot)
+                    except Exception:
+                        session[f"mt_take_saved_{slot}"] = bool(meta.get("saved"))
             continue
         raw, meta, _why = read_draft(session, slot, st=st)
         if raw is None or meta is None:

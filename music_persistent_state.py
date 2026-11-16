@@ -692,6 +692,12 @@ _PERSIST_KEYS: tuple[str, ...] = (
     "karaoke_session_index",
     "_karaoke_active_entry_id",
     "_karaoke_entry_plays_left",
+    # The identity of an unsaved Multitrack project. A draft file is keyed to it, and it was
+    # minted per SESSION: a refresh minted a new one, the draft's identity no longer matched, and
+    # the take was refused as "a different project" - measured, a 30 s and an 86 s take each
+    # written to disk and found nowhere after a refresh. It is kept "until the working session is
+    # deliberately reset" (working_project_token), and a refresh is not a deliberate reset.
+    "_mt_working_project_token",
     "composer_saved_compositions",
     "composer_active_document",
     "composition_recent_active_ids",
@@ -872,6 +878,9 @@ def _device_view_keys() -> frozenset[str]:
     # back the moment Next was pressed: the card, chart and audio stayed on the
     # first song. The setlist itself (karaoke_queue) is content and still syncs.
     keys |= set(KARAOKE_DEVICE_POSITION_KEYS)
+    # This browser's unsaved Multitrack project. Re-applied mid-session from another device's save,
+    # it would re-key this device's drafts to a project this device is not working on.
+    keys.add("_mt_working_project_token")
     return frozenset(keys)
 
 

@@ -185,6 +185,81 @@ class SavedAndUnsavedStayDistinct(unittest.TestCase):
         self.assertTrue(is_take_saved(fresh, "Guitar"))
 
 
+class FoundOnlyInTheBrowser(unittest.TestCase):
+    """Two defects every test above missed, found by the real-browser matrix.
+
+    1. A 30 s and an 86 s take were each WRITTEN to disk and found nowhere after a refresh. The
+       draft is keyed to the unsaved project's working token, which was minted per session - so a
+       refresh minted a new one, the identity no longer matched, and the file was refused as "a
+       different project". Every unit test reused one session dict, so the token never changed.
+    2. A short take comes back through the persist blob on its own, before restore_drafts sees it -
+       with no record of whether it was saved, so adopt_restored_layers_as_saved promoted it.
+    """
+
+    def test_the_working_project_token_survives_a_new_session(self) -> None:
+        from music_persistent_state import _PERSIST_KEYS, _device_view_keys
+
+        self.assertIn("_mt_working_project_token", _PERSIST_KEYS,
+                      "a refresh must keep the identity a draft is filed under")
+        self.assertIn("_mt_working_project_token", _device_view_keys(),
+                      "another device's save must not re-key this device's drafts mid-session")
+
+    def test_an_unsaved_project_finds_its_draft_after_a_refresh(self) -> None:
+        """The measured case: no library id, only the working token - carried over by the save."""
+        live = session(project="")
+        live.pop("multitrack_catalog_active_id", None)
+        store.write_draft(live, "Guitar", SHORT)
+        token = live["_mt_working_project_token"]
+        fresh = session(project="")
+        fresh.pop("multitrack_catalog_active_id", None)
+        fresh["_mt_working_project_token"] = token          # what the persisted state restores
+        self.assertEqual(store.restore_drafts(fresh, ["Guitar"]), ["Guitar"])
+
+    def test_without_the_token_the_draft_is_correctly_refused(self) -> None:
+        """The isolation check is right; it was handed the wrong identity."""
+        live = session(project="")
+        live.pop("multitrack_catalog_active_id", None)
+        store.write_draft(live, "Guitar", SHORT)
+        fresh = session(project="")
+        fresh.pop("multitrack_catalog_active_id", None)      # a new session mints a new token
+        self.assertEqual(store.restore_drafts(fresh, ["Guitar"]), [])
+
+    def test_a_take_the_blob_restored_keeps_its_unsaved_state(self) -> None:
+        store.write_draft(session(project="blob-1"), "Guitar", SHORT)
+        fresh = session(project="blob-1")
+        fresh["mt_tracks"]["Guitar"] = SHORT                  # the persist blob got there first
+        store.restore_drafts(fresh, ["Guitar"])
+        adopt_restored_layers_as_saved(fresh, ["Guitar"])
+        self.assertFalse(is_take_saved(fresh, "Guitar"),
+                         "an unsaved take must not be promoted because the blob restored it")
+
+    def test_a_saved_layer_the_blob_restored_stays_saved(self) -> None:
+        live = session(project="blob-2")
+        store.write_draft(live, "Guitar", SHORT)
+        store.mark_draft_saved(live, "Guitar")
+        fresh = session(project="blob-2")
+        fresh["mt_tracks"]["Guitar"] = SHORT
+        store.restore_drafts(fresh, ["Guitar"])
+        self.assertTrue(is_take_saved(fresh, "Guitar"))
+
+    def test_a_state_already_set_this_session_is_not_overridden(self) -> None:
+        live = session(project="blob-3")
+        store.write_draft(live, "Guitar", SHORT)
+        store.mark_draft_saved(live, "Guitar")
+        fresh = session(project="blob-3")
+        fresh["mt_tracks"]["Guitar"] = SHORT
+        fresh["mt_take_saved_Guitar"] = False                 # the musician's state this session
+        store.restore_drafts(fresh, ["Guitar"])
+        self.assertFalse(is_take_saved(fresh, "Guitar"))
+
+    def test_different_bytes_in_the_slot_are_not_given_the_drafts_state(self) -> None:
+        store.write_draft(session(project="blob-4"), "Guitar", SHORT)
+        fresh = session(project="blob-4")
+        fresh["mt_tracks"]["Guitar"] = wav(0.7, hz=500.0)      # not this draft
+        store.restore_drafts(fresh, ["Guitar"])
+        self.assertNotIn("mt_take_saved_Guitar", fresh)
+
+
 class TheLiveSessionWins(unittest.TestCase):
     def test_a_take_still_in_the_session_is_not_replaced(self) -> None:
         store.write_draft(session(project="live-1"), "Guitar", SHORT)
