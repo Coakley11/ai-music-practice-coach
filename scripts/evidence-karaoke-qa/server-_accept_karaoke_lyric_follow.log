@@ -1,0 +1,1060 @@
+<unknown>:5514: SyntaxWarning: invalid escape sequence '\s'
+<unknown>:5515: SyntaxWarning: invalid escape sequence '\.'
+2026-11-15 20:35:47.701 Uvicorn server started on :::8616
+
+  You can now view your Streamlit app in your browser.
+
+  Local URL: http://localhost:8616
+  Network URL: http://10.0.0.2:8616
+  External URL: http://71.247.120.246:8616
+
+C:\tmp\ai-music-slice2\streamlit_music_practice_app.py:5514: SyntaxWarning: invalid escape sequence '\s'
+  
+C:\tmp\ai-music-slice2\streamlit_music_practice_app.py:5515: SyntaxWarning: invalid escape sequence '\.'
+  def page_follow_controller_js_for_hold() -> str:
+[dependency_versions] python=3.13.7 streamlit=1.59.1 starlette=1.3.1 uvicorn=0.51.0
+[dependency_versions] python=3.13.7 streamlit=1.59.1 starlette=1.3.1 uvicorn=0.51.0
+[dependency_versions] python=3.13.7 streamlit=1.59.1 starlette=1.3.1 uvicorn=0.51.0
+[dependency_versions] python=3.13.7 streamlit=1.59.1 starlette=1.3.1 uvicorn=0.51.0
+[music_deploy] branch=feature/karaoke-slice2 sha=70c02293b9cb6cb9b5484b2a6ed37f6034de2c0b required=f16c670 preflight=OK python=3.13.7 librosa=0.11.0 numba=0.67.0 llvmlite=0.49.0 late_missions_activation=False late_artifact_freeze=False modules={'improvisation_intelligence_ui': 'C:\\tmp\\ai-music-slice2\\improvisation_intelligence_ui.py', 'workflow_musical_authority': 'C:\\tmp\\ai-music-slice2\\workflow_musical_authority.py', 'music_workflow_pending_activation': 'C:\\tmp\\ai-music-slice2\\music_workflow_pending_activation.py'}
+[music_deploy] branch=feature/karaoke-slice2 sha=70c02293b9cb6cb9b5484b2a6ed37f6034de2c0b required=f16c670 preflight=OK python=3.13.7 librosa=0.11.0 numba=0.67.0 llvmlite=0.49.0 late_missions_activation=False late_artifact_freeze=False modules={'improvisation_intelligence_ui': 'C:\\tmp\\ai-music-slice2\\improvisation_intelligence_ui.py', 'workflow_musical_authority': 'C:\\tmp\\ai-music-slice2\\workflow_musical_authority.py', 'music_workflow_pending_activation': 'C:\\tmp\\ai-music-slice2\\music_workflow_pending_activation.py'}
+[music_run] event=RUN_STARTED dt_ms=4 page= route_lock=False run_seq=1 strict_save_pending=False workflow_owner=
+[music_run] event=RUN_STARTED dt_ms=4 page= route_lock=False run_seq=1 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=5 page= phase=deploy_verification phase_entered=deploy_verification route_lock=False run_seq=1 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=5 page= phase=deploy_verification phase_entered=deploy_verification route_lock=False run_seq=1 strict_save_pending=False workflow_owner=
+[dependency_versions] python=3.13.7 streamlit=1.59.1 starlette=1.3.1 uvicorn=0.51.0
+[dependency_versions] python=3.13.7 streamlit=1.59.1 starlette=1.3.1 uvicorn=0.51.0
+[music_deploy] branch=feature/karaoke-slice2 sha=70c02293b9cb6cb9b5484b2a6ed37f6034de2c0b required=f16c670 preflight=OK python=3.13.7 librosa=0.11.0 numba=0.67.0 llvmlite=0.49.0 late_missions_activation=False late_artifact_freeze=False modules={'improvisation_intelligence_ui': 'C:\\tmp\\ai-music-slice2\\improvisation_intelligence_ui.py', 'workflow_musical_authority': 'C:\\tmp\\ai-music-slice2\\workflow_musical_authority.py', 'music_workflow_pending_activation': 'C:\\tmp\\ai-music-slice2\\music_workflow_pending_activation.py'}
+[music_deploy] branch=feature/karaoke-slice2 sha=70c02293b9cb6cb9b5484b2a6ed37f6034de2c0b required=f16c670 preflight=OK python=3.13.7 librosa=0.11.0 numba=0.67.0 llvmlite=0.49.0 late_missions_activation=False late_artifact_freeze=False modules={'improvisation_intelligence_ui': 'C:\\tmp\\ai-music-slice2\\improvisation_intelligence_ui.py', 'workflow_musical_authority': 'C:\\tmp\\ai-music-slice2\\workflow_musical_authority.py', 'music_workflow_pending_activation': 'C:\\tmp\\ai-music-slice2\\music_workflow_pending_activation.py'}
+[music_run] event=PHASE_EXIT dt_ms=81 page= phase=deploy_verification phase_entered=deploy_verification phase_exited=deploy_verification route_lock=False run_seq=1 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=81 page= phase=deploy_verification phase_entered=deploy_verification phase_exited=deploy_verification route_lock=False run_seq=1 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=361 page= phase=suite_workspace_bootstrap phase_entered=suite_workspace_bootstrap phase_exited=deploy_verification route_lock=False run_seq=1 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=361 page= phase=suite_workspace_bootstrap phase_entered=suite_workspace_bootstrap phase_exited=deploy_verification route_lock=False run_seq=1 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=18 page= phase=suite_workspace_bootstrap phase_entered=suite_workspace_bootstrap phase_exited=suite_workspace_bootstrap route_lock=False run_seq=1 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=18 page= phase=suite_workspace_bootstrap phase_entered=suite_workspace_bootstrap phase_exited=suite_workspace_bootstrap route_lock=False run_seq=1 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=0 page= phase=pre_widget_bootstrap phase_entered=pre_widget_bootstrap phase_exited=suite_workspace_bootstrap route_lock=False run_seq=1 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=0 page= phase=pre_widget_bootstrap phase_entered=pre_widget_bootstrap phase_exited=suite_workspace_bootstrap route_lock=False run_seq=1 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=2 page= phase=pre_widget_bootstrap_consumers phase_entered=pre_widget_bootstrap_consumers phase_exited=suite_workspace_bootstrap route_lock=False run_seq=1 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=2 page= phase=pre_widget_bootstrap_consumers phase_entered=pre_widget_bootstrap_consumers phase_exited=suite_workspace_bootstrap route_lock=False run_seq=1 strict_save_pending=False workflow_owner=
+[mission_backing_handoff] consume_skipped {'reason': 'no_pending'}
+[music_run] event=PHASE_EXIT dt_ms=26 page= phase=pre_widget_bootstrap_consumers phase_entered=pre_widget_bootstrap_consumers phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=1 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=26 page= phase=pre_widget_bootstrap_consumers phase_entered=pre_widget_bootstrap_consumers phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=1 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=0 page= phase=pre_widget_bootstrap phase_entered=pre_widget_bootstrap_consumers phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=1 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=0 page= phase=pre_widget_bootstrap phase_entered=pre_widget_bootstrap_consumers phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=1 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=4 page= phase=authentication phase_entered=authentication phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=1 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=4 page= phase=authentication phase_entered=authentication phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=1 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=0 page= phase=authentication phase_entered=authentication phase_exited=authentication route_lock=False run_seq=1 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=0 page= phase=authentication phase_entered=authentication phase_exited=authentication route_lock=False run_seq=1 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=1895 page= phase=workspace_hydration phase_entered=workspace_hydration phase_exited=authentication route_lock=False run_seq=1 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=1895 page= phase=workspace_hydration phase_entered=workspace_hydration phase_exited=authentication route_lock=False run_seq=1 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=61 page= phase=workspace_hydration phase_entered=workspace_hydration phase_exited=workspace_hydration route_lock=False run_seq=1 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=61 page= phase=workspace_hydration phase_entered=workspace_hydration phase_exited=workspace_hydration route_lock=False run_seq=1 strict_save_pending=False workflow_owner=
+load_dismissed_insight_ids_from_cloud failed: Supabase is not configured
+load_latest_applied_math_insight_for_app failed: Supabase is not configured
+[music_run] event=PHASE_ENTER dt_ms=522 page=home phase=pending_upload_route phase_entered=pending_upload_route phase_exited=workspace_hydration route_lock=False run_seq=1 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=522 page=home phase=pending_upload_route phase_entered=pending_upload_route phase_exited=workspace_hydration route_lock=False run_seq=1 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=0 page=home phase=pending_upload_route phase_entered=pending_upload_route phase_exited=pending_upload_route route_lock=False run_seq=1 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=0 page=home phase=pending_upload_route phase_entered=pending_upload_route phase_exited=pending_upload_route route_lock=False run_seq=1 strict_save_pending=False workflow_owner=
+load_dismissed_insight_ids_from_cloud failed: Supabase is not configured
+load_latest_applied_math_insight_for_app failed: Supabase is not configured
+[music_run] event=PHASE_ENTER dt_ms=250 page=home phase=chart_bundle_gate phase_entered=chart_bundle_gate phase_exited=pending_upload_route route_lock=False run_seq=1 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=250 page=home phase=chart_bundle_gate phase_entered=chart_bundle_gate phase_exited=pending_upload_route route_lock=False run_seq=1 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=9 page=home phase=chart_bundle_gate phase_entered=chart_bundle_gate phase_exited=chart_bundle_gate route_lock=False run_seq=1 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=9 page=home phase=chart_bundle_gate phase_entered=chart_bundle_gate phase_exited=chart_bundle_gate route_lock=False run_seq=1 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=50 page=home phase=page_dispatch phase_entered=page_dispatch phase_exited=chart_bundle_gate route_lock=False run_seq=1 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=50 page=home phase=page_dispatch phase_entered=page_dispatch phase_exited=chart_bundle_gate route_lock=False run_seq=1 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=58 page=home phase=strict_save_flusher phase_entered=strict_save_flusher phase_exited=chart_bundle_gate route_lock=False run_seq=1 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=58 page=home phase=strict_save_flusher phase_entered=strict_save_flusher phase_exited=chart_bundle_gate route_lock=False run_seq=1 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=88 page=home phase=strict_save_flusher phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=1 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=88 page=home phase=strict_save_flusher phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=1 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=1 page=home phase=page_dispatch phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=1 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=1 page=home phase=page_dispatch phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=1 strict_save_pending=False workflow_owner=
+[music_run] event=RUN_COMPLETED dt_ms=10 elapsed_ms=3443 page=home phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=1 strict_save_pending=False workflow_owner=
+[music_run] event=RUN_COMPLETED dt_ms=10 elapsed_ms=3443 page=home phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=1 strict_save_pending=False workflow_owner=
+[dependency_versions] python=3.13.7 streamlit=1.59.1 starlette=1.3.1 uvicorn=0.51.0
+[dependency_versions] python=3.13.7 streamlit=1.59.1 starlette=1.3.1 uvicorn=0.51.0
+[music_run] event=RUN_STARTED dt_ms=9795 page=home phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=2 strict_save_pending=False workflow_owner=
+[music_run] event=RUN_STARTED dt_ms=9795 page=home phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=2 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=1 page=home phase=deploy_verification phase_entered=deploy_verification phase_exited=strict_save_flusher route_lock=False run_seq=2 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=1 page=home phase=deploy_verification phase_entered=deploy_verification phase_exited=strict_save_flusher route_lock=False run_seq=2 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=38 page=home phase=deploy_verification phase_entered=deploy_verification phase_exited=deploy_verification route_lock=False run_seq=2 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=38 page=home phase=deploy_verification phase_entered=deploy_verification phase_exited=deploy_verification route_lock=False run_seq=2 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=2 page=home phase=suite_workspace_bootstrap phase_entered=suite_workspace_bootstrap phase_exited=deploy_verification route_lock=False run_seq=2 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=2 page=home phase=suite_workspace_bootstrap phase_entered=suite_workspace_bootstrap phase_exited=deploy_verification route_lock=False run_seq=2 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=1 page=home phase=suite_workspace_bootstrap phase_entered=suite_workspace_bootstrap phase_exited=suite_workspace_bootstrap route_lock=False run_seq=2 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=1 page=home phase=suite_workspace_bootstrap phase_entered=suite_workspace_bootstrap phase_exited=suite_workspace_bootstrap route_lock=False run_seq=2 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=1 page=home phase=pre_widget_bootstrap phase_entered=pre_widget_bootstrap phase_exited=suite_workspace_bootstrap route_lock=False run_seq=2 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=1 page=home phase=pre_widget_bootstrap phase_entered=pre_widget_bootstrap phase_exited=suite_workspace_bootstrap route_lock=False run_seq=2 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=1 page=home phase=pre_widget_bootstrap_consumers phase_entered=pre_widget_bootstrap_consumers phase_exited=suite_workspace_bootstrap route_lock=False run_seq=2 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=1 page=home phase=pre_widget_bootstrap_consumers phase_entered=pre_widget_bootstrap_consumers phase_exited=suite_workspace_bootstrap route_lock=False run_seq=2 strict_save_pending=False workflow_owner=
+[mission_backing_handoff] consume_skipped {'reason': 'no_pending'}
+[music_run] event=PHASE_EXIT dt_ms=1 page=home phase=pre_widget_bootstrap_consumers phase_entered=pre_widget_bootstrap_consumers phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=2 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=1 page=home phase=pre_widget_bootstrap_consumers phase_entered=pre_widget_bootstrap_consumers phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=2 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=1 page=home phase=pre_widget_bootstrap phase_entered=pre_widget_bootstrap_consumers phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=2 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=1 page=home phase=pre_widget_bootstrap phase_entered=pre_widget_bootstrap_consumers phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=2 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=2 page=home phase=authentication phase_entered=authentication phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=2 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=2 page=home phase=authentication phase_entered=authentication phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=2 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=1 page=home phase=authentication phase_entered=authentication phase_exited=authentication route_lock=False run_seq=2 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=1 page=home phase=authentication phase_entered=authentication phase_exited=authentication route_lock=False run_seq=2 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=63 page=home phase=workspace_hydration phase_entered=workspace_hydration phase_exited=authentication route_lock=False run_seq=2 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=63 page=home phase=workspace_hydration phase_entered=workspace_hydration phase_exited=authentication route_lock=False run_seq=2 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=128 page=home phase=workspace_hydration phase_entered=workspace_hydration phase_exited=workspace_hydration route_lock=False run_seq=2 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=128 page=home phase=workspace_hydration phase_entered=workspace_hydration phase_exited=workspace_hydration route_lock=False run_seq=2 strict_save_pending=False workflow_owner=
+load_dismissed_insight_ids_from_cloud failed: Supabase is not configured
+load_latest_applied_math_insight_for_app failed: Supabase is not configured
+[music_run] event=PHASE_ENTER dt_ms=55 page=home phase=pending_upload_route phase_entered=pending_upload_route phase_exited=workspace_hydration route_lock=False run_seq=2 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=55 page=home phase=pending_upload_route phase_entered=pending_upload_route phase_exited=workspace_hydration route_lock=False run_seq=2 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=1 page=home phase=pending_upload_route phase_entered=pending_upload_route phase_exited=pending_upload_route route_lock=False run_seq=2 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=1 page=home phase=pending_upload_route phase_entered=pending_upload_route phase_exited=pending_upload_route route_lock=False run_seq=2 strict_save_pending=False workflow_owner=
+[music_run] event=BEFORE_RERUN dt_ms=255 caller_file=app_ui.py caller_function=render_sidebar_studio_nav caller_line=11760 fingerprint= page=picker phase=pending_upload_route phase_entered=pending_upload_route phase_exited=pending_upload_route reason=direct_st_rerun route_lock=False run_seq=2 stack=threading.py:1014:_bootstrap | threading.py:1043:_bootstrap_inner | threading.py:994:run | streamlit_music_practice_app.py:18445:<module> | app_ui.py:11760:render_sidebar_studio_nav strict_save_pending=False workflow_owner=
+[music_run] event=BEFORE_RERUN dt_ms=255 caller_file=app_ui.py caller_function=render_sidebar_studio_nav caller_line=11760 fingerprint= page=picker phase=pending_upload_route phase_entered=pending_upload_route phase_exited=pending_upload_route reason=direct_st_rerun route_lock=False run_seq=2 stack=threading.py:1014:_bootstrap | threading.py:1043:_bootstrap_inner | threading.py:994:run | streamlit_music_practice_app.py:18445:<module> | app_ui.py:11760:render_sidebar_studio_nav strict_save_pending=False workflow_owner=
+[music_run] event=RUN_END dt_ms=1 caller_file=app_ui.py caller_function=render_sidebar_studio_nav caller_line=11760 elapsed_ms=551 fingerprint= outcome=rerun_requested page=picker phase_entered=pending_upload_route phase_exited=pending_upload_route reason=direct_st_rerun route_lock=False run_seq=2 stack=threading.py:1014:_bootstrap | threading.py:1043:_bootstrap_inner | threading.py:994:run | streamlit_music_practice_app.py:18445:<module> | app_ui.py:11760:render_sidebar_studio_nav strict_save_pending=False workflow_owner=
+[music_run] event=RUN_END dt_ms=1 caller_file=app_ui.py caller_function=render_sidebar_studio_nav caller_line=11760 elapsed_ms=551 fingerprint= outcome=rerun_requested page=picker phase_entered=pending_upload_route phase_exited=pending_upload_route reason=direct_st_rerun route_lock=False run_seq=2 stack=threading.py:1014:_bootstrap | threading.py:1043:_bootstrap_inner | threading.py:994:run | streamlit_music_practice_app.py:18445:<module> | app_ui.py:11760:render_sidebar_studio_nav strict_save_pending=False workflow_owner=
+[dependency_versions] python=3.13.7 streamlit=1.59.1 starlette=1.3.1 uvicorn=0.51.0
+[dependency_versions] python=3.13.7 streamlit=1.59.1 starlette=1.3.1 uvicorn=0.51.0
+[music_run] event=RUN_STARTED dt_ms=86 page=picker phase_entered=pending_upload_route phase_exited=pending_upload_route route_lock=False run_seq=3 strict_save_pending=False workflow_owner=
+[music_run] event=RUN_STARTED dt_ms=86 page=picker phase_entered=pending_upload_route phase_exited=pending_upload_route route_lock=False run_seq=3 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=1 page=picker phase=deploy_verification phase_entered=deploy_verification phase_exited=pending_upload_route route_lock=False run_seq=3 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=1 page=picker phase=deploy_verification phase_entered=deploy_verification phase_exited=pending_upload_route route_lock=False run_seq=3 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=49 page=picker phase=deploy_verification phase_entered=deploy_verification phase_exited=deploy_verification route_lock=False run_seq=3 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=49 page=picker phase=deploy_verification phase_entered=deploy_verification phase_exited=deploy_verification route_lock=False run_seq=3 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=2 page=picker phase=suite_workspace_bootstrap phase_entered=suite_workspace_bootstrap phase_exited=deploy_verification route_lock=False run_seq=3 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=2 page=picker phase=suite_workspace_bootstrap phase_entered=suite_workspace_bootstrap phase_exited=deploy_verification route_lock=False run_seq=3 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=2 page=picker phase=suite_workspace_bootstrap phase_entered=suite_workspace_bootstrap phase_exited=suite_workspace_bootstrap route_lock=False run_seq=3 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=2 page=picker phase=suite_workspace_bootstrap phase_entered=suite_workspace_bootstrap phase_exited=suite_workspace_bootstrap route_lock=False run_seq=3 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=1 page=picker phase=pre_widget_bootstrap phase_entered=pre_widget_bootstrap phase_exited=suite_workspace_bootstrap route_lock=False run_seq=3 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=1 page=picker phase=pre_widget_bootstrap phase_entered=pre_widget_bootstrap phase_exited=suite_workspace_bootstrap route_lock=False run_seq=3 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=1 page=picker phase=pre_widget_bootstrap_consumers phase_entered=pre_widget_bootstrap_consumers phase_exited=suite_workspace_bootstrap route_lock=False run_seq=3 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=1 page=picker phase=pre_widget_bootstrap_consumers phase_entered=pre_widget_bootstrap_consumers phase_exited=suite_workspace_bootstrap route_lock=False run_seq=3 strict_save_pending=False workflow_owner=
+[mission_backing_handoff] consume_skipped {'reason': 'no_pending'}
+[music_run] event=PHASE_EXIT dt_ms=1 page=picker phase=pre_widget_bootstrap_consumers phase_entered=pre_widget_bootstrap_consumers phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=3 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=1 page=picker phase=pre_widget_bootstrap_consumers phase_entered=pre_widget_bootstrap_consumers phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=3 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=1 page=picker phase=pre_widget_bootstrap phase_entered=pre_widget_bootstrap_consumers phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=3 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=1 page=picker phase=pre_widget_bootstrap phase_entered=pre_widget_bootstrap_consumers phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=3 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=1 page=picker phase=authentication phase_entered=authentication phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=3 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=1 page=picker phase=authentication phase_entered=authentication phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=3 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=1 page=picker phase=authentication phase_entered=authentication phase_exited=authentication route_lock=False run_seq=3 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=1 page=picker phase=authentication phase_entered=authentication phase_exited=authentication route_lock=False run_seq=3 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=65 page=picker phase=workspace_hydration phase_entered=workspace_hydration phase_exited=authentication route_lock=False run_seq=3 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=65 page=picker phase=workspace_hydration phase_entered=workspace_hydration phase_exited=authentication route_lock=False run_seq=3 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=31 page=picker phase=workspace_hydration phase_entered=workspace_hydration phase_exited=workspace_hydration route_lock=False run_seq=3 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=31 page=picker phase=workspace_hydration phase_entered=workspace_hydration phase_exited=workspace_hydration route_lock=False run_seq=3 strict_save_pending=False workflow_owner=
+load_dismissed_insight_ids_from_cloud failed: Supabase is not configured
+load_latest_applied_math_insight_for_app failed: Supabase is not configured
+[music_run] event=PHASE_ENTER dt_ms=72 page=picker phase=pending_upload_route phase_entered=pending_upload_route phase_exited=workspace_hydration route_lock=False run_seq=3 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=72 page=picker phase=pending_upload_route phase_entered=pending_upload_route phase_exited=workspace_hydration route_lock=False run_seq=3 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=1 page=picker phase=pending_upload_route phase_entered=pending_upload_route phase_exited=pending_upload_route route_lock=False run_seq=3 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=1 page=picker phase=pending_upload_route phase_entered=pending_upload_route phase_exited=pending_upload_route route_lock=False run_seq=3 strict_save_pending=False workflow_owner=
+load_dismissed_insight_ids_from_cloud failed: Supabase is not configured
+load_latest_applied_math_insight_for_app failed: Supabase is not configured
+[music_run] event=PHASE_ENTER dt_ms=194 page=picker phase=chart_bundle_gate phase_entered=chart_bundle_gate phase_exited=pending_upload_route route_lock=False run_seq=3 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=194 page=picker phase=chart_bundle_gate phase_entered=chart_bundle_gate phase_exited=pending_upload_route route_lock=False run_seq=3 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=8 page=picker phase=chart_bundle_gate phase_entered=chart_bundle_gate phase_exited=chart_bundle_gate route_lock=False run_seq=3 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=8 page=picker phase=chart_bundle_gate phase_entered=chart_bundle_gate phase_exited=chart_bundle_gate route_lock=False run_seq=3 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=36 page=picker phase=page_dispatch phase_entered=page_dispatch phase_exited=chart_bundle_gate route_lock=False run_seq=3 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=36 page=picker phase=page_dispatch phase_entered=page_dispatch phase_exited=chart_bundle_gate route_lock=False run_seq=3 strict_save_pending=False workflow_owner=
+2026-11-15 20:36:12.607 Please replace `st.components.v1.html` with `st.iframe`.
+
+`st.components.v1.html` will be removed after 2026-06-01.
+[music_run] event=PHASE_ENTER dt_ms=78 page=picker phase=strict_save_flusher phase_entered=strict_save_flusher phase_exited=chart_bundle_gate route_lock=False run_seq=3 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=78 page=picker phase=strict_save_flusher phase_entered=strict_save_flusher phase_exited=chart_bundle_gate route_lock=False run_seq=3 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=134 page=picker phase=strict_save_flusher phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=3 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=134 page=picker phase=strict_save_flusher phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=3 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=1 page=picker phase=page_dispatch phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=3 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=1 page=picker phase=page_dispatch phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=3 strict_save_pending=False workflow_owner=
+[music_run] event=RUN_COMPLETED dt_ms=8 elapsed_ms=689 page=picker phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=3 strict_save_pending=False workflow_owner=
+[music_run] event=RUN_COMPLETED dt_ms=8 elapsed_ms=689 page=picker phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=3 strict_save_pending=False workflow_owner=
+[dependency_versions] python=3.13.7 streamlit=1.59.1 starlette=1.3.1 uvicorn=0.51.0
+[dependency_versions] python=3.13.7 streamlit=1.59.1 starlette=1.3.1 uvicorn=0.51.0
+[music_run] event=RUN_STARTED dt_ms=11989 page=picker phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=4 strict_save_pending=False workflow_owner=
+[music_run] event=RUN_STARTED dt_ms=11989 page=picker phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=4 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=2 page=picker phase=deploy_verification phase_entered=deploy_verification phase_exited=strict_save_flusher route_lock=False run_seq=4 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=2 page=picker phase=deploy_verification phase_entered=deploy_verification phase_exited=strict_save_flusher route_lock=False run_seq=4 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=67 page=picker phase=deploy_verification phase_entered=deploy_verification phase_exited=deploy_verification route_lock=False run_seq=4 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=67 page=picker phase=deploy_verification phase_entered=deploy_verification phase_exited=deploy_verification route_lock=False run_seq=4 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=4 page=picker phase=suite_workspace_bootstrap phase_entered=suite_workspace_bootstrap phase_exited=deploy_verification route_lock=False run_seq=4 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=4 page=picker phase=suite_workspace_bootstrap phase_entered=suite_workspace_bootstrap phase_exited=deploy_verification route_lock=False run_seq=4 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=3 page=picker phase=suite_workspace_bootstrap phase_entered=suite_workspace_bootstrap phase_exited=suite_workspace_bootstrap route_lock=False run_seq=4 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=3 page=picker phase=suite_workspace_bootstrap phase_entered=suite_workspace_bootstrap phase_exited=suite_workspace_bootstrap route_lock=False run_seq=4 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=2 page=picker phase=pre_widget_bootstrap phase_entered=pre_widget_bootstrap phase_exited=suite_workspace_bootstrap route_lock=False run_seq=4 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=2 page=picker phase=pre_widget_bootstrap phase_entered=pre_widget_bootstrap phase_exited=suite_workspace_bootstrap route_lock=False run_seq=4 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=3 page=picker phase=pre_widget_bootstrap_consumers phase_entered=pre_widget_bootstrap_consumers phase_exited=suite_workspace_bootstrap route_lock=False run_seq=4 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=3 page=picker phase=pre_widget_bootstrap_consumers phase_entered=pre_widget_bootstrap_consumers phase_exited=suite_workspace_bootstrap route_lock=False run_seq=4 strict_save_pending=False workflow_owner=
+[mission_backing_handoff] consume_skipped {'reason': 'no_pending'}
+[music_run] event=PHASE_EXIT dt_ms=4 page=picker phase=pre_widget_bootstrap_consumers phase_entered=pre_widget_bootstrap_consumers phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=4 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=4 page=picker phase=pre_widget_bootstrap_consumers phase_entered=pre_widget_bootstrap_consumers phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=4 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=3 page=picker phase=pre_widget_bootstrap phase_entered=pre_widget_bootstrap_consumers phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=4 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=3 page=picker phase=pre_widget_bootstrap phase_entered=pre_widget_bootstrap_consumers phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=4 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=3 page=picker phase=authentication phase_entered=authentication phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=4 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=3 page=picker phase=authentication phase_entered=authentication phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=4 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=2 page=picker phase=authentication phase_entered=authentication phase_exited=authentication route_lock=False run_seq=4 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=2 page=picker phase=authentication phase_entered=authentication phase_exited=authentication route_lock=False run_seq=4 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=107 page=picker phase=workspace_hydration phase_entered=workspace_hydration phase_exited=authentication route_lock=False run_seq=4 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=107 page=picker phase=workspace_hydration phase_entered=workspace_hydration phase_exited=authentication route_lock=False run_seq=4 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=49 page=picker phase=workspace_hydration phase_entered=workspace_hydration phase_exited=workspace_hydration route_lock=False run_seq=4 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=49 page=picker phase=workspace_hydration phase_entered=workspace_hydration phase_exited=workspace_hydration route_lock=False run_seq=4 strict_save_pending=False workflow_owner=
+load_dismissed_insight_ids_from_cloud failed: Supabase is not configured
+load_latest_applied_math_insight_for_app failed: Supabase is not configured
+[music_run] event=PHASE_ENTER dt_ms=120 page=picker phase=pending_upload_route phase_entered=pending_upload_route phase_exited=workspace_hydration route_lock=False run_seq=4 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=120 page=picker phase=pending_upload_route phase_entered=pending_upload_route phase_exited=workspace_hydration route_lock=False run_seq=4 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=2 page=picker phase=pending_upload_route phase_entered=pending_upload_route phase_exited=pending_upload_route route_lock=False run_seq=4 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=2 page=picker phase=pending_upload_route phase_entered=pending_upload_route phase_exited=pending_upload_route route_lock=False run_seq=4 strict_save_pending=False workflow_owner=
+load_dismissed_insight_ids_from_cloud failed: Supabase is not configured
+load_latest_applied_math_insight_for_app failed: Supabase is not configured
+[music_run] event=PHASE_ENTER dt_ms=226 page=picker phase=chart_bundle_gate phase_entered=chart_bundle_gate phase_exited=pending_upload_route route_lock=False run_seq=4 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=226 page=picker phase=chart_bundle_gate phase_entered=chart_bundle_gate phase_exited=pending_upload_route route_lock=False run_seq=4 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=3 page=picker phase=chart_bundle_gate phase_entered=chart_bundle_gate phase_exited=chart_bundle_gate route_lock=False run_seq=4 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=3 page=picker phase=chart_bundle_gate phase_entered=chart_bundle_gate phase_exited=chart_bundle_gate route_lock=False run_seq=4 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=52 page=picker phase=page_dispatch phase_entered=page_dispatch phase_exited=chart_bundle_gate route_lock=False run_seq=4 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=52 page=picker phase=page_dispatch phase_entered=page_dispatch phase_exited=chart_bundle_gate route_lock=False run_seq=4 strict_save_pending=False workflow_owner=
+2026-11-15 20:36:25.457 Please replace `st.components.v1.html` with `st.iframe`.
+
+`st.components.v1.html` will be removed after 2026-06-01.
+[music_run] event=PHASE_ENTER dt_ms=65 page=picker phase=strict_save_flusher phase_entered=strict_save_flusher phase_exited=chart_bundle_gate route_lock=False run_seq=4 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=65 page=picker phase=strict_save_flusher phase_entered=strict_save_flusher phase_exited=chart_bundle_gate route_lock=False run_seq=4 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=260 page=picker phase=strict_save_flusher phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=4 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=260 page=picker phase=strict_save_flusher phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=4 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=2 page=picker phase=page_dispatch phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=4 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=2 page=picker phase=page_dispatch phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=4 strict_save_pending=False workflow_owner=
+[music_run] event=RUN_COMPLETED dt_ms=15 elapsed_ms=993 page=picker phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=4 strict_save_pending=False workflow_owner=
+[music_run] event=RUN_COMPLETED dt_ms=15 elapsed_ms=993 page=picker phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=4 strict_save_pending=False workflow_owner=
+[dependency_versions] python=3.13.7 streamlit=1.59.1 starlette=1.3.1 uvicorn=0.51.0
+[dependency_versions] python=3.13.7 streamlit=1.59.1 starlette=1.3.1 uvicorn=0.51.0
+[music_run] event=RUN_STARTED dt_ms=30543 page=picker phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=5 strict_save_pending=False workflow_owner=
+[music_run] event=RUN_STARTED dt_ms=30543 page=picker phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=5 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=3 page=picker phase=deploy_verification phase_entered=deploy_verification phase_exited=strict_save_flusher route_lock=False run_seq=5 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=3 page=picker phase=deploy_verification phase_entered=deploy_verification phase_exited=strict_save_flusher route_lock=False run_seq=5 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=51 page=picker phase=deploy_verification phase_entered=deploy_verification phase_exited=deploy_verification route_lock=False run_seq=5 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=51 page=picker phase=deploy_verification phase_entered=deploy_verification phase_exited=deploy_verification route_lock=False run_seq=5 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=5 page=picker phase=suite_workspace_bootstrap phase_entered=suite_workspace_bootstrap phase_exited=deploy_verification route_lock=False run_seq=5 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=5 page=picker phase=suite_workspace_bootstrap phase_entered=suite_workspace_bootstrap phase_exited=deploy_verification route_lock=False run_seq=5 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=3 page=picker phase=suite_workspace_bootstrap phase_entered=suite_workspace_bootstrap phase_exited=suite_workspace_bootstrap route_lock=False run_seq=5 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=3 page=picker phase=suite_workspace_bootstrap phase_entered=suite_workspace_bootstrap phase_exited=suite_workspace_bootstrap route_lock=False run_seq=5 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=1 page=picker phase=pre_widget_bootstrap phase_entered=pre_widget_bootstrap phase_exited=suite_workspace_bootstrap route_lock=False run_seq=5 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=1 page=picker phase=pre_widget_bootstrap phase_entered=pre_widget_bootstrap phase_exited=suite_workspace_bootstrap route_lock=False run_seq=5 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=1 page=picker phase=pre_widget_bootstrap_consumers phase_entered=pre_widget_bootstrap_consumers phase_exited=suite_workspace_bootstrap route_lock=False run_seq=5 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=1 page=picker phase=pre_widget_bootstrap_consumers phase_entered=pre_widget_bootstrap_consumers phase_exited=suite_workspace_bootstrap route_lock=False run_seq=5 strict_save_pending=False workflow_owner=
+[mission_backing_handoff] consume_skipped {'reason': 'no_pending'}
+[music_run] event=PHASE_EXIT dt_ms=2 page=picker phase=pre_widget_bootstrap_consumers phase_entered=pre_widget_bootstrap_consumers phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=5 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=2 page=picker phase=pre_widget_bootstrap_consumers phase_entered=pre_widget_bootstrap_consumers phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=5 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=1 page=picker phase=pre_widget_bootstrap phase_entered=pre_widget_bootstrap_consumers phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=5 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=1 page=picker phase=pre_widget_bootstrap phase_entered=pre_widget_bootstrap_consumers phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=5 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=2 page=picker phase=authentication phase_entered=authentication phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=5 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=2 page=picker phase=authentication phase_entered=authentication phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=5 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=2 page=picker phase=authentication phase_entered=authentication phase_exited=authentication route_lock=False run_seq=5 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=2 page=picker phase=authentication phase_entered=authentication phase_exited=authentication route_lock=False run_seq=5 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=103 page=picker phase=workspace_hydration phase_entered=workspace_hydration phase_exited=authentication route_lock=False run_seq=5 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=103 page=picker phase=workspace_hydration phase_entered=workspace_hydration phase_exited=authentication route_lock=False run_seq=5 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=56 page=picker phase=workspace_hydration phase_entered=workspace_hydration phase_exited=workspace_hydration route_lock=False run_seq=5 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=56 page=picker phase=workspace_hydration phase_entered=workspace_hydration phase_exited=workspace_hydration route_lock=False run_seq=5 strict_save_pending=False workflow_owner=
+load_dismissed_insight_ids_from_cloud failed: Supabase is not configured
+load_latest_applied_math_insight_for_app failed: Supabase is not configured
+[music_run] event=PHASE_ENTER dt_ms=86 page=picker phase=pending_upload_route phase_entered=pending_upload_route phase_exited=workspace_hydration route_lock=False run_seq=5 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=86 page=picker phase=pending_upload_route phase_entered=pending_upload_route phase_exited=workspace_hydration route_lock=False run_seq=5 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=2 page=picker phase=pending_upload_route phase_entered=pending_upload_route phase_exited=pending_upload_route route_lock=False run_seq=5 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=2 page=picker phase=pending_upload_route phase_entered=pending_upload_route phase_exited=pending_upload_route route_lock=False run_seq=5 strict_save_pending=False workflow_owner=
+load_dismissed_insight_ids_from_cloud failed: Supabase is not configured
+load_latest_applied_math_insight_for_app failed: Supabase is not configured
+[music_run] event=PHASE_ENTER dt_ms=205 page=picker phase=chart_bundle_gate phase_entered=chart_bundle_gate phase_exited=pending_upload_route route_lock=False run_seq=5 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=205 page=picker phase=chart_bundle_gate phase_entered=chart_bundle_gate phase_exited=pending_upload_route route_lock=False run_seq=5 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=3 page=picker phase=chart_bundle_gate phase_entered=chart_bundle_gate phase_exited=chart_bundle_gate route_lock=False run_seq=5 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=3 page=picker phase=chart_bundle_gate phase_entered=chart_bundle_gate phase_exited=chart_bundle_gate route_lock=False run_seq=5 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=39 page=picker phase=page_dispatch phase_entered=page_dispatch phase_exited=chart_bundle_gate route_lock=False run_seq=5 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=39 page=picker phase=page_dispatch phase_entered=page_dispatch phase_exited=chart_bundle_gate route_lock=False run_seq=5 strict_save_pending=False workflow_owner=
+2026-11-15 20:36:56.914 Please replace `st.components.v1.html` with `st.iframe`.
+
+`st.components.v1.html` will be removed after 2026-06-01.
+[music_run] event=PHASE_ENTER dt_ms=71 page=picker phase=strict_save_flusher phase_entered=strict_save_flusher phase_exited=chart_bundle_gate route_lock=False run_seq=5 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=71 page=picker phase=strict_save_flusher phase_entered=strict_save_flusher phase_exited=chart_bundle_gate route_lock=False run_seq=5 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=216 page=picker phase=strict_save_flusher phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=5 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=216 page=picker phase=strict_save_flusher phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=5 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=2 page=picker phase=page_dispatch phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=5 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=2 page=picker phase=page_dispatch phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=5 strict_save_pending=False workflow_owner=
+[music_run] event=RUN_COMPLETED dt_ms=14 elapsed_ms=868 page=picker phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=5 strict_save_pending=False workflow_owner=
+[music_run] event=RUN_COMPLETED dt_ms=14 elapsed_ms=868 page=picker phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=5 strict_save_pending=False workflow_owner=
+[dependency_versions] python=3.13.7 streamlit=1.59.1 starlette=1.3.1 uvicorn=0.51.0
+[dependency_versions] python=3.13.7 streamlit=1.59.1 starlette=1.3.1 uvicorn=0.51.0
+[music_run] event=RUN_STARTED dt_ms=13049 page=picker phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=6 strict_save_pending=False workflow_owner=
+[music_run] event=RUN_STARTED dt_ms=13049 page=picker phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=6 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=3 page=picker phase=deploy_verification phase_entered=deploy_verification phase_exited=strict_save_flusher route_lock=False run_seq=6 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=3 page=picker phase=deploy_verification phase_entered=deploy_verification phase_exited=strict_save_flusher route_lock=False run_seq=6 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=55 page=picker phase=deploy_verification phase_entered=deploy_verification phase_exited=deploy_verification route_lock=False run_seq=6 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=55 page=picker phase=deploy_verification phase_entered=deploy_verification phase_exited=deploy_verification route_lock=False run_seq=6 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=3 page=picker phase=suite_workspace_bootstrap phase_entered=suite_workspace_bootstrap phase_exited=deploy_verification route_lock=False run_seq=6 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=3 page=picker phase=suite_workspace_bootstrap phase_entered=suite_workspace_bootstrap phase_exited=deploy_verification route_lock=False run_seq=6 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=2 page=picker phase=suite_workspace_bootstrap phase_entered=suite_workspace_bootstrap phase_exited=suite_workspace_bootstrap route_lock=False run_seq=6 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=2 page=picker phase=suite_workspace_bootstrap phase_entered=suite_workspace_bootstrap phase_exited=suite_workspace_bootstrap route_lock=False run_seq=6 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=2 page=picker phase=pre_widget_bootstrap phase_entered=pre_widget_bootstrap phase_exited=suite_workspace_bootstrap route_lock=False run_seq=6 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=2 page=picker phase=pre_widget_bootstrap phase_entered=pre_widget_bootstrap phase_exited=suite_workspace_bootstrap route_lock=False run_seq=6 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=1 page=picker phase=pre_widget_bootstrap_consumers phase_entered=pre_widget_bootstrap_consumers phase_exited=suite_workspace_bootstrap route_lock=False run_seq=6 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=1 page=picker phase=pre_widget_bootstrap_consumers phase_entered=pre_widget_bootstrap_consumers phase_exited=suite_workspace_bootstrap route_lock=False run_seq=6 strict_save_pending=False workflow_owner=
+[mission_backing_handoff] consume_skipped {'reason': 'no_pending'}
+[music_run] event=PHASE_EXIT dt_ms=2 page=picker phase=pre_widget_bootstrap_consumers phase_entered=pre_widget_bootstrap_consumers phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=6 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=2 page=picker phase=pre_widget_bootstrap_consumers phase_entered=pre_widget_bootstrap_consumers phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=6 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=1 page=picker phase=pre_widget_bootstrap phase_entered=pre_widget_bootstrap_consumers phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=6 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=1 page=picker phase=pre_widget_bootstrap phase_entered=pre_widget_bootstrap_consumers phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=6 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=2 page=picker phase=authentication phase_entered=authentication phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=6 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=2 page=picker phase=authentication phase_entered=authentication phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=6 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=2 page=picker phase=authentication phase_entered=authentication phase_exited=authentication route_lock=False run_seq=6 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=2 page=picker phase=authentication phase_entered=authentication phase_exited=authentication route_lock=False run_seq=6 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=87 page=picker phase=workspace_hydration phase_entered=workspace_hydration phase_exited=authentication route_lock=False run_seq=6 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=87 page=picker phase=workspace_hydration phase_entered=workspace_hydration phase_exited=authentication route_lock=False run_seq=6 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=38 page=picker phase=workspace_hydration phase_entered=workspace_hydration phase_exited=workspace_hydration route_lock=False run_seq=6 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=38 page=picker phase=workspace_hydration phase_entered=workspace_hydration phase_exited=workspace_hydration route_lock=False run_seq=6 strict_save_pending=False workflow_owner=
+load_dismissed_insight_ids_from_cloud failed: Supabase is not configured
+load_latest_applied_math_insight_for_app failed: Supabase is not configured
+[music_run] event=PHASE_ENTER dt_ms=81 page=picker phase=pending_upload_route phase_entered=pending_upload_route phase_exited=workspace_hydration route_lock=False run_seq=6 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=81 page=picker phase=pending_upload_route phase_entered=pending_upload_route phase_exited=workspace_hydration route_lock=False run_seq=6 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=2 page=picker phase=pending_upload_route phase_entered=pending_upload_route phase_exited=pending_upload_route route_lock=False run_seq=6 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=2 page=picker phase=pending_upload_route phase_entered=pending_upload_route phase_exited=pending_upload_route route_lock=False run_seq=6 strict_save_pending=False workflow_owner=
+[music_run] event=BEFORE_RERUN dt_ms=151 caller_file=app_ui.py caller_function=render_sidebar_studio_nav caller_line=11726 fingerprint= page=picker phase=pending_upload_route phase_entered=pending_upload_route phase_exited=pending_upload_route reason=direct_st_rerun route_lock=False run_seq=6 stack=threading.py:1014:_bootstrap | threading.py:1043:_bootstrap_inner | threading.py:994:run | streamlit_music_practice_app.py:18445:<module> | app_ui.py:11726:render_sidebar_studio_nav strict_save_pending=False workflow_owner=
+[music_run] event=BEFORE_RERUN dt_ms=151 caller_file=app_ui.py caller_function=render_sidebar_studio_nav caller_line=11726 fingerprint= page=picker phase=pending_upload_route phase_entered=pending_upload_route phase_exited=pending_upload_route reason=direct_st_rerun route_lock=False run_seq=6 stack=threading.py:1014:_bootstrap | threading.py:1043:_bootstrap_inner | threading.py:994:run | streamlit_music_practice_app.py:18445:<module> | app_ui.py:11726:render_sidebar_studio_nav strict_save_pending=False workflow_owner=
+[music_run] event=RUN_END dt_ms=1 caller_file=app_ui.py caller_function=render_sidebar_studio_nav caller_line=11726 elapsed_ms=434 fingerprint= outcome=rerun_requested page=picker phase_entered=pending_upload_route phase_exited=pending_upload_route reason=direct_st_rerun route_lock=False run_seq=6 stack=threading.py:1014:_bootstrap | threading.py:1043:_bootstrap_inner | threading.py:994:run | streamlit_music_practice_app.py:18445:<module> | app_ui.py:11726:render_sidebar_studio_nav strict_save_pending=False workflow_owner=
+[music_run] event=RUN_END dt_ms=1 caller_file=app_ui.py caller_function=render_sidebar_studio_nav caller_line=11726 elapsed_ms=434 fingerprint= outcome=rerun_requested page=picker phase_entered=pending_upload_route phase_exited=pending_upload_route reason=direct_st_rerun route_lock=False run_seq=6 stack=threading.py:1014:_bootstrap | threading.py:1043:_bootstrap_inner | threading.py:994:run | streamlit_music_practice_app.py:18445:<module> | app_ui.py:11726:render_sidebar_studio_nav strict_save_pending=False workflow_owner=
+[dependency_versions] python=3.13.7 streamlit=1.59.1 starlette=1.3.1 uvicorn=0.51.0
+[dependency_versions] python=3.13.7 streamlit=1.59.1 starlette=1.3.1 uvicorn=0.51.0
+[music_run] event=RUN_STARTED dt_ms=111 page=picker phase_entered=pending_upload_route phase_exited=pending_upload_route route_lock=False run_seq=7 strict_save_pending=False workflow_owner=
+[music_run] event=RUN_STARTED dt_ms=111 page=picker phase_entered=pending_upload_route phase_exited=pending_upload_route route_lock=False run_seq=7 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=1 page=picker phase=deploy_verification phase_entered=deploy_verification phase_exited=pending_upload_route route_lock=False run_seq=7 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=1 page=picker phase=deploy_verification phase_entered=deploy_verification phase_exited=pending_upload_route route_lock=False run_seq=7 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=47 page=picker phase=deploy_verification phase_entered=deploy_verification phase_exited=deploy_verification route_lock=False run_seq=7 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=47 page=picker phase=deploy_verification phase_entered=deploy_verification phase_exited=deploy_verification route_lock=False run_seq=7 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=3 page=picker phase=suite_workspace_bootstrap phase_entered=suite_workspace_bootstrap phase_exited=deploy_verification route_lock=False run_seq=7 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=3 page=picker phase=suite_workspace_bootstrap phase_entered=suite_workspace_bootstrap phase_exited=deploy_verification route_lock=False run_seq=7 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=2 page=picker phase=suite_workspace_bootstrap phase_entered=suite_workspace_bootstrap phase_exited=suite_workspace_bootstrap route_lock=False run_seq=7 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=2 page=picker phase=suite_workspace_bootstrap phase_entered=suite_workspace_bootstrap phase_exited=suite_workspace_bootstrap route_lock=False run_seq=7 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=1 page=picker phase=pre_widget_bootstrap phase_entered=pre_widget_bootstrap phase_exited=suite_workspace_bootstrap route_lock=False run_seq=7 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=1 page=picker phase=pre_widget_bootstrap phase_entered=pre_widget_bootstrap phase_exited=suite_workspace_bootstrap route_lock=False run_seq=7 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=1 page=picker phase=pre_widget_bootstrap_consumers phase_entered=pre_widget_bootstrap_consumers phase_exited=suite_workspace_bootstrap route_lock=False run_seq=7 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=1 page=picker phase=pre_widget_bootstrap_consumers phase_entered=pre_widget_bootstrap_consumers phase_exited=suite_workspace_bootstrap route_lock=False run_seq=7 strict_save_pending=False workflow_owner=
+[mission_backing_handoff] consume_skipped {'reason': 'no_pending'}
+[music_run] event=PHASE_EXIT dt_ms=2 page=picker phase=pre_widget_bootstrap_consumers phase_entered=pre_widget_bootstrap_consumers phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=7 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=2 page=picker phase=pre_widget_bootstrap_consumers phase_entered=pre_widget_bootstrap_consumers phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=7 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=1 page=picker phase=pre_widget_bootstrap phase_entered=pre_widget_bootstrap_consumers phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=7 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=1 page=picker phase=pre_widget_bootstrap phase_entered=pre_widget_bootstrap_consumers phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=7 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=2 page=picker phase=authentication phase_entered=authentication phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=7 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=2 page=picker phase=authentication phase_entered=authentication phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=7 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=2 page=picker phase=authentication phase_entered=authentication phase_exited=authentication route_lock=False run_seq=7 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=2 page=picker phase=authentication phase_entered=authentication phase_exited=authentication route_lock=False run_seq=7 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=77 page=picker phase=workspace_hydration phase_entered=workspace_hydration phase_exited=authentication route_lock=False run_seq=7 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=77 page=picker phase=workspace_hydration phase_entered=workspace_hydration phase_exited=authentication route_lock=False run_seq=7 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=24 page=picker phase=workspace_hydration phase_entered=workspace_hydration phase_exited=workspace_hydration route_lock=False run_seq=7 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=24 page=picker phase=workspace_hydration phase_entered=workspace_hydration phase_exited=workspace_hydration route_lock=False run_seq=7 strict_save_pending=False workflow_owner=
+load_dismissed_insight_ids_from_cloud failed: Supabase is not configured
+load_latest_applied_math_insight_for_app failed: Supabase is not configured
+[music_run] event=PHASE_ENTER dt_ms=94 page=picker phase=pending_upload_route phase_entered=pending_upload_route phase_exited=workspace_hydration route_lock=False run_seq=7 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=94 page=picker phase=pending_upload_route phase_entered=pending_upload_route phase_exited=workspace_hydration route_lock=False run_seq=7 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=1 page=picker phase=pending_upload_route phase_entered=pending_upload_route phase_exited=pending_upload_route route_lock=False run_seq=7 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=1 page=picker phase=pending_upload_route phase_entered=pending_upload_route phase_exited=pending_upload_route route_lock=False run_seq=7 strict_save_pending=False workflow_owner=
+load_dismissed_insight_ids_from_cloud failed: Supabase is not configured
+load_latest_applied_math_insight_for_app failed: Supabase is not configured
+[music_run] event=PHASE_ENTER dt_ms=250 page=picker phase=chart_bundle_gate phase_entered=chart_bundle_gate phase_exited=pending_upload_route route_lock=False run_seq=7 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=250 page=picker phase=chart_bundle_gate phase_entered=chart_bundle_gate phase_exited=pending_upload_route route_lock=False run_seq=7 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=2 page=picker phase=chart_bundle_gate phase_entered=chart_bundle_gate phase_exited=chart_bundle_gate route_lock=False run_seq=7 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=2 page=picker phase=chart_bundle_gate phase_entered=chart_bundle_gate phase_exited=chart_bundle_gate route_lock=False run_seq=7 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=53 page=picker phase=page_dispatch phase_entered=page_dispatch phase_exited=chart_bundle_gate route_lock=False run_seq=7 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=53 page=picker phase=page_dispatch phase_entered=page_dispatch phase_exited=chart_bundle_gate route_lock=False run_seq=7 strict_save_pending=False workflow_owner=
+2026-11-15 20:37:11.365 Please replace `st.components.v1.html` with `st.iframe`.
+
+`st.components.v1.html` will be removed after 2026-06-01.
+[music_run] event=PHASE_ENTER dt_ms=63 page=picker phase=strict_save_flusher phase_entered=strict_save_flusher phase_exited=chart_bundle_gate route_lock=False run_seq=7 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=63 page=picker phase=strict_save_flusher phase_entered=strict_save_flusher phase_exited=chart_bundle_gate route_lock=False run_seq=7 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=173 page=picker phase=strict_save_flusher phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=7 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=173 page=picker phase=strict_save_flusher phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=7 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=1 page=picker phase=page_dispatch phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=7 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=1 page=picker phase=page_dispatch phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=7 strict_save_pending=False workflow_owner=
+[music_run] event=RUN_COMPLETED dt_ms=9 elapsed_ms=809 page=picker phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=7 strict_save_pending=False workflow_owner=
+[music_run] event=RUN_COMPLETED dt_ms=9 elapsed_ms=809 page=picker phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=7 strict_save_pending=False workflow_owner=
+[dependency_versions] python=3.13.7 streamlit=1.59.1 starlette=1.3.1 uvicorn=0.51.0
+[dependency_versions] python=3.13.7 streamlit=1.59.1 starlette=1.3.1 uvicorn=0.51.0
+[music_run] event=RUN_STARTED dt_ms=2948 page=picker phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=8 strict_save_pending=False workflow_owner=
+[music_run] event=RUN_STARTED dt_ms=2948 page=picker phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=8 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=1 page=picker phase=deploy_verification phase_entered=deploy_verification phase_exited=strict_save_flusher route_lock=False run_seq=8 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=1 page=picker phase=deploy_verification phase_entered=deploy_verification phase_exited=strict_save_flusher route_lock=False run_seq=8 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=39 page=picker phase=deploy_verification phase_entered=deploy_verification phase_exited=deploy_verification route_lock=False run_seq=8 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=39 page=picker phase=deploy_verification phase_entered=deploy_verification phase_exited=deploy_verification route_lock=False run_seq=8 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=3 page=picker phase=suite_workspace_bootstrap phase_entered=suite_workspace_bootstrap phase_exited=deploy_verification route_lock=False run_seq=8 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=3 page=picker phase=suite_workspace_bootstrap phase_entered=suite_workspace_bootstrap phase_exited=deploy_verification route_lock=False run_seq=8 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=2 page=picker phase=suite_workspace_bootstrap phase_entered=suite_workspace_bootstrap phase_exited=suite_workspace_bootstrap route_lock=False run_seq=8 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=2 page=picker phase=suite_workspace_bootstrap phase_entered=suite_workspace_bootstrap phase_exited=suite_workspace_bootstrap route_lock=False run_seq=8 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=1 page=picker phase=pre_widget_bootstrap phase_entered=pre_widget_bootstrap phase_exited=suite_workspace_bootstrap route_lock=False run_seq=8 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=1 page=picker phase=pre_widget_bootstrap phase_entered=pre_widget_bootstrap phase_exited=suite_workspace_bootstrap route_lock=False run_seq=8 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=1 page=picker phase=pre_widget_bootstrap_consumers phase_entered=pre_widget_bootstrap_consumers phase_exited=suite_workspace_bootstrap route_lock=False run_seq=8 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=1 page=picker phase=pre_widget_bootstrap_consumers phase_entered=pre_widget_bootstrap_consumers phase_exited=suite_workspace_bootstrap route_lock=False run_seq=8 strict_save_pending=False workflow_owner=
+[mission_backing_handoff] consume_skipped {'reason': 'no_pending'}
+[music_run] event=PHASE_EXIT dt_ms=2 page=picker phase=pre_widget_bootstrap_consumers phase_entered=pre_widget_bootstrap_consumers phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=8 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=2 page=picker phase=pre_widget_bootstrap_consumers phase_entered=pre_widget_bootstrap_consumers phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=8 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=1 page=picker phase=pre_widget_bootstrap phase_entered=pre_widget_bootstrap_consumers phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=8 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=1 page=picker phase=pre_widget_bootstrap phase_entered=pre_widget_bootstrap_consumers phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=8 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=2 page=picker phase=authentication phase_entered=authentication phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=8 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=2 page=picker phase=authentication phase_entered=authentication phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=8 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=1 page=picker phase=authentication phase_entered=authentication phase_exited=authentication route_lock=False run_seq=8 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=1 page=picker phase=authentication phase_entered=authentication phase_exited=authentication route_lock=False run_seq=8 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=69 page=picker phase=workspace_hydration phase_entered=workspace_hydration phase_exited=authentication route_lock=False run_seq=8 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=69 page=picker phase=workspace_hydration phase_entered=workspace_hydration phase_exited=authentication route_lock=False run_seq=8 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=36 page=picker phase=workspace_hydration phase_entered=workspace_hydration phase_exited=workspace_hydration route_lock=False run_seq=8 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=36 page=picker phase=workspace_hydration phase_entered=workspace_hydration phase_exited=workspace_hydration route_lock=False run_seq=8 strict_save_pending=False workflow_owner=
+load_dismissed_insight_ids_from_cloud failed: Supabase is not configured
+load_latest_applied_math_insight_for_app failed: Supabase is not configured
+[music_run] event=PHASE_ENTER dt_ms=62 page=picker phase=pending_upload_route phase_entered=pending_upload_route phase_exited=workspace_hydration route_lock=False run_seq=8 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=62 page=picker phase=pending_upload_route phase_entered=pending_upload_route phase_exited=workspace_hydration route_lock=False run_seq=8 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=1 page=picker phase=pending_upload_route phase_entered=pending_upload_route phase_exited=pending_upload_route route_lock=False run_seq=8 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=1 page=picker phase=pending_upload_route phase_entered=pending_upload_route phase_exited=pending_upload_route route_lock=False run_seq=8 strict_save_pending=False workflow_owner=
+load_dismissed_insight_ids_from_cloud failed: Supabase is not configured
+load_latest_applied_math_insight_for_app failed: Supabase is not configured
+[music_run] event=PHASE_ENTER dt_ms=138 page=picker phase=chart_bundle_gate phase_entered=chart_bundle_gate phase_exited=pending_upload_route route_lock=False run_seq=8 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=138 page=picker phase=chart_bundle_gate phase_entered=chart_bundle_gate phase_exited=pending_upload_route route_lock=False run_seq=8 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=2 page=picker phase=chart_bundle_gate phase_entered=chart_bundle_gate phase_exited=chart_bundle_gate route_lock=False run_seq=8 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=2 page=picker phase=chart_bundle_gate phase_entered=chart_bundle_gate phase_exited=chart_bundle_gate route_lock=False run_seq=8 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=32 page=picker phase=page_dispatch phase_entered=page_dispatch phase_exited=chart_bundle_gate route_lock=False run_seq=8 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=32 page=picker phase=page_dispatch phase_entered=page_dispatch phase_exited=chart_bundle_gate route_lock=False run_seq=8 strict_save_pending=False workflow_owner=
+2026-11-15 20:37:14.948 Please replace `st.components.v1.html` with `st.iframe`.
+
+`st.components.v1.html` will be removed after 2026-06-01.
+[music_run] event=PHASE_ENTER dt_ms=49 page=picker phase=strict_save_flusher phase_entered=strict_save_flusher phase_exited=chart_bundle_gate route_lock=False run_seq=8 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=49 page=picker phase=strict_save_flusher phase_entered=strict_save_flusher phase_exited=chart_bundle_gate route_lock=False run_seq=8 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=132 page=picker phase=strict_save_flusher phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=8 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=132 page=picker phase=strict_save_flusher phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=8 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=1 page=picker phase=page_dispatch phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=8 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=1 page=picker phase=page_dispatch phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=8 strict_save_pending=False workflow_owner=
+[music_run] event=RUN_COMPLETED dt_ms=8 elapsed_ms=585 page=picker phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=8 strict_save_pending=False workflow_owner=
+[music_run] event=RUN_COMPLETED dt_ms=8 elapsed_ms=585 page=picker phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=8 strict_save_pending=False workflow_owner=
+[dependency_versions] python=3.13.7 streamlit=1.59.1 starlette=1.3.1 uvicorn=0.51.0
+[dependency_versions] python=3.13.7 streamlit=1.59.1 starlette=1.3.1 uvicorn=0.51.0
+[music_run] event=RUN_STARTED dt_ms=8416 page=picker phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=9 strict_save_pending=False workflow_owner=
+[music_run] event=RUN_STARTED dt_ms=8416 page=picker phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=9 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=1 page=picker phase=deploy_verification phase_entered=deploy_verification phase_exited=strict_save_flusher route_lock=False run_seq=9 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=1 page=picker phase=deploy_verification phase_entered=deploy_verification phase_exited=strict_save_flusher route_lock=False run_seq=9 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=57 page=picker phase=deploy_verification phase_entered=deploy_verification phase_exited=deploy_verification route_lock=False run_seq=9 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=57 page=picker phase=deploy_verification phase_entered=deploy_verification phase_exited=deploy_verification route_lock=False run_seq=9 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=4 page=picker phase=suite_workspace_bootstrap phase_entered=suite_workspace_bootstrap phase_exited=deploy_verification route_lock=False run_seq=9 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=4 page=picker phase=suite_workspace_bootstrap phase_entered=suite_workspace_bootstrap phase_exited=deploy_verification route_lock=False run_seq=9 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=4 page=picker phase=suite_workspace_bootstrap phase_entered=suite_workspace_bootstrap phase_exited=suite_workspace_bootstrap route_lock=False run_seq=9 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=4 page=picker phase=suite_workspace_bootstrap phase_entered=suite_workspace_bootstrap phase_exited=suite_workspace_bootstrap route_lock=False run_seq=9 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=2 page=picker phase=pre_widget_bootstrap phase_entered=pre_widget_bootstrap phase_exited=suite_workspace_bootstrap route_lock=False run_seq=9 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=2 page=picker phase=pre_widget_bootstrap phase_entered=pre_widget_bootstrap phase_exited=suite_workspace_bootstrap route_lock=False run_seq=9 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=2 page=picker phase=pre_widget_bootstrap_consumers phase_entered=pre_widget_bootstrap_consumers phase_exited=suite_workspace_bootstrap route_lock=False run_seq=9 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=2 page=picker phase=pre_widget_bootstrap_consumers phase_entered=pre_widget_bootstrap_consumers phase_exited=suite_workspace_bootstrap route_lock=False run_seq=9 strict_save_pending=False workflow_owner=
+[mission_backing_handoff] consume_skipped {'reason': 'no_pending'}
+[music_run] event=PHASE_EXIT dt_ms=3 page=picker phase=pre_widget_bootstrap_consumers phase_entered=pre_widget_bootstrap_consumers phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=9 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=3 page=picker phase=pre_widget_bootstrap_consumers phase_entered=pre_widget_bootstrap_consumers phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=9 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=2 page=picker phase=pre_widget_bootstrap phase_entered=pre_widget_bootstrap_consumers phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=9 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=2 page=picker phase=pre_widget_bootstrap phase_entered=pre_widget_bootstrap_consumers phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=9 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=3 page=picker phase=authentication phase_entered=authentication phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=9 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=3 page=picker phase=authentication phase_entered=authentication phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=9 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=3 page=picker phase=authentication phase_entered=authentication phase_exited=authentication route_lock=False run_seq=9 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=3 page=picker phase=authentication phase_entered=authentication phase_exited=authentication route_lock=False run_seq=9 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=114 page=picker phase=workspace_hydration phase_entered=workspace_hydration phase_exited=authentication route_lock=False run_seq=9 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=114 page=picker phase=workspace_hydration phase_entered=workspace_hydration phase_exited=authentication route_lock=False run_seq=9 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=49 page=picker phase=workspace_hydration phase_entered=workspace_hydration phase_exited=workspace_hydration route_lock=False run_seq=9 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=49 page=picker phase=workspace_hydration phase_entered=workspace_hydration phase_exited=workspace_hydration route_lock=False run_seq=9 strict_save_pending=False workflow_owner=
+load_dismissed_insight_ids_from_cloud failed: Supabase is not configured
+load_latest_applied_math_insight_for_app failed: Supabase is not configured
+[music_run] event=PHASE_ENTER dt_ms=136 page=picker phase=pending_upload_route phase_entered=pending_upload_route phase_exited=workspace_hydration route_lock=False run_seq=9 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=136 page=picker phase=pending_upload_route phase_entered=pending_upload_route phase_exited=workspace_hydration route_lock=False run_seq=9 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=2 page=picker phase=pending_upload_route phase_entered=pending_upload_route phase_exited=pending_upload_route route_lock=False run_seq=9 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=2 page=picker phase=pending_upload_route phase_entered=pending_upload_route phase_exited=pending_upload_route route_lock=False run_seq=9 strict_save_pending=False workflow_owner=
+load_dismissed_insight_ids_from_cloud failed: Supabase is not configured
+load_latest_applied_math_insight_for_app failed: Supabase is not configured
+[music_run] event=PHASE_ENTER dt_ms=324 page=picker phase=chart_bundle_gate phase_entered=chart_bundle_gate phase_exited=pending_upload_route route_lock=False run_seq=9 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=324 page=picker phase=chart_bundle_gate phase_entered=chart_bundle_gate phase_exited=pending_upload_route route_lock=False run_seq=9 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=4 page=picker phase=chart_bundle_gate phase_entered=chart_bundle_gate phase_exited=chart_bundle_gate route_lock=False run_seq=9 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=4 page=picker phase=chart_bundle_gate phase_entered=chart_bundle_gate phase_exited=chart_bundle_gate route_lock=False run_seq=9 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=84 page=picker phase=page_dispatch phase_entered=page_dispatch phase_exited=chart_bundle_gate route_lock=False run_seq=9 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=84 page=picker phase=page_dispatch phase_entered=page_dispatch phase_exited=chart_bundle_gate route_lock=False run_seq=9 strict_save_pending=False workflow_owner=
+2026-11-15 20:37:24.369 Please replace `st.components.v1.html` with `st.iframe`.
+
+`st.components.v1.html` will be removed after 2026-06-01.
+[music_run] event=PHASE_ENTER dt_ms=295 page=picker phase=strict_save_flusher phase_entered=strict_save_flusher phase_exited=chart_bundle_gate route_lock=False run_seq=9 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=295 page=picker phase=strict_save_flusher phase_entered=strict_save_flusher phase_exited=chart_bundle_gate route_lock=False run_seq=9 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=258 page=picker phase=strict_save_flusher phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=9 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=258 page=picker phase=strict_save_flusher phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=9 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=2 page=picker phase=page_dispatch phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=9 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=2 page=picker phase=page_dispatch phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=9 strict_save_pending=False workflow_owner=
+[music_run] event=RUN_COMPLETED dt_ms=12 elapsed_ms=1361 page=picker phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=9 strict_save_pending=False workflow_owner=
+[music_run] event=RUN_COMPLETED dt_ms=12 elapsed_ms=1361 page=picker phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=9 strict_save_pending=False workflow_owner=
+[dependency_versions] python=3.13.7 streamlit=1.59.1 starlette=1.3.1 uvicorn=0.51.0
+[dependency_versions] python=3.13.7 streamlit=1.59.1 starlette=1.3.1 uvicorn=0.51.0
+[music_run] event=RUN_STARTED dt_ms=5143 page=picker phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=10 strict_save_pending=False workflow_owner=
+[music_run] event=RUN_STARTED dt_ms=5143 page=picker phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=10 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=2 page=picker phase=deploy_verification phase_entered=deploy_verification phase_exited=strict_save_flusher route_lock=False run_seq=10 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=2 page=picker phase=deploy_verification phase_entered=deploy_verification phase_exited=strict_save_flusher route_lock=False run_seq=10 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=60 page=picker phase=deploy_verification phase_entered=deploy_verification phase_exited=deploy_verification route_lock=False run_seq=10 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=60 page=picker phase=deploy_verification phase_entered=deploy_verification phase_exited=deploy_verification route_lock=False run_seq=10 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=4 page=picker phase=suite_workspace_bootstrap phase_entered=suite_workspace_bootstrap phase_exited=deploy_verification route_lock=False run_seq=10 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=4 page=picker phase=suite_workspace_bootstrap phase_entered=suite_workspace_bootstrap phase_exited=deploy_verification route_lock=False run_seq=10 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=4 page=picker phase=suite_workspace_bootstrap phase_entered=suite_workspace_bootstrap phase_exited=suite_workspace_bootstrap route_lock=False run_seq=10 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=4 page=picker phase=suite_workspace_bootstrap phase_entered=suite_workspace_bootstrap phase_exited=suite_workspace_bootstrap route_lock=False run_seq=10 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=3 page=picker phase=pre_widget_bootstrap phase_entered=pre_widget_bootstrap phase_exited=suite_workspace_bootstrap route_lock=False run_seq=10 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=3 page=picker phase=pre_widget_bootstrap phase_entered=pre_widget_bootstrap phase_exited=suite_workspace_bootstrap route_lock=False run_seq=10 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=3 page=picker phase=pre_widget_bootstrap_consumers phase_entered=pre_widget_bootstrap_consumers phase_exited=suite_workspace_bootstrap route_lock=False run_seq=10 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=3 page=picker phase=pre_widget_bootstrap_consumers phase_entered=pre_widget_bootstrap_consumers phase_exited=suite_workspace_bootstrap route_lock=False run_seq=10 strict_save_pending=False workflow_owner=
+[mission_backing_handoff] consume_skipped {'reason': 'no_pending'}
+[music_run] event=PHASE_EXIT dt_ms=4 page=picker phase=pre_widget_bootstrap_consumers phase_entered=pre_widget_bootstrap_consumers phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=10 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=4 page=picker phase=pre_widget_bootstrap_consumers phase_entered=pre_widget_bootstrap_consumers phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=10 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=2 page=picker phase=pre_widget_bootstrap phase_entered=pre_widget_bootstrap_consumers phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=10 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=2 page=picker phase=pre_widget_bootstrap phase_entered=pre_widget_bootstrap_consumers phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=10 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=4 page=picker phase=authentication phase_entered=authentication phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=10 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=4 page=picker phase=authentication phase_entered=authentication phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=10 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=3 page=picker phase=authentication phase_entered=authentication phase_exited=authentication route_lock=False run_seq=10 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=3 page=picker phase=authentication phase_entered=authentication phase_exited=authentication route_lock=False run_seq=10 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=123 page=picker phase=workspace_hydration phase_entered=workspace_hydration phase_exited=authentication route_lock=False run_seq=10 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=123 page=picker phase=workspace_hydration phase_entered=workspace_hydration phase_exited=authentication route_lock=False run_seq=10 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=71 page=picker phase=workspace_hydration phase_entered=workspace_hydration phase_exited=workspace_hydration route_lock=False run_seq=10 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=71 page=picker phase=workspace_hydration phase_entered=workspace_hydration phase_exited=workspace_hydration route_lock=False run_seq=10 strict_save_pending=False workflow_owner=
+load_dismissed_insight_ids_from_cloud failed: Supabase is not configured
+load_latest_applied_math_insight_for_app failed: Supabase is not configured
+[music_run] event=PHASE_ENTER dt_ms=128 page=picker phase=pending_upload_route phase_entered=pending_upload_route phase_exited=workspace_hydration route_lock=False run_seq=10 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=128 page=picker phase=pending_upload_route phase_entered=pending_upload_route phase_exited=workspace_hydration route_lock=False run_seq=10 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=4 page=picker phase=pending_upload_route phase_entered=pending_upload_route phase_exited=pending_upload_route route_lock=False run_seq=10 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=4 page=picker phase=pending_upload_route phase_entered=pending_upload_route phase_exited=pending_upload_route route_lock=False run_seq=10 strict_save_pending=False workflow_owner=
+load_dismissed_insight_ids_from_cloud failed: Supabase is not configured
+load_latest_applied_math_insight_for_app failed: Supabase is not configured
+[music_run] event=PHASE_ENTER dt_ms=357 page=picker phase=chart_bundle_gate phase_entered=chart_bundle_gate phase_exited=pending_upload_route route_lock=False run_seq=10 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=357 page=picker phase=chart_bundle_gate phase_entered=chart_bundle_gate phase_exited=pending_upload_route route_lock=False run_seq=10 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=5 page=picker phase=chart_bundle_gate phase_entered=chart_bundle_gate phase_exited=chart_bundle_gate route_lock=False run_seq=10 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=5 page=picker phase=chart_bundle_gate phase_entered=chart_bundle_gate phase_exited=chart_bundle_gate route_lock=False run_seq=10 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=73 page=picker phase=page_dispatch phase_entered=page_dispatch phase_exited=chart_bundle_gate route_lock=False run_seq=10 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=73 page=picker phase=page_dispatch phase_entered=page_dispatch phase_exited=chart_bundle_gate route_lock=False run_seq=10 strict_save_pending=False workflow_owner=
+2026-11-15 20:37:30.934 Please replace `st.components.v1.html` with `st.iframe`.
+
+`st.components.v1.html` will be removed after 2026-06-01.
+[music_run] event=BEFORE_RERUN dt_ms=95 caller_file=streamlit_music_practice_app.py caller_function=_render_songs_hub_nav_actions caller_line=11554 fingerprint= page=picker phase=page_dispatch phase_entered=page_dispatch phase_exited=chart_bundle_gate reason=direct_st_rerun route_lock=False run_seq=10 stack=threading.py:1014:_bootstrap | threading.py:1043:_bootstrap_inner | threading.py:994:run | streamlit_music_practice_app.py:21171:<module> | streamlit_music_practice_app.py:14034:_render_catalog_song_picker_block | streamlit_music_practic... strict_save_pending=False workflow_owner=
+[music_run] event=BEFORE_RERUN dt_ms=95 caller_file=streamlit_music_practice_app.py caller_function=_render_songs_hub_nav_actions caller_line=11554 fingerprint= page=picker phase=page_dispatch phase_entered=page_dispatch phase_exited=chart_bundle_gate reason=direct_st_rerun route_lock=False run_seq=10 stack=threading.py:1014:_bootstrap | threading.py:1043:_bootstrap_inner | threading.py:994:run | streamlit_music_practice_app.py:21171:<module> | streamlit_music_practice_app.py:14034:_render_catalog_song_picker_block | streamlit_music_practic... strict_save_pending=False workflow_owner=
+[music_run] event=RUN_END dt_ms=4 caller_file=streamlit_music_practice_app.py caller_function=_render_songs_hub_nav_actions caller_line=11554 elapsed_ms=944 fingerprint= outcome=rerun_requested page=picker phase_entered=page_dispatch phase_exited=chart_bundle_gate reason=direct_st_rerun route_lock=False run_seq=10 stack=threading.py:1014:_bootstrap | threading.py:1043:_bootstrap_inner | threading.py:994:run | streamlit_music_practice_app.py:21171:<module> | streamlit_music_practice_app.py:14034:_render_catalog_song_picker_block | streamlit_music_practic... strict_save_pending=False workflow_owner=
+[music_run] event=RUN_END dt_ms=4 caller_file=streamlit_music_practice_app.py caller_function=_render_songs_hub_nav_actions caller_line=11554 elapsed_ms=944 fingerprint= outcome=rerun_requested page=picker phase_entered=page_dispatch phase_exited=chart_bundle_gate reason=direct_st_rerun route_lock=False run_seq=10 stack=threading.py:1014:_bootstrap | threading.py:1043:_bootstrap_inner | threading.py:994:run | streamlit_music_practice_app.py:21171:<module> | streamlit_music_practice_app.py:14034:_render_catalog_song_picker_block | streamlit_music_practic... strict_save_pending=False workflow_owner=
+[dependency_versions] python=3.13.7 streamlit=1.59.1 starlette=1.3.1 uvicorn=0.51.0
+[dependency_versions] python=3.13.7 streamlit=1.59.1 starlette=1.3.1 uvicorn=0.51.0
+[music_run] event=RUN_STARTED dt_ms=130 page=picker phase_entered=page_dispatch phase_exited=chart_bundle_gate route_lock=False run_seq=11 strict_save_pending=False workflow_owner=
+[music_run] event=RUN_STARTED dt_ms=130 page=picker phase_entered=page_dispatch phase_exited=chart_bundle_gate route_lock=False run_seq=11 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=3 page=picker phase=deploy_verification phase_entered=deploy_verification phase_exited=chart_bundle_gate route_lock=False run_seq=11 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=3 page=picker phase=deploy_verification phase_entered=deploy_verification phase_exited=chart_bundle_gate route_lock=False run_seq=11 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=72 page=picker phase=deploy_verification phase_entered=deploy_verification phase_exited=deploy_verification route_lock=False run_seq=11 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=72 page=picker phase=deploy_verification phase_entered=deploy_verification phase_exited=deploy_verification route_lock=False run_seq=11 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=4 page=picker phase=suite_workspace_bootstrap phase_entered=suite_workspace_bootstrap phase_exited=deploy_verification route_lock=False run_seq=11 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=4 page=picker phase=suite_workspace_bootstrap phase_entered=suite_workspace_bootstrap phase_exited=deploy_verification route_lock=False run_seq=11 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=5 page=picker phase=suite_workspace_bootstrap phase_entered=suite_workspace_bootstrap phase_exited=suite_workspace_bootstrap route_lock=False run_seq=11 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=5 page=picker phase=suite_workspace_bootstrap phase_entered=suite_workspace_bootstrap phase_exited=suite_workspace_bootstrap route_lock=False run_seq=11 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=3 page=picker phase=pre_widget_bootstrap phase_entered=pre_widget_bootstrap phase_exited=suite_workspace_bootstrap route_lock=False run_seq=11 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=3 page=picker phase=pre_widget_bootstrap phase_entered=pre_widget_bootstrap phase_exited=suite_workspace_bootstrap route_lock=False run_seq=11 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=3 page=picker phase=pre_widget_bootstrap_consumers phase_entered=pre_widget_bootstrap_consumers phase_exited=suite_workspace_bootstrap route_lock=False run_seq=11 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=3 page=picker phase=pre_widget_bootstrap_consumers phase_entered=pre_widget_bootstrap_consumers phase_exited=suite_workspace_bootstrap route_lock=False run_seq=11 strict_save_pending=False workflow_owner=
+[mission_backing_handoff] consume_skipped {'reason': 'no_pending'}
+[music_run] event=PHASE_EXIT dt_ms=4 page=picker phase=pre_widget_bootstrap_consumers phase_entered=pre_widget_bootstrap_consumers phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=11 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=4 page=picker phase=pre_widget_bootstrap_consumers phase_entered=pre_widget_bootstrap_consumers phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=11 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=3 page=picker phase=pre_widget_bootstrap phase_entered=pre_widget_bootstrap_consumers phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=11 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=3 page=picker phase=pre_widget_bootstrap phase_entered=pre_widget_bootstrap_consumers phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=11 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=4 page=picker phase=authentication phase_entered=authentication phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=11 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=4 page=picker phase=authentication phase_entered=authentication phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=11 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=3 page=picker phase=authentication phase_entered=authentication phase_exited=authentication route_lock=False run_seq=11 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=3 page=picker phase=authentication phase_entered=authentication phase_exited=authentication route_lock=False run_seq=11 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=187 page=picker phase=workspace_hydration phase_entered=workspace_hydration phase_exited=authentication route_lock=False run_seq=11 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=187 page=picker phase=workspace_hydration phase_entered=workspace_hydration phase_exited=authentication route_lock=False run_seq=11 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=58 page=picker phase=workspace_hydration phase_entered=workspace_hydration phase_exited=workspace_hydration route_lock=False run_seq=11 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=58 page=picker phase=workspace_hydration phase_entered=workspace_hydration phase_exited=workspace_hydration route_lock=False run_seq=11 strict_save_pending=False workflow_owner=
+load_dismissed_insight_ids_from_cloud failed: Supabase is not configured
+load_latest_applied_math_insight_for_app failed: Supabase is not configured
+[music_run] event=PHASE_ENTER dt_ms=143 page=picker phase=pending_upload_route phase_entered=pending_upload_route phase_exited=workspace_hydration route_lock=False run_seq=11 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=143 page=picker phase=pending_upload_route phase_entered=pending_upload_route phase_exited=workspace_hydration route_lock=False run_seq=11 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=2 page=picker phase=pending_upload_route phase_entered=pending_upload_route phase_exited=pending_upload_route route_lock=False run_seq=11 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=2 page=picker phase=pending_upload_route phase_entered=pending_upload_route phase_exited=pending_upload_route route_lock=False run_seq=11 strict_save_pending=False workflow_owner=
+load_dismissed_insight_ids_from_cloud failed: Supabase is not configured
+load_latest_applied_math_insight_for_app failed: Supabase is not configured
+[music_run] event=PHASE_ENTER dt_ms=228 page=picker phase=chart_bundle_gate phase_entered=chart_bundle_gate phase_exited=pending_upload_route route_lock=False run_seq=11 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=228 page=picker phase=chart_bundle_gate phase_entered=chart_bundle_gate phase_exited=pending_upload_route route_lock=False run_seq=11 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=4 page=picker phase=chart_bundle_gate phase_entered=chart_bundle_gate phase_exited=chart_bundle_gate route_lock=False run_seq=11 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=4 page=picker phase=chart_bundle_gate phase_entered=chart_bundle_gate phase_exited=chart_bundle_gate route_lock=False run_seq=11 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=81 page=picker phase=page_dispatch phase_entered=page_dispatch phase_exited=chart_bundle_gate route_lock=False run_seq=11 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=81 page=picker phase=page_dispatch phase_entered=page_dispatch phase_exited=chart_bundle_gate route_lock=False run_seq=11 strict_save_pending=False workflow_owner=
+2026-11-15 20:37:31.966 Please replace `st.components.v1.html` with `st.iframe`.
+
+`st.components.v1.html` will be removed after 2026-06-01.
+[music_run] event=PHASE_ENTER dt_ms=209 page=picker phase=strict_save_flusher phase_entered=strict_save_flusher phase_exited=chart_bundle_gate route_lock=False run_seq=11 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=209 page=picker phase=strict_save_flusher phase_entered=strict_save_flusher phase_exited=chart_bundle_gate route_lock=False run_seq=11 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=390 page=picker phase=strict_save_flusher phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=11 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=390 page=picker phase=strict_save_flusher phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=11 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=3 page=picker phase=page_dispatch phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=11 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=3 page=picker phase=page_dispatch phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=11 strict_save_pending=False workflow_owner=
+[music_run] event=RUN_COMPLETED dt_ms=11 elapsed_ms=1421 page=picker phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=11 strict_save_pending=False workflow_owner=
+[music_run] event=RUN_COMPLETED dt_ms=11 elapsed_ms=1421 page=picker phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=11 strict_save_pending=False workflow_owner=
+[dependency_versions] python=3.13.7 streamlit=1.59.1 starlette=1.3.1 uvicorn=0.51.0
+[dependency_versions] python=3.13.7 streamlit=1.59.1 starlette=1.3.1 uvicorn=0.51.0
+[music_run] event=RUN_STARTED dt_ms=9266 page=picker phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=12 strict_save_pending=False workflow_owner=
+[music_run] event=RUN_STARTED dt_ms=9266 page=picker phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=12 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=2 page=picker phase=deploy_verification phase_entered=deploy_verification phase_exited=strict_save_flusher route_lock=False run_seq=12 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=2 page=picker phase=deploy_verification phase_entered=deploy_verification phase_exited=strict_save_flusher route_lock=False run_seq=12 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=57 page=picker phase=deploy_verification phase_entered=deploy_verification phase_exited=deploy_verification route_lock=False run_seq=12 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=57 page=picker phase=deploy_verification phase_entered=deploy_verification phase_exited=deploy_verification route_lock=False run_seq=12 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=4 page=picker phase=suite_workspace_bootstrap phase_entered=suite_workspace_bootstrap phase_exited=deploy_verification route_lock=False run_seq=12 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=4 page=picker phase=suite_workspace_bootstrap phase_entered=suite_workspace_bootstrap phase_exited=deploy_verification route_lock=False run_seq=12 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=3 page=picker phase=suite_workspace_bootstrap phase_entered=suite_workspace_bootstrap phase_exited=suite_workspace_bootstrap route_lock=False run_seq=12 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=3 page=picker phase=suite_workspace_bootstrap phase_entered=suite_workspace_bootstrap phase_exited=suite_workspace_bootstrap route_lock=False run_seq=12 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=2 page=picker phase=pre_widget_bootstrap phase_entered=pre_widget_bootstrap phase_exited=suite_workspace_bootstrap route_lock=False run_seq=12 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=2 page=picker phase=pre_widget_bootstrap phase_entered=pre_widget_bootstrap phase_exited=suite_workspace_bootstrap route_lock=False run_seq=12 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=2 page=picker phase=pre_widget_bootstrap_consumers phase_entered=pre_widget_bootstrap_consumers phase_exited=suite_workspace_bootstrap route_lock=False run_seq=12 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=2 page=picker phase=pre_widget_bootstrap_consumers phase_entered=pre_widget_bootstrap_consumers phase_exited=suite_workspace_bootstrap route_lock=False run_seq=12 strict_save_pending=False workflow_owner=
+[mission_backing_handoff] consume_skipped {'reason': 'no_pending'}
+[music_run] event=PHASE_EXIT dt_ms=3 page=picker phase=pre_widget_bootstrap_consumers phase_entered=pre_widget_bootstrap_consumers phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=12 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=3 page=picker phase=pre_widget_bootstrap_consumers phase_entered=pre_widget_bootstrap_consumers phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=12 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=2 page=picker phase=pre_widget_bootstrap phase_entered=pre_widget_bootstrap_consumers phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=12 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=2 page=picker phase=pre_widget_bootstrap phase_entered=pre_widget_bootstrap_consumers phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=12 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=3 page=picker phase=authentication phase_entered=authentication phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=12 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=3 page=picker phase=authentication phase_entered=authentication phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=12 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=3 page=picker phase=authentication phase_entered=authentication phase_exited=authentication route_lock=False run_seq=12 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=3 page=picker phase=authentication phase_entered=authentication phase_exited=authentication route_lock=False run_seq=12 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=108 page=picker phase=workspace_hydration phase_entered=workspace_hydration phase_exited=authentication route_lock=False run_seq=12 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=108 page=picker phase=workspace_hydration phase_entered=workspace_hydration phase_exited=authentication route_lock=False run_seq=12 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=53 page=picker phase=workspace_hydration phase_entered=workspace_hydration phase_exited=workspace_hydration route_lock=False run_seq=12 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=53 page=picker phase=workspace_hydration phase_entered=workspace_hydration phase_exited=workspace_hydration route_lock=False run_seq=12 strict_save_pending=False workflow_owner=
+load_dismissed_insight_ids_from_cloud failed: Supabase is not configured
+load_latest_applied_math_insight_for_app failed: Supabase is not configured
+[music_run] event=PHASE_ENTER dt_ms=93 page=picker phase=pending_upload_route phase_entered=pending_upload_route phase_exited=workspace_hydration route_lock=False run_seq=12 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=93 page=picker phase=pending_upload_route phase_entered=pending_upload_route phase_exited=workspace_hydration route_lock=False run_seq=12 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=3 page=picker phase=pending_upload_route phase_entered=pending_upload_route phase_exited=pending_upload_route route_lock=False run_seq=12 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=3 page=picker phase=pending_upload_route phase_entered=pending_upload_route phase_exited=pending_upload_route route_lock=False run_seq=12 strict_save_pending=False workflow_owner=
+load_dismissed_insight_ids_from_cloud failed: Supabase is not configured
+load_latest_applied_math_insight_for_app failed: Supabase is not configured
+[music_run] event=PHASE_ENTER dt_ms=253 page=picker phase=chart_bundle_gate phase_entered=chart_bundle_gate phase_exited=pending_upload_route route_lock=False run_seq=12 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=253 page=picker phase=chart_bundle_gate phase_entered=chart_bundle_gate phase_exited=pending_upload_route route_lock=False run_seq=12 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=3 page=picker phase=chart_bundle_gate phase_entered=chart_bundle_gate phase_exited=chart_bundle_gate route_lock=False run_seq=12 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=3 page=picker phase=chart_bundle_gate phase_entered=chart_bundle_gate phase_exited=chart_bundle_gate route_lock=False run_seq=12 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=45 page=picker phase=page_dispatch phase_entered=page_dispatch phase_exited=chart_bundle_gate route_lock=False run_seq=12 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=45 page=picker phase=page_dispatch phase_entered=page_dispatch phase_exited=chart_bundle_gate route_lock=False run_seq=12 strict_save_pending=False workflow_owner=
+2026-11-15 20:37:42.481 Please replace `st.components.v1.html` with `st.iframe`.
+
+`st.components.v1.html` will be removed after 2026-06-01.
+[music_run] event=BEFORE_RERUN dt_ms=407 caller_file=karaoke_ui.py caller_function=render_karaoke_setlist_panel caller_line=569 fingerprint= page=backing phase=page_dispatch phase_entered=page_dispatch phase_exited=chart_bundle_gate reason=direct_st_rerun route_lock=False run_seq=12 stack=threading.py:1014:_bootstrap | threading.py:1043:_bootstrap_inner | threading.py:994:run | streamlit_music_practice_app.py:21290:<module> | karaoke_ui.py:569:render_karaoke_setlist_panel strict_save_pending=False workflow_owner=
+[music_run] event=BEFORE_RERUN dt_ms=407 caller_file=karaoke_ui.py caller_function=render_karaoke_setlist_panel caller_line=569 fingerprint= page=backing phase=page_dispatch phase_entered=page_dispatch phase_exited=chart_bundle_gate reason=direct_st_rerun route_lock=False run_seq=12 stack=threading.py:1014:_bootstrap | threading.py:1043:_bootstrap_inner | threading.py:994:run | streamlit_music_practice_app.py:21290:<module> | karaoke_ui.py:569:render_karaoke_setlist_panel strict_save_pending=False workflow_owner=
+[music_run] event=RUN_END dt_ms=3 caller_file=karaoke_ui.py caller_function=render_karaoke_setlist_panel caller_line=569 elapsed_ms=1047 fingerprint= outcome=rerun_requested page=backing phase_entered=page_dispatch phase_exited=chart_bundle_gate reason=direct_st_rerun route_lock=False run_seq=12 stack=threading.py:1014:_bootstrap | threading.py:1043:_bootstrap_inner | threading.py:994:run | streamlit_music_practice_app.py:21290:<module> | karaoke_ui.py:569:render_karaoke_setlist_panel strict_save_pending=False workflow_owner=
+[music_run] event=RUN_END dt_ms=3 caller_file=karaoke_ui.py caller_function=render_karaoke_setlist_panel caller_line=569 elapsed_ms=1047 fingerprint= outcome=rerun_requested page=backing phase_entered=page_dispatch phase_exited=chart_bundle_gate reason=direct_st_rerun route_lock=False run_seq=12 stack=threading.py:1014:_bootstrap | threading.py:1043:_bootstrap_inner | threading.py:994:run | streamlit_music_practice_app.py:21290:<module> | karaoke_ui.py:569:render_karaoke_setlist_panel strict_save_pending=False workflow_owner=
+[dependency_versions] python=3.13.7 streamlit=1.59.1 starlette=1.3.1 uvicorn=0.51.0
+[dependency_versions] python=3.13.7 streamlit=1.59.1 starlette=1.3.1 uvicorn=0.51.0
+[music_run] event=RUN_STARTED dt_ms=113 page=backing phase_entered=page_dispatch phase_exited=chart_bundle_gate route_lock=False run_seq=13 strict_save_pending=False workflow_owner=
+[music_run] event=RUN_STARTED dt_ms=113 page=backing phase_entered=page_dispatch phase_exited=chart_bundle_gate route_lock=False run_seq=13 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=2 page=backing phase=deploy_verification phase_entered=deploy_verification phase_exited=chart_bundle_gate route_lock=False run_seq=13 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=2 page=backing phase=deploy_verification phase_entered=deploy_verification phase_exited=chart_bundle_gate route_lock=False run_seq=13 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=55 page=backing phase=deploy_verification phase_entered=deploy_verification phase_exited=deploy_verification route_lock=False run_seq=13 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=55 page=backing phase=deploy_verification phase_entered=deploy_verification phase_exited=deploy_verification route_lock=False run_seq=13 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=3 page=backing phase=suite_workspace_bootstrap phase_entered=suite_workspace_bootstrap phase_exited=deploy_verification route_lock=False run_seq=13 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=3 page=backing phase=suite_workspace_bootstrap phase_entered=suite_workspace_bootstrap phase_exited=deploy_verification route_lock=False run_seq=13 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=2 page=backing phase=suite_workspace_bootstrap phase_entered=suite_workspace_bootstrap phase_exited=suite_workspace_bootstrap route_lock=False run_seq=13 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=2 page=backing phase=suite_workspace_bootstrap phase_entered=suite_workspace_bootstrap phase_exited=suite_workspace_bootstrap route_lock=False run_seq=13 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=2 page=backing phase=pre_widget_bootstrap phase_entered=pre_widget_bootstrap phase_exited=suite_workspace_bootstrap route_lock=False run_seq=13 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=2 page=backing phase=pre_widget_bootstrap phase_entered=pre_widget_bootstrap phase_exited=suite_workspace_bootstrap route_lock=False run_seq=13 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=1 page=backing phase=pre_widget_bootstrap_consumers phase_entered=pre_widget_bootstrap_consumers phase_exited=suite_workspace_bootstrap route_lock=False run_seq=13 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=1 page=backing phase=pre_widget_bootstrap_consumers phase_entered=pre_widget_bootstrap_consumers phase_exited=suite_workspace_bootstrap route_lock=False run_seq=13 strict_save_pending=False workflow_owner=
+[mission_backing_handoff] consume_skipped {'reason': 'no_pending'}
+[music_run] event=PHASE_EXIT dt_ms=4 page=backing phase=pre_widget_bootstrap_consumers phase_entered=pre_widget_bootstrap_consumers phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=13 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=4 page=backing phase=pre_widget_bootstrap_consumers phase_entered=pre_widget_bootstrap_consumers phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=13 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=2 page=backing phase=pre_widget_bootstrap phase_entered=pre_widget_bootstrap_consumers phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=13 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=2 page=backing phase=pre_widget_bootstrap phase_entered=pre_widget_bootstrap_consumers phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=13 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=3 page=backing phase=authentication phase_entered=authentication phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=13 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=3 page=backing phase=authentication phase_entered=authentication phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=13 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=2 page=backing phase=authentication phase_entered=authentication phase_exited=authentication route_lock=False run_seq=13 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=2 page=backing phase=authentication phase_entered=authentication phase_exited=authentication route_lock=False run_seq=13 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=85 page=backing phase=workspace_hydration phase_entered=workspace_hydration phase_exited=authentication route_lock=False run_seq=13 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=85 page=backing phase=workspace_hydration phase_entered=workspace_hydration phase_exited=authentication route_lock=False run_seq=13 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=42 page=backing phase=workspace_hydration phase_entered=workspace_hydration phase_exited=workspace_hydration route_lock=False run_seq=13 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=42 page=backing phase=workspace_hydration phase_entered=workspace_hydration phase_exited=workspace_hydration route_lock=False run_seq=13 strict_save_pending=False workflow_owner=
+load_dismissed_insight_ids_from_cloud failed: Supabase is not configured
+load_latest_applied_math_insight_for_app failed: Supabase is not configured
+[music_run] event=PHASE_ENTER dt_ms=190 page=backing phase=pending_upload_route phase_entered=pending_upload_route phase_exited=workspace_hydration route_lock=False run_seq=13 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=190 page=backing phase=pending_upload_route phase_entered=pending_upload_route phase_exited=workspace_hydration route_lock=False run_seq=13 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=2 page=backing phase=pending_upload_route phase_entered=pending_upload_route phase_exited=pending_upload_route route_lock=False run_seq=13 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=2 page=backing phase=pending_upload_route phase_entered=pending_upload_route phase_exited=pending_upload_route route_lock=False run_seq=13 strict_save_pending=False workflow_owner=
+load_dismissed_insight_ids_from_cloud failed: Supabase is not configured
+load_latest_applied_math_insight_for_app failed: Supabase is not configured
+[music_run] event=PHASE_ENTER dt_ms=872 page=backing phase=chart_bundle_gate phase_entered=chart_bundle_gate phase_exited=pending_upload_route route_lock=False run_seq=13 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=872 page=backing phase=chart_bundle_gate phase_entered=chart_bundle_gate phase_exited=pending_upload_route route_lock=False run_seq=13 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=7 page=backing phase=chart_bundle_gate phase_entered=chart_bundle_gate phase_exited=chart_bundle_gate route_lock=False run_seq=13 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=7 page=backing phase=chart_bundle_gate phase_entered=chart_bundle_gate phase_exited=chart_bundle_gate route_lock=False run_seq=13 strict_save_pending=False workflow_owner=
+2026-11-15 20:37:44.263 Please replace `st.components.v1.html` with `st.iframe`.
+
+`st.components.v1.html` will be removed after 2026-06-01.
+[music_run] event=PHASE_ENTER dt_ms=52 page=backing phase=page_dispatch phase_entered=page_dispatch phase_exited=chart_bundle_gate route_lock=False run_seq=13 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=52 page=backing phase=page_dispatch phase_entered=page_dispatch phase_exited=chart_bundle_gate route_lock=False run_seq=13 strict_save_pending=False workflow_owner=
+2026-11-15 20:37:45.011 The widget with key "backing_track_loops" was created with a default value but also had its value set via the Session State API.
+Stack (most recent call last):
+  File "C:\Users\danie\AppData\Local\Programs\Python\Python313\Lib\threading.py", line 1014, in _bootstrap
+    self._bootstrap_inner()
+  File "C:\Users\danie\AppData\Local\Programs\Python\Python313\Lib\threading.py", line 1043, in _bootstrap_inner
+    self.run()
+  File "C:\Users\danie\AppData\Local\Programs\Python\Python313\Lib\threading.py", line 994, in run
+    self._target(*self._args, **self._kwargs)
+  File "C:\Users\danie\AppData\Local\Programs\Python\Python313\Lib\site-packages\streamlit\runtime\scriptrunner\script_runner.py", line 418, in _run_script_thread
+    self._run_script(request.rerun_data)
+  File "C:\Users\danie\AppData\Local\Programs\Python\Python313\Lib\site-packages\streamlit\runtime\scriptrunner\script_runner.py", line 820, in _run_script
+    ) = exec_func_with_error_handling(code_to_exec, ctx)
+  File "C:\Users\danie\AppData\Local\Programs\Python\Python313\Lib\site-packages\streamlit\runtime\scriptrunner\exec_code.py", line 129, in exec_func_with_error_handling
+    result = func()
+  File "C:\Users\danie\AppData\Local\Programs\Python\Python313\Lib\site-packages\streamlit\runtime\scriptrunner\script_runner.py", line 795, in code_to_exec
+    exec(code, module.__dict__)  # noqa: S102
+  File "C:\tmp\ai-music-slice2\streamlit_music_practice_app.py", line 22980, in <module>
+    bpm, _play_clicked = _render_backing_step2_playback_action(
+  File "C:\tmp\ai-music-slice2\streamlit_music_practice_app.py", line 15306, in _render_backing_step2_playback_action
+    _render_backing_scope_controls(
+  File "C:\tmp\ai-music-slice2\streamlit_music_practice_app.py", line 15028, in _render_backing_scope_controls
+    st.slider(
+  File "C:\Users\danie\AppData\Local\Programs\Python\Python313\Lib\site-packages\streamlit\runtime\metrics_util.py", line 568, in wrapped_func
+    result = non_optional_func(*args, **kwargs)
+  File "C:\Users\danie\AppData\Local\Programs\Python\Python313\Lib\site-packages\streamlit\elements\widgets\slider.py", line 747, in slider
+    return self._slider(
+  File "C:\Users\danie\AppData\Local\Programs\Python\Python313\Lib\site-packages\streamlit\elements\widgets\slider.py", line 790, in _slider
+    check_widget_policies(
+  File "C:\Users\danie\AppData\Local\Programs\Python\Python313\Lib\site-packages\streamlit\elements\lib\policies.py", line 143, in check_widget_policies
+    check_session_state_rules(
+  File "C:\Users\danie\AppData\Local\Programs\Python\Python313\Lib\site-packages\streamlit\elements\lib\policies.py", line 89, in check_session_state_rules
+    _LOGGER.warning(
+2026-11-15 20:37:45.058 Please replace `st.components.v1.html` with `st.iframe`.
+
+`st.components.v1.html` will be removed after 2026-06-01.
+[music_run] event=BACKING_GENERATED dt_ms=4448 b64_ms=0.0 hit_b64=False hit_timeline=False hit_wav=False run_seq=13 synthesis_ms=3610.8 timeline_ms=7.3 total_ms=3628.7 wav_kb=36388
+[music_run] event=BACKING_GENERATED dt_ms=4448 b64_ms=0.0 hit_b64=False hit_timeline=False hit_wav=False run_seq=13 synthesis_ms=3610.8 timeline_ms=7.3 total_ms=3628.7 wav_kb=36388
+2026-11-15 20:37:48.978 Please replace `st.components.v1.html` with `st.iframe`.
+
+`st.components.v1.html` will be removed after 2026-06-01.
+2026-11-15 20:37:48.997 Thread 'music-activity_0': missing ScriptRunContext! This warning can be ignored when running in bare mode.
+2026-11-15 20:37:49.001 Thread 'music-activity_0': missing ScriptRunContext! This warning can be ignored when running in bare mode.
+2026-11-15 20:37:49.001 Thread 'music-activity_0': missing ScriptRunContext! This warning can be ignored when running in bare mode.
+2026-11-15 20:37:49.001 Thread 'music-activity_0': missing ScriptRunContext! This warning can be ignored when running in bare mode.
+2026-11-15 20:37:49.004 Thread 'music-activity_0': missing ScriptRunContext! This warning can be ignored when running in bare mode.
+2026-11-15 20:37:49.006 Thread 'music-activity_0': missing ScriptRunContext! This warning can be ignored when running in bare mode.
+[music_run] event=PHASE_ENTER dt_ms=295 page=backing phase=strict_save_flusher phase_entered=strict_save_flusher phase_exited=chart_bundle_gate route_lock=False run_seq=13 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=295 page=backing phase=strict_save_flusher phase_entered=strict_save_flusher phase_exited=chart_bundle_gate route_lock=False run_seq=13 strict_save_pending=False workflow_owner=
+2026-11-15 20:37:49.039 Thread 'music-activity_0': missing ScriptRunContext! This warning can be ignored when running in bare mode.
+2026-11-15 20:37:49.079 Thread 'music-activity_0': missing ScriptRunContext! This warning can be ignored when running in bare mode.
+2026-11-15 20:37:49.110 Thread 'music-activity_0': missing ScriptRunContext! This warning can be ignored when running in bare mode.
+2026-11-15 20:37:49.183 Thread 'music-activity_0': missing ScriptRunContext! This warning can be ignored when running in bare mode.
+[music_run] event=PHASE_EXIT dt_ms=870 page=backing phase=strict_save_flusher phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=13 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=870 page=backing phase=strict_save_flusher phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=13 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=1 page=backing phase=page_dispatch phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=13 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=1 page=backing phase=page_dispatch phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=13 strict_save_pending=False workflow_owner=
+[music_run] event=RUN_COMPLETED dt_ms=10 elapsed_ms=6951 page=backing phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=13 strict_save_pending=False workflow_owner=
+[music_run] event=RUN_COMPLETED dt_ms=10 elapsed_ms=6951 page=backing phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=13 strict_save_pending=False workflow_owner=
+[dependency_versions] python=3.13.7 streamlit=1.59.1 starlette=1.3.1 uvicorn=0.51.0
+[dependency_versions] python=3.13.7 streamlit=1.59.1 starlette=1.3.1 uvicorn=0.51.0
+[music_run] event=RUN_STARTED dt_ms=9271 page=backing phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=14 strict_save_pending=False workflow_owner=
+[music_run] event=RUN_STARTED dt_ms=9271 page=backing phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=14 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=2 page=backing phase=deploy_verification phase_entered=deploy_verification phase_exited=strict_save_flusher route_lock=False run_seq=14 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=2 page=backing phase=deploy_verification phase_entered=deploy_verification phase_exited=strict_save_flusher route_lock=False run_seq=14 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=53 page=backing phase=deploy_verification phase_entered=deploy_verification phase_exited=deploy_verification route_lock=False run_seq=14 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=53 page=backing phase=deploy_verification phase_entered=deploy_verification phase_exited=deploy_verification route_lock=False run_seq=14 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=4 page=backing phase=suite_workspace_bootstrap phase_entered=suite_workspace_bootstrap phase_exited=deploy_verification route_lock=False run_seq=14 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=4 page=backing phase=suite_workspace_bootstrap phase_entered=suite_workspace_bootstrap phase_exited=deploy_verification route_lock=False run_seq=14 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=3 page=backing phase=suite_workspace_bootstrap phase_entered=suite_workspace_bootstrap phase_exited=suite_workspace_bootstrap route_lock=False run_seq=14 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=3 page=backing phase=suite_workspace_bootstrap phase_entered=suite_workspace_bootstrap phase_exited=suite_workspace_bootstrap route_lock=False run_seq=14 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=3 page=backing phase=pre_widget_bootstrap phase_entered=pre_widget_bootstrap phase_exited=suite_workspace_bootstrap route_lock=False run_seq=14 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=3 page=backing phase=pre_widget_bootstrap phase_entered=pre_widget_bootstrap phase_exited=suite_workspace_bootstrap route_lock=False run_seq=14 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=2 page=backing phase=pre_widget_bootstrap_consumers phase_entered=pre_widget_bootstrap_consumers phase_exited=suite_workspace_bootstrap route_lock=False run_seq=14 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=2 page=backing phase=pre_widget_bootstrap_consumers phase_entered=pre_widget_bootstrap_consumers phase_exited=suite_workspace_bootstrap route_lock=False run_seq=14 strict_save_pending=False workflow_owner=
+[mission_backing_handoff] consume_skipped {'reason': 'no_pending'}
+[music_run] event=PHASE_EXIT dt_ms=3 page=backing phase=pre_widget_bootstrap_consumers phase_entered=pre_widget_bootstrap_consumers phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=14 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=3 page=backing phase=pre_widget_bootstrap_consumers phase_entered=pre_widget_bootstrap_consumers phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=14 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=3 page=backing phase=pre_widget_bootstrap phase_entered=pre_widget_bootstrap_consumers phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=14 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=3 page=backing phase=pre_widget_bootstrap phase_entered=pre_widget_bootstrap_consumers phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=14 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=4 page=backing phase=authentication phase_entered=authentication phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=14 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=4 page=backing phase=authentication phase_entered=authentication phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=14 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=4 page=backing phase=authentication phase_entered=authentication phase_exited=authentication route_lock=False run_seq=14 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=4 page=backing phase=authentication phase_entered=authentication phase_exited=authentication route_lock=False run_seq=14 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=100 page=backing phase=workspace_hydration phase_entered=workspace_hydration phase_exited=authentication route_lock=False run_seq=14 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=100 page=backing phase=workspace_hydration phase_entered=workspace_hydration phase_exited=authentication route_lock=False run_seq=14 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=80 page=backing phase=workspace_hydration phase_entered=workspace_hydration phase_exited=workspace_hydration route_lock=False run_seq=14 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=80 page=backing phase=workspace_hydration phase_entered=workspace_hydration phase_exited=workspace_hydration route_lock=False run_seq=14 strict_save_pending=False workflow_owner=
+load_dismissed_insight_ids_from_cloud failed: Supabase is not configured
+load_latest_applied_math_insight_for_app failed: Supabase is not configured
+[music_run] event=PHASE_ENTER dt_ms=165 page=backing phase=pending_upload_route phase_entered=pending_upload_route phase_exited=workspace_hydration route_lock=False run_seq=14 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=165 page=backing phase=pending_upload_route phase_entered=pending_upload_route phase_exited=workspace_hydration route_lock=False run_seq=14 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=3 page=backing phase=pending_upload_route phase_entered=pending_upload_route phase_exited=pending_upload_route route_lock=False run_seq=14 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=3 page=backing phase=pending_upload_route phase_entered=pending_upload_route phase_exited=pending_upload_route route_lock=False run_seq=14 strict_save_pending=False workflow_owner=
+load_dismissed_insight_ids_from_cloud failed: Supabase is not configured
+load_latest_applied_math_insight_for_app failed: Supabase is not configured
+[music_run] event=PHASE_ENTER dt_ms=1539 page=backing phase=chart_bundle_gate phase_entered=chart_bundle_gate phase_exited=pending_upload_route route_lock=False run_seq=14 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=1539 page=backing phase=chart_bundle_gate phase_entered=chart_bundle_gate phase_exited=pending_upload_route route_lock=False run_seq=14 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=13 page=backing phase=chart_bundle_gate phase_entered=chart_bundle_gate phase_exited=chart_bundle_gate route_lock=False run_seq=14 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=13 page=backing phase=chart_bundle_gate phase_entered=chart_bundle_gate phase_exited=chart_bundle_gate route_lock=False run_seq=14 strict_save_pending=False workflow_owner=
+2026-11-15 20:38:01.178 Please replace `st.components.v1.html` with `st.iframe`.
+
+`st.components.v1.html` will be removed after 2026-06-01.
+[music_run] event=PHASE_ENTER dt_ms=58 page=backing phase=page_dispatch phase_entered=page_dispatch phase_exited=chart_bundle_gate route_lock=False run_seq=14 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=58 page=backing phase=page_dispatch phase_entered=page_dispatch phase_exited=chart_bundle_gate route_lock=False run_seq=14 strict_save_pending=False workflow_owner=
+2026-11-15 20:38:02.412 Please replace `st.components.v1.html` with `st.iframe`.
+
+`st.components.v1.html` will be removed after 2026-06-01.
+2026-11-15 20:38:02.491 Please replace `st.components.v1.html` with `st.iframe`.
+
+`st.components.v1.html` will be removed after 2026-06-01.
+[music_run] event=PHASE_ENTER dt_ms=1278 page=backing phase=strict_save_flusher phase_entered=strict_save_flusher phase_exited=chart_bundle_gate route_lock=False run_seq=14 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=1278 page=backing phase=strict_save_flusher phase_entered=strict_save_flusher phase_exited=chart_bundle_gate route_lock=False run_seq=14 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=502 page=backing phase=strict_save_flusher phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=14 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=502 page=backing phase=strict_save_flusher phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=14 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=1 page=backing phase=page_dispatch phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=14 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=1 page=backing phase=page_dispatch phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=14 strict_save_pending=False workflow_owner=
+[music_run] event=RUN_COMPLETED dt_ms=10 elapsed_ms=3830 page=backing phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=14 strict_save_pending=False workflow_owner=
+[music_run] event=RUN_COMPLETED dt_ms=10 elapsed_ms=3830 page=backing phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=14 strict_save_pending=False workflow_owner=
+[dependency_versions] python=3.13.7 streamlit=1.59.1 starlette=1.3.1 uvicorn=0.51.0
+[dependency_versions] python=3.13.7 streamlit=1.59.1 starlette=1.3.1 uvicorn=0.51.0
+[music_run] event=RUN_STARTED dt_ms=965 page=backing phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=15 strict_save_pending=False workflow_owner=
+[music_run] event=RUN_STARTED dt_ms=965 page=backing phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=15 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=3 page=backing phase=deploy_verification phase_entered=deploy_verification phase_exited=strict_save_flusher route_lock=False run_seq=15 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=3 page=backing phase=deploy_verification phase_entered=deploy_verification phase_exited=strict_save_flusher route_lock=False run_seq=15 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=55 page=backing phase=deploy_verification phase_entered=deploy_verification phase_exited=deploy_verification route_lock=False run_seq=15 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=55 page=backing phase=deploy_verification phase_entered=deploy_verification phase_exited=deploy_verification route_lock=False run_seq=15 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=3 page=backing phase=suite_workspace_bootstrap phase_entered=suite_workspace_bootstrap phase_exited=deploy_verification route_lock=False run_seq=15 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=3 page=backing phase=suite_workspace_bootstrap phase_entered=suite_workspace_bootstrap phase_exited=deploy_verification route_lock=False run_seq=15 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=3 page=backing phase=suite_workspace_bootstrap phase_entered=suite_workspace_bootstrap phase_exited=suite_workspace_bootstrap route_lock=False run_seq=15 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=3 page=backing phase=suite_workspace_bootstrap phase_entered=suite_workspace_bootstrap phase_exited=suite_workspace_bootstrap route_lock=False run_seq=15 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=2 page=backing phase=pre_widget_bootstrap phase_entered=pre_widget_bootstrap phase_exited=suite_workspace_bootstrap route_lock=False run_seq=15 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=2 page=backing phase=pre_widget_bootstrap phase_entered=pre_widget_bootstrap phase_exited=suite_workspace_bootstrap route_lock=False run_seq=15 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=2 page=backing phase=pre_widget_bootstrap_consumers phase_entered=pre_widget_bootstrap_consumers phase_exited=suite_workspace_bootstrap route_lock=False run_seq=15 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=2 page=backing phase=pre_widget_bootstrap_consumers phase_entered=pre_widget_bootstrap_consumers phase_exited=suite_workspace_bootstrap route_lock=False run_seq=15 strict_save_pending=False workflow_owner=
+[mission_backing_handoff] consume_skipped {'reason': 'no_pending'}
+[music_run] event=PHASE_EXIT dt_ms=2 page=backing phase=pre_widget_bootstrap_consumers phase_entered=pre_widget_bootstrap_consumers phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=15 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=2 page=backing phase=pre_widget_bootstrap_consumers phase_entered=pre_widget_bootstrap_consumers phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=15 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=2 page=backing phase=pre_widget_bootstrap phase_entered=pre_widget_bootstrap_consumers phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=15 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=2 page=backing phase=pre_widget_bootstrap phase_entered=pre_widget_bootstrap_consumers phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=15 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=2 page=backing phase=authentication phase_entered=authentication phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=15 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=2 page=backing phase=authentication phase_entered=authentication phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=15 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=2 page=backing phase=authentication phase_entered=authentication phase_exited=authentication route_lock=False run_seq=15 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=2 page=backing phase=authentication phase_entered=authentication phase_exited=authentication route_lock=False run_seq=15 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=76 page=backing phase=workspace_hydration phase_entered=workspace_hydration phase_exited=authentication route_lock=False run_seq=15 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=76 page=backing phase=workspace_hydration phase_entered=workspace_hydration phase_exited=authentication route_lock=False run_seq=15 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=75 page=backing phase=workspace_hydration phase_entered=workspace_hydration phase_exited=workspace_hydration route_lock=False run_seq=15 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=75 page=backing phase=workspace_hydration phase_entered=workspace_hydration phase_exited=workspace_hydration route_lock=False run_seq=15 strict_save_pending=False workflow_owner=
+load_dismissed_insight_ids_from_cloud failed: Supabase is not configured
+load_latest_applied_math_insight_for_app failed: Supabase is not configured
+[music_run] event=PHASE_ENTER dt_ms=99 page=backing phase=pending_upload_route phase_entered=pending_upload_route phase_exited=workspace_hydration route_lock=False run_seq=15 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=99 page=backing phase=pending_upload_route phase_entered=pending_upload_route phase_exited=workspace_hydration route_lock=False run_seq=15 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=2 page=backing phase=pending_upload_route phase_entered=pending_upload_route phase_exited=pending_upload_route route_lock=False run_seq=15 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=2 page=backing phase=pending_upload_route phase_entered=pending_upload_route phase_exited=pending_upload_route route_lock=False run_seq=15 strict_save_pending=False workflow_owner=
+[music_run] event=BEFORE_RERUN dt_ms=1149 caller_file=app_ui.py caller_function=render_sidebar_studio_nav caller_line=11726 fingerprint= page=backing phase=pending_upload_route phase_entered=pending_upload_route phase_exited=pending_upload_route reason=direct_st_rerun route_lock=False run_seq=15 stack=threading.py:1014:_bootstrap | threading.py:1043:_bootstrap_inner | threading.py:994:run | streamlit_music_practice_app.py:18445:<module> | app_ui.py:11726:render_sidebar_studio_nav strict_save_pending=False workflow_owner=
+[music_run] event=BEFORE_RERUN dt_ms=1149 caller_file=app_ui.py caller_function=render_sidebar_studio_nav caller_line=11726 fingerprint= page=backing phase=pending_upload_route phase_entered=pending_upload_route phase_exited=pending_upload_route reason=direct_st_rerun route_lock=False run_seq=15 stack=threading.py:1014:_bootstrap | threading.py:1043:_bootstrap_inner | threading.py:994:run | streamlit_music_practice_app.py:18445:<module> | app_ui.py:11726:render_sidebar_studio_nav strict_save_pending=False workflow_owner=
+[music_run] event=RUN_END dt_ms=3 caller_file=app_ui.py caller_function=render_sidebar_studio_nav caller_line=11726 elapsed_ms=1479 fingerprint= outcome=rerun_requested page=backing phase_entered=pending_upload_route phase_exited=pending_upload_route reason=direct_st_rerun route_lock=False run_seq=15 stack=threading.py:1014:_bootstrap | threading.py:1043:_bootstrap_inner | threading.py:994:run | streamlit_music_practice_app.py:18445:<module> | app_ui.py:11726:render_sidebar_studio_nav strict_save_pending=False workflow_owner=
+[music_run] event=RUN_END dt_ms=3 caller_file=app_ui.py caller_function=render_sidebar_studio_nav caller_line=11726 elapsed_ms=1479 fingerprint= outcome=rerun_requested page=backing phase_entered=pending_upload_route phase_exited=pending_upload_route reason=direct_st_rerun route_lock=False run_seq=15 stack=threading.py:1014:_bootstrap | threading.py:1043:_bootstrap_inner | threading.py:994:run | streamlit_music_practice_app.py:18445:<module> | app_ui.py:11726:render_sidebar_studio_nav strict_save_pending=False workflow_owner=
+[dependency_versions] python=3.13.7 streamlit=1.59.1 starlette=1.3.1 uvicorn=0.51.0
+[dependency_versions] python=3.13.7 streamlit=1.59.1 starlette=1.3.1 uvicorn=0.51.0
+[music_run] event=RUN_STARTED dt_ms=137 page=backing phase_entered=pending_upload_route phase_exited=pending_upload_route route_lock=False run_seq=16 strict_save_pending=False workflow_owner=
+[music_run] event=RUN_STARTED dt_ms=137 page=backing phase_entered=pending_upload_route phase_exited=pending_upload_route route_lock=False run_seq=16 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=2 page=backing phase=deploy_verification phase_entered=deploy_verification phase_exited=pending_upload_route route_lock=False run_seq=16 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=2 page=backing phase=deploy_verification phase_entered=deploy_verification phase_exited=pending_upload_route route_lock=False run_seq=16 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=66 page=backing phase=deploy_verification phase_entered=deploy_verification phase_exited=deploy_verification route_lock=False run_seq=16 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=66 page=backing phase=deploy_verification phase_entered=deploy_verification phase_exited=deploy_verification route_lock=False run_seq=16 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=4 page=backing phase=suite_workspace_bootstrap phase_entered=suite_workspace_bootstrap phase_exited=deploy_verification route_lock=False run_seq=16 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=4 page=backing phase=suite_workspace_bootstrap phase_entered=suite_workspace_bootstrap phase_exited=deploy_verification route_lock=False run_seq=16 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=6 page=backing phase=suite_workspace_bootstrap phase_entered=suite_workspace_bootstrap phase_exited=suite_workspace_bootstrap route_lock=False run_seq=16 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=6 page=backing phase=suite_workspace_bootstrap phase_entered=suite_workspace_bootstrap phase_exited=suite_workspace_bootstrap route_lock=False run_seq=16 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=3 page=backing phase=pre_widget_bootstrap phase_entered=pre_widget_bootstrap phase_exited=suite_workspace_bootstrap route_lock=False run_seq=16 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=3 page=backing phase=pre_widget_bootstrap phase_entered=pre_widget_bootstrap phase_exited=suite_workspace_bootstrap route_lock=False run_seq=16 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=3 page=backing phase=pre_widget_bootstrap_consumers phase_entered=pre_widget_bootstrap_consumers phase_exited=suite_workspace_bootstrap route_lock=False run_seq=16 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=3 page=backing phase=pre_widget_bootstrap_consumers phase_entered=pre_widget_bootstrap_consumers phase_exited=suite_workspace_bootstrap route_lock=False run_seq=16 strict_save_pending=False workflow_owner=
+[mission_backing_handoff] consume_skipped {'reason': 'no_pending'}
+[music_run] event=PHASE_EXIT dt_ms=4 page=backing phase=pre_widget_bootstrap_consumers phase_entered=pre_widget_bootstrap_consumers phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=16 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=4 page=backing phase=pre_widget_bootstrap_consumers phase_entered=pre_widget_bootstrap_consumers phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=16 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=2 page=backing phase=pre_widget_bootstrap phase_entered=pre_widget_bootstrap_consumers phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=16 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=2 page=backing phase=pre_widget_bootstrap phase_entered=pre_widget_bootstrap_consumers phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=16 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=3 page=backing phase=authentication phase_entered=authentication phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=16 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=3 page=backing phase=authentication phase_entered=authentication phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=16 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=3 page=backing phase=authentication phase_entered=authentication phase_exited=authentication route_lock=False run_seq=16 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=3 page=backing phase=authentication phase_entered=authentication phase_exited=authentication route_lock=False run_seq=16 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=109 page=backing phase=workspace_hydration phase_entered=workspace_hydration phase_exited=authentication route_lock=False run_seq=16 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=109 page=backing phase=workspace_hydration phase_entered=workspace_hydration phase_exited=authentication route_lock=False run_seq=16 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=83 page=backing phase=workspace_hydration phase_entered=workspace_hydration phase_exited=workspace_hydration route_lock=False run_seq=16 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=83 page=backing phase=workspace_hydration phase_entered=workspace_hydration phase_exited=workspace_hydration route_lock=False run_seq=16 strict_save_pending=False workflow_owner=
+load_dismissed_insight_ids_from_cloud failed: Supabase is not configured
+load_latest_applied_math_insight_for_app failed: Supabase is not configured
+[music_run] event=PHASE_ENTER dt_ms=128 page=backing phase=pending_upload_route phase_entered=pending_upload_route phase_exited=workspace_hydration route_lock=False run_seq=16 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=128 page=backing phase=pending_upload_route phase_entered=pending_upload_route phase_exited=workspace_hydration route_lock=False run_seq=16 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=3 page=backing phase=pending_upload_route phase_entered=pending_upload_route phase_exited=pending_upload_route route_lock=False run_seq=16 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=3 page=backing phase=pending_upload_route phase_entered=pending_upload_route phase_exited=pending_upload_route route_lock=False run_seq=16 strict_save_pending=False workflow_owner=
+load_dismissed_insight_ids_from_cloud failed: Supabase is not configured
+load_latest_applied_math_insight_for_app failed: Supabase is not configured
+[music_run] event=PHASE_ENTER dt_ms=1429 page=backing phase=chart_bundle_gate phase_entered=chart_bundle_gate phase_exited=pending_upload_route route_lock=False run_seq=16 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=1429 page=backing phase=chart_bundle_gate phase_entered=chart_bundle_gate phase_exited=pending_upload_route route_lock=False run_seq=16 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=3 page=backing phase=chart_bundle_gate phase_entered=chart_bundle_gate phase_exited=chart_bundle_gate route_lock=False run_seq=16 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=3 page=backing phase=chart_bundle_gate phase_entered=chart_bundle_gate phase_exited=chart_bundle_gate route_lock=False run_seq=16 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=37 page=backing phase=page_dispatch phase_entered=page_dispatch phase_exited=chart_bundle_gate route_lock=False run_seq=16 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=37 page=backing phase=page_dispatch phase_entered=page_dispatch phase_exited=chart_bundle_gate route_lock=False run_seq=16 strict_save_pending=False workflow_owner=
+2026-11-15 20:38:08.439 Please replace `st.components.v1.html` with `st.iframe`.
+
+`st.components.v1.html` will be removed after 2026-06-01.
+2026-11-15 20:38:08.509 Please replace `st.components.v1.html` with `st.iframe`.
+
+`st.components.v1.html` will be removed after 2026-06-01.
+[music_run] event=PHASE_ENTER dt_ms=1036 page=backing phase=strict_save_flusher phase_entered=strict_save_flusher phase_exited=chart_bundle_gate route_lock=False run_seq=16 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=1036 page=backing phase=strict_save_flusher phase_entered=strict_save_flusher phase_exited=chart_bundle_gate route_lock=False run_seq=16 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=460 page=backing phase=strict_save_flusher phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=16 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=460 page=backing phase=strict_save_flusher phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=16 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=2 page=backing phase=page_dispatch phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=16 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=2 page=backing phase=page_dispatch phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=16 strict_save_pending=False workflow_owner=
+[music_run] event=RUN_COMPLETED dt_ms=11 elapsed_ms=3396 page=backing phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=16 strict_save_pending=False workflow_owner=
+[music_run] event=RUN_COMPLETED dt_ms=11 elapsed_ms=3396 page=backing phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=16 strict_save_pending=False workflow_owner=
+[dependency_versions] python=3.13.7 streamlit=1.59.1 starlette=1.3.1 uvicorn=0.51.0
+[dependency_versions] python=3.13.7 streamlit=1.59.1 starlette=1.3.1 uvicorn=0.51.0
+[music_run] event=RUN_STARTED dt_ms=1055 page=backing phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=17 strict_save_pending=False workflow_owner=
+[music_run] event=RUN_STARTED dt_ms=1055 page=backing phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=17 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=1 page=backing phase=deploy_verification phase_entered=deploy_verification phase_exited=strict_save_flusher route_lock=False run_seq=17 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=1 page=backing phase=deploy_verification phase_entered=deploy_verification phase_exited=strict_save_flusher route_lock=False run_seq=17 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=40 page=backing phase=deploy_verification phase_entered=deploy_verification phase_exited=deploy_verification route_lock=False run_seq=17 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=40 page=backing phase=deploy_verification phase_entered=deploy_verification phase_exited=deploy_verification route_lock=False run_seq=17 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=3 page=backing phase=suite_workspace_bootstrap phase_entered=suite_workspace_bootstrap phase_exited=deploy_verification route_lock=False run_seq=17 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=3 page=backing phase=suite_workspace_bootstrap phase_entered=suite_workspace_bootstrap phase_exited=deploy_verification route_lock=False run_seq=17 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=3 page=backing phase=suite_workspace_bootstrap phase_entered=suite_workspace_bootstrap phase_exited=suite_workspace_bootstrap route_lock=False run_seq=17 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=3 page=backing phase=suite_workspace_bootstrap phase_entered=suite_workspace_bootstrap phase_exited=suite_workspace_bootstrap route_lock=False run_seq=17 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=1 page=backing phase=pre_widget_bootstrap phase_entered=pre_widget_bootstrap phase_exited=suite_workspace_bootstrap route_lock=False run_seq=17 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=1 page=backing phase=pre_widget_bootstrap phase_entered=pre_widget_bootstrap phase_exited=suite_workspace_bootstrap route_lock=False run_seq=17 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=1 page=backing phase=pre_widget_bootstrap_consumers phase_entered=pre_widget_bootstrap_consumers phase_exited=suite_workspace_bootstrap route_lock=False run_seq=17 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=1 page=backing phase=pre_widget_bootstrap_consumers phase_entered=pre_widget_bootstrap_consumers phase_exited=suite_workspace_bootstrap route_lock=False run_seq=17 strict_save_pending=False workflow_owner=
+[mission_backing_handoff] consume_skipped {'reason': 'no_pending'}
+[music_run] event=PHASE_EXIT dt_ms=2 page=backing phase=pre_widget_bootstrap_consumers phase_entered=pre_widget_bootstrap_consumers phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=17 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=2 page=backing phase=pre_widget_bootstrap_consumers phase_entered=pre_widget_bootstrap_consumers phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=17 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=1 page=backing phase=pre_widget_bootstrap phase_entered=pre_widget_bootstrap_consumers phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=17 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=1 page=backing phase=pre_widget_bootstrap phase_entered=pre_widget_bootstrap_consumers phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=17 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=2 page=backing phase=authentication phase_entered=authentication phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=17 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=2 page=backing phase=authentication phase_entered=authentication phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=17 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=2 page=backing phase=authentication phase_entered=authentication phase_exited=authentication route_lock=False run_seq=17 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=2 page=backing phase=authentication phase_entered=authentication phase_exited=authentication route_lock=False run_seq=17 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=65 page=backing phase=workspace_hydration phase_entered=workspace_hydration phase_exited=authentication route_lock=False run_seq=17 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=65 page=backing phase=workspace_hydration phase_entered=workspace_hydration phase_exited=authentication route_lock=False run_seq=17 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=48 page=backing phase=workspace_hydration phase_entered=workspace_hydration phase_exited=workspace_hydration route_lock=False run_seq=17 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=48 page=backing phase=workspace_hydration phase_entered=workspace_hydration phase_exited=workspace_hydration route_lock=False run_seq=17 strict_save_pending=False workflow_owner=
+load_dismissed_insight_ids_from_cloud failed: Supabase is not configured
+load_latest_applied_math_insight_for_app failed: Supabase is not configured
+[music_run] event=PHASE_ENTER dt_ms=86 page=backing phase=pending_upload_route phase_entered=pending_upload_route phase_exited=workspace_hydration route_lock=False run_seq=17 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=86 page=backing phase=pending_upload_route phase_entered=pending_upload_route phase_exited=workspace_hydration route_lock=False run_seq=17 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=3 page=backing phase=pending_upload_route phase_entered=pending_upload_route phase_exited=pending_upload_route route_lock=False run_seq=17 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=3 page=backing phase=pending_upload_route phase_entered=pending_upload_route phase_exited=pending_upload_route route_lock=False run_seq=17 strict_save_pending=False workflow_owner=
+load_dismissed_insight_ids_from_cloud failed: Supabase is not configured
+load_latest_applied_math_insight_for_app failed: Supabase is not configured
+[music_run] event=PHASE_ENTER dt_ms=1155 page=backing phase=chart_bundle_gate phase_entered=chart_bundle_gate phase_exited=pending_upload_route route_lock=False run_seq=17 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=1155 page=backing phase=chart_bundle_gate phase_entered=chart_bundle_gate phase_exited=pending_upload_route route_lock=False run_seq=17 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=5 page=backing phase=chart_bundle_gate phase_entered=chart_bundle_gate phase_exited=chart_bundle_gate route_lock=False run_seq=17 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=5 page=backing phase=chart_bundle_gate phase_entered=chart_bundle_gate phase_exited=chart_bundle_gate route_lock=False run_seq=17 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=67 page=backing phase=page_dispatch phase_entered=page_dispatch phase_exited=chart_bundle_gate route_lock=False run_seq=17 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=67 page=backing phase=page_dispatch phase_entered=page_dispatch phase_exited=chart_bundle_gate route_lock=False run_seq=17 strict_save_pending=False workflow_owner=
+2026-11-15 20:38:12.864 Please replace `st.components.v1.html` with `st.iframe`.
+
+`st.components.v1.html` will be removed after 2026-06-01.
+2026-11-15 20:38:12.938 Please replace `st.components.v1.html` with `st.iframe`.
+
+`st.components.v1.html` will be removed after 2026-06-01.
+[music_run] event=PHASE_ENTER dt_ms=1417 page=backing phase=strict_save_flusher phase_entered=strict_save_flusher phase_exited=chart_bundle_gate route_lock=False run_seq=17 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=1417 page=backing phase=strict_save_flusher phase_entered=strict_save_flusher phase_exited=chart_bundle_gate route_lock=False run_seq=17 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=540 page=backing phase=strict_save_flusher phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=17 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=540 page=backing phase=strict_save_flusher phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=17 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=2 page=backing phase=page_dispatch phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=17 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=2 page=backing phase=page_dispatch phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=17 strict_save_pending=False workflow_owner=
+[music_run] event=RUN_COMPLETED dt_ms=16 elapsed_ms=3461 page=backing phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=17 strict_save_pending=False workflow_owner=
+[music_run] event=RUN_COMPLETED dt_ms=16 elapsed_ms=3461 page=backing phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=17 strict_save_pending=False workflow_owner=
+[dependency_versions] python=3.13.7 streamlit=1.59.1 starlette=1.3.1 uvicorn=0.51.0
+[dependency_versions] python=3.13.7 streamlit=1.59.1 starlette=1.3.1 uvicorn=0.51.0
+[music_run] event=RUN_STARTED dt_ms=9679 page=backing phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=18 strict_save_pending=False workflow_owner=
+[music_run] event=RUN_STARTED dt_ms=9679 page=backing phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=18 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=2 page=backing phase=deploy_verification phase_entered=deploy_verification phase_exited=strict_save_flusher route_lock=False run_seq=18 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=2 page=backing phase=deploy_verification phase_entered=deploy_verification phase_exited=strict_save_flusher route_lock=False run_seq=18 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=68 page=backing phase=deploy_verification phase_entered=deploy_verification phase_exited=deploy_verification route_lock=False run_seq=18 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=68 page=backing phase=deploy_verification phase_entered=deploy_verification phase_exited=deploy_verification route_lock=False run_seq=18 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=3 page=backing phase=suite_workspace_bootstrap phase_entered=suite_workspace_bootstrap phase_exited=deploy_verification route_lock=False run_seq=18 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=3 page=backing phase=suite_workspace_bootstrap phase_entered=suite_workspace_bootstrap phase_exited=deploy_verification route_lock=False run_seq=18 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=3 page=backing phase=suite_workspace_bootstrap phase_entered=suite_workspace_bootstrap phase_exited=suite_workspace_bootstrap route_lock=False run_seq=18 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=3 page=backing phase=suite_workspace_bootstrap phase_entered=suite_workspace_bootstrap phase_exited=suite_workspace_bootstrap route_lock=False run_seq=18 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=2 page=backing phase=pre_widget_bootstrap phase_entered=pre_widget_bootstrap phase_exited=suite_workspace_bootstrap route_lock=False run_seq=18 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=2 page=backing phase=pre_widget_bootstrap phase_entered=pre_widget_bootstrap phase_exited=suite_workspace_bootstrap route_lock=False run_seq=18 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=2 page=backing phase=pre_widget_bootstrap_consumers phase_entered=pre_widget_bootstrap_consumers phase_exited=suite_workspace_bootstrap route_lock=False run_seq=18 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=2 page=backing phase=pre_widget_bootstrap_consumers phase_entered=pre_widget_bootstrap_consumers phase_exited=suite_workspace_bootstrap route_lock=False run_seq=18 strict_save_pending=False workflow_owner=
+[mission_backing_handoff] consume_skipped {'reason': 'no_pending'}
+[music_run] event=PHASE_EXIT dt_ms=3 page=backing phase=pre_widget_bootstrap_consumers phase_entered=pre_widget_bootstrap_consumers phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=18 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=3 page=backing phase=pre_widget_bootstrap_consumers phase_entered=pre_widget_bootstrap_consumers phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=18 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=2 page=backing phase=pre_widget_bootstrap phase_entered=pre_widget_bootstrap_consumers phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=18 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=2 page=backing phase=pre_widget_bootstrap phase_entered=pre_widget_bootstrap_consumers phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=18 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=2 page=backing phase=authentication phase_entered=authentication phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=18 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=2 page=backing phase=authentication phase_entered=authentication phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=18 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=2 page=backing phase=authentication phase_entered=authentication phase_exited=authentication route_lock=False run_seq=18 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=2 page=backing phase=authentication phase_entered=authentication phase_exited=authentication route_lock=False run_seq=18 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=87 page=backing phase=workspace_hydration phase_entered=workspace_hydration phase_exited=authentication route_lock=False run_seq=18 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=87 page=backing phase=workspace_hydration phase_entered=workspace_hydration phase_exited=authentication route_lock=False run_seq=18 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=69 page=backing phase=workspace_hydration phase_entered=workspace_hydration phase_exited=workspace_hydration route_lock=False run_seq=18 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=69 page=backing phase=workspace_hydration phase_entered=workspace_hydration phase_exited=workspace_hydration route_lock=False run_seq=18 strict_save_pending=False workflow_owner=
+load_dismissed_insight_ids_from_cloud failed: Supabase is not configured
+load_latest_applied_math_insight_for_app failed: Supabase is not configured
+[music_run] event=PHASE_ENTER dt_ms=103 page=backing phase=pending_upload_route phase_entered=pending_upload_route phase_exited=workspace_hydration route_lock=False run_seq=18 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=103 page=backing phase=pending_upload_route phase_entered=pending_upload_route phase_exited=workspace_hydration route_lock=False run_seq=18 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=2 page=backing phase=pending_upload_route phase_entered=pending_upload_route phase_exited=pending_upload_route route_lock=False run_seq=18 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=2 page=backing phase=pending_upload_route phase_entered=pending_upload_route phase_exited=pending_upload_route route_lock=False run_seq=18 strict_save_pending=False workflow_owner=
+load_dismissed_insight_ids_from_cloud failed: Supabase is not configured
+load_latest_applied_math_insight_for_app failed: Supabase is not configured
+[music_run] event=PHASE_ENTER dt_ms=1162 page=backing phase=chart_bundle_gate phase_entered=chart_bundle_gate phase_exited=pending_upload_route route_lock=False run_seq=18 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=1162 page=backing phase=chart_bundle_gate phase_entered=chart_bundle_gate phase_exited=pending_upload_route route_lock=False run_seq=18 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=3 page=backing phase=chart_bundle_gate phase_entered=chart_bundle_gate phase_exited=chart_bundle_gate route_lock=False run_seq=18 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=3 page=backing phase=chart_bundle_gate phase_entered=chart_bundle_gate phase_exited=chart_bundle_gate route_lock=False run_seq=18 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=42 page=backing phase=page_dispatch phase_entered=page_dispatch phase_exited=chart_bundle_gate route_lock=False run_seq=18 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=42 page=backing phase=page_dispatch phase_entered=page_dispatch phase_exited=chart_bundle_gate route_lock=False run_seq=18 strict_save_pending=False workflow_owner=
+2026-11-15 20:38:25.732 Please replace `st.components.v1.html` with `st.iframe`.
+
+`st.components.v1.html` will be removed after 2026-06-01.
+2026-11-15 20:38:25.824 Please replace `st.components.v1.html` with `st.iframe`.
+
+`st.components.v1.html` will be removed after 2026-06-01.
+[music_run] event=PHASE_ENTER dt_ms=1091 page=backing phase=strict_save_flusher phase_entered=strict_save_flusher phase_exited=chart_bundle_gate route_lock=False run_seq=18 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=1091 page=backing phase=strict_save_flusher phase_entered=strict_save_flusher phase_exited=chart_bundle_gate route_lock=False run_seq=18 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=429 page=backing phase=strict_save_flusher phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=18 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=429 page=backing phase=strict_save_flusher phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=18 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=1 page=backing phase=page_dispatch phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=18 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=1 page=backing phase=page_dispatch phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=18 strict_save_pending=False workflow_owner=
+[music_run] event=RUN_COMPLETED dt_ms=10 elapsed_ms=3088 page=backing phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=18 strict_save_pending=False workflow_owner=
+[music_run] event=RUN_COMPLETED dt_ms=10 elapsed_ms=3088 page=backing phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=18 strict_save_pending=False workflow_owner=
+[dependency_versions] python=3.13.7 streamlit=1.59.1 starlette=1.3.1 uvicorn=0.51.0
+[dependency_versions] python=3.13.7 streamlit=1.59.1 starlette=1.3.1 uvicorn=0.51.0
+[music_run] event=RUN_STARTED dt_ms=12663 page=backing phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=19 strict_save_pending=False workflow_owner=
+[music_run] event=RUN_STARTED dt_ms=12663 page=backing phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=19 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=2 page=backing phase=deploy_verification phase_entered=deploy_verification phase_exited=strict_save_flusher route_lock=False run_seq=19 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=2 page=backing phase=deploy_verification phase_entered=deploy_verification phase_exited=strict_save_flusher route_lock=False run_seq=19 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=77 page=backing phase=deploy_verification phase_entered=deploy_verification phase_exited=deploy_verification route_lock=False run_seq=19 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=77 page=backing phase=deploy_verification phase_entered=deploy_verification phase_exited=deploy_verification route_lock=False run_seq=19 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=4 page=backing phase=suite_workspace_bootstrap phase_entered=suite_workspace_bootstrap phase_exited=deploy_verification route_lock=False run_seq=19 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=4 page=backing phase=suite_workspace_bootstrap phase_entered=suite_workspace_bootstrap phase_exited=deploy_verification route_lock=False run_seq=19 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=4 page=backing phase=suite_workspace_bootstrap phase_entered=suite_workspace_bootstrap phase_exited=suite_workspace_bootstrap route_lock=False run_seq=19 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=4 page=backing phase=suite_workspace_bootstrap phase_entered=suite_workspace_bootstrap phase_exited=suite_workspace_bootstrap route_lock=False run_seq=19 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=3 page=backing phase=pre_widget_bootstrap phase_entered=pre_widget_bootstrap phase_exited=suite_workspace_bootstrap route_lock=False run_seq=19 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=3 page=backing phase=pre_widget_bootstrap phase_entered=pre_widget_bootstrap phase_exited=suite_workspace_bootstrap route_lock=False run_seq=19 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=4 page=backing phase=pre_widget_bootstrap_consumers phase_entered=pre_widget_bootstrap_consumers phase_exited=suite_workspace_bootstrap route_lock=False run_seq=19 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=4 page=backing phase=pre_widget_bootstrap_consumers phase_entered=pre_widget_bootstrap_consumers phase_exited=suite_workspace_bootstrap route_lock=False run_seq=19 strict_save_pending=False workflow_owner=
+[mission_backing_handoff] consume_skipped {'reason': 'no_pending'}
+[music_run] event=PHASE_EXIT dt_ms=3 page=backing phase=pre_widget_bootstrap_consumers phase_entered=pre_widget_bootstrap_consumers phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=19 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=3 page=backing phase=pre_widget_bootstrap_consumers phase_entered=pre_widget_bootstrap_consumers phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=19 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=2 page=backing phase=pre_widget_bootstrap phase_entered=pre_widget_bootstrap_consumers phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=19 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=2 page=backing phase=pre_widget_bootstrap phase_entered=pre_widget_bootstrap_consumers phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=19 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=4 page=backing phase=authentication phase_entered=authentication phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=19 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=4 page=backing phase=authentication phase_entered=authentication phase_exited=pre_widget_bootstrap_consumers route_lock=False run_seq=19 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=4 page=backing phase=authentication phase_entered=authentication phase_exited=authentication route_lock=False run_seq=19 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=4 page=backing phase=authentication phase_entered=authentication phase_exited=authentication route_lock=False run_seq=19 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=130 page=backing phase=workspace_hydration phase_entered=workspace_hydration phase_exited=authentication route_lock=False run_seq=19 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=130 page=backing phase=workspace_hydration phase_entered=workspace_hydration phase_exited=authentication route_lock=False run_seq=19 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=88 page=backing phase=workspace_hydration phase_entered=workspace_hydration phase_exited=workspace_hydration route_lock=False run_seq=19 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=88 page=backing phase=workspace_hydration phase_entered=workspace_hydration phase_exited=workspace_hydration route_lock=False run_seq=19 strict_save_pending=False workflow_owner=
+load_dismissed_insight_ids_from_cloud failed: Supabase is not configured
+load_latest_applied_math_insight_for_app failed: Supabase is not configured
+[music_run] event=PHASE_ENTER dt_ms=187 page=backing phase=pending_upload_route phase_entered=pending_upload_route phase_exited=workspace_hydration route_lock=False run_seq=19 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=187 page=backing phase=pending_upload_route phase_entered=pending_upload_route phase_exited=workspace_hydration route_lock=False run_seq=19 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=3 page=backing phase=pending_upload_route phase_entered=pending_upload_route phase_exited=pending_upload_route route_lock=False run_seq=19 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=3 page=backing phase=pending_upload_route phase_entered=pending_upload_route phase_exited=pending_upload_route route_lock=False run_seq=19 strict_save_pending=False workflow_owner=
+load_dismissed_insight_ids_from_cloud failed: Supabase is not configured
+load_latest_applied_math_insight_for_app failed: Supabase is not configured
+[music_run] event=PHASE_ENTER dt_ms=1725 page=backing phase=chart_bundle_gate phase_entered=chart_bundle_gate phase_exited=pending_upload_route route_lock=False run_seq=19 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=1725 page=backing phase=chart_bundle_gate phase_entered=chart_bundle_gate phase_exited=pending_upload_route route_lock=False run_seq=19 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=4 page=backing phase=chart_bundle_gate phase_entered=chart_bundle_gate phase_exited=chart_bundle_gate route_lock=False run_seq=19 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=4 page=backing phase=chart_bundle_gate phase_entered=chart_bundle_gate phase_exited=chart_bundle_gate route_lock=False run_seq=19 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=49 page=backing phase=page_dispatch phase_entered=page_dispatch phase_exited=chart_bundle_gate route_lock=False run_seq=19 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=49 page=backing phase=page_dispatch phase_entered=page_dispatch phase_exited=chart_bundle_gate route_lock=False run_seq=19 strict_save_pending=False workflow_owner=
+2026-11-15 20:38:42.530 Please replace `st.components.v1.html` with `st.iframe`.
+
+`st.components.v1.html` will be removed after 2026-06-01.
+2026-11-15 20:38:42.642 Please replace `st.components.v1.html` with `st.iframe`.
+
+`st.components.v1.html` will be removed after 2026-06-01.
+[music_run] event=PHASE_ENTER dt_ms=1416 page=backing phase=strict_save_flusher phase_entered=strict_save_flusher phase_exited=chart_bundle_gate route_lock=False run_seq=19 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_ENTER dt_ms=1416 page=backing phase=strict_save_flusher phase_entered=strict_save_flusher phase_exited=chart_bundle_gate route_lock=False run_seq=19 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=537 page=backing phase=strict_save_flusher phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=19 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=537 page=backing phase=strict_save_flusher phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=19 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=1 page=backing phase=page_dispatch phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=19 strict_save_pending=False workflow_owner=
+[music_run] event=PHASE_EXIT dt_ms=1 page=backing phase=page_dispatch phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=19 strict_save_pending=False workflow_owner=
+[music_run] event=RUN_COMPLETED dt_ms=10 elapsed_ms=4257 page=backing phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=19 strict_save_pending=False workflow_owner=
+[music_run] event=RUN_COMPLETED dt_ms=10 elapsed_ms=4257 page=backing phase_entered=strict_save_flusher phase_exited=strict_save_flusher route_lock=False run_seq=19 strict_save_pending=False workflow_owner=

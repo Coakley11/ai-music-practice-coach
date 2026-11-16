@@ -5577,6 +5577,7 @@ def live_follow_along_component_html(
         else ""
     )
     page_follow_flag_js = "true" if page_follow else "false"
+    karaoke_hold_flag_js = "true" if karaoke_hold_from_shared_controller else "false"
     # Opened over a live take: start the native autoplay at the handed-over playhead.
     sheet_open_handoff_js = "true" if sheet_open_handoff else "false"
     timeline_json = json.dumps(timeline)
@@ -6388,6 +6389,7 @@ def live_follow_along_component_html(
     window.__karaokeTimeline = timeline;
     // M4 full-height sheet + page follow (set before anything can call updateHighlight).
     const PAGE_FOLLOW = {page_follow_flag_js};
+    const KARAOKE_HOLD = {karaoke_hold_flag_js};
     {hold_only_js}
 
     // Parts 9 and 10. This surface scrolls its own box, and the ONE page controller
@@ -6411,24 +6413,62 @@ def live_follow_along_component_html(
       return document.querySelector(".live-chart-cell.current-chord, .chord-cell.current-chord");
     }}
     let lastBoxTarget = null;
-    // The lyric panel's script is built separately but runs in this document, so it reaches
-    // this through the window rather than by duplicating the logic.
+    // Karaoke's box is this IFRAME: the component is mounted at a fixed height with
+    // scrolling=True, so its own document is the scroller. ``.live-follow-shell`` has no height
+    // and no overflow, which is why an earlier version of this - looking for a scrollable shell
+    // - never moved anything and left box_top at 0 in every sample of a run.
+    function boxScroller() {{
+      const sc = document.scrollingElement || document.documentElement;
+      if (!sc) return null;
+      return sc.scrollHeight > sc.clientHeight + 4 ? sc : null;
+    }}
+    // Two scrollers, each moving only its own thing: this box puts the lyric in front of the
+    // singer inside the iframe, and the ONE page controller brings the iframe itself back when
+    // the singer has scrolled the page away. Both obey the same six-second hold, so they cannot
+    // take turns fighting each other.
     function followInsideBox(el) {{
       if (!el || !el.isConnected || followHeld()) return false;
-      if (el === lastBoxTarget) return false;   // only when the target really changes
-      const shell = el.closest(".live-follow-shell")
-        || document.getElementById("live-chart-root");
-      if (!shell || shell === document.body || shell === document.documentElement) return false;
-      if (shell.scrollHeight <= shell.clientHeight + 4) return false;
-      const c = el.getBoundingClientRect(), s = shell.getBoundingClientRect();
-      const delta = (c.top + c.height / 2) - (s.top + s.height / 2);
+      const sc = boxScroller();
+      if (sc) {{
+        const c = el.getBoundingClientRect();
+        const want = sc.scrollTop + c.top - (sc.clientHeight * 0.32);
+        if (Math.abs(want - sc.scrollTop) >= 10) {{
+          const max = sc.scrollHeight - sc.clientHeight;
+          sc.scrollTop = Math.max(0, Math.min(want, max));
+        }}
+      }}
+      // And the page, through the controller that owns it. It maps this element into the top
+      // window itself (rectInTop), so a line inside a scrolled iframe is still found.
+      let pageMoved = false;
+      try {{
+        const ctl = window.top.__lsFollow;
+        if (ctl && ctl.request) {{
+          const why = el.classList && el.classList.contains("karaoke-lp-lyric-line")
+            ? "karaoke-lyric" : "chord";
+          pageMoved = !!ctl.request("lead-sheet", el, {{ why: why }});
+        }}
+      }} catch (ePf) {{}}
       lastBoxTarget = el;
-      if (Math.abs(delta) < 8) return false;
-      shell.scrollTop += delta;                 // this box only - never the page
-      return true;
+      return !!sc || pageMoved;
     }}
     window.__karaokeBoxFollow = followInsideBox;
     window.__karaokeFollowTarget = karaokeFollowTarget;
+    // Registering makes this surface one the page controller will move the page for. Only the
+    // leading surface moves it, and only this one is registered from this frame, so the lyrics
+    // cannot lose the page to the chart sitting beside them.
+    function registerKaraokeFollow() {{
+      try {{
+        const ctl = window.top.__lsFollow, fe = window.frameElement;
+        if (!ctl || !ctl.register || !fe) return false;
+        ctl.register({{
+          id: "lead-sheet", priority: 10, frame: fe, transport: false,
+          playing: () => {{ try {{ return sheetIsPlaying(); }} catch (e) {{ return false; }} }},
+          current: karaokeFollowTarget,
+          hasCurrent: () => !!karaokeFollowTarget(),
+        }});
+        return true;
+      }} catch (eReg) {{ return false; }}
+    }}
     // M3: a fresh Play counts in -- the count-in engine (card transport) must see this player start.
     try {{
       if (window.parent.__backingCountIn) window.parent.__backingCountIn.watchDoc(document);
@@ -7339,6 +7379,11 @@ def live_follow_along_component_html(
         }};
         if (!reg()) window.setTimeout(reg, 300);
       }} catch (ePfI) {{}}
+    }}
+    // The hold-only install puts the controller on the page without claiming it; this claims
+    // it for the lyrics, which is what brings the page back after the singer's six seconds.
+    if (KARAOKE_HOLD) {{
+      if (!registerKaraokeFollow()) window.setTimeout(registerKaraokeFollow, 400);
     }}
     window.setInterval(() => {{
       const playing = sheetIsPlaying();

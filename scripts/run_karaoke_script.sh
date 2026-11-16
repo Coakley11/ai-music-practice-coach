@@ -62,7 +62,7 @@ if ! kill -0 "${SERVER}" 2>/dev/null; then
   exit 3
 fi
 
-MUSIC_APP_DATA_DIR="${DATA}" python -X utf8 -u "${SCRIPT}" "http://127.0.0.1:${PORT}"
+MUSIC_APP_DATA_DIR="${DATA}" python -X utf8 -u "${SCRIPT}" "http://127.0.0.1:${PORT}" ${EXTRA:-}
 RC=$?
 
 echo "stopping the server (pid ${SERVER})"

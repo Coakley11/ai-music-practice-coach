@@ -1,0 +1,39 @@
+worktree : /c/tmp/ai-music-slice2
+script   : scripts/_accept_karaoke_lyric_follow.py
+port     : 8615
+cleared  : ignored app state under /c/tmp/ai-music-slice2/data (tracked fixtures kept)
+server pid: 185222
+[PASS] L1 app renders [sheet-off]  
+picked Say dropdown=True landed=True sidebar_song='SONG\n\nSONG\nSay — John Mayer\n\n🎼 Songs\n\nSay · Pop\n\n📜 Song Original Key: Bb\n\n🗝️ Practice / Co'
+[PASS] L2 performing [sheet-off]  
+[PASS] L3 the surface mounts [sheet-off]  play=True
+    audio: started
+    surface: {'box_top': 0, 'box_scrollable': False, 'lines': 4, 'active': 'Take all of your wasted honor', 'active_index': 0, 'active_top_in_window': 162, 'active_onscreen': True, 'playing': True, 'held': False}
+[PASS] L4 a lyric-bearing section is on screen [sheet-off]  4 lyric line(s), active 'Take all of your wasted honor'
+[PASS] L5 the lyrics advance with the music [sheet-off]  3 distinct line(s): ['Every little past frustration', 'Take all of your so-called problems', 'Take all of your wasted honor']
+    page [4020, 4020, 4020, 4020, 4020, 4020, 4020, 4020, 4020, 4020]
+    box  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+[PASS] L6 the musician can scroll away from the lyrics [sheet-off]  page 4020 -> 3120, box 0 -> 0, active lyric on screen: False
+[PASS] L7 following is suspended by the gesture [sheet-off]  held=True
+[PASS] L8 the view stays where the singer put it for the first five seconds [sheet-off]  page [3120, 3120, 3120, 3120, 3120, 3120, 3120, 3120] box [0, 0, 0, 0, 0, 0, 0, 0]
+[PASS] L9 playback and lyric highlighting continue while held [sheet-off]  playing=38/38 samples, 2 distinct line(s)
+[PASS] L10 after about six seconds the view returns to the current lyric [sheet-off]  returned after 6.11s to "Better put 'em in quotations" (page 4144, box 0)
+[PASS] L11 following continues as later lyrics arrive [sheet-off]  45/45 samples had the active lyric on screen, 3 distinct line(s)
+
+======================================================================
+  PASS  L1 app renders [sheet-off]
+  PASS  L2 performing [sheet-off]
+  PASS  L3 the surface mounts [sheet-off]
+  PASS  L4 a lyric-bearing section is on screen [sheet-off]
+  PASS  L5 the lyrics advance with the music [sheet-off]
+  PASS  L6 the musician can scroll away from the lyrics [sheet-off]
+  PASS  L7 following is suspended by the gesture [sheet-off]
+  PASS  L8 the view stays where the singer put it for the first five seconds [sheet-off]
+  PASS  L9 playback and lyric highlighting continue while held [sheet-off]
+  PASS  L10 after about six seconds the view returns to the current lyric [sheet-off]
+  PASS  L11 following continues as later lyrics arrive [sheet-off]
+  OBS   picked Say dropdown=True landed=True sidebar_song='SONG\n\nSONG\nSay ? John Mayer\n\n? Songs\n\nSay ? Pop\n\n? Song Original Key: Bb\n\n?? Practice / Co'
+
+11/11 gates passed
+stopping the server (pid 185222)
+exit=0
