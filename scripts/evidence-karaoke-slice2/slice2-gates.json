@@ -1,0 +1,24 @@
+{
+  "gates": {
+    "K1 app renders": true,
+    "K2 a karaoke set is performing": true,
+    "K3 the Lead Sheet is Off (its default)": true,
+    "K4 the performance surface mounts with the Lead Sheet OFF": true,
+    "K5 the karaoke lyrics are on screen with the Lead Sheet OFF": true,
+    "K6 the chord chart is folded behind them, not removed": true,
+    "K7 chord hints appear under the lyrics": true,
+    "K8 the shared page controller is reachable from this frame": true,
+    "K9 exactly one audible player with the Lead Sheet OFF": true,
+    "K10 a real wheel suspends the shared hold": true,
+    "K11 the view is left alone during the grace period": true,
+    "K12 highlighting keeps running while the follow is held": true,
+    "K13 the hold releases after about six seconds": true,
+    "K14 following resumes once the hold expires": true,
+    "K15 turning the Lead Sheet ON keeps the karaoke lyrics": true,
+    "K16 exactly one audible player with the Lead Sheet ON": true,
+    "K17 turning it back Off does not hide the karaoke lyrics": true
+  },
+  "observed": [
+    "picked Say dropdown=True landed=True sidebar_song='SONG\\n\\nSONG\\nSay \u2014 John Mayer\\n\\n\ud83c\udfbc Songs\\n\\nSay \u00b7 Pop\\n\\n\ud83d\udcdc Song Original Key: Bb\\n\\n\ud83d\udddd\ufe0f Practice / Co'"
+  ]
+}
