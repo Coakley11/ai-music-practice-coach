@@ -322,7 +322,8 @@ class TestLocalRevisionAheadOfCloud(unittest.TestCase):
         r = a.save("v2", revision=9)                                       # candidate 9 is not above applied 9
         self.assertTrue(r.success, getattr(r, "failure_stage", ""))
         self.assertEqual(stored_content(store), "v2")
-        self.assertGreater(store.stored_revision(), 9)
+        self.assertEqual(store.stored_revision(), 9)                       # written AT the reserved revision, never bumped
+        self.assertEqual(r.cloud_payload_revision, 9)
         self.assertFalse(a.ss.get("_music_stale_write_blocked"))
         self.assertTrue(a.save("v3").success)                              # and saving carries on
 
@@ -354,6 +355,94 @@ class TestLocalRevisionAheadOfCloud(unittest.TestCase):
             r = a.save("v%d" % i, revision=a.counter)
             self.assertTrue(r.success, "episode %d: %s" % (i, getattr(r, "failure_stage", "")))
             self.assertEqual(stored_content(store), "v%d" % i)
+            self.assertEqual(store.stored_revision(), a.counter, "episode %d: the reserved revision is what was written" % i)
+
+
+class TestWrittenRevisionIsTheReservedRevision(unittest.TestCase):
+    """The app confirms a workspace save by comparing the revision READ BACK from the cloud with the revision the run
+    RESERVED. A write landed at any other revision can never be confirmed: the cloud holds the data, the session keeps
+    saying 'not verified', and every retry climbs the revision again (seen in production: revision 209 with a confirmed
+    base of 0). Whatever recovery path a save takes, the revision written must equal the revision reserved."""
+
+    def _check(self, store, run, result, name):
+        self.assertTrue(result.success, "%s: %s" % (name, getattr(result, "failure_stage", "")))
+        self.assertEqual(result.cloud_payload_revision, run.candidate, name + ": result reports the reserved revision")
+        self.assertEqual(store.stored_revision(), run.candidate, name + ": the cloud holds the reserved revision")
+
+    def test_plain_save(self):
+        store = FakeStore(); a = Device(store)
+        run = a.begin("v1"); self._check(store, run, a.complete(run), "plain")
+
+    def test_retry_on_top_of_our_own_overlapping_write(self):
+        store = FakeStore(); a = Device(store)
+        self.assertTrue(a.save("base").success)
+        a.save("autosave", record=False)
+        run = a.begin("manual"); self._check(store, run, a.complete(run), "retry")
+
+    def test_same_content_already_persisted(self):
+        store = FakeStore(); a = Device(store)
+        self.assertTrue(a.save("base").success)
+        a.save("v2", record=False)
+        run = a.begin("v2"); self._check(store, run, a.complete(run), "already persisted")
+
+    def test_local_revision_ahead_of_the_cloud(self):
+        store = FakeStore(); a = Device(store)
+        self.assertTrue(a.save("v1").success)
+        a.applied = a.counter = 9
+        run = a.begin("v2", revision=9); self._check(store, run, a.complete(run), "local ahead")
+
+    def test_every_recovery_path_in_random_sequences(self):
+        for seed in range(120):
+            rng = random.Random(5000 + seed)
+            store = FakeStore(); a = Device(store)
+            a.save("base")
+            for i in range(rng.randint(3, 14)):
+                kind = rng.random()
+                if kind < 0.3:
+                    a.save("s%d-%d" % (seed, i), record=False)
+                elif kind < 0.5:
+                    a.applied = a.counter = store.stored_revision() + rng.randint(1, 5)   # local ahead of the cloud
+                    run = a.begin("s%d-%d" % (seed, i), revision=a.counter)
+                    r = a.complete(run)
+                    if r.success:
+                        self.assertEqual(store.stored_revision(), run.candidate, "seed %d step %d (local ahead)" % (seed, i))
+                else:
+                    run = a.begin("s%d-%d" % (seed, i)); r = a.complete(run)
+                    if r.success and stored_content(store) == run.content:
+                        self.assertEqual(r.cloud_payload_revision, run.candidate, "seed %d step %d" % (seed, i))
+            run = a.begin("final-%d" % seed); r = a.complete(run)
+            self.assertTrue(r.success, "seed %d final: %s" % (seed, getattr(r, "failure_stage", "")))
+            self.assertEqual(store.stored_revision(), run.candidate, "seed %d final" % seed)
+
+
+class TestConfirmationIsDiagnosable(unittest.TestCase):
+    def _log(self, **kw):
+        import contextlib, io
+        import music_workspace_cloud_save as mws
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            mws._log_cloud_confirmation("readback", **kw)
+        return buf.getvalue()
+
+    def test_an_unconfirmed_write_names_the_failing_check_and_only_key_names(self):
+        payload = {"practice_state": {"note": "SECRET-LYRIC-TEXT"}, "same": {"a": 1}, "composition_workspace_state": {"x": 1}}
+        readback = {"practice_state": {"note": "different"}, "same": {"a": 1}, "composition_workspace_state": {"x": 1}}
+        out = self._log(readback_rev=210, rev_after=209, fp_matches=False, revision_advanced=True, readback_ok=False,
+                        payload=payload, readback=readback)
+        self.assertIn("[music_cloud_confirm]", out)
+        self.assertIn("confirmed=False", out); self.assertIn("rev_matches=False", out); self.assertIn("fp_matches=False", out)
+        self.assertIn("practice_state", out)
+        self.assertNotIn("same", out.split("differing_top_level_keys=")[1])
+        self.assertNotIn("SECRET-LYRIC-TEXT", out); self.assertNotIn("different", out)
+
+    def test_a_confirmed_write_logs_flags_and_no_keys(self):
+        out = self._log(readback_rev=209, rev_after=209, fp_matches=True, revision_advanced=True, readback_ok=True,
+                        payload={"a": 1}, readback={"a": 1})
+        self.assertIn("confirmed=True", out); self.assertIn("differing_top_level_keys=-", out)
+
+    def test_logging_never_breaks_a_save(self):
+        self._log(readback_rev=1, rev_after=1, fp_matches=False, revision_advanced=True, readback_ok=False,
+                  payload=object(), readback=object())
 
 
 class TestGenuineCrossDeviceConflicts(unittest.TestCase):

@@ -86,6 +86,18 @@ def _record_cloud_save_result(session: dict[str, Any] | None, result: CloudSaveR
     session[CLOUD_SAVE_DIAG_KEY] = result.to_diag()
     session["_suite_last_cloud_save_failure_stage"] = result.failure_stage or None
     session["_suite_last_cloud_save_exception"] = result.exception or None
+    if not result.success:
+        try:  # a refused/failed cloud write must leave a trace in the app logs (codes only, no content or ids)
+            from composition_save_verification import _scrub
+
+            print(
+                f"[music_cloud_save] FAILED stage={_scrub(result.failure_stage, 60) or '-'} "
+                f"exception={_scrub(result.exception, 160) or '-'} stale_blocked={bool(result.stale_write_blocked)} "
+                f"account_resolved={bool(result.account_id_resolved)} cas_attempted={bool(result.conditional_write_attempted)}",
+                flush=True,
+            )
+        except Exception:
+            pass
 
 
 def _cloud_save_account_context() -> dict[str, Any]:
@@ -673,12 +685,16 @@ def _recover_local_revision_ahead_of_cloud(
 ) -> tuple[dict[str, Any], dict[str, Any]] | None:
     """Pre-flight refused the write because the candidate revision is not above the 'applied' revision.
 
-    That is a genuine problem only when the cloud really is at (or beyond) that revision. Overlapping or interrupted runs
-    can also push the session's LOCAL revision ahead of what the cloud holds (writes that never landed): the next
-    candidate then equals the local revision, and the session is refused for a conflict that does not exist.
-    When the cloud row was last written by THIS session at a revision at or below the local one, the cloud is simply behind
-    our own newer local state: write on top of it at a revision above both. A row last written by another session, or one
-    whose stored revision is above our local one, is left refused exactly as before.
+    That is a genuine problem only when the cloud really is at (or beyond) the candidate. Overlapping or interrupted runs
+    can also push the session's LOCAL 'applied' revision ahead of what the cloud holds (writes that never landed): the
+    candidate is then not above 'applied', and the session is refused for a conflict that does not exist.
+    When the cloud row was last written by THIS session at a revision BELOW the candidate, the cloud is simply behind our
+    own newer state: write the reserved candidate on top of our own stored revision.
+
+    The write is made AT the reserved candidate, never at a higher number. The caller confirms a save by comparing the
+    revision read back from the cloud with the revision it reserved; a write landed at a different revision could never be
+    confirmed, so every retry would climb the revision again and the save would stay 'not verified' for ever.
+    A row written by another session, or one at or above the candidate, is left refused exactly as before.
     """
     try:
         token = _music_writer_token(ss)
@@ -686,15 +702,11 @@ def _recover_local_revision_ahead_of_cloud(
             return None
         applied = int(prep.get("device_applied_revision") or 0)
         candidate = int(prep.get("candidate_revision") or 0)
-        if candidate > applied or applied <= 0:
+        if candidate > applied or applied <= 0 or candidate <= 0:
             return None
         own_rev = _own_write_revision(storage, storage_app_key, token)
-        if own_rev <= 0 or own_rev > applied:
+        if own_rev <= 0 or own_rev >= candidate:
             return None
-        new_candidate = max(candidate, applied) + 1
-        from workspace_revision import stamp_workspace_revision_into_state
-
-        stamped = stamp_workspace_revision_into_state(copy.deepcopy(state), new_candidate)
         try:
             from music_device_applied_revision import set_device_applied_revision_from_authoritative_hydrate
 
@@ -707,7 +719,6 @@ def _recover_local_revision_ahead_of_cloud(
             dict(
                 prep,
                 blocked_precheck=False,
-                candidate_revision=new_candidate,
                 expected_revision=own_rev,
                 precondition_expected_revision=own_rev,
                 device_applied_revision=own_rev,
@@ -715,7 +726,7 @@ def _recover_local_revision_ahead_of_cloud(
                 own_write_recovered=True,
                 local_revision_ahead_of_cloud=True,
             ),
-            stamped,
+            state,
         )
     except Exception:
         return None
