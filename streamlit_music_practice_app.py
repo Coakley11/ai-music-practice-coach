@@ -17931,7 +17931,7 @@ def _on_backing_filter_change() -> None:
         if km.is_voice_mode(st.session_state) and km.is_karaoke_session_active(st.session_state):
             _ov_groove = str(st.session_state.get("backing_groove_style") or "").strip()
             _ov_meter = str(st.session_state.get("backing_time_signature") or "").strip()
-            km.record_entry_feel_override(
+            if km.record_entry_feel_override(
                 st.session_state,
                 groove=_ov_groove
                 if _ov_groove and _ov_groove != km.resolve_karaoke_entry_groove(st.session_state)
@@ -17939,7 +17939,13 @@ def _on_backing_filter_change() -> None:
                 meter=_ov_meter
                 if _ov_meter and _ov_meter != km.resolve_karaoke_entry_meter(st.session_state)
                 else "",
-            )
+            ):
+                # A saved setting of a setlist entry, so a deliberate setlist edit: saved to the
+                # account like every other one, not left to an autosave the strict policy keeps
+                # off the cloud.
+                from karaoke_ui import persist_karaoke_setlist
+
+                persist_karaoke_setlist(st)
     except Exception:
         pass
     # Flush widget → canonical before play-session capture so Feel Pop after

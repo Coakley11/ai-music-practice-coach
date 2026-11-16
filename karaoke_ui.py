@@ -31,14 +31,72 @@ from backing_transport_intent import begin_playback, continue_playback, stop_pla
 KARAOKE_SETLIST_SAVE_REASON = "karaoke_setlist_edit"
 
 
-def persist_karaoke_setlist(st: Any) -> bool:
-    """Durably save the Karaoke setlist right after a user mutation."""
+def persist_karaoke_setlist(st: Any, *, deliberate: bool = True) -> bool:
+    """Durably save the Karaoke setlist right after a user mutation, and say where it landed.
+
+    ``deliberate`` stamps the setlist as the singer's latest choice first, which is what lets it
+    replace an older stored copy and stops anything that is not a deliberate edit from replacing
+    it (karaoke_setlist_durability). Returns True only when the save is confirmed where it has to
+    be: in the cloud when cloud storage is on, on this server when it is not.
+    """
+    ss = st.session_state
+    try:
+        from karaoke_setlist_durability import record_save_status, stamp_deliberate_edit
+
+        if deliberate:
+            stamp_deliberate_edit(ss)
+    except ImportError:
+        record_save_status = None  # type: ignore[assignment]
+    ok = False
     try:
         from music_persistent_state import force_save_music_state
 
-        return bool(force_save_music_state(st, reason=KARAOKE_SETLIST_SAVE_REASON))
+        ok = bool(force_save_music_state(st, reason=KARAOKE_SETLIST_SAVE_REASON))
     except Exception:
-        return False
+        ok = False
+    try:
+        from suite_storage_config import cloud_storage_enabled
+
+        cloud_on = bool(cloud_storage_enabled())
+    except Exception:
+        cloud_on = False
+    cloud_ok = bool(ss.get("_suite_persist_last_save_cloud"))
+    if record_save_status is not None:
+        try:
+            record_save_status(
+                ss,
+                ok=ok,
+                cloud_enabled=cloud_on,
+                cloud_ok=cloud_ok,
+                reason=str(ss.get("_music_force_save_blocked_reason") or ss.get("_music_last_cloud_write_error") or ""),
+            )
+        except Exception:
+            pass
+    return bool(ok and (cloud_ok or not cloud_on))
+
+
+CLEAR_CONFIRM_KEY = "_karaoke_clear_setlist_confirm_pending"
+
+
+def render_setlist_save_status(st: Any) -> None:
+    """The truth about the last setlist save, with a retry when it did not reach its storage."""
+    try:
+        from karaoke_setlist_durability import SAVE_STATUS_KEY, save_status_message
+    except ImportError:
+        return
+    level, text = save_status_message(st.session_state.get(SAVE_STATUS_KEY))
+    if not text:
+        return
+    with st.container(key="karaoke_setlist_save_status"):
+        if level == "success":
+            st.caption(f"✓ {text}")
+        elif level == "info":
+            st.caption(text)
+        else:
+            st.error(text)
+            if st.button("Retry saving setlist", key="karaoke_setlist_save_retry"):
+                persist_karaoke_setlist(st, deliberate=False)
+                st.rerun()
 
 __all__ = (
     "render_karaoke_setlist_panel",
@@ -577,14 +635,15 @@ def render_karaoke_setlist_panel(
                     end_karaoke_set(st.session_state)
                     st.rerun()
             with c_clear:
+                # Two steps: Clear Setlist only asks. It sits beside End Karaoke Set, and one
+                # mis-tap used to erase the whole setlist durably.
                 if st.button(
                     action_label("delete", "Clear Setlist"),
                     key="karaoke_clear_queue",
                     use_container_width=True,
                     disabled=not queue,
                 ):
-                    km.clear_queue(st.session_state)
-                    persist_karaoke_setlist(st)
+                    st.session_state[CLEAR_CONFIRM_KEY] = True
                     st.rerun()
             with c_auto:
                 current_auto = km.auto_advance_enabled(st.session_state)
@@ -596,6 +655,29 @@ def render_karaoke_setlist_panel(
                 )
                 if new_auto != current_auto:
                     st.session_state[km.KARAOKE_AUTO_ADVANCE_KEY] = bool(new_auto)
+
+        if st.session_state.get(CLEAR_CONFIRM_KEY) and queue:
+            with st.container(key="karaoke_clear_confirm"):
+                n = len(queue)
+                st.warning(
+                    f"Erase all {n} song{'s' if n != 1 else ''} from this setlist, with their order "
+                    "and saved keys? This cannot be undone."
+                )
+                c_yes, c_no = st.columns(2)
+                with c_yes:
+                    if st.button("Yes, erase the setlist", key="karaoke_clear_confirm_yes", type="primary",
+                                 use_container_width=True):
+                        st.session_state.pop(CLEAR_CONFIRM_KEY, None)
+                        km.clear_queue(st.session_state)
+                        persist_karaoke_setlist(st)
+                        st.rerun()
+                with c_no:
+                    if st.button("Keep the setlist", key="karaoke_clear_confirm_no", use_container_width=True):
+                        st.session_state.pop(CLEAR_CONFIRM_KEY, None)
+                        st.rerun()
+        elif st.session_state.get(CLEAR_CONFIRM_KEY):
+            st.session_state.pop(CLEAR_CONFIRM_KEY, None)
+        render_setlist_save_status(st)
 
         with st.container(key="karaoke_countdown_controls"):
             cc_left, cc_right = st.columns([3, 4])

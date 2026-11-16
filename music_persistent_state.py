@@ -2921,6 +2921,12 @@ def build_music_disk_state(st: Any) -> dict[str, Any]:
             val = ss[key]
             if isinstance(val, list):
                 extra[key] = copy.deepcopy(val)
+    # The Karaoke setlist travels with the stamp of the deliberate edit that made it, so a save or
+    # restore that meets another copy can tell which one the singer chose last
+    # (karaoke_setlist_durability).
+    _ks_meta = ss.get("karaoke_setlist_meta")
+    if isinstance(_ks_meta, dict):
+        extra["karaoke_setlist_meta"] = copy.deepcopy(_ks_meta)
     snapshots = ss.get("_studio_page_snapshots")
     if isinstance(snapshots, dict) and snapshots:
         snap_copy = copy.deepcopy(snapshots)
@@ -3177,6 +3183,37 @@ def build_music_disk_state(st: Any) -> dict[str, Any]:
     except Exception as exc:
         _chart_prov_failure(ss, "build_music_disk_state", exc)
     return state
+
+
+def _reconcile_karaoke_setlist_on_apply(ss: Any, session_extra: Any) -> None:
+    """Give the session the newest deliberately saved setlist among every copy that exists.
+
+    The payload being applied is one copy; the server disk and the cloud row may each hold
+    another (a restore picks ONE of them for the whole session, and the other can be the only
+    place the setlist still is). Both are already loaded by the restore, so this costs a cached
+    read, not a request.
+    """
+    try:
+        from karaoke_setlist_durability import reconcile_session
+    except ImportError:
+        return
+    sources: list[tuple[str, Any]] = [("payload", {"session": session_extra if isinstance(session_extra, dict) else {}})]
+    try:
+        disk_state, _warn = load_user_state(APP_ID)
+        sources.append(("disk", disk_state))
+    except Exception:
+        pass
+    try:
+        from suite_cloud_state import load_cloud_full_session
+
+        cloud_state, _ts = load_cloud_full_session(APP_ID)
+        sources.append(("cloud", cloud_state))
+    except Exception:
+        pass
+    try:
+        reconcile_session(ss, sources)
+    except Exception:
+        pass
 
 
 def apply_music_disk_state(
@@ -3490,6 +3527,10 @@ def apply_music_disk_state(
                     purge_cpl_ephemeral_widget_keys(ss)
             except Exception:
                 pass
+        elif key in ("karaoke_queue", "karaoke_setlist_meta"):
+            # Reconciled below against every copy, never copied over blindly: a payload with no
+            # setlist, or an empty one nobody cleared, must not replace a saved setlist.
+            continue
         elif key in _LIST_KEYS and isinstance(val, list):
             ss[key] = copy.deepcopy(val)
         elif key in _PERSIST_KEYS:
@@ -3678,6 +3719,8 @@ def apply_music_disk_state(
                 pass
             if not str(key).startswith("_ami_"):
                 ss[key] = copy.deepcopy(val)
+
+    _reconcile_karaoke_setlist_on_apply(ss, session_extra)
 
     # Re-assert live Catalog leave after session_extra — stale Composition identity
     # from disk/cloud must not survive into the next open_backing.
@@ -5644,6 +5687,15 @@ def apply_music_session_defaults(st: Any) -> None:
 def default_reset_music_session(st: Any) -> None:
     """Full music reset: session, disk, and cloud ``full_session`` when available."""
     apply_music_session_defaults(st)
+    # Reset to default is a deliberate choice to start over, so it clears the Karaoke setlist the
+    # way Clear Setlist does - stamped, so the copies on disk and in the cloud yield to it.
+    try:
+        from karaoke_setlist_durability import QUEUE_KEY as _KQ, stamp_deliberate_edit
+
+        st.session_state[_KQ] = []
+        stamp_deliberate_edit(st.session_state)
+    except ImportError:
+        pass
     reset_user_state(APP_ID)
     fresh = build_music_disk_state(st)
     finalize_suite_reset(st, APP_ID, fresh)
