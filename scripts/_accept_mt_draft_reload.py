@@ -31,6 +31,8 @@ URL = sys.argv[1] if len(sys.argv) > 1 and sys.argv[1].startswith("http") else "
 SLOT = os.environ.get("MT_SLOT", "Guitar")
 #: Long enough to matter. A 3 s take is ~288 KB; a real layer runs the length of the song.
 SECONDS = float(os.environ.get("MT_SECONDS", "3"))
+#: Press Save layer before the refresh, to measure whether SAVING makes a long take durable.
+SAVE_FIRST = os.environ.get("MT_SAVE_BEFORE_REFRESH", "") == "1"
 
 import _accept_issue78c_visibility as H  # noqa: E402
 
@@ -110,6 +112,18 @@ def main() -> int:
                 blob = slot_fp(r, "persist_blob")
                 if blob:
                     break
+            if SAVE_FIRST:
+                clicked = H.click_page_button(page, "Save layer", SLOT)
+                H.settle(page, 8)
+                log(f"    pressed Save layer: {clicked!r}")
+                mark("R4b Save layer was pressed", str(clicked).startswith("click"),
+                     str(clicked))
+                for r in reversed(rows()):
+                    blob = slot_fp(r, "persist_blob")
+                    if blob:
+                        break
+                else:
+                    blob = None
             log(f"    durable copy (persist blob) before the refresh: {blob or 'NONE'}")
             before = len(rows())
 
@@ -132,7 +146,7 @@ def main() -> int:
                         break
                 if found:
                     break
-            mark("R5 THE UNSAVED TAKE SURVIVED A REFRESH", found == taken and bool(taken),
+            mark("R5 THE " + ("SAVED LAYER" if SAVE_FIRST else "UNSAVED TAKE") + " SURVIVED A REFRESH", found == taken and bool(taken),
                  f"found={found} in {where_found or 'nowhere'} (recorded {taken})")
             audio = int(page.evaluate("() => document.querySelectorAll('audio').length") or 0)
             log(f"    audio elements on the page after the refresh: {audio}")

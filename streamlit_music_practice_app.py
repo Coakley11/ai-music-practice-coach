@@ -28604,6 +28604,15 @@ elif _studio_page == "multitrack":
         st.session_state.mt_track_filenames = {
             slot: f"{slot.replace(' ', '_').lower()}.wav" for slot in MT_SLOTS
         }
+    # Before adopt_restored_layers_as_saved, on purpose: it treats any audio with no recorded saved
+    # state as a SAVED layer, and after a refresh nothing is recorded - so a restored draft would be
+    # silently promoted. restore_drafts sets each slot's saved state from the file's own record.
+    try:
+        from multitrack_draft_store import restore_drafts
+
+        restore_drafts(st.session_state, MT_SLOTS, st=st)
+    except Exception:
+        pass
     try:
         from multitrack_takes import adopt_restored_layers_as_saved
 
@@ -29147,6 +29156,17 @@ elif _studio_page == "multitrack":
                                 except Exception:
                                     pass
                                 mark_take_unsaved(st.session_state, slot)
+                                # The workspace save drops any layer over 2 MiB - about 12 s of this
+                                # recorder's audio - so a song-length take was kept nowhere but the
+                                # live session. Its own file, outside the workspace state, is what
+                                # lets it survive a refresh or a dropped connection.
+                                try:
+                                    from multitrack_draft_store import write_draft
+
+                                    write_draft(st.session_state, slot, _mt_bytes,
+                                                source=_mt_landed_source, st=st)
+                                except Exception:
+                                    pass
                                 try:
                                     from music_persistent_state import force_save_music_state
                                     from studio_page_persistence import flush_current_page_snapshot
@@ -29216,6 +29236,12 @@ elif _studio_page == "multitrack":
                             if audio_obj is None and st.session_state.mt_tracks.get(slot):
                                 # The take is already held for playback; saving keeps it for good.
                                 mark_take_saved(st.session_state, slot)
+                                try:
+                                    from multitrack_draft_store import mark_draft_saved
+
+                                    mark_draft_saved(st.session_state, slot, st=st)
+                                except Exception:
+                                    pass
                                 st.success(f"{layer_name} saved.")
                                 try:
                                     from music_persistent_state import force_save_music_state
@@ -29230,6 +29256,12 @@ elif _studio_page == "multitrack":
                                     audio_obj, "name", f"{slot}.wav"
                                 )
                                 mark_take_saved(st.session_state, slot)
+                                try:
+                                    from multitrack_draft_store import mark_draft_saved
+
+                                    mark_draft_saved(st.session_state, slot, st=st)
+                                except Exception:
+                                    pass
                                 st.success(f"{layer_name} saved.")
                                 try:
                                     from music_persistent_state import force_save_music_state

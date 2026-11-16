@@ -4,15 +4,16 @@
     "R2 Multitrack opens": true,
     "R3 a take is recorded": true,
     "R4 the take is in the live session": true,
-    "R5 THE UNSAVED TAKE SURVIVED A REFRESH": false
+    "R4b Save layer was pressed": true,
+    "R5 THE SAVED LAYER SURVIVED A REFRESH": false
   },
-  "taken": "32e8f110",
+  "taken": "df9c786e",
   "durable_before": null,
   "found_after": null,
   "where": "",
   "trace_after": [
     {
-      "t": 1794854813.324,
+      "t": 1794855425.006,
       "stage": "run:page=multitrack",
       "studio_page": "multitrack",
       "multitrack_catalog_active_id": "",
@@ -20,7 +21,7 @@
       "slots_with_audio_count": 0
     },
     {
-      "t": 1794854813.528,
+      "t": 1794855425.303,
       "stage": "multitrack_page:enter",
       "studio_page": "multitrack",
       "multitrack_catalog_active_id": "",
@@ -28,7 +29,31 @@
       "slots_with_audio_count": 0
     },
     {
-      "t": 1794854813.529,
+      "t": 1794855425.305,
+      "stage": "multitrack_page:after_history_bootstrap",
+      "studio_page": "multitrack",
+      "multitrack_catalog_active_id": "",
+      "slots_with_audio": [],
+      "slots_with_audio_count": 0
+    },
+    {
+      "t": 1794855433.906,
+      "stage": "run:page=multitrack",
+      "studio_page": "multitrack",
+      "multitrack_catalog_active_id": "",
+      "slots_with_audio": [],
+      "slots_with_audio_count": 0
+    },
+    {
+      "t": 1794855434.115,
+      "stage": "multitrack_page:enter",
+      "studio_page": "multitrack",
+      "multitrack_catalog_active_id": "",
+      "slots_with_audio": [],
+      "slots_with_audio_count": 0
+    },
+    {
+      "t": 1794855434.116,
       "stage": "multitrack_page:after_history_bootstrap",
       "studio_page": "multitrack",
       "multitrack_catalog_active_id": "",

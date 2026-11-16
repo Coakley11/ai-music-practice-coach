@@ -32,7 +32,11 @@ class TestTakeLifecycle(unittest.TestCase):
         s = _session(**{SLOT: b"audio"})
         mark_take_unsaved(s, SLOT)
         self.assertFalse(is_take_saved(s, SLOT))
-        self.assertIn("Unsaved take", take_status_line(s, SLOT))
+        # Relabelled "Unsaved Draft - Temporary" at the musician's request: the line has to say a
+        # draft is not kept for good. What this pins is unchanged - unsaved reads differently from
+        # saved.
+        self.assertIn("Unsaved Draft", take_status_line(s, SLOT))
+        self.assertNotIn("Saved layer", take_status_line(s, SLOT))
         self.assertIn("Discard take", discard_button_label(s, SLOT))
 
     def test_saving_turns_the_take_into_a_layer(self):

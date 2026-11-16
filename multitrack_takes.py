@@ -129,14 +129,45 @@ def discard_button_label(session_state: MutableMapping[str, Any], slot: str) -> 
     return "🗑 Delete layer" if is_take_saved(session_state, slot) else "🗑 Discard take"
 
 
+#: Shown for a take too large for the workspace save. Measured: a 30 s take is dropped from it
+#: whether or not Save layer was pressed, so its only copy is a file on the app's server, which a
+#: restart replaces. Nothing here may say "saved for good" or "on this device" about that.
+LONG_TAKE_NOTICE = (
+    "Long recordings are kept as a temporary file on the app's server: they come back after a "
+    "refresh or a dropped connection, but **a restart of the app can lose them, saved or not.**"
+)
+
+
+def _take_is_long(session_state: MutableMapping[str, Any], slot: str) -> bool:
+    tracks = session_state.get("mt_tracks")
+    data = tracks.get(slot) if isinstance(tracks, dict) else None
+    try:
+        from multitrack_session_persistence import MAX_MT_TRACK_BYTES
+    except ImportError:
+        MAX_MT_TRACK_BYTES = 2_097_152
+    try:
+        return len(bytes(data)) > MAX_MT_TRACK_BYTES
+    except Exception:
+        return False
+
+
 def take_status_line(session_state: MutableMapping[str, Any], slot: str) -> str:
-    """One short line telling the musician whether what they hear is saved."""
+    """One short line telling the musician whether what they hear is saved - and how far to trust it."""
     tracks = session_state.get("mt_tracks")
     if not (isinstance(tracks, dict) and tracks.get(slot)):
         return ""
+    restored = bool(session_state.get(f"mt_draft_restored_{slot}"))
+    long_take = _take_is_long(session_state, slot)
     if is_take_saved(session_state, slot):
-        return "Saved layer — it plays with the mix and exports."
-    return "Unsaved take — press **Save layer** to keep it, or **Discard take** to record again."
+        line = "Saved layer — it plays with the mix and exports."
+    else:
+        line = ("**Unsaved Draft — Temporary.** Press **Save layer** to keep this recording, or "
+                "**Discard take** to record again.")
+    if restored:
+        line += " Brought back after the page reloaded."
+    if long_take:
+        line += " " + LONG_TAKE_NOTICE
+    return line
 
 
 __all__ = [
