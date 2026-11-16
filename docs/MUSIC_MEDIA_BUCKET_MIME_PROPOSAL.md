@@ -1,5 +1,27 @@
 # Proposed: allow reference types on the `music-media` bucket
 
+> **CORRECTION, after an authorised read-only inspection (2026-11-16).** The premise below -
+> that `music-media` restricts its allowed MIME types - is **not true of the suite project whose
+> credentials exist on this machine** (project ref ending `bmt`). That bucket reports:
+>
+> ```
+> name: music-media   public: False   file_size_limit: None
+> allowed_mime_types: null        <- unrestricted
+> created_at: 2026-11-15T20:13:20 (the only bucket in the project)
+> ```
+>
+> `null` means every type is allowed, so a `415 invalid_mime_type` cannot come from that bucket
+> and **no change is needed there**. The failing session therefore used a different project or
+> bucket - most likely the deployed app's own Streamlit Cloud secrets, which are not readable
+> from here. The app-side correction (declare the type the file really is, instead of
+> `application/pdf` for everything) stands on its own: declaring a JPEG as a PDF is wrong against
+> any correctly configured store.
+>
+> **Nothing below should be applied until the project that actually served the 415 is
+> identified.** What is needed is the `[suite_activity] supabase_url` project ref from the
+> deployed app's configuration.
+
+
 **Status:** proposal only. **Nothing has been applied to any live bucket**, and nothing here can
 be applied without the project reference and your approval.
 
