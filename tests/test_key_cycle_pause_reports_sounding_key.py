@@ -1065,6 +1065,76 @@ class ResumePreparesTheNextKeyWithoutTheServer(unittest.TestCase):
         self.assertEqual(after["key"], "Cm", after)
 
 
+# Records, every 50 ms for `ms`, which take is heard; a take whose position jumps back is a restart.
+_RECORD_HEARD_JS = """async (ms) => { const out = []; const restarts = []; const last = {};
+  const tail = (x) => String(x.src || x.currentSrc || '').split('/').pop();
+  const t0 = Date.now();
+  while (Date.now() - t0 < ms) {
+    const heard = [...document.querySelectorAll('audio[id^="kc-"]')]
+      .filter(x => !x.paused && !x.ended && !x.muted && Number(x.volume) > 0.01);
+    heard.forEach(x => { const s = tail(x); const ct = Number(x.currentTime);
+      if (last[s] != null && ct < last[s] - 0.5) restarts.push(s); last[s] = ct; });
+    const names = heard.map(tail);
+    if (names.length > 1) out.push(names.join('+'));
+    else if (names.length === 1 && out[out.length - 1] !== names[0]) out.push(names[0]);
+    await new Promise(r => setTimeout(r, 50));
+  }
+  return {sequence: out, restarts}; }"""
+
+
+class TheFinishedTakeIsNeverReplayedFromTheIdleSlot(unittest.TestCase):
+    """Browser trace 2026-11-15 (six-round trace, round 2; Shape of You, Guitar Shape, six-second
+    Mission takes, Lead Sheet): the server was one key behind while Gm sounded, so the page had its
+    own key Gm armed as "next" and warm-loaded Gm's take into the idle slot. Gm ended inside the
+    Pause; the server held Cm, but its command reached the page 2.2 s after Resume. At Resume the
+    end-of-take check refused the armed Gm, and the switch fell back to whatever the idle slot held
+    -- Gm's own take -- and Gm restarted from 0. The switch now waits for the verified next take."""
+
+    _SEQ = ["Dm", "Gm", "Cm", "Fm", "Bbm"]
+
+    def _scenario(self, answer_after_ms: int, during_wait: str = "", record_ms: int = 9000) -> dict:
+        seq = list(self._SEQ)
+        start = _kc_cmd(10, "Gm", "Cm", restart=True, autoplay=True, forcePlay=True, sequence=seq)
+        # The server one behind: it still names Dm current and Gm (the page's own key) as next.
+        behind = _kc_cmd(11, "Dm", "Gm", sequence=seq)
+        # Then, as in the trace, the page has Gm armed as next (warm-loaded into the idle slot).
+        # The server's URL -> key map holds more than one Cm take, as it does after earlier passes
+        # in the app (the page then could not name Cm's take by itself, and fell back to the slot).
+        arm_own = """() => { const d = window.__kcDual; d.sequence = %s;
+          window.__kcUrlToKey = window.__kcUrlToKey || {}; window.__kcUrlToKey['app/static/kc/cm-pass1.wav'] = 'Cm';
+          d.nextUrl = 'app/static/kc/gm.wav'; d.nextSounding = 'Gm'; return true; }""" % __import__("json").dumps(seq)
+        pause = ResumePreparesTheNextKeyWithoutTheServer._PAUSE_AT_GM_END % __import__("json").dumps(seq)
+        answer = _kc_cmd(12, "Cm", "Fm", resume=True, restart=False, autoplay=False, sequence=seq)
+        resume_and_answer = """async () => { const rec = (%s)(%d);
+          window.__kcResumeAudio();
+          await new Promise(r => setTimeout(r, %d));
+          %s
+          window.__kcApplyCmd(%s);
+          await new Promise(r => setTimeout(r, 1500));  // Cm starts and settles
+          const d = window.__kcDual; const a = document.getElementById(d.active === 1 ? 'kc-buf-1' : 'kc-buf-0');
+          a.currentTime = Math.max(0, a.duration - 0.3);  // Cm runs to its end, then Fm must follow
+          return await rec; }""" % (_RECORD_HEARD_JS, record_ms, answer_after_ms, during_wait,
+                                     __import__("json").dumps(answer))
+        snaps = _run_stop_race(self, [("cmd", start), ("cmd", behind), ("eval", arm_own), ("eval", pause),
+                                      ("eval", resume_and_answer)])
+        return snaps[-1]["eval"]
+
+    def test_resume_never_replays_gm_and_plays_cm_once_then_fm(self) -> None:
+        got = self._scenario(2200)  # the server's command, 2.2 s after Resume, as recorded
+        self.assertNotIn("gm.wav", got["sequence"], got)
+        self.assertEqual(got["sequence"], ["cm.wav", "fm.wav"], got)  # Cm once, then Fm; never two at once
+        self.assertEqual(got["restarts"], [], got)
+
+    def test_a_take_missing_for_seconds_is_waited_for_safely(self) -> None:
+        got = self._scenario(5000, record_ms=11000)  # no valid next take for 5 s
+        self.assertEqual(got["sequence"], ["cm.wav", "fm.wav"], got)  # silent wait, then the right take
+        self.assertEqual(got["restarts"], [], got)
+
+    def test_stop_while_waiting_stays_stopped(self) -> None:
+        got = self._scenario(2200, during_wait="window.__kcHardStop();")
+        self.assertEqual(got["sequence"], [], got)
+
+
 class FinalKeyEndsOnlyWhenItsTakeCompletes(unittest.TestCase):
     """The final key selected (or prepared) is not the final key completed: only the completion of
     the final key's own take ends the sequence. Two-key cycle Gm -> Cm, starting on Cm."""

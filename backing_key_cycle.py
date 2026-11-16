@@ -9837,6 +9837,19 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       // opening notes / count-in are never skipped by muted pre-roll.
       let warmLive = false;
       try {{
+        // A warm start is promoted only when the slot holds the take being switched to. Warm
+        // with another take (a key the cycle refused), promoting it played that take, and the
+        // load of the verified take below then interrupted its play() for good -- nothing
+        // sounded (2026-11-15: idle slot warm with the finished Gm, the switch to Cm stalled).
+        if (now && state._kcWarmStarted && nextUrl && !urlsMatch(now, nextUrl)) {{
+          try {{ now.pause(); }} catch (eWx) {{}}
+          state._kcWarmStarted = false;
+          try {{
+            parentWin.__kcPlayDiag = parentWin.__kcPlayDiag || [];
+            parentWin.__kcPlayDiag.push({{ t: kcNow(), ev: 'warm_promote_other_take_refused', id: now.id,
+              held: String(now.getAttribute('data-kc-url') || '').slice(-40), want: String(nextUrl).slice(-40) }});
+          }} catch (eWd) {{}}
+        }}
         if (now && state._kcWarmStarted) {{
           const ctBefore = Number(now.currentTime || 0);
           try {{ now.pause(); }} catch (ePs) {{}}
@@ -11140,13 +11153,73 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         }}
         return;
       }}
+      // The take whose end this is: the wait below belongs to it alone.
+      let waitFrom = null;
       const trySwap = (attempt) => {{
         if (!state.enabled) {{ state.ending = false; state._onEndedGate = false; return; }}
         if (state.swapping || state.pendingHandoff) {{ state.ending = false; return; }}
+        if (attempt === 0) {{
+          try {{
+            const a0 = activeAudio();
+            waitFrom = a0 ? {{ el: a0, url: String(a0.getAttribute('data-kc-url') || a0.getAttribute('src') || ''),
+              key: String(a0.getAttribute('data-kc-sounding') || parentWin.__kcLastSounding || '').trim() }} : null;
+          }} catch (eWf) {{ waitFrom = null; }}
+        }}
+        // Waiting for the next take: if a command meanwhile put another take in the active slot
+        // (a new URL or key there, or it is playing again), this end-of-take is over and that
+        // command owns what plays. Switching on would skip that take (Cm loaded by the server's
+        // late command, then the wait "finished" it and moved to Fm).
+        if (attempt > 0) {{
+          try {{
+            const actW = activeAudio();
+            const durW = actW ? Number(actW.duration || 0) : 0;
+            const finW = !!(actW && (actW.ended || (durW > 0 && Number(actW.currentTime || 0) >= durW - 0.05)));
+            const urlW = actW ? String(actW.getAttribute('data-kc-url') || actW.getAttribute('src') || '') : '';
+            const keyW = actW ? String(actW.getAttribute('data-kc-sounding') || '').trim() : '';
+            const replaced = !!(waitFrom && (actW !== waitFrom.el || (waitFrom.url && urlW && urlW !== waitFrom.url)
+              || (waitFrom.key && keyW && keyW !== waitFrom.key)));
+            if (actW && (replaced || (!actW.paused && !finW))) {{
+              state.ending = false;
+              state._onEndedGate = false;
+              try {{
+                parentWin.__kcPlayDiag = parentWin.__kcPlayDiag || [];
+                parentWin.__kcPlayDiag.push({{ t: kcNow(), ev: 'trySwap_active_taken_over', attempt: attempt,
+                  key: keyW, replaced: replaced, from: waitFrom ? waitFrom.key : '' }});
+              }} catch (eDw) {{}}
+              return;
+            }}
+          }} catch (eW) {{}}
+        }}
         const idle2 = idleAudio();
-        const nxt = state.nextUrl
-          || (idle2 && idle2.getAttribute('data-kc-url'))
-          || '';
+        // A take is promoted only when it is verified as the expected next key of this cycle.
+        // The idle slot can still hold an old take -- the finished key's own, after a server one
+        // behind had armed the page's own key as next (browser trace 2026-11-15: Gm ended inside
+        // the Pause, Resume replayed Gm from 0 out of the idle slot). Identity is the server's own
+        // URL -> key map and the cycle's live takes (both reset with the cycle), never the label.
+        // Otherwise wait here for the legitimate take (late prep / the server's next command).
+        let expectS = '';
+        try {{
+          const actS = activeAudio();
+          // The key after the take that ENDED (recorded when this wait began), not a label written since.
+          expectS = expectedNextInSequence((waitFrom && waitFrom.key) || String(
+            (actS && actS.getAttribute('data-kc-sounding')) || parentWin.__kcLastSounding || '').trim());
+        }} catch (eExS) {{ expectS = ''; }}
+        let nxt = String(state.nextUrl || '');
+        if (nxt && expectS) {{
+          const ownerN = kcUrlKeyOf(nxt);
+          if (ownerN && ownerN !== expectS) nxt = '';  // an armed take of another key: not this one
+        }}
+        if (!nxt && idle2) {{
+          const idleUrl = String(idle2.getAttribute('data-kc-url') || '');
+          if (idleUrl && (!expectS || (kcUrlKeyOf(idleUrl) === expectS && kcUrlIsLive(idleUrl)))) nxt = idleUrl;
+          else if (idleUrl && attempt === 0) {{
+            try {{
+              parentWin.__kcPlayDiag = parentWin.__kcPlayDiag || [];
+              parentWin.__kcPlayDiag.push({{ t: kcNow(), ev: 'trySwap_idle_take_refused', expect: expectS,
+                idleKey: kcUrlKeyOf(idleUrl), idleUrl: idleUrl.slice(-40) }});
+            }} catch (eDr) {{}}
+          }}
+        }}
         if (idle2 && nxt) {{
           state.ending = false;
           doSeamlessSwap(idle2, nxt);
