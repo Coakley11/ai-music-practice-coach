@@ -1,0 +1,46 @@
+worktree : /c/tmp/ai-music-slice2
+script   : scripts/_accept_karaoke_stop_transport_v2.py
+port     : 8622
+cleared  : ignored app state under /c/tmp/ai-music-slice2/data (tracked fixtures kept)
+server pid: 190676
+  PASS  S1 app renders
+picked Say dropdown=True landed=True sidebar_song='SONG\n\nSONG\nSay — John Mayer\n\n🎼 Songs\n\nSay · Pop\n\n📜 Song Original Key: Bb\n\n🗝️ Practice / Co'
+    Practice Key D: 'Bb' -> 'D' (clicked 'D') -> 'D' after the rerun
+picked Say dropdown=True landed=True sidebar_song='SONG\n\nSONG\nSay — John Mayer\n\n🎼 Songs\n\nSay · Pop\n\n📜 Song Original Key: Bb\n\n🗝️ Practice / Co'
+    store site before: music_user_state.json.state.session.practice_key_by_source = {"Pop\u001fSay \u2014 John Mayer": "D"}
+  PASS  S2 Say's own Practice Key is saved as D before any performance  [store='d' sidebar='d']
+  PASS  S3 the set performs  [entry='bb']
+    Practice Key Ab: 'D major' -> 'A? major' (clicked 'A? major') -> 'A? major' after the rerun
+  PASS  S4 the performance is retuned to a temporary Ab
+  PASS  S5 the take is actually playing before Stop  [play=True t=7.92]
+  PASS  S6 the transport offers a Stop control once the take runs  [card state='playing' stop=null]
+  OBS   stopped with the card's own #btn, which is Stop while a take runs
+  PASS  S7 Stop was really pressed and the take stopped  [clicked=True take now paused=True]
+picked Say dropdown=True landed=True sidebar_song='SONG\n\nSONG\nSay — John Mayer\n\n🎼 Songs\n\nSay · Pop\n\n📜 Song Original Key: Bb\n\n🗝️ Practice / Co'
+    store site after Stop: music_user_state.json.state.session.practice_key_by_source = {"Pop\u001fSay \u2014 John Mayer": "Ab"}
+  FAIL  S8 Stop did not rewrite Say's SAVED Practice Key  [store 'd' -> 'ab' (sidebar shows 'ab')]
+  PASS  S9 Stop did not move the saved setlist entry  [entry 'bb' -> 'bb']
+picked Say dropdown=True landed=True sidebar_song='SONG\n\nSONG\nSay — John Mayer\n\n🎼 Songs\n\nSay · Pop\n\n📜 Song Original Key: Bb\n\n🗝️ Practice / Co'
+    store site after End Set: music_user_state.json.state.session.practice_key_by_source = {"Pop\u001fSay \u2014 John Mayer": "Ab"}
+  FAIL  S10 End Set left Say's SAVED Practice Key as D  [store='ab' (sidebar 'ab', ended=True)]
+  PASS  S11 End Set left the saved setlist entry at Bb  [entry='bb']
+  OBS   after End Set the sidebar still displays 'ab' while the saved store holds 'ab' - the known temporary-key DISPLAY residue, held as its own QA item
+
+======================================================================
+  PASS  S1 app renders
+  PASS  S2 Say's own Practice Key is saved as D before any performance
+  PASS  S3 the set performs
+  PASS  S4 the performance is retuned to a temporary Ab
+  PASS  S5 the take is actually playing before Stop
+  PASS  S6 the transport offers a Stop control once the take runs
+  PASS  S7 Stop was really pressed and the take stopped
+  FAIL  S8 Stop did not rewrite Say's SAVED Practice Key
+  PASS  S9 Stop did not move the saved setlist entry
+  FAIL  S10 End Set left Say's SAVED Practice Key as D
+  PASS  S11 End Set left the saved setlist entry at Bb
+  OBS   picked Say dropdown=True landed=True sidebar_song='SONG\n\nSONG\nSay — John Mayer\n\n🎼 Songs\n\nSay · Pop\n\n📜 Song Original Key: Bb\n\n🗝️ Practice / Co'
+  OBS   stopped with the card's own #btn, which is Stop while a take runs
+  OBS   after End Set the sidebar still displays 'ab' while the saved store holds 'ab' - the known temporary-key DISPLAY residue, held as its own QA item
+
+9/11 gates passed
+stopping the server (pid 190676)

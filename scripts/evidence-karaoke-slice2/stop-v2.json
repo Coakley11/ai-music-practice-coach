@@ -1,0 +1,24 @@
+{
+  "before": {
+    "store": {
+      "Pop\u001fSay — John Mayer": "D"
+    },
+    "sidebar": "d",
+    "entry": "bb"
+  },
+  "after_stop": {
+    "store": {
+      "Pop\u001fSay — John Mayer": "Ab"
+    },
+    "sidebar": "ab",
+    "entry": "bb",
+    "clicked": true
+  },
+  "after_end": {
+    "store": {
+      "Pop\u001fSay — John Mayer": "Ab"
+    },
+    "sidebar": "ab",
+    "entry": "bb"
+  }
+}

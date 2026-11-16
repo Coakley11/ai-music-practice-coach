@@ -1,0 +1,20 @@
+{
+  "gates": {
+    "S1 app renders": true,
+    "S2 Say's own Practice Key is saved as D before any performance": true,
+    "S3 the set performs": true,
+    "S4 the performance is retuned to a temporary Ab": true,
+    "S5 the take is actually playing before Stop": true,
+    "S6 the transport offers a Stop control once the take runs": true,
+    "S7 Stop was really pressed and the take stopped": true,
+    "S8 Stop did not rewrite Say's SAVED Practice Key": false,
+    "S9 Stop did not move the saved setlist entry": true,
+    "S10 End Set left Say's SAVED Practice Key as D": false,
+    "S11 End Set left the saved setlist entry at Bb": true
+  },
+  "observed": [
+    "picked Say dropdown=True landed=True sidebar_song='SONG\\n\\nSONG\\nSay — John Mayer\\n\\n🎼 Songs\\n\\nSay · Pop\\n\\n📜 Song Original Key: Bb\\n\\n🗝️ Practice / Co'",
+    "stopped with the card's own #btn, which is Stop while a take runs",
+    "after End Set the sidebar still displays 'ab' while the saved store holds 'ab' - the known temporary-key DISPLAY residue, held as its own QA item"
+  ]
+}
