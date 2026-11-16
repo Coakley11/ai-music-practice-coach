@@ -1,0 +1,12 @@
+[pkfix-final] 62 test files, sequential
+  baseline  14 failed, 833 passed, 52 warnings, 108 subtests passed in 402.85s (0:06:42)
+  candidate 14 failed, 834 passed, 52 warnings, 108 subtests passed in 373.63s (0:06:13)
+  test ids: baseline=845 candidate=846
+  only in baseline (disappeared): 1
+     - tests/test_karaoke_performance_key_persistence.py::WhatMustStillPersist::test_the_song_being_sung_before_anyone_retunes_it was PASSED
+  only in candidate (new): 2
+     + tests/test_karaoke_performance_key_persistence.py::WhatMustStillPersist::test_a_song_that_is_not_being_sung_still_persists_during_a_set is PASSED
+     + tests/test_karaoke_performance_key_persistence.py::WhatMustStillPersist::test_the_song_being_sung_is_frozen_from_the_moment_the_set_starts is PASSED
+  outcome changed: 0
+  REGRESSIONS (passed -> not passed): 0
+VERDICT: INVESTIGATE

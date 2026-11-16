@@ -55,19 +55,77 @@ def _karaoke_performance_locks_song_key(session: dict[str, Any], pick_key: str) 
     and without this the durable half wrote tonight's key into the song's own Practice Key, so
     transposing Say for one evening left Say transposed for good.
 
-    Narrow on purpose. It is the song being sung, after the musician has re-keyed it during this
-    set, and nothing else: another song's key, or this song's key with no set running, persists
-    exactly as it always did.
+    Narrow on purpose: it is the song being sung and nothing else. Another song's key, or this
+    song's key with no set running, persists exactly as it always did.
+
+    It asks ``performance_locks_song_key``, which does NOT ask whether the song has already been
+    re-keyed this set. It used to ask ``performance_owns_song_key``, which does, and that made
+    the freeze depend on the order two calls happen to run in: on the Backing page one sidebar
+    gesture committed the durable store 43 lines before the retune registered the performance,
+    so the FIRST retune of a set wrote tonight's key over the musician's saved one and End Set
+    did not bring it back. Measured: Say saved D, queued Bb, sung in Ab, saved Ab for good.
     """
     pick = str(pick_key or "").strip()
     if not pick:
         return False
     try:
-        from karaoke_mode import performance_owns_song_key
+        from karaoke_mode import performance_locks_song_key
     except ImportError:
         return False
     try:
-        return bool(performance_owns_song_key(session, pick))
+        return bool(performance_locks_song_key(session, pick))
+    except Exception:
+        return False
+
+
+def _LIVE_KEY_PROBE_KEYS(session: dict[str, Any]) -> list[str]:
+    """Everywhere a leftover performance key can still be sitting.
+
+    The two scalars are not enough: the Backing Practice Key control commits "the current
+    owner's canonical concert key and its widget together", and the widget is the one that wins
+    the next rerun. Every ``display_key*`` key is swept rather than naming one owner's widget,
+    so a different owner's control cannot quietly keep a leftover alive.
+    """
+    names = ["display_key", "concert_key", "_pending_display_key", "_pk_user_commit_token"]
+    try:
+        for key in list(session.keys()):
+            text = str(key)
+            if text.startswith("display_key") and text not in names:
+                names.append(text)
+    except Exception:
+        pass
+    return names
+
+
+def _karaoke_released_key_pick(session: dict[str, Any]) -> str:
+    """The song a finished set handed a key back for, "" when there is none."""
+    try:
+        from karaoke_mode import released_performance_key_pick
+    except ImportError:
+        return ""
+    try:
+        return str(released_performance_key_pick(session) or "").strip()
+    except Exception:
+        return ""
+
+
+def _karaoke_released_key_blocks(session: dict[str, Any], pick_key: str, value: str) -> bool:
+    """Is this the key a finished set just handed back for this song?
+
+    The live Practice Key control is a Streamlit widget, and once it has been instantiated in a
+    run its session value cannot be rewritten - End Set is handled inline, after the sidebar has
+    rendered - so tonight's key survives there, wins the next rerun, and a reconciler saves it.
+    Chasing it through the session does not work; refusing the write does.
+    """
+    pick = str(pick_key or "").strip()
+    if not pick or not str(value or "").strip():
+        return False
+    try:
+        from karaoke_mode import released_performance_key_blocks
+    except ImportError:
+        return False
+    try:
+        return bool(released_performance_key_blocks(session, pick, value))
     except Exception:
         return False
 
@@ -921,6 +979,24 @@ def set_practice_concert_key(
     # So does a karaoke performance key, for the song being sung.
     if _karaoke_performance_locks_song_key(session, pk):
         return
+    # And a performance that has just ENDED still owns the key it handed back, whoever is
+    # asking. An earlier version of this exempted "explicit" commits, on the grounds that a
+    # reconciler passes no flags while the musician's own control does - and the write that
+    # actually destroyed the saved key came through
+    #
+    #     persist_sbi_active_sidebar_commit_before_render -> note_sbi_active_user_practice_key_edit
+    #
+    # which re-persists the LEFTOVER sidebar widget value as the musician's own edit, flags and
+    # all. The widget cannot be put back: it is a Streamlit widget, End Set is handled inline
+    # after the sidebar has rendered, and its value cannot be rewritten in that run. So no flag
+    # exempts the one key this performance handed back for this one song.
+    #
+    # The cost, stated plainly: for as long as this marker stands, re-choosing that same key for
+    # that song will not save. Choosing any other key saves and clears the marker, and so does
+    # starting another set. Erring this way keeps a key the musician saved; erring the other way
+    # is what lost it.
+    if _karaoke_released_key_blocks(session, pk, key):
+        return
     # Gate 12 leave: leftover Mission tokens must not stamp a different catalog
     # sticky. A genuine sidebar Practice Key edit on Missions / Mission Backing
     # *is* this catalog song's pick-scoped Practice Key and must persist.
@@ -1290,6 +1366,34 @@ def set_practice_concert_key(
             store.pop(alias, None)
     store[write_pk] = key
     session[PRACTICE_KEY_BY_SOURCE_KEY] = store
+    # The marker retires only when the LEFTOVER is really gone - and the leftover lives in the
+    # sidebar WIDGET, not in the live scalar. Measured at the start of the run after End Set:
+    #
+    #     marker={'pick': 'Pop␟Say - John Mayer', 'key': 'Ab'}  ksa=False  dk=D  widget=Ab
+    #
+    # The release had put display_key back to D exactly as intended, so a rule that retired the
+    # marker "once the live key has moved off the released key" retired it on the first ordinary
+    # write of that run - and the widget's Ab then won the rest of the run and was persisted.
+    # The rule cleared the protection at the one moment it was still needed.
+    try:
+        from karaoke_mode import clear_released_performance_key, released_performance_key_blocks
+
+        if _karaoke_released_key_pick(session) == str(write_pk or "").strip():
+            stale = False
+            for probe in _LIVE_KEY_PROBE_KEYS(session):
+                try:
+                    value = str(session.get(probe) or "").strip()
+                except Exception:
+                    continue
+                if value and released_performance_key_blocks(session, write_pk, value):
+                    stale = True
+                    break
+            if not stale:
+                clear_released_performance_key(session)
+    except ImportError:
+        pass
+    except Exception:
+        pass
     _audit_practice_key_store_write(
         session,
         _audit_before,
