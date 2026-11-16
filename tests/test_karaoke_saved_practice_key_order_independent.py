@@ -545,6 +545,83 @@ class TheLeftoverWidget(unittest.TestCase):
         self.assertEqual(set(after), set(before), "no pick appears or disappears")
 
 
+class TheHoldIsIsolated(unittest.TestCase):
+    """The hold must reach exactly one song, on one device, for one user - and nothing else."""
+
+    CUSTOM = "custom::my-progression"
+
+    def test_another_song_at_the_very_same_key_is_not_blocked(self) -> None:
+        """Same key value, different song: the hold is on an identity, not on a key string.
+
+        Committed the way the musician's own control sends it, because an unflagged write of Ab
+        here is refused by the older "recent explicit commit" rule - the Ab just committed for
+        Say - and that would be someone else's rule answering this question.
+        """
+        session = performing(entry_key="Bb", saved="D")
+        sidebar_gesture_on_backing(session, "Ab")
+        km.stop_session(session)
+        self.assertTrue(km.released_performance_key_blocks(session, SAY, "Ab"))
+        self.assertFalse(km.released_performance_key_blocks(session, PERFECT, "Ab"),
+                         "Perfect was never sung; its Ab is its own business")
+        session["_pk_user_commit_token"] = "Ab"
+        set_practice_concert_key(session, "Ab", pick_key=PERFECT, allow_restore_original=True)
+        self.assertEqual(saved_for(session, PERFECT), "ab")
+        self.assertEqual(saved_for(session, SAY), "d")
+
+    def test_a_custom_progressions_key_authority_is_untouched(self) -> None:
+        """Custom Progression keys keep their own ownership through a catalog karaoke set."""
+        session = performing(entry_key="Bb", saved="D")
+        set_practice_concert_key(session, "Ab", pick_key=self.CUSTOM)
+        self.assertEqual(saved_for(session, self.CUSTOM), "ab",
+                         "a custom:: pick saves during a set of a catalog song")
+        sidebar_gesture_on_backing(session, "Ab")
+        km.stop_session(session)
+        self.assertFalse(km.released_performance_key_blocks(session, self.CUSTOM, "Ab"))
+        self.assertEqual(saved_for(session, self.CUSTOM), "ab",
+                         "and is not disturbed by the hold on the catalog song")
+        self.assertEqual(saved_for(session), "d")
+
+    def test_the_hold_names_one_song_only(self) -> None:
+        session = performing(entry_key="Bb", saved="D")
+        sidebar_gesture_on_backing(session, "Ab")
+        km.stop_session(session)
+        self.assertEqual(km.released_performance_key_pick(session), SAY)
+        marker = session.get(km.RELEASED_PERFORMANCE_KEY)
+        self.assertIsInstance(marker, dict)
+        self.assertEqual(set(marker), {"pick", "key"}, "nothing else belongs in it")
+
+    def test_the_hold_is_session_scoped_and_is_not_persisted(self) -> None:
+        """Deliberately NOT persisted, and that is the point.
+
+        The hold exists only to outlive the restore and die with the LEFTOVER - the stale sidebar
+        widget value. That leftover is session state: a reload starts with no widget value, so
+        there is nothing to protect against and a hold carried across the reload would outlive its
+        own reason. That is precisely the failure this hold was rewritten to avoid.
+
+        It is therefore per-user and per-device by construction: it never leaves the session, so
+        no other device or workspace can see it, and the SAVED key it protects lives in that
+        user's own data/workspaces/<user>/music_user_state.json.
+        """
+        from music_persistent_state import KARAOKE_DEVICE_POSITION_KEYS, _PERSIST_KEYS
+
+        self.assertNotIn(km.RELEASED_PERFORMANCE_KEY, _PERSIST_KEYS)
+        self.assertNotIn(km.RELEASED_PERFORMANCE_KEY, KARAOKE_DEVICE_POSITION_KEYS)
+        session = performing(entry_key="Bb", saved="D")
+        sidebar_gesture_on_backing(session, "Ab")
+        km.stop_session(session)
+        self.assertIn(km.RELEASED_PERFORMANCE_KEY, session)
+        # What a reload actually reads back carries the saved key, and no hold.
+        self.assertEqual(saved_on_disk(session), "d")
+
+    def test_the_hold_never_blocks_a_song_that_was_not_sung_even_after_many_sets(self) -> None:
+        session = performing(entry_key="Bb", saved="D")
+        sidebar_gesture_on_backing(session, "Ab")
+        km.stop_session(session)
+        for pick, key in ((PERFECT, "Ab"), (self.CUSTOM, "Ab"), (PERFECT, "F")):
+            self.assertFalse(km.released_performance_key_blocks(session, pick, key),
+                             f"{pick} / {key} must never be held")
+
+
 class RerunsAndNavigation(unittest.TestCase):
     def test_repeated_commits_during_the_performance_never_move_it(self) -> None:
         """A rerun re-runs the same hydration and commit paths; none may move the saved key."""
