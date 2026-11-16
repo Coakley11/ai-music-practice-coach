@@ -1,7 +1,7 @@
 {
   "version": 1,
   "app": "music",
-  "saved_at": "2026-11-16T07:59:06+00:00",
+  "saved_at": "2026-11-16T13:49:05+00:00",
   "state": {
     "core": {
       "song": "Say",
@@ -32,8 +32,8 @@
       "backing_time_signature_override": false,
       "backing_quick_section": "Full song",
       "_backing_play_session": {
-        "play_session_id": "a72ce3f74f8b4199b46327ea3ba9e603",
-        "launch_id": "123fda1a1bb04b6b8af90a496b7177a2",
+        "play_session_id": "c3304be115a3498fade88ecedd7b5c36",
+        "launch_id": "3c54344a5eaa47abbd0d52faacb4f028",
         "source_identity": "pk::Pop\u001fSay — John Mayer",
         "expired": false,
         "defaults": {
@@ -62,7 +62,7 @@
       "karaoke_auto_advance": true,
       "karaoke_session_active": true,
       "karaoke_session_index": 0,
-      "_karaoke_active_entry_id": "25903192-b1f5-4901-86f0-2cb1b2e66a42",
+      "_karaoke_active_entry_id": "6c78162a-87b2-4bf2-a277-d950456b8fa9",
       "_karaoke_entry_plays_left": 1,
       "composer_saved_compositions": {},
       "active_music_source": "catalog_song",
@@ -128,13 +128,13 @@
         "meter": "4/4",
         "chart_display_key": "",
         "section_labels": [],
-        "created_at": "2026-11-16T07:55:59+00:00",
-        "updated_at": "2026-11-16T07:59:05+00:00",
+        "created_at": "2026-11-16T13:45:59+00:00",
+        "updated_at": "2026-11-16T13:49:04+00:00",
         "source_signature": "8ce971f20b105bae",
         "bound_pick_key": "Pop\u001fSay — John Mayer",
         "sbi_source_owner": "",
         "sbi_material_kind": "",
-        "backing_session_launch_id": "123fda1a1bb04b6b8af90a496b7177a2"
+        "backing_session_launch_id": "3c54344a5eaa47abbd0d52faacb4f028"
       },
       "_backing_source_preference": "catalog",
       "_backing_explicit_handoff_source": "regular_song",
@@ -161,7 +161,7 @@
       "_backing_released_specialized_context": true,
       "_cpl_original_key_commit": "C",
       "_pk_user_commit_token": "Ab",
-      "_pk_user_commit_at": 1794815944.7725801,
+      "_pk_user_commit_at": 1794836943.7968092,
       "improv_song_concert_sections": {
         "Intro": [
           "Ab",
@@ -298,7 +298,7 @@
         "score_against_example": false
       },
       "improv_mission_concert_key": "Ab",
-      "improv_mission_workspace_updated_at": "2026-11-16T07:59:06.088290+00:00",
+      "improv_mission_workspace_updated_at": "2026-11-16T13:49:05.072728+00:00",
       "_creative_visit_source": "sbi_active",
       "_creative_visit_practice_key": "Ab",
       "_backing_pk_control_owner": "catalog",
@@ -1661,7 +1661,7 @@
       "backing_track_multi_sections": [],
       "karaoke_queue": [
         {
-          "entry_id": "25903192-b1f5-4901-86f0-2cb1b2e66a42",
+          "entry_id": "6c78162a-87b2-4bf2-a277-d950456b8fa9",
           "pick_key": "Pop\u001fSay — John Mayer",
           "source": "catalog_song",
           "practice_key": "Bb",
@@ -1679,32 +1679,40 @@
       "_studio_page_snapshots": {
         "home": {},
         "picker": {
+          "workspace_genre_filters": [],
           "song_search_scope": "Entire library",
           "song_search_text": "",
           "song_picker_favorites_only": false,
-          "chart_library_mode": "Full library",
           "workspace_genre_filter": "All genres",
-          "song_picker_level_filter": "Any level",
           "song_picker_chart_status": "All songs",
-          "workspace_genre_filters": []
+          "chart_library_mode": "Full library",
+          "song_picker_level_filter": "Any level"
         },
         "creative": {
-          "_backing_pk_control_owner": "catalog",
-          "_creative_visit_practice_key": "Ab",
           "_creative_visit_source": "sbi_active",
+          "_backing_pk_control_owner": "catalog",
           "display_key_catalog_backing": "Ab",
+          "_creative_visit_practice_key": "Ab",
+          "improv_groove": "Ballad",
+          "improv_style": "Ballad",
+          "improv_style_bpm": 82,
+          "improv_jam_style": "Ballad",
           "improv_style_meta": {
             "bpm": 82,
             "groove": "Ballad",
             "style": "Ballad",
             "meter": "4/4"
-          },
-          "improv_jam_style": "Ballad",
-          "improv_groove": "Ballad",
-          "improv_style": "Ballad",
-          "improv_style_bpm": 82
+          }
         },
         "backing": {
+          "_backing_released_specialized_context": true,
+          "backing_track_loops": 2,
+          "display_key_catalog_backing": "Ab",
+          "backing_track_multi_sections": [],
+          "_backing_explicit_handoff_source": "regular_song",
+          "backing_track_scope": "Full song",
+          "backing::Say — John Mayer::()::Bb::82::2::follow_manual_index": 0,
+          "_backing_source_preference": "catalog",
           "backing_context": {
             "source": "regular_song",
             "source_label": "Catalog song",
@@ -1735,52 +1743,17 @@
             "meter": "4/4",
             "chart_display_key": "",
             "section_labels": [],
-            "created_at": "2026-11-16T07:55:59+00:00",
-            "updated_at": "2026-11-16T07:59:05+00:00",
+            "created_at": "2026-11-16T13:45:59+00:00",
+            "updated_at": "2026-11-16T13:49:04+00:00",
             "source_signature": "8ce971f20b105bae",
             "bound_pick_key": "Pop\u001fSay — John Mayer",
             "sbi_source_owner": "",
             "sbi_material_kind": "",
-            "backing_session_launch_id": "123fda1a1bb04b6b8af90a496b7177a2"
+            "backing_session_launch_id": "3c54344a5eaa47abbd0d52faacb4f028"
           },
-          "_backing_released_specialized_context": true,
-          "display_key_catalog_backing": "Ab",
-          "backing_volume": 0.75,
-          "_backing_source_preference": "catalog",
-          "backing_track_multi_sections": [],
-          "backing::Say — John Mayer::()::Bb::82::2::follow_manual_index": 0,
-          "backing_track_loops": 2,
-          "_backing_explicit_handoff_source": "regular_song",
           "selected_sections": [],
-          "backing_track_scope": "Full song",
           "_backing_pk_control_owner": "catalog",
-          "_last_backing_signature": [
-            "Say — John Mayer",
-            "Bb",
-            "Intermediate",
-            "Ballad",
-            82,
-            "4/4",
-            2,
-            [],
-            "Strong",
-            false,
-            [
-              "Ballad",
-              "Mellow",
-              "Medium",
-              82,
-              "Intermediate",
-              "4/4",
-              "",
-              []
-            ],
-            72,
-            72,
-            0,
-            "df31f88946d6",
-            "arr_v5+strings"
-          ],
+          "backing_volume": 0.75,
           "current_chord_timeline": [
             {
               "event_index": 0,
@@ -7471,7 +7444,34 @@
               "mood": "climax"
             }
           ],
-          "playback_start_time": 1794815764.0704994,
+          "playback_start_time": 1794836764.9245026,
+          "_last_backing_signature": [
+            "Say — John Mayer",
+            "Bb",
+            "Intermediate",
+            "Ballad",
+            82,
+            "4/4",
+            2,
+            [],
+            "Strong",
+            false,
+            [
+              "Ballad",
+              "Mellow",
+              "Medium",
+              82,
+              "Intermediate",
+              "4/4",
+              "",
+              []
+            ],
+            72,
+            72,
+            0,
+            "df31f88946d6",
+            "arr_v5+strings"
+          ],
           "_last_backing_timeline": [
             {
               "event_index": 0,
@@ -14097,13 +14097,13 @@
         "reference_pitch": 440,
         "octave_mode": "any"
       },
-      "updated_at": "2026-11-16T07:59:06.100536+00:00",
+      "updated_at": "2026-11-16T13:49:05.084917+00:00",
       "studio_page": "backing",
       "page": "backing"
     },
     "creative_workspace_state": {
       "schema_version": 1,
-      "updated_at": "2026-11-16T07:59:06.100902+00:00",
+      "updated_at": "2026-11-16T13:49:05.085335+00:00",
       "improv_mission_practice_context": {
         "version": 1,
         "mission_type": "",
@@ -14137,7 +14137,7 @@
         "evaluation_focus": "Overall mission execution",
         "score_against_example": false
       },
-      "improv_mission_workspace_updated_at": "2026-11-16T07:59:06.088290+00:00",
+      "improv_mission_workspace_updated_at": "2026-11-16T13:49:05.072728+00:00",
       "improv_mission_concert_key": "Ab"
     },
     "composition_workspace_state": {
@@ -14148,7 +14148,7 @@
       "active_section_id": "",
       "focus_lane": "chords",
       "workflow_phase": "vision",
-      "updated_at": "2026-11-16T07:59:06.101570+00:00",
+      "updated_at": "2026-11-16T13:49:05.086013+00:00",
       "deleted_document_ids": [],
       "library_initialized": false
     },
@@ -14171,8 +14171,8 @@
     "music_workspace_state": {
       "schema_version": 1,
       "workspace_revision": 102,
-      "updated_at": "2026-11-16T07:59:06.105309+00:00",
-      "device_id": "a46b0c7f-bb5a-4a6d-ac4c-ffa173d9ec00",
+      "updated_at": "2026-11-16T13:49:05.090638+00:00",
+      "device_id": "cbd2dd59-7d63-4e93-8cec-d2ab9bb32f9f",
       "save_reason": "autosave",
       "workspace_id": "daniel",
       "page": "backing",
@@ -14243,13 +14243,13 @@
           "reference_pitch": 440,
           "octave_mode": "any"
         },
-        "updated_at": "2026-11-16T07:59:06.100536+00:00",
+        "updated_at": "2026-11-16T13:49:05.084917+00:00",
         "studio_page": "backing",
         "page": "backing"
       },
       "creative_workspace_state": {
         "schema_version": 1,
-        "updated_at": "2026-11-16T07:59:06.100902+00:00",
+        "updated_at": "2026-11-16T13:49:05.085335+00:00",
         "improv_mission_practice_context": {
           "version": 1,
           "mission_type": "",
@@ -14283,7 +14283,7 @@
           "evaluation_focus": "Overall mission execution",
           "score_against_example": false
         },
-        "improv_mission_workspace_updated_at": "2026-11-16T07:59:06.088290+00:00",
+        "improv_mission_workspace_updated_at": "2026-11-16T13:49:05.072728+00:00",
         "improv_mission_concert_key": "Ab"
       },
       "composition_workspace_state": {
@@ -14294,7 +14294,7 @@
         "active_section_id": "",
         "focus_lane": "chords",
         "workflow_phase": "vision",
-        "updated_at": "2026-11-16T07:59:06.101570+00:00",
+        "updated_at": "2026-11-16T13:49:05.086013+00:00",
         "deleted_document_ids": [],
         "library_initialized": false
       }

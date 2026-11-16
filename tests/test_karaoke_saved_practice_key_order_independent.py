@@ -437,6 +437,114 @@ class TheReleasedKeyIsNotTheSongsKey(unittest.TestCase):
         self.assertFalse(km.released_performance_key_blocks(session, SAY, "Ab"))
 
 
+class TheLeftoverWidget(unittest.TestCase):
+    """The marker must outlive the restore, and die with the leftover - not before it.
+
+    Measured at the start of the run after End Set, with the release working exactly as
+    intended:
+
+        marker={'pick': 'Pop␟Say - John Mayer', 'key': 'Ab'}  ksa=False  dk=D  widget=Ab
+
+    display_key was back to D, so a rule that retired the marker "once the live key has moved
+    off the released key" retired it on the first ordinary write of that run - and the leftover
+    WIDGET's Ab then won the rest of the run and was persisted. Six corrections failed before
+    this was measured rather than reasoned about.
+    """
+
+    def widget_name(self, session):
+        from backing_practice_key_control import (
+            WIDGET_BY_OWNER,
+            resolve_backing_pk_control_owner,
+        )
+
+        return WIDGET_BY_OWNER[resolve_backing_pk_control_owner(session)]
+
+    def test_the_marker_survives_the_restore_that_puts_the_live_key_back(self) -> None:
+        session = performing(entry_key="Bb", saved="D")
+        sidebar_gesture_on_backing(session, "Ab")
+        km.stop_session(session)
+        widget = self.widget_name(session)
+        session[widget] = "Ab"                     # what the browser really leaves behind
+        session["display_key"] = "D"               # what the release restores
+        session["concert_key"] = "D"
+        # An ordinary write lands first in that run; it must not retire the protection.
+        set_practice_concert_key(session, "D", pick_key=SAY)
+        self.assertTrue(km.released_performance_key_blocks(session, SAY, "Ab"),
+                        "the leftover widget still holds Ab, so the hold must stand")
+        set_practice_concert_key(session, "Ab", pick_key=SAY)
+        self.assertEqual(saved_for(session), "d")
+        self.assertEqual(saved_on_disk(session), "d")
+
+    def test_the_marker_retires_once_the_leftover_is_gone(self) -> None:
+        session = performing(entry_key="Bb", saved="D")
+        sidebar_gesture_on_backing(session, "Ab")
+        km.stop_session(session)
+        widget = self.widget_name(session)
+        for key in ("display_key", "concert_key", "_pending_display_key",
+                    "_pk_user_commit_token", widget):
+            session[key] = "F"                     # the musician has moved the control
+        set_practice_concert_key(session, "F", pick_key=SAY, allow_restore_original=True)
+        self.assertEqual(saved_for(session), "f")
+        self.assertFalse(km.released_performance_key_blocks(session, SAY, "Ab"),
+                         "nothing holds Ab any more, so it is the musician's to choose")
+
+    def test_a_rerun_after_end_set_cannot_bring_the_temporary_key_back(self) -> None:
+        """Item 7: the reruns that follow End Set, each re-running the same paths."""
+        from music_workflow_song_practice import reconcile_catalog_practice_key_owner
+
+        session = performing(entry_key="Bb", saved="D")
+        sidebar_gesture_on_backing(session, "Ab")
+        km.stop_session(session)
+        session[self.widget_name(session)] = "Ab"
+        for _ in range(6):
+            reconcile_catalog_practice_key_owner(session, source="test-rerun")
+            commit_backing_practice_key(session, "Ab")
+            set_practice_concert_key(session, "Ab", pick_key=SAY)
+            self.assertEqual(saved_for(session), "d")
+        self.assertEqual(saved_on_disk(session), "d")
+
+    def test_the_key_survives_a_persist_and_reload(self) -> None:
+        """Item 8: what a reload actually reads back off the disk."""
+        import music_persistent_state as mps
+
+        session = performing(entry_key="Bb", saved="D")
+        sidebar_gesture_on_backing(session, "Ab")
+        km.stop_session(session)
+        session[self.widget_name(session)] = "Ab"
+        set_practice_concert_key(session, "Ab", pick_key=SAY)
+        self.assertEqual(saved_on_disk(session), "d")
+        # Read the file back into a fresh session, the way a reload does.
+        mps.persist_music_disk_state(_Stub(session))
+        reloaded = {}
+        for path in Path(_DATA_DIR).rglob("music_user_state.json"):
+            data = json.loads(path.read_text(encoding="utf-8"))
+            stack = [data]
+            while stack:
+                cur = stack.pop()
+                if isinstance(cur, dict):
+                    store = cur.get("practice_key_by_source")
+                    if isinstance(store, dict) and SAY in store:
+                        reloaded = store
+                    stack.extend(cur.values())
+                elif isinstance(cur, list):
+                    stack.extend(cur)
+        self.assertEqual(norm(reloaded.get(SAY)), "d")
+
+    def test_other_songs_keys_are_untouched_by_all_of_this(self) -> None:
+        """Item: other songs' stored keys remain exactly as they were."""
+        session = performing(entry_key="Bb", saved="D")
+        set_practice_concert_key(session, "G", pick_key=PERFECT)
+        before = dict(session.get(PRACTICE_KEY_BY_SOURCE_KEY) or {})
+        sidebar_gesture_on_backing(session, "Ab")
+        km.stop_session(session)
+        session[self.widget_name(session)] = "Ab"
+        set_practice_concert_key(session, "Ab", pick_key=SAY)
+        after = dict(session.get(PRACTICE_KEY_BY_SOURCE_KEY) or {})
+        self.assertEqual(norm(after.get(PERFECT)), norm(before.get(PERFECT)))
+        self.assertEqual(norm(after.get(SAY)), "d")
+        self.assertEqual(set(after), set(before), "no pick appears or disappears")
+
+
 class RerunsAndNavigation(unittest.TestCase):
     def test_repeated_commits_during_the_performance_never_move_it(self) -> None:
         """A rerun re-runs the same hydration and commit paths; none may move the saved key."""

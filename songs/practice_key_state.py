@@ -78,6 +78,37 @@ def _karaoke_performance_locks_song_key(session: dict[str, Any], pick_key: str) 
         return False
 
 
+def _LIVE_KEY_PROBE_KEYS(session: dict[str, Any]) -> list[str]:
+    """Everywhere a leftover performance key can still be sitting.
+
+    The two scalars are not enough: the Backing Practice Key control commits "the current
+    owner's canonical concert key and its widget together", and the widget is the one that wins
+    the next rerun. Every ``display_key*`` key is swept rather than naming one owner's widget,
+    so a different owner's control cannot quietly keep a leftover alive.
+    """
+    names = ["display_key", "concert_key", "_pending_display_key", "_pk_user_commit_token"]
+    try:
+        for key in list(session.keys()):
+            text = str(key)
+            if text.startswith("display_key") and text not in names:
+                names.append(text)
+    except Exception:
+        pass
+    return names
+
+
+def _karaoke_released_key_pick(session: dict[str, Any]) -> str:
+    """The song a finished set handed a key back for, "" when there is none."""
+    try:
+        from karaoke_mode import released_performance_key_pick
+    except ImportError:
+        return ""
+    try:
+        return str(released_performance_key_pick(session) or "").strip()
+    except Exception:
+        return ""
+
+
 def _karaoke_released_key_blocks(session: dict[str, Any], pick_key: str, value: str) -> bool:
     """Is this the key a finished set just handed back for this song?
 
@@ -1335,29 +1366,29 @@ def set_practice_concert_key(
             store.pop(alias, None)
     store[write_pk] = key
     session[PRACTICE_KEY_BY_SOURCE_KEY] = store
-    # The marker retires when the LEFTOVER is gone - that is, when the live Practice Key control
-    # no longer holds the key the set handed back - and not merely because some write for this
-    # song succeeded. An earlier version cleared it on any successful write for the pick, so a
-    # reconciler storing Bb or D during the End Set rerun retired it and the next write of
-    # tonight's Ab went straight through. Measured: that is why an authoritative marker still
-    # lost the saved key.
+    # The marker retires only when the LEFTOVER is really gone - and the leftover lives in the
+    # sidebar WIDGET, not in the live scalar. Measured at the start of the run after End Set:
+    #
+    #     marker={'pick': 'Pop␟Say - John Mayer', 'key': 'Ab'}  ksa=False  dk=D  widget=Ab
+    #
+    # The release had put display_key back to D exactly as intended, so a rule that retired the
+    # marker "once the live key has moved off the released key" retired it on the first ordinary
+    # write of that run - and the widget's Ab then won the rest of the run and was persisted.
+    # The rule cleared the protection at the one moment it was still needed.
     try:
-        from karaoke_mode import (
-            clear_released_performance_key,
-            released_performance_key_blocks,
-            released_performance_key_pick,
-        )
+        from karaoke_mode import clear_released_performance_key, released_performance_key_blocks
 
-        if released_performance_key_pick(session) == str(write_pk or "").strip():
-            live_now = ""
-            for probe in ("display_key", "concert_key"):
+        if _karaoke_released_key_pick(session) == str(write_pk or "").strip():
+            stale = False
+            for probe in _LIVE_KEY_PROBE_KEYS(session):
                 try:
-                    live_now = str(session.get(probe) or "").strip()
+                    value = str(session.get(probe) or "").strip()
                 except Exception:
-                    live_now = ""
-                if live_now:
+                    continue
+                if value and released_performance_key_blocks(session, write_pk, value):
+                    stale = True
                     break
-            if live_now and not released_performance_key_blocks(session, write_pk, live_now):
+            if not stale:
                 clear_released_performance_key(session)
     except ImportError:
         pass

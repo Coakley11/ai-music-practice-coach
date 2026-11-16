@@ -2,8 +2,8 @@
   "before": "d",
   "during": "d",
   "after_stop": "d",
-  "after_end": "ab",
-  "reopened_sidebar": "ab",
+  "after_end": "d",
+  "reopened_sidebar": "d",
   "ordinary_change": "f",
   "entries": {
     "before": "bb",
