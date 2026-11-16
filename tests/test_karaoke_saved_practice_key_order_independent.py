@@ -277,6 +277,166 @@ class TransportAndTransitions(unittest.TestCase):
         self.assertEqual(saved_on_disk(session, PERFECT), "g")
 
 
+class LeavingKaraoke(unittest.TestCase):
+    """End Set must not leave tonight's key anywhere it can come back to life from.
+
+    With the freeze alone, the store held D through the whole performance and through Stop - and
+    End Set still wrote Ab. Not a hole in the freeze: by then the set has ended, so the freeze is
+    correctly off, and the catalog reconciler's documented first precedence is "live display_key
+    when it differs from catalog original". The live key was still Ab because the Backing commit
+    installs it in the owner's widget, _pending_display_key and _pk_user_commit_token as well as
+    the two scalars, and the release only put the scalars back.
+    """
+
+    def test_ending_the_set_puts_the_songs_own_key_back_in_every_live_control(self) -> None:
+        from backing_practice_key_control import (
+            WIDGET_BY_OWNER,
+            resolve_backing_pk_control_owner,
+        )
+
+        session = performing(entry_key="Bb", saved="D")
+        sidebar_gesture_on_backing(session, "Ab")
+        self.assertEqual(norm(session.get("display_key")), "ab", "tonight's key should be live")
+
+        km.stop_session(session)
+        widget = WIDGET_BY_OWNER[resolve_backing_pk_control_owner(session)]
+        self.assertEqual(norm(session.get("display_key")), "d")
+        self.assertEqual(norm(session.get("concert_key")), "d")
+        self.assertEqual(norm(session.get(widget)), "d",
+                         "a leftover widget wins the next rerun and gets saved")
+        self.assertEqual(norm(session.get("_pk_user_commit_token")), "d",
+                         "a leftover commit token lets a later write pass as a user commit")
+
+    def test_the_catalog_reconciler_after_end_set_keeps_the_saved_key(self) -> None:
+        """The exact production path that wrote Ab, run after End Set."""
+        from music_workflow_song_practice import reconcile_catalog_practice_key_owner
+
+        session = performing(entry_key="Bb", saved="D")
+        sidebar_gesture_on_backing(session, "Ab")
+        km.stop_session(session)
+        reconcile_catalog_practice_key_owner(session, source="test-after-end-set")
+        self.assertEqual(saved_for(session), "d")
+        self.assertEqual(saved_on_disk(session), "d")
+        self.assertEqual(entry_for(session), "bb")
+
+    def test_the_reconciler_during_the_performance_keeps_it_too(self) -> None:
+        from music_workflow_song_practice import reconcile_catalog_practice_key_owner
+
+        session = performing(entry_key="Bb", saved="D")
+        sidebar_gesture_on_backing(session, "Ab")
+        reconcile_catalog_practice_key_owner(session, source="test-during")
+        self.assertEqual(saved_for(session), "d")
+        self.assertEqual(saved_on_disk(session), "d")
+
+
+class TheReleasedKeyIsNotTheSongsKey(unittest.TestCase):
+    """After End Set, tonight's key may not be RECONCILED into the song's saved key.
+
+    Parts 1 and 2 were not enough in the browser: the live Practice Key control is a Streamlit
+    widget, its session value cannot be rewritten once the widget exists in that run, and End Set
+    is handled inline after the sidebar has rendered - so Ab stayed in the widget, won the next
+    rerun, and reconcile_catalog_practice_key_owner saved it (its first precedence is "live
+    display_key when it differs from catalog original"). The leftover is refused at the write.
+
+    The line between the two is already in the signature: the musician's own control commits with
+    allow_restore_original / commit_catalog_practice_key, a reconciler passes no flags.
+    """
+
+    def test_the_released_key_is_on_the_record_after_end_set(self) -> None:
+        session = performing(entry_key="Bb", saved="D")
+        sidebar_gesture_on_backing(session, "Ab")
+        km.stop_session(session)
+        self.assertTrue(km.released_performance_key_blocks(session, SAY, "Ab"))
+        self.assertFalse(km.released_performance_key_blocks(session, SAY, "F"),
+                         "only the key that was actually handed back")
+        self.assertFalse(km.released_performance_key_blocks(session, PERFECT, "Ab"),
+                         "and only for the song that was being sung")
+
+    def test_an_unflagged_reconciling_write_of_that_key_is_refused(self) -> None:
+        session = performing(entry_key="Bb", saved="D")
+        sidebar_gesture_on_backing(session, "Ab")
+        km.stop_session(session)
+        set_practice_concert_key(session, "Ab", pick_key=SAY)      # how a reconciler calls it
+        self.assertEqual(saved_for(session), "d")
+        self.assertEqual(saved_on_disk(session), "d")
+
+    def test_no_flag_exempts_the_key_the_set_handed_back(self) -> None:
+        """Measured: the write that destroyed the saved key came in WITH the explicit flags.
+
+        An earlier version of this guard exempted explicit commits, reasoning that a reconciler
+        passes no flags while the musician's control does. The browser disagreed: the write was
+        ``persist_sbi_active_sidebar_commit_before_render ->
+        note_sbi_active_user_practice_key_edit``, re-persisting the leftover sidebar widget as the
+        musician's own edit. A genuine choice and a leftover both arrive with the live key already
+        on Ab, so no flag separates them.
+        """
+        session = performing(entry_key="Bb", saved="D")
+        sidebar_gesture_on_backing(session, "Ab")
+        km.stop_session(session)
+        session["_pk_user_commit_token"] = "Ab"
+        set_practice_concert_key(session, "Ab", pick_key=SAY, allow_restore_original=True)
+        self.assertEqual(saved_for(session), "d")
+        set_practice_concert_key(session, "Ab", pick_key=SAY, commit_catalog_practice_key=True)
+        self.assertEqual(saved_for(session), "d")
+        self.assertEqual(saved_on_disk(session), "d")
+
+    def test_choosing_a_different_key_saves_and_releases_the_hold(self) -> None:
+        """The way out, and the stated cost: another key saves at once and clears the marker."""
+        session = performing(entry_key="Bb", saved="D")
+        sidebar_gesture_on_backing(session, "Ab")
+        km.stop_session(session)
+        session["_pk_user_commit_token"] = "F"
+        set_practice_concert_key(session, "F", pick_key=SAY, allow_restore_original=True)
+        self.assertEqual(saved_for(session), "f")
+        self.assertFalse(km.released_performance_key_blocks(session, SAY, "Ab"),
+                         "once the musician has moved on, Ab is theirs to choose again")
+        session["_pk_user_commit_token"] = "Ab"
+        set_practice_concert_key(session, "Ab", pick_key=SAY, allow_restore_original=True)
+        self.assertEqual(saved_for(session), "ab")
+
+    def test_another_key_chosen_after_the_set_saves_normally(self) -> None:
+        """A different key, chosen the way the musician's own control sends it.
+
+        The unflagged form of this write is refused too, but by an OLDER rule - a recent
+        explicit commit is held against unflagged writes that land a second or two later - and
+        not by the marker here, which only ever matches the one key that was handed back.
+        """
+        session = performing(entry_key="Bb", saved="D")
+        sidebar_gesture_on_backing(session, "Ab")
+        km.stop_session(session)
+        self.assertFalse(km.released_performance_key_blocks(session, SAY, "F"))
+        session["_pk_user_commit_token"] = "F"
+        set_practice_concert_key(session, "F", pick_key=SAY, allow_restore_original=True)
+        self.assertEqual(saved_for(session), "f")
+        self.assertEqual(saved_on_disk(session), "f")
+
+    def test_the_sidebars_own_spelling_is_still_the_same_key(self) -> None:
+        """The browser condition, headlessly.
+
+        The entry holds "Ab"; the sidebar widget holds "A-flat major". The release used to
+        compare those as raw strings, return early, and so restore nothing and record nothing -
+        which is exactly why two fixes that passed every unit test did nothing in the real app.
+        """
+        flat_major = "A♭ major"
+        session = performing(entry_key="Bb", saved="D")
+        sidebar_gesture_on_backing(session, "Ab")
+        session["display_key"] = flat_major
+        session["concert_key"] = flat_major
+        km.stop_session(session)
+        self.assertTrue(km.released_performance_key_blocks(session, SAY, "Ab"))
+        self.assertTrue(km.released_performance_key_blocks(session, SAY, flat_major))
+        set_practice_concert_key(session, flat_major, pick_key=SAY)
+        self.assertEqual(saved_for(session), "d")
+        self.assertEqual(saved_on_disk(session), "d")
+
+    def test_a_new_set_starts_without_last_nights_marker(self) -> None:
+        session = performing(entry_key="Bb", saved="D")
+        sidebar_gesture_on_backing(session, "Ab")
+        km.stop_session(session)
+        km.start_session(session)
+        self.assertFalse(km.released_performance_key_blocks(session, SAY, "Ab"))
+
+
 class RerunsAndNavigation(unittest.TestCase):
     def test_repeated_commits_during_the_performance_never_move_it(self) -> None:
         """A rerun re-runs the same hydration and commit paths; none may move the saved key."""

@@ -253,15 +253,29 @@ class WhatMustStillPersist(unittest.TestCase):
         self.assertEqual(saved_practice_concert_key(session, SAY), "E")
 
     def test_the_freeze_lifts_when_the_set_ends(self) -> None:
+        """The freeze itself lifts; the key the set handed back is held separately.
+
+        This used to go on to assert that committing Ab right after the set saves, as "an
+        ordinary deliberate choice". In the real app that is indistinguishable from the thing
+        that destroyed the saved key: the sidebar widget still holds Ab after End Set, cannot be
+        rewritten in that run, and
+        ``persist_sbi_active_sidebar_commit_before_render -> note_sbi_active_user_practice_key_edit``
+        re-persists it as the musician's own edit, flags and all. Both arrive with the live key
+        already set to Ab, so nothing in the call distinguishes them.
+
+        So that key is held for this song until another key is chosen or another set starts, and
+        the trade-off is deliberate: re-choosing the key you just sang in does not save straight
+        away, and the key you saved is not destroyed.
+        """
         session = performing_session()
         km.retune_now_singing_entry(session, "Ab")
         km.stop_session(session)
         self.assertFalse(karaoke_performance_locks_song_key(session, SAY))
         durable_commit(session, SAY, "Ab")
-        self.assertEqual(
-            saved_practice_concert_key(session, SAY), "Ab",
-            "after the set, choosing Ab for Say is an ordinary deliberate choice",
-        )
+        self.assertEqual(saved_practice_concert_key(session, SAY), "D")
+        # Any other key is the musician moving on, and saves at once.
+        durable_commit(session, SAY, "F")
+        self.assertEqual(saved_practice_concert_key(session, SAY), "F")
 
     def test_nothing_is_frozen_without_a_pick(self) -> None:
         session = performing_session()

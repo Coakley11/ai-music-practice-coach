@@ -1374,6 +1374,8 @@ def start_session(
     queue = get_queue(session_state)
     if not queue:
         return None
+    # Last night's released key has no authority over this set.
+    clear_released_performance_key(session_state)
     start_idx = 0
     if starting_entry_id:
         for i, entry in enumerate(queue):
@@ -1426,6 +1428,65 @@ def stop_session(session_state: Any) -> None:
         session_state.pop(KARAOKE_SESSION_INDEX_KEY, None)
 
 
+#: The key a finished performance just handed back, and the song it belonged to. It exists
+#: because the live Practice Key control is a Streamlit WIDGET: once it has been instantiated in
+#: a run its session value cannot be rewritten, and End Set is handled inline after the sidebar
+#: has rendered - so tonight's key survives in the widget, wins the next rerun, and the catalog
+#: reconciler saves it as the song's own. Chasing it through the session does not work; refusing
+#: the write does.
+RELEASED_PERFORMANCE_KEY = "_karaoke_released_performance_key"
+
+
+def note_released_performance_key(session_state: Any, pick_key: str, key: str) -> None:
+    """Remember that ``key`` was tonight's key for ``pick_key``, not the song's own."""
+    pick, tok = str(pick_key or "").strip(), str(key or "").strip()
+    if not pick or not tok:
+        return
+    try:
+        session_state[RELEASED_PERFORMANCE_KEY] = {"pick": pick, "key": tok}
+    except Exception:
+        pass
+
+
+def clear_released_performance_key(session_state: Any) -> None:
+    try:
+        session_state.pop(RELEASED_PERFORMANCE_KEY, None)
+    except Exception:
+        pass
+
+
+def released_performance_key_pick(session_state: Any) -> str:
+    """The song a finished set handed a temporary key back for, if any."""
+    try:
+        marker = _state(session_state).get(RELEASED_PERFORMANCE_KEY)
+    except Exception:
+        return ""
+    if not isinstance(marker, Mapping):
+        return ""
+    return str(marker.get("pick") or "").strip()
+
+
+def released_performance_key_blocks(session_state: Any, pick_key: str, value: str = "") -> bool:
+    """Is ``value`` the key a finished set just handed back for ``pick_key``?
+
+    Narrow by design: this song, that exact key, and only until the musician chooses something
+    themselves. It says nothing about any other song, any other key, or a deliberate gesture -
+    the caller decides whether the write it is guarding is a reconciliation or a choice.
+    """
+    pick, tok = str(pick_key or "").strip(), str(value or "").strip()
+    if not pick or not tok:
+        return False
+    try:
+        marker = _state(session_state).get(RELEASED_PERFORMANCE_KEY)
+    except Exception:
+        return False
+    if not isinstance(marker, Mapping):
+        return False
+    if str(marker.get("pick") or "").strip() != pick:
+        return False
+    return karaoke_key_identity(tok) == karaoke_key_identity(marker.get("key"))
+
+
 def release_performance_key_display(session_state: Any) -> str:
     """Leaving karaoke must not leave tonight's key behind in Backing or Practice.
 
@@ -1441,12 +1502,19 @@ def release_performance_key_display(session_state: Any) -> str:
     temporary = performance_key_for_entry(session_state, entry)
     if not temporary:
         return ""
+    # On the record FIRST, and by identity rather than spelling. Everything below can decline to
+    # touch the live controls - and must still not let tonight's key be reconciled into the
+    # song's saved key afterwards. This used to compare raw strings and return here: the sidebar
+    # widget holds "A♭ major" where the entry holds "Ab", so in the real app it left without
+    # restoring anything or recording anything, which is why a fix that worked headlessly did
+    # nothing in a browser.
+    note_released_performance_key(session_state, pick, temporary)
     live = str(
         _state(session_state).get("display_key")
         or _state(session_state).get("concert_key")
         or ""
     ).strip()
-    if live != temporary:
+    if karaoke_key_identity(live) != karaoke_key_identity(temporary):
         return ""
     own = ""
     try:
@@ -1456,7 +1524,7 @@ def release_performance_key_display(session_state: Any) -> str:
     except ImportError:
         own = ""
     own = own or entry_default_practice_key(entry)
-    if not own or own == temporary:
+    if not own or karaoke_key_identity(own) == karaoke_key_identity(temporary):
         return ""
     try:
         session_state["display_key"] = own
@@ -1468,6 +1536,25 @@ def release_performance_key_display(session_state: Any) -> str:
 
         request_display_key(session_state, own)
     except ImportError:
+        pass
+    # These two scalars are not the only place the performance key was installed. The Backing
+    # Practice Key control commits "the current owner's canonical concert key and its widget
+    # together", plus _pending_display_key and _pk_user_commit_token - and a leftover widget
+    # wins the next rerun, after which the catalog reconciler saves the live key as the song's
+    # own. Measured: the store held D through the whole performance and through Stop, and End
+    # Set still wrote Ab, from reconcile_catalog_practice_key_owner.
+    #
+    # So the song's own key goes back through the same production commit, rather than this
+    # function keeping its own list of session keys in step with that one. This runs before the
+    # active flag drops, so the commit's store write is refused by the freeze - correctly: the
+    # store already holds the key being restored.
+    try:
+        from backing_practice_key_control import commit_backing_practice_key
+
+        commit_backing_practice_key(session_state, own)
+    except ImportError:
+        pass
+    except Exception:
         pass
     return own
 

@@ -78,6 +78,27 @@ def _karaoke_performance_locks_song_key(session: dict[str, Any], pick_key: str) 
         return False
 
 
+def _karaoke_released_key_blocks(session: dict[str, Any], pick_key: str, value: str) -> bool:
+    """Is this the key a finished set just handed back for this song?
+
+    The live Practice Key control is a Streamlit widget, and once it has been instantiated in a
+    run its session value cannot be rewritten - End Set is handled inline, after the sidebar has
+    rendered - so tonight's key survives there, wins the next rerun, and a reconciler saves it.
+    Chasing it through the session does not work; refusing the write does.
+    """
+    pick = str(pick_key or "").strip()
+    if not pick or not str(value or "").strip():
+        return False
+    try:
+        from karaoke_mode import released_performance_key_blocks
+    except ImportError:
+        return False
+    try:
+        return bool(released_performance_key_blocks(session, pick, value))
+    except Exception:
+        return False
+
+
 def karaoke_performance_locks_song_key(session: dict[str, Any], pick_key: str) -> bool:
     """Public form of the guard: is this song's saved Practice Key frozen by a performance?"""
     return _karaoke_performance_locks_song_key(session, pick_key)
@@ -927,6 +948,24 @@ def set_practice_concert_key(
     # So does a karaoke performance key, for the song being sung.
     if _karaoke_performance_locks_song_key(session, pk):
         return
+    # And a performance that has just ENDED still owns the key it handed back, whoever is
+    # asking. An earlier version of this exempted "explicit" commits, on the grounds that a
+    # reconciler passes no flags while the musician's own control does - and the write that
+    # actually destroyed the saved key came through
+    #
+    #     persist_sbi_active_sidebar_commit_before_render -> note_sbi_active_user_practice_key_edit
+    #
+    # which re-persists the LEFTOVER sidebar widget value as the musician's own edit, flags and
+    # all. The widget cannot be put back: it is a Streamlit widget, End Set is handled inline
+    # after the sidebar has rendered, and its value cannot be rewritten in that run. So no flag
+    # exempts the one key this performance handed back for this one song.
+    #
+    # The cost, stated plainly: for as long as this marker stands, re-choosing that same key for
+    # that song will not save. Choosing any other key saves and clears the marker, and so does
+    # starting another set. Erring this way keeps a key the musician saved; erring the other way
+    # is what lost it.
+    if _karaoke_released_key_blocks(session, pk, key):
+        return
     # Gate 12 leave: leftover Mission tokens must not stamp a different catalog
     # sticky. A genuine sidebar Practice Key edit on Missions / Mission Backing
     # *is* this catalog song's pick-scoped Practice Key and must persist.
@@ -1296,6 +1335,34 @@ def set_practice_concert_key(
             store.pop(alias, None)
     store[write_pk] = key
     session[PRACTICE_KEY_BY_SOURCE_KEY] = store
+    # The marker retires when the LEFTOVER is gone - that is, when the live Practice Key control
+    # no longer holds the key the set handed back - and not merely because some write for this
+    # song succeeded. An earlier version cleared it on any successful write for the pick, so a
+    # reconciler storing Bb or D during the End Set rerun retired it and the next write of
+    # tonight's Ab went straight through. Measured: that is why an authoritative marker still
+    # lost the saved key.
+    try:
+        from karaoke_mode import (
+            clear_released_performance_key,
+            released_performance_key_blocks,
+            released_performance_key_pick,
+        )
+
+        if released_performance_key_pick(session) == str(write_pk or "").strip():
+            live_now = ""
+            for probe in ("display_key", "concert_key"):
+                try:
+                    live_now = str(session.get(probe) or "").strip()
+                except Exception:
+                    live_now = ""
+                if live_now:
+                    break
+            if live_now and not released_performance_key_blocks(session, write_pk, live_now):
+                clear_released_performance_key(session)
+    except ImportError:
+        pass
+    except Exception:
+        pass
     _audit_practice_key_store_write(
         session,
         _audit_before,

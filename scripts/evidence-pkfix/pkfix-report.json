@@ -1,0 +1,16 @@
+{
+  "before": "d",
+  "during": "d",
+  "after_stop": "d",
+  "after_end": "ab",
+  "reopened_sidebar": "ab",
+  "ordinary_change": "f",
+  "entries": {
+    "before": "bb",
+    "during": "bb",
+    "after_stop": "bb",
+    "after_end": "bb"
+  },
+  "live_key_during": "ab",
+  "stopped": true
+}
