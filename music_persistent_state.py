@@ -2213,6 +2213,13 @@ def prepare_page_change_save_state(
     except ImportError:
         nav_origin = str(origin or "user_navigation")
     user_nav = nav_origin == "user_navigation"
+    try:
+        from multitrack_draft_trace import note as _mt_draft_note
+
+        _mt_draft_note(session, "page_change_save:entry", target_page=str(target_page or ""),
+                       nav_origin=nav_origin)
+    except Exception:
+        pass
     page = _normalize_studio_page_for_save(target_page) or _normalize_studio_page_for_save(
         session.get("studio_page")
     )

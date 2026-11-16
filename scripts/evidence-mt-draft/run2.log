@@ -1,0 +1,64 @@
+worktree : /c/tmp/ai-music-mtfix
+port     : 8681
+cleared  : ignored app state under /c/tmp/ai-music-mtfix/data (tracked fixtures kept)
+data root: /tmp/mtfix-root-ASo9x1
+server pid (shell): 207138
+listener pid(s): 36520 
+  PASS  D1 the app boots
+  PASS  D2 the Multitrack page opens
+  PASS  D3 a take was recorded into the layer  [slot=Guitar]
+    the page shows: audio elements=1
+
+  --- app draft trace: after recording (9 new line(s)) ---
+    run:page=multitrack                        page='multitrack'   (no slot holds audio anywhere)
+    multitrack_page:enter                      page='multitrack'   (no slot holds audio anywhere)
+    multitrack_page:after_history_bootstrap    page='multitrack'   (no slot holds audio anywhere)
+    run:page=multitrack                        page='multitrack'   Guitar[live=a13fd866 blob=- snap=- resolved=a13fd866]
+    multitrack_page:enter                      page='multitrack'   Guitar[live=a13fd866 blob=- snap=- resolved=a13fd866]
+    multitrack_page:after_history_bootstrap    page='multitrack'   Guitar[live=a13fd866 blob=- snap=- resolved=a13fd866]
+    run:page=multitrack                        page='multitrack'   Guitar[live=a13fd866 blob=- snap=- resolved=a13fd866]
+    multitrack_page:enter                      page='multitrack'   Guitar[live=a13fd866 blob=- snap=- resolved=a13fd866]
+    multitrack_page:after_history_bootstrap    page='multitrack'   Guitar[live=a13fd866 blob=- snap=- resolved=a13fd866]
+  PASS  D4 the app holds audio for a slot after recording  [6 trace line(s) with audio]
+    page after leaving mentions multitrack: True
+  PASS  D5 navigated away, proved by the page's own content  [helper=True left_multitrack=True]
+
+  --- app draft trace: after navigating away (8 new line(s)) ---
+    run:page=multitrack                        page='multitrack'   Guitar[live=a13fd866 blob=- snap=- resolved=a13fd866]
+    run:page=multitrack                        page='multitrack'   Guitar[live=a13fd866 blob=- snap=- resolved=a13fd866]
+    multitrack_page:enter                      page='multitrack'   Guitar[live=a13fd866 blob=- snap=- resolved=a13fd866]
+    multitrack_page:after_history_bootstrap    page='multitrack'   Guitar[live=a13fd866 blob=- snap=- resolved=a13fd866]
+    run:page=multitrack                        page='multitrack'   Guitar[live=a13fd866 blob=- snap=- resolved=a13fd866]
+    page_change_save:entry                     page='practice'     Guitar[live=a13fd866 blob=- snap=- resolved=a13fd866]
+    page_change_save:entry                     page='practice'     Guitar[live=a13fd866 blob=- snap=- resolved=a13fd866]
+    run:page=practice                          page='practice'     Guitar[live=a13fd866 blob=- snap=- resolved=a13fd866]
+  PASS  D6 navigated back to Multitrack
+
+  --- app draft trace: after returning to Multitrack (11 new line(s)) ---
+    run:page=practice                          page='practice'     Guitar[live=a13fd866 blob=- snap=- resolved=a13fd866]
+    run:page=practice                          page='practice'     Guitar[live=a13fd866 blob=- snap=- resolved=a13fd866]
+    run:page=practice                          page='practice'     Guitar[live=a13fd866 blob=- snap=- resolved=a13fd866]
+    page_change_save:entry                     page='multitrack'   Guitar[live=a13fd866 blob=- snap=- resolved=a13fd866]
+    page_change_save:entry                     page='multitrack'   Guitar[live=a13fd866 blob=- snap=- resolved=a13fd866]
+    run:page=multitrack                        page='multitrack'   Guitar[live=a13fd866 blob=- snap=- resolved=a13fd866]
+    multitrack_page:enter                      page='multitrack'   Guitar[live=a13fd866 blob=- snap=- resolved=a13fd866]
+    multitrack_page:after_history_bootstrap    page='multitrack'   Guitar[live=a13fd866 blob=- snap=- resolved=a13fd866]
+    run:page=multitrack                        page='multitrack'   Guitar[live=a13fd866 blob=- snap=- resolved=a13fd866]
+    multitrack_page:enter                      page='multitrack'   Guitar[live=a13fd866 blob=- snap=- resolved=a13fd866]
+    multitrack_page:after_history_bootstrap    page='multitrack'   Guitar[live=a13fd866 blob=- snap=- resolved=a13fd866]
+  PASS  D7 THE DRAFT SURVIVED: the slot still holds its audio on return  [live=a13fd866 snapshot=None resolved=a13fd866]
+  PASS  D8 the returned page offers the take to review  [1 audio element(s) on the page]
+
+======================================================================
+  PASS  D1 the app boots
+  PASS  D2 the Multitrack page opens
+  PASS  D3 a take was recorded into the layer
+  PASS  D4 the app holds audio for a slot after recording
+  PASS  D5 navigated away, proved by the page's own content
+  PASS  D6 navigated back to Multitrack
+  PASS  D7 THE DRAFT SURVIVED: the slot still holds its audio on return
+  PASS  D8 the returned page offers the take to review
+
+8/8 gates passed
+NOTE: a simulated microphone is not a saxophone - this is a lifecycle measurement.
+stopping the server

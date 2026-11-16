@@ -15709,6 +15709,14 @@ except ImportError:
     pass
 _studio_page = ensure_studio_page(st.session_state)
 try:
+    # One line per run, on EVERY page: a draft that disappears while the musician is on another
+    # page is invisible to a trace that only fires on the Multitrack branch. (Env-gated.)
+    from multitrack_draft_trace import note as _mt_draft_note_run
+
+    _mt_draft_note_run(st.session_state, "run:page=" + str(_studio_page or ""))
+except Exception:
+    pass
+try:
     from app_ui import note_runtime_sidebar_active_page
 
     note_runtime_sidebar_active_page(_studio_page)
@@ -28477,9 +28485,23 @@ elif _studio_page == "creative":
 elif _studio_page == "multitrack":
 
     try:
+        from multitrack_draft_trace import note as _mt_draft_note
+
+        _mt_draft_note(st.session_state, "multitrack_page:enter")
+    except Exception:
+        pass
+
+    try:
         from studio_history_bootstrap import apply_pending_studio_history
 
         apply_pending_studio_history(st.session_state, page="multitrack", st=st)
+    except Exception:
+        pass
+
+    try:
+        from multitrack_draft_trace import note as _mt_draft_note
+
+        _mt_draft_note(st.session_state, "multitrack_page:after_history_bootstrap")
     except Exception:
         pass
 
