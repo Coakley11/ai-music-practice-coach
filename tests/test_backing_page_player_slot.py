@@ -27,9 +27,17 @@ def test_page_player_block_lives_in_an_always_present_container() -> None:
     head = after.split("\n")
     # The container itself is unconditional (function-body level); the player block is its content.
     assert before.endswith("\n    ")
-    assert head[0].startswith("        if _backing_audio_ready and (not _leadsheet_open or _sheet_taking_over)")
-    assert head[1].strip().startswith('"_backing_transport_user_stopped"')
-    assert head[3].strip() == 'st.markdown("#### Audio player")'
+    # The condition reads one named boolean rather than ``not _leadsheet_open`` directly, because
+    # a karaoke performance now mounts the follow-along surface with the Lead Sheet closed, and
+    # exactly one of the two may own the audio. ``_surface_owns_audio`` is that single value,
+    # read here and at the component's own gate, so the invariant lives in one place instead of
+    # being a coincidence between two conditions. What this test guards - an unconditional
+    # container with the player block as its content - is unchanged.
+    assert head[0].startswith("        if _backing_audio_ready and (")
+    assert head[1].strip().startswith("not _surface_owns_audio or _sheet_taking_over")
+    block = after.split('st.markdown("#### Audio player")', 1)[0]
+    assert '"_backing_transport_user_stopped"' in block
+    assert 'st.markdown("#### Audio player")' in after
 
 
 def test_play_hint_above_the_sheet_is_always_present() -> None:

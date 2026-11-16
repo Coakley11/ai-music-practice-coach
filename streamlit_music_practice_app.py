@@ -5394,7 +5394,12 @@ def _build_karaoke_lyrics_panel_script(
           }}
         }});
         if (activeLine && !audio.paused) {{
-          activeLine.scrollIntoView({{ behavior: "smooth", block: "center", inline: "nearest" }});
+          // Through the box follow, which asks the ONE page controller whether the singer is
+          // scrolling and moves only this surface's own box. This line used to call
+          // scrollIntoView on every tick: no hold, and it moved the whole page.
+          try {{
+            if (window.__karaokeBoxFollow) window.__karaokeBoxFollow(activeLine);
+          }} catch (eLf) {{}}
         }}
       }}
 
@@ -5507,6 +5512,22 @@ def _build_karaoke_lyrics_panel_script(
     """
 
 
+def page_follow_controller_js_for_hold() -> str:
+    """The shared page-follow controller, installed for its manual-scroll hold alone.
+
+    A surface that scrolls its own box rather than the page still needs to know when the
+    musician is scrolling, and there must be exactly one answer to that in the app. This
+    installs lead_sheet_page_follow's controller without registering a follow provider, so the
+    caller can ask ``window.top.__lsFollow.suspended()`` and nothing claims the page.
+    """
+    try:
+        from lead_sheet_page_follow import page_follow_controller_js
+
+        return page_follow_controller_js()
+    except ImportError:
+        return ""
+
+
 def live_follow_along_component_html(
     wav_bytes,
     timeline,
@@ -5520,6 +5541,7 @@ def live_follow_along_component_html(
     karaoke_continue_button_text: str = KARAOKE_SKIP_BUTTON_TEXT,
     karaoke_countdown: bool = False,
     karaoke_countdown_seconds: int = 5,
+    karaoke_hold_from_shared_controller: bool = False,
     karaoke_lyrics_panel: dict | None = None,
     karaoke_song_title: str = "",
     karaoke_hide_chart: bool = False,
@@ -5542,6 +5564,18 @@ def live_follow_along_component_html(
         page_follow_js = page_follow_controller_js()
     else:
         page_follow_js = ""
+    # Karaoke keeps its own scroll box (M4 left it that way on purpose) but must not keep its own
+    # idea of when the singer is scrolling. Installing the shared controller here - it is
+    # documented as safe in any number of same-origin iframes, first one wins - gives this
+    # surface the one six-second hold, the one pointer rule and the one set of gesture listeners,
+    # without registering as a page-follow provider and without the full-height layout that
+    # page_follow brings. Nothing here moves the page; the controller stays the only thing that
+    # does.
+    hold_only_js = (
+        page_follow_controller_js_for_hold()
+        if (karaoke_hold_from_shared_controller and not page_follow)
+        else ""
+    )
     page_follow_flag_js = "true" if page_follow else "false"
     # Opened over a live take: start the native autoplay at the handed-over playhead.
     sheet_open_handoff_js = "true" if sheet_open_handoff else "false"
@@ -6354,6 +6388,47 @@ def live_follow_along_component_html(
     window.__karaokeTimeline = timeline;
     // M4 full-height sheet + page follow (set before anything can call updateHighlight).
     const PAGE_FOLLOW = {page_follow_flag_js};
+    {hold_only_js}
+
+    // Parts 9 and 10. This surface scrolls its own box, and the ONE page controller
+    // (lead_sheet_page_follow) owns the question of whether the singer is scrolling: a wheel,
+    // touch, key or press anywhere - including inside this iframe, which it watches - holds
+    // every follower for six seconds, and a held pointer holds it open. Asking it rather than
+    // timing our own six seconds is what keeps the two from disagreeing.
+    function followHeld() {{
+      try {{
+        const ctl = window.top.__lsFollow;
+        return !!(ctl && ctl.suspended && ctl.suspended());
+      }} catch (eH) {{ return false; }}
+    }}
+    // During a karaoke performance the singer reads the lyrics, so they are the follow target;
+    // otherwise it is the chord the chart is playing. One resolution, so turning the Lead Sheet
+    // on cannot take the follow away from the lyrics - and the chart highlights either way,
+    // because following only ever scrolls.
+    function karaokeFollowTarget() {{
+      const line = document.querySelector(".karaoke-lp-lyric-line.active");
+      if (line && line.isConnected) return line;
+      return document.querySelector(".live-chart-cell.current-chord, .chord-cell.current-chord");
+    }}
+    let lastBoxTarget = null;
+    // The lyric panel's script is built separately but runs in this document, so it reaches
+    // this through the window rather than by duplicating the logic.
+    function followInsideBox(el) {{
+      if (!el || !el.isConnected || followHeld()) return false;
+      if (el === lastBoxTarget) return false;   // only when the target really changes
+      const shell = el.closest(".live-follow-shell")
+        || document.getElementById("live-chart-root");
+      if (!shell || shell === document.body || shell === document.documentElement) return false;
+      if (shell.scrollHeight <= shell.clientHeight + 4) return false;
+      const c = el.getBoundingClientRect(), s = shell.getBoundingClientRect();
+      const delta = (c.top + c.height / 2) - (s.top + s.height / 2);
+      lastBoxTarget = el;
+      if (Math.abs(delta) < 8) return false;
+      shell.scrollTop += delta;                 // this box only - never the page
+      return true;
+    }}
+    window.__karaokeBoxFollow = followInsideBox;
+    window.__karaokeFollowTarget = karaokeFollowTarget;
     // M3: a fresh Play counts in -- the count-in engine (card transport) must see this player start.
     try {{
       if (window.parent.__backingCountIn) window.parent.__backingCountIn.watchDoc(document);
@@ -7010,20 +7085,11 @@ def live_follow_along_component_html(
             if (sheetIsPlaying() && window.top.__lsFollow) window.top.__lsFollow.request("lead-sheet", currentCell, {{ why: "chord" }});
           }} catch (ePf) {{}}
         }} else if (eventChanged && clock && !clock.paused) {{
-          // Keep scroll inside the follow shell so the parent page does not
-          // bury cycle Pause/Resume above the viewport.
-          try {{
-            const shell = currentCell.closest(".live-follow-shell")
-              || document.getElementById("live-chart-root")
-              || document.scrollingElement;
-            if (shell && shell !== document.body && shell !== document.documentElement
-                && shell.scrollHeight > shell.clientHeight + 4) {{
-              const c = currentCell.getBoundingClientRect();
-              const s = shell.getBoundingClientRect();
-              const delta = (c.top + c.height / 2) - (s.top + s.height / 2);
-              if (Math.abs(delta) >= 8) shell.scrollTop += delta;
-            }}
-          }} catch (eScr) {{}}
+          // Karaoke's own box. Through followInsideBox, so the singer's six seconds - the
+          // shared controller's - are respected, and so the lyrics win the target when a
+          // performance has one. It still scrolls the shell rather than the page, which is why
+          // this code was written: the page moving here buried the cycle transport.
+          try {{ followInsideBox(karaokeFollowTarget() || currentCell); }} catch (eScr) {{}}
         }}
       }}
     }}
@@ -25462,6 +25528,23 @@ elif _studio_page == "backing":
             st.session_state.pop("_kc_persistent_player_mounted", None)
     except Exception:
         st.session_state.pop("_kc_persistent_player_mounted", None)
+    # A karaoke performance needs the follow-along surface whatever the Lead Sheet is doing:
+    # the lyrics, the chord hints under them and the highlighting all live in that component,
+    # and the Lead Sheet switch owns only the optional chord chart inside it. Computed here,
+    # before the two gates below, because ``_karaoke_voice`` is not set until much later - long
+    # after the page player has already decided whether to mount.
+    _karaoke_needs_surface = False
+    try:
+        _karaoke_needs_surface = bool(
+            km.is_voice_mode(st.session_state)
+            and km.is_karaoke_session_active(st.session_state)
+        )
+    except Exception:
+        _karaoke_needs_surface = False
+    #: Exactly one of these two surfaces may mount, or two players sound at once. The page
+    #: player's gate below and the component's gate further down both read this one value, so
+    #: the invariant is visible in one place instead of being a coincidence of two conditions.
+    _surface_owns_audio = bool(_leadsheet_open or _karaoke_needs_surface)
     # The run that opens the Lead Sheet over a live take keeps the page player
     # (same element, so it keeps sounding) until the sheet's player takes over
     # from its live position and pauses it. Dropping it in this run silenced
@@ -25474,7 +25557,9 @@ elif _studio_page == "backing":
     # player was dropped on the run after the sheet took over (4 elements gone), the
     # sheet moved up, Streamlit re-created it and the music stopped.
     with st.container(key="backing_page_player_slot"):
-        if _backing_audio_ready and (not _leadsheet_open or _sheet_taking_over) and not st.session_state.get(
+        if _backing_audio_ready and (
+            not _surface_owns_audio or _sheet_taking_over
+        ) and not st.session_state.get(
             "_backing_transport_user_stopped"
         ):
             st.markdown("#### Audio player")
@@ -26030,7 +26115,7 @@ elif _studio_page == "backing":
             if _leadsheet_open and not km.is_karaoke_session_active(st.session_state):
                 _render_chord_tone_hints_sync()
 
-    if _leadsheet_controls_ready and _leadsheet_open:
+    if _leadsheet_controls_ready and _surface_owns_audio:
         st.markdown(
             '<div class="ui-backing-leadsheet-card" data-state="open" id="backing-lead-sheet-anchor">',
             unsafe_allow_html=True,
@@ -26124,8 +26209,14 @@ elif _studio_page == "backing":
         # necessarily True, so the term would make this always False and the chart would stop
         # being folded behind the lyrics - a regression, for no gain. The term ships with the
         # mount correction, not before it.
+        # The Lead Sheet switch owns the optional chord chart and nothing else. With the mount
+        # corrected the component is here whatever the switch says, so this term finally decides
+        # something: Off folds the chart behind the lyrics, On shows it. The lyrics are untouched
+        # either way, and the fold keeps the chart's DOM mounted so its highlighting runs on.
         _karaoke_hide_chart = bool(
-            _karaoke_voice and (_karaoke_lyric_panel or not _karaoke_show_chords)
+            _karaoke_voice
+            and not _leadsheet_open
+            and (_karaoke_lyric_panel or not _karaoke_show_chords)
         )
         _karaoke_display_labels = (
             dict(song_data.get("_beginner_display_labels") or {})
@@ -26375,6 +26466,11 @@ elif _studio_page == "backing":
                 ),
                 karaoke_countdown=_show_countdown,
                 karaoke_countdown_seconds=km.countdown_seconds(st.session_state),
+                # Karaoke keeps its own scroll box - M4 left it that way deliberately - but not
+                # its own idea of when the singer is scrolling. This installs the shared page
+                # controller so this surface can ask its six-second hold, without registering as
+                # a page-follow provider and without page_follow's full-height layout.
+                karaoke_hold_from_shared_controller=bool(_karaoke_needs_surface),
                 karaoke_lyrics_panel=_karaoke_lyric_panel,
                 karaoke_song_title=_karaoke_song_title,
                 karaoke_hide_chart=_karaoke_hide_chart,
