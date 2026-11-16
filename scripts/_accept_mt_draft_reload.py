@@ -29,6 +29,8 @@ sys.path.insert(0, str(ROOT))
 
 URL = sys.argv[1] if len(sys.argv) > 1 and sys.argv[1].startswith("http") else "http://127.0.0.1:8684"
 SLOT = os.environ.get("MT_SLOT", "Guitar")
+#: Long enough to matter. A 3 s take is ~288 KB; a real layer runs the length of the song.
+SECONDS = float(os.environ.get("MT_SECONDS", "3"))
 
 import _accept_issue78c_visibility as H  # noqa: E402
 
@@ -84,7 +86,8 @@ def main() -> int:
             mark("R1 the app boots", H.boot(page))
             mark("R2 Multitrack opens", H.goto_multitrack(page))
             H.settle(page, 4)
-            mark("R3 a take is recorded", bool(H.record_once(page, SLOT, seconds=3.0)), SLOT)
+            mark("R3 a take is recorded", bool(H.record_once(page, SLOT, seconds=SECONDS)),
+                 f"{SLOT}, {SECONDS:.0f}s")
             H.settle(page, 8)
 
             taken = None
@@ -92,7 +95,16 @@ def main() -> int:
                 taken = slot_fp(r, "mt_tracks")
                 if taken:
                     break
-            mark("R4 the take is in the live session", bool(taken), f"fp={taken}")
+            size = None
+            for r in reversed(rows()):
+                for p in r.get("slots_with_audio") or []:
+                    if str(p.get("slot")) == SLOT and (p.get("mt_tracks") or {}).get("bytes"):
+                        size = (p.get("mt_tracks") or {}).get("bytes")
+                        break
+                if size:
+                    break
+            log(f"    take size: {size} bytes ({(size or 0) / 1048576:.2f} MiB; the persist cap is 2.00 MiB)")
+            mark("R4 the take is in the live session", bool(taken), f"fp={taken}, {size} bytes")
             blob = None
             for r in reversed(rows()):
                 blob = slot_fp(r, "persist_blob")
