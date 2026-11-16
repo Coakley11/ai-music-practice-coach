@@ -643,18 +643,50 @@ def _own_write_revision(storage: Any, storage_app_key: str, token: str) -> int:
         return 0
 
 
-def plan_own_write_recovery(own_rev: int, expected: int, candidate: int) -> tuple[int, int] | None:
-    """Decide whether a refused write is a conflict with THIS session's own earlier write, and how to retry.
+def plan_own_write_recovery(own_rev: int, expected: int, candidate: int) -> tuple[str, int, int] | None:
+    """Classify a refused write that clashes with THIS session's own earlier write. Returns ``(action, expected,
+    candidate)`` or ``None`` for a real conflict.
 
     ``own_rev`` is the stored revision when (and only when) the cloud row was last written by this session, else 0.
-    Returns ``(expected, candidate)`` for one retry on top of our own stored revision, or ``None`` for a real conflict.
-    The retry's revision is always above the stored one: a run interrupted after its write landed leaves the cloud at
-    exactly the revision the next run reserves for itself, and that run must not be refused for it.
+    Revisions are reserved in the order runs start, so within one session a higher revision is NEWER content:
+
+    * ``own_rev < candidate``  -> ``"retry"``: the cloud holds an older write of ours (a run that overlapped ours, or an
+      earlier attempt); ours is newer, so write once more on top of it.
+    * ``own_rev == candidate`` -> ``"already_persisted"``: a run interrupted after its write landed leaves the cloud at
+      exactly the revision the next run reserves for the same content; nothing needs writing (the caller verifies the
+      content really matches before relying on this).
+    * ``own_rev  > candidate`` -> ``"superseded"``: the cloud already holds a NEWER write of ours; this run is the older
+      one and must NOT replace it (that would silently destroy the newer edit).
     """
     own, exp, cand = int(own_rev or 0), int(expected or 0), int(candidate or 0)
     if own <= 0 or own == exp:
         return None
-    return own, (cand if own < cand else own + 1)
+    if own < cand:
+        return "retry", own, cand
+    if own == cand:
+        return "already_persisted", own, cand
+    return "superseded", own, cand
+
+
+def _stored_composition_matches(storage: Any, storage_app_key: str, state: Any) -> bool:
+    """Does the stored Composition content equal what this run is about to write? (Used only to confirm that an
+    equal-revision clash is the same content already persisted.) Unknown or different -> False (treated as conflict)."""
+    try:
+        loader = getattr(storage, "_load_state_row_metrics", None)
+        if loader is None:
+            from suite_storage_supabase import _load_state_row_metrics as loader
+        stored = (loader(storage_app_key) or {}).get(FULL_SESSION_KEY) or {}
+        a = stored.get("composition_workspace_state") if isinstance(stored, dict) else None
+        b = state.get("composition_workspace_state") if isinstance(state, dict) else None
+        if not isinstance(a, dict) and not isinstance(b, dict):
+            return True  # no Composition content involved: the equal reservation is the only evidence available
+        if not (isinstance(a, dict) and isinstance(b, dict)):
+            return False
+        from composition_save_verification import content_fingerprint
+
+        return content_fingerprint(a) == content_fingerprint(b)
+    except Exception:
+        return False
 
 
 def save_cloud_full_session(
@@ -835,44 +867,75 @@ def save_cloud_full_session(
             if not cas.get("accepted") and writer_token:
                 own_rev = _own_write_revision(storage, storage_app_key, writer_token)
                 plan = plan_own_write_recovery(own_rev, expected, candidate)
+                if plan is not None and plan[0] == "already_persisted" and not _stored_composition_matches(
+                    storage, storage_app_key, state
+                ):
+                    plan = None  # same number, different content: cannot be ordered, so it stays a refused conflict
                 if plan is not None:
-                    # The cloud row was last written by THIS session, so the mismatch is our own bookkeeping,
-                    # not another device. Two ways that happens: (1) two overlapping script runs wrote from the
-                    # same base (cloud ahead of us); (2) a run was interrupted AFTER its write landed but before
-                    # the result was recorded, so the next run reserves that same revision number again (the cloud
-                    # already holds it, written by us). Adopt our own stored revision as the base and write once
-                    # more on top of it, at a revision above it. A row last written by anyone else is never
-                    # adopted (own_rev is 0 then), so a genuine foreign write is still a refused conflict.
-                    expected, candidate = plan
+                    action, new_expected, new_candidate = plan
+                    # The cloud row was last written by THIS session, so the mismatch is our own bookkeeping, not
+                    # another device. A row last written by anyone else is never adopted (own_rev is 0 then), so a
+                    # genuine foreign write is still a refused conflict.
                     try:
                         from music_device_applied_revision import (
                             set_device_applied_revision_from_authoritative_hydrate,
                         )
+                        from music_workspace_conditional_cloud_write import device_applied_revision
 
-                        set_device_applied_revision_from_authoritative_hydrate(
-                            ss, own_rev, stage="own_write_conflict_recovery", source="own_write_readback",
-                        )
+                        if own_rev > int(device_applied_revision(ss) or 0):  # only ever forward
+                            set_device_applied_revision_from_authoritative_hydrate(
+                                ss, own_rev, stage="own_write_conflict_recovery", source="own_write_readback",
+                            )
                     except ImportError:
                         pass
-                    prep = dict(
-                        prep,
-                        expected_revision=expected,
-                        precondition_expected_revision=expected,
-                        device_applied_revision=expected,
-                        applied_revision_before_prep=expected,
-                        candidate_revision=candidate,
-                        own_write_recovered=True,
-                    )
-                    cas = storage.save_current_state_conditional_cas(
-                        storage_app_key,
-                        page=page or "",
-                        summary=summary or "Last session",
-                        metrics=cas_metrics,
-                        expected_workspace_revision=expected,
-                        candidate_workspace_revision=candidate,
-                    )
+                    if action == "retry":
+                        expected, candidate = new_expected, new_candidate
+                        prep = dict(
+                            prep,
+                            expected_revision=expected,
+                            precondition_expected_revision=expected,
+                            device_applied_revision=expected,
+                            applied_revision_before_prep=expected,
+                            own_write_recovered=True,
+                        )
+                        cas = storage.save_current_state_conditional_cas(
+                            storage_app_key,
+                            page=page or "",
+                            summary=summary or "Last session",
+                            metrics=cas_metrics,
+                            expected_workspace_revision=expected,
+                            candidate_workspace_revision=candidate,
+                        )
+                    elif action == "already_persisted":
+                        cas = {
+                            "accepted": True, "rows_affected": 0, "write_mode": "own_write_already_persisted",
+                            "conditional_write_attempted": False, "unconditional_upsert_attempted": False,
+                            "reason": "own_write_already_persisted", "expected_workspace_revision": own_rev,
+                            "candidate_workspace_revision": candidate,
+                        }
+                    else:  # superseded: nothing is written; keep local state marked unsaved so the newest content is saved
+                        cas = {
+                            "accepted": False, "rows_affected": 0, "write_mode": "own_write_superseded",
+                            "conditional_write_attempted": False, "unconditional_upsert_attempted": False,
+                            "reason": "superseded_by_newer_own_write", "expected_workspace_revision": own_rev,
+                            "candidate_workspace_revision": candidate,
+                        }
             accepted = bool(cas.get("accepted"))
             record_conditional_write_result(ss or {}, prep=prep, cas=cas, saved=accepted)
+            if not accepted and cas.get("write_mode") == "own_write_superseded":
+                result = replace(
+                    base,
+                    failure_stage="superseded_by_newer_own_write",
+                    cloud_client_available=True,
+                    cloud_upsert_attempted=False,
+                    cloud_upsert_succeeded=False,
+                    conditional_write_attempted=False,
+                    stale_write_blocked=False,
+                    storage_module=module_name,
+                    storage_app_key=storage_app_key,
+                )
+                _record_cloud_save_result(ss, result)
+                return result
             if not accepted:
                 result = replace(
                     base,

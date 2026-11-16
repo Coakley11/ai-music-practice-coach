@@ -1,17 +1,24 @@
-"""Composition cloud save: overlapping script runs must never refuse a session for its OWN earlier write.
+"""Composition cloud save: overlapping script runs of ONE session.
 
 Root cause (found in a real browser against an isolated Supabase project): Streamlit starts a new script run while the
 previous one is still inside its cloud write. The old run's write lands but it is cut off before the result is recorded,
-so the session still believes the old revision is applied. The next run then reserves the SAME revision number again
-(reservation is per content fingerprint) and its compare-and-swap is refused because the cloud already holds that
-revision - written by this very session. The recovery path only accepted a stored revision BELOW the new candidate, so
-this exact case surfaced to the musician as "Another device or tab saved a newer version" and Save kept failing.
+so the session still believes the old revision is applied. The next run then reserves a revision (the SAME number for
+identical content, a higher one for new content) and its compare-and-swap is refused because the cloud already holds a
+write made by this very session. The musician saw "Another device or tab saved a newer version" and Save kept failing.
 
-These tests drive the real ``save_cloud_full_session`` against an in-memory store with real compare-and-swap semantics.
+Two guarantees are tested against the real ``save_cloud_full_session`` and an in-memory compare-and-swap store:
+
+1. a session is never refused for its OWN earlier write (it recovers on top of it, or recognises it as already saved);
+2. a delayed OLDER run never overwrites content a NEWER run already committed, whatever order the writes complete in;
+   and a write from ANOTHER session is never adopted or overwritten.
+
+Revisions are reserved in the order runs start (identical content reuses its number, new content always gets a higher
+one), so within a session a higher revision is newer content. ``Device`` reproduces exactly that.
 """
 from __future__ import annotations
 
 import copy
+import itertools
 import random
 import unittest
 from types import SimpleNamespace
@@ -49,29 +56,43 @@ class FakeStore:
         row = copy.deepcopy(metrics or {})
         row["workspace_revision"] = candidate
         self.row = row
-        self.writes.append((expected, candidate, row.get("writer_session"), copy.deepcopy(row.get("full_session"))))
+        self.writes.append((expected, candidate, row.get("writer_session")))
         return {**out, "accepted": True, "rows_affected": 1, "write_mode": "conditional_patch", "reason": "conditional_patch_ok"}
 
 
 class Device:
-    """One Streamlit session (browser tab): its own writer token and its own idea of the applied revision."""
+    """One Streamlit session (browser tab): its own writer token, applied revision and revision reservations."""
 
     def __init__(self, store, name="A"):
         self.store, self.name = store, name
         self.ss = {}
-        self.applied = 0
-        self.counter = 0
+        self.applied = 0          # the revision this session believes is applied in the cloud
+        self.counter = 0          # highest revision this session has reserved or seen
+        self.pending = None       # (content, revision) reservation: identical content reuses its number
 
-    def _prepare(self, session, state):
-        return {"candidate_revision": self.counter + 1, "precondition_expected_revision": self.applied,
-                "expected_revision": self.applied, "device_applied_revision": self.applied,
-                "applied_revision_before_prep": self.applied, "blocked_precheck": False, "violations_precheck": []}
+    # --- revision reservation (mirrors workspace_revision.reserve_workspace_revision_for_canonical_fp)
+    def _reserve(self, content):
+        if self.pending and self.pending[0] == content:
+            return self.pending[1]
+        self.counter = max(self.counter, self.applied) + 1
+        self.pending = (content, self.counter)
+        return self.counter
 
-    def save(self, content, *, record=True, revision=None):
-        """Run one save. ``record=False`` simulates a run cut off after its write landed (nothing recorded)."""
-        state = {"composition_workspace_state": {"active_document": {"content": content}}, "workspace_revision": 0}
+    def begin(self, content, revision=None):
+        """Start a run: reserve its revision and capture its base NOW. Completion is separate, so tests can finish
+        overlapping runs in any order. ``revision`` forces a number (used to model another DEVICE's counter)."""
+        rev = revision if revision is not None else self._reserve(content)
         if revision is not None:
-            self.counter = revision - 1
+            self.counter = max(self.counter, revision)
+        return SimpleNamespace(content=content, expected=self.applied, candidate=rev)
+
+    def complete(self, run, record=True):
+        """Finish a run through the real save path. ``record=False``: the write may land but the run is cut off before
+        the session records anything (the browser-observed failure)."""
+        state = {"composition_workspace_state": {"active_document": {"content": run.content}}, "workspace_revision": 0}
+        prepared = {"candidate_revision": run.candidate, "precondition_expected_revision": run.expected,
+                    "expected_revision": run.expected, "device_applied_revision": run.expected,
+                    "applied_revision_before_prep": run.expected, "blocked_precheck": False, "violations_precheck": []}
         patches = [
             mock.patch.object(scs, "_streamlit_session", return_value=self.ss),
             mock.patch.object(scs, "_cloud_save_account_context", return_value={}),
@@ -80,32 +101,32 @@ class Device:
             mock.patch.object(scs, "_logical_app_key_for_cloud", return_value="music"),
             mock.patch("suite_storage_config.cloud_storage_enabled", return_value=True),
             mock.patch("suite_storage_config.get_cloud_config", return_value=object()),
-            mock.patch("music_workspace_conditional_cloud_write.prepare_music_conditional_write", side_effect=self._prepare),
+            mock.patch("music_workspace_conditional_cloud_write.prepare_music_conditional_write", return_value=prepared),
             mock.patch.object(scs, "invalidate_cloud_full_session_cache"),
         ]
         for p in patches:
             p.start()
         try:
-            if not record:
-                # the write reaches the store, then the run is interrupted before ANY result is recorded
-                token = scs._music_writer_token(self.ss)
-                self.store.save_current_state_conditional_cas(
-                    APP, metrics={scs.FULL_SESSION_KEY: state, scs.WRITER_SESSION_KEY: token},
-                    expected_workspace_revision=self.applied, candidate_workspace_revision=self.counter + 1)
-                return None
             result = scs.save_cloud_full_session("music", state, page="composer")
         finally:
             for p in reversed(patches):
                 p.stop()
-        if result.success:
-            self.applied = self.store.stored_revision()
+        if record and result.success:
+            # the app only moves the applied revision forward, and a confirmed save releases its reservation
+            self.applied = max(self.applied, self.store.stored_revision())
             self.counter = max(self.counter, self.applied)
+            if self.pending and self.pending[0] == run.content:
+                self.pending = None
         return result
+
+    def save(self, content, *, record=True, revision=None):
+        return self.complete(self.begin(content, revision), record=record)
 
     def load_cloud_keep_edits(self):
         """What the app's own 'Load cloud version and keep my edits' does to the bookkeeping."""
         self.applied = self.store.stored_revision()
         self.counter = max(self.counter, self.applied)
+        self.pending = None
 
 
 def stored_content(store):
@@ -117,23 +138,21 @@ class TestPlanner(unittest.TestCase):
         self.assertIsNone(scs.plan_own_write_recovery(0, 11, 17))      # foreign writer (own_rev is 0 for them)
         self.assertIsNone(scs.plan_own_write_recovery(14, 14, 17))     # same revision: the refusal was not about revisions
 
-    def test_cloud_ahead_by_our_own_write_keeps_the_candidate(self):
-        self.assertEqual(scs.plan_own_write_recovery(14, 11, 17), (14, 17))
+    def test_cloud_holds_an_older_write_of_ours_so_retry_on_top(self):
+        self.assertEqual(scs.plan_own_write_recovery(14, 11, 17), ("retry", 14, 17))
+        self.assertEqual(scs.plan_own_write_recovery(5, 9, 12), ("retry", 5, 12))     # after an abandoned attempt
 
-    def test_stored_revision_equal_to_the_candidate_is_bumped_above_it(self):
-        self.assertEqual(scs.plan_own_write_recovery(53, 51, 53), (53, 54))   # the browser-observed failure
-        self.assertEqual(scs.plan_own_write_recovery(60, 51, 53), (60, 61))   # cloud ahead of the candidate too
+    def test_stored_revision_equal_to_the_candidate_is_already_persisted(self):
+        self.assertEqual(scs.plan_own_write_recovery(53, 51, 53), ("already_persisted", 53, 53))
 
-    def test_cloud_behind_us_after_an_abandoned_attempt(self):
-        self.assertEqual(scs.plan_own_write_recovery(5, 9, 12), (5, 12))
+    def test_stored_revision_above_the_candidate_means_this_run_is_the_older_one(self):
+        self.assertEqual(scs.plan_own_write_recovery(60, 51, 53), ("superseded", 60, 53))   # must never overwrite
 
 
 class TestFirstTimeSave(unittest.TestCase):
     def test_new_account_first_save_creates_the_row(self):
-        store, a = FakeStore(), None
-        a = Device(store)
-        r = a.save("v1")
-        self.assertTrue(r.success)
+        store = FakeStore(); a = Device(store)
+        self.assertTrue(a.save("v1").success)
         self.assertEqual((stored_content(store), store.stored_revision()), ("v1", 1))
 
     def test_first_save_then_rapid_edits(self):
@@ -143,49 +162,151 @@ class TestFirstTimeSave(unittest.TestCase):
         self.assertEqual(stored_content(store), "v7")
 
 
-class TestOverlappingRuns(unittest.TestCase):
-    def test_interrupted_write_then_same_revision_again_is_not_a_conflict(self):
-        store = FakeStore(); a = Device(store)
-        self.assertTrue(a.save("v1").success)                               # applied = 1
-        a.save("v2", record=False)                                          # run X: write lands at 2, cut off
-        r = a.save("v2-later-edit")                                         # run Y reserves revision 2 again
-        self.assertTrue(r.success, getattr(r, "failure_stage", ""))
-        self.assertEqual(stored_content(store), "v2-later-edit")            # the newer edit is what the cloud holds
-        self.assertGreater(store.stored_revision(), 2)
+class TestInterruptedRuns(unittest.TestCase):
+    """A write lands but the run is cut off before recording it: the next run must not be refused for it."""
 
-    def test_manual_save_overlapping_autosave(self):
+    def test_same_content_again_is_recognised_as_already_saved(self):
+        store = FakeStore(); a = Device(store)
+        self.assertTrue(a.save("v1").success)
+        a.save("v2", record=False)                                         # lands at revision 2, nothing recorded
+        r = a.save("v2")                                                   # the next run reserves the SAME number
+        self.assertTrue(r.success, getattr(r, "failure_stage", ""))
+        self.assertEqual(stored_content(store), "v2")
+        self.assertTrue(a.save("v3").success)
+
+    def test_new_content_after_an_interrupted_write_lands_on_top(self):
         store = FakeStore(); a = Device(store)
         self.assertTrue(a.save("base").success)
-        a.save("autosave", record=False)                                    # autosave lands, run is interrupted
-        r = a.save("manual save")                                           # the musician presses Save
-        self.assertTrue(r.success)
+        a.save("autosave", record=False)
+        r = a.save("manual save")                                          # newer content, higher revision
+        self.assertTrue(r.success, getattr(r, "failure_stage", ""))
         self.assertEqual(stored_content(store), "manual save")
-        self.assertTrue(a.save("next edit").success)                        # and saving keeps working afterwards
+        self.assertTrue(a.save("next edit").success)
 
-    def test_two_interrupted_writes_in_a_row(self):
+    def test_several_interrupted_writes_in_a_row(self):
         store = FakeStore(); a = Device(store)
         self.assertTrue(a.save("v0").success)
-        a.save("x1", record=False)
-        a.save("x2", record=False, revision=store.stored_revision())        # a second cut-off run, same reservation
+        for i in range(4):
+            a.save("x%d" % i, record=False)
         self.assertTrue(a.save("final").success)
         self.assertEqual(stored_content(store), "final")
 
     def test_randomised_rapid_editing_never_loses_the_last_edit(self):
-        for seed in range(40):
+        for seed in range(60):
             rng = random.Random(seed)
             store = FakeStore(); a = Device(store)
-            last = None
             for i in range(rng.randint(5, 25)):
                 content = "s%d-e%d" % (seed, i)
                 if rng.random() < 0.35:
-                    a.save(content, record=False)                           # cut-off run; its content may or may not stick
+                    a.save(content, record=False)
                 else:
                     r = a.save(content)
                     self.assertTrue(r.success, "seed %d edit %d: %s" % (seed, i, getattr(r, "failure_stage", "")))
-                    last = content
-            if last is not None:
-                self.assertTrue(a.save("final-%d" % seed).success, seed)
-                self.assertEqual(stored_content(store), "final-%d" % seed)
+                    self.assertEqual(stored_content(store), content)
+            self.assertTrue(a.save("final-%d" % seed).success, seed)
+            self.assertEqual(stored_content(store), "final-%d" % seed)
+
+
+class TestReversedCompletionOrder(unittest.TestCase):
+    """A delayed OLDER run must never replace content a NEWER run already committed (data-loss guard)."""
+
+    def test_older_run_finishing_last_does_not_overwrite_the_newer_edit(self):
+        store = FakeStore(); a = Device(store)
+        self.assertTrue(a.save("base").success)
+        older = a.begin("older edit"); newer = a.begin("NEWER edit")
+        self.assertTrue(a.complete(newer).success)                         # the newer run commits first
+        r = a.complete(older)                                              # the delayed older run arrives afterwards
+        self.assertEqual(stored_content(store), "NEWER edit")              # ... and must not replace it
+        self.assertEqual(r.failure_stage, "superseded_by_newer_own_write") # nothing written, and not called a conflict
+        self.assertFalse(r.stale_write_blocked)
+        self.assertFalse(a.ss.get("_music_stale_write_blocked"))           # and it must not leave the session blocked
+        self.assertTrue(a.save("next edit").success)                       # saving carries on
+        self.assertEqual(stored_content(store), "next edit")
+
+    def test_three_overlapping_runs_in_every_completion_order(self):
+        for order in itertools.permutations(range(3)):
+            store = FakeStore(); a = Device(store)
+            self.assertTrue(a.save("base").success)
+            runs = [a.begin("edit-%d" % i) for i in range(3)]                # edit-2 is the newest
+            for i in order:
+                a.complete(runs[i])
+            self.assertEqual(stored_content(store), "edit-2", "order %s" % (order,))
+            self.assertTrue(a.save("after").success, "order %s" % (order,))
+            self.assertEqual(stored_content(store), "after", "order %s" % (order,))
+
+    def test_autosave_started_before_a_manual_save_cannot_overwrite_it(self):
+        store = FakeStore(); a = Device(store)
+        self.assertTrue(a.save("base").success)
+        autosave = a.begin("autosave (older state)")
+        manual = a.begin("manual save (newer state)")
+        self.assertTrue(a.complete(manual).success)
+        a.complete(autosave)                                               # the slow autosave lands last
+        self.assertEqual(stored_content(store), "manual save (newer state)")
+
+    def test_manual_save_started_before_an_autosave_loses_to_the_newer_autosave(self):
+        store = FakeStore(); a = Device(store)
+        self.assertTrue(a.save("base").success)
+        manual = a.begin("manual save"); autosave = a.begin("autosave after the manual save")
+        a.complete(autosave); a.complete(manual)
+        self.assertEqual(stored_content(store), "autosave after the manual save")
+
+    def test_revisions_never_go_backwards(self):
+        store = FakeStore(); a = Device(store)
+        self.assertTrue(a.save("base").success)
+        seen = [store.stored_revision()]
+        runs = [a.begin("e%d" % i) for i in range(5)]
+        for i in (4, 1, 3, 0, 2):
+            a.complete(runs[i]); seen.append(store.stored_revision())
+        self.assertEqual(seen, sorted(seen))
+        self.assertEqual(stored_content(store), "e4")
+
+    def test_randomised_overlap_never_loses_the_newest_edit_or_blocks_saving(self):
+        for seed in range(200):
+            rng = random.Random(seed)
+            store = FakeStore(); a = Device(store)
+            a.save("base")
+            pending, newest = [], None
+            for i in range(rng.randint(3, 12)):
+                if rng.random() < 0.6 or not pending:
+                    run = a.begin("s%d-e%d" % (seed, i)); pending.append(run); newest = run.content
+                else:
+                    a.complete(pending.pop(rng.randrange(len(pending))))   # any pending run may complete next
+            rng.shuffle(pending)
+            for run in pending:
+                a.complete(run)
+            if newest is not None:
+                self.assertEqual(stored_content(store), newest, "seed %d" % seed)
+            self.assertTrue(a.save("final-%d" % seed).success, "seed %d" % seed)
+
+    def test_randomised_overlap_with_cut_off_runs(self):
+        for seed in range(200):
+            rng = random.Random(1000 + seed)
+            store = FakeStore(); a = Device(store)
+            a.save("base")
+            pending, newest = [], None
+            for i in range(rng.randint(3, 12)):
+                r = rng.random()
+                if r < 0.5 or not pending:
+                    run = a.begin("s%d-e%d" % (seed, i)); pending.append(run); newest = run.content
+                else:
+                    a.complete(pending.pop(rng.randrange(len(pending))), record=rng.random() < 0.6)
+            rng.shuffle(pending)
+            for run in pending:
+                a.complete(run, record=rng.random() < 0.6)
+            if newest is not None:
+                self.assertEqual(stored_content(store), newest, "seed %d" % seed)
+            self.assertTrue(a.save("final-%d" % seed).success, "seed %d" % seed)
+            self.assertEqual(stored_content(store), "final-%d" % seed)
+
+    def test_same_content_started_twice_then_completed_in_reverse(self):
+        store = FakeStore(); a = Device(store)
+        self.assertTrue(a.save("base").success)
+        first = a.begin("same"); second = a.begin("same")                  # identical content reuses its revision
+        self.assertEqual(first.candidate, second.candidate)
+        self.assertTrue(a.complete(second).success)
+        r = a.complete(first)                                              # already persisted: no write, no conflict
+        self.assertTrue(r.success, getattr(r, "failure_stage", ""))
+        self.assertEqual(stored_content(store), "same")
 
 
 class TestGenuineCrossDeviceConflicts(unittest.TestCase):
@@ -229,6 +350,28 @@ class TestGenuineCrossDeviceConflicts(unittest.TestCase):
         r = a.save("A next")
         self.assertFalse(r.success)                                         # last writer is B: A must not adopt it
         self.assertEqual(stored_content(store), "B on top")
+
+    def test_a_delayed_older_run_never_overwrites_another_devices_newer_write(self):
+        store = FakeStore(); a = Device(store, "A"); b = Device(store, "B")
+        self.assertTrue(a.save("base").success)
+        b.load_cloud_keep_edits()
+        a_run = a.begin("A edit"); b_run = b.begin("B edit")
+        self.assertTrue(b.complete(b_run).success)
+        r = a.complete(a_run)
+        self.assertFalse(r.success)
+        self.assertEqual(stored_content(store), "B edit")
+
+    def test_foreign_write_in_the_middle_of_our_overlapping_runs(self):
+        for order in itertools.permutations(range(3)):
+            store = FakeStore(); a = Device(store, "A"); b = Device(store, "B")
+            self.assertTrue(a.save("base").success)
+            runs = [a.begin("A%d" % i) for i in range(3)]
+            a.complete(runs[order[0]])
+            b.load_cloud_keep_edits()                                       # B opens the song as A's first run landed
+            self.assertTrue(b.save("B foreign").success)
+            for i in order[1:]:
+                a.complete(runs[i])
+            self.assertEqual(stored_content(store), "B foreign", "order %s" % (order,))   # B is the last writer: protected
 
 
 if __name__ == "__main__":
