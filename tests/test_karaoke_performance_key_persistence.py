@@ -217,12 +217,31 @@ class WhatMustStillPersist(unittest.TestCase):
         self.assertEqual(saved_practice_concert_key(session, PERFECT), "F")
         self.assertEqual(saved_practice_concert_key(session, SAY), "D")
 
-    def test_the_song_being_sung_before_anyone_retunes_it(self) -> None:
-        """Playing the set changes nothing about who owns the key. Only a retune does."""
+    def test_the_song_being_sung_is_frozen_from_the_moment_the_set_starts(self) -> None:
+        """This assertion used to say the opposite, and that is what let the defect through.
+
+        It read: before anyone retunes, a durable commit for the song being sung still saves -
+        "only a retune changes who owns the key". But the real sidebar callback commits the
+        durable store BEFORE it registers the retune, so every first retune of a set arrived in
+        exactly this unprotected window and wrote tonight's key over the musician's own. Say
+        saved D, sung in Ab, saved Ab for good.
+
+        In the product there is no durable commit during a set that is not a retune: all three
+        explicit key controls reach ``_karaoke_retune_after_explicit_key_change``. So the window
+        this test used to protect does not exist, and the freeze now covers the whole set.
+        """
         session = performing_session()
-        self.assertFalse(karaoke_performance_locks_song_key(session, SAY))
+        self.assertTrue(karaoke_performance_locks_song_key(session, SAY))
         durable_commit(session, SAY, "E")
-        self.assertEqual(saved_practice_concert_key(session, SAY), "E")
+        self.assertEqual(saved_practice_concert_key(session, SAY), "D",
+                         "a key gesture during a set is tonight's key, never the saved one")
+
+    def test_a_song_that_is_not_being_sung_still_persists_during_a_set(self) -> None:
+        """The freeze stays narrow: it is the song being sung and nothing else."""
+        session = performing_session()
+        self.assertFalse(karaoke_performance_locks_song_key(session, PERFECT))
+        durable_commit(session, PERFECT, "E")
+        self.assertEqual(saved_practice_concert_key(session, PERFECT), "E")
 
     def test_a_song_whose_turn_has_passed(self) -> None:
         """Say was retuned, then the set moved on. Say is no longer the performance's."""
@@ -412,7 +431,11 @@ class NothingTemporaryIsPersisted(unittest.TestCase):
             km.KARAOKE_SESSION_INDEX_KEY: 0,
         }
         self.assertEqual(km.current_session_practice_key(restored), "Bb")
-        self.assertFalse(karaoke_performance_locks_song_key(restored, SAY))
+        # The set is still performing after the refresh, so the song being sung keeps its saved
+        # key frozen - the freeze no longer waits for a retune to be registered. What matters
+        # here is the line above: nothing temporary survived, so the set sounds in Bb again.
+        self.assertTrue(karaoke_performance_locks_song_key(restored, SAY))
+        self.assertEqual(saved_practice_concert_key(restored, SAY), "D")
 
 
 class TheHelpersDoNotDisturbWhatTheyRead(unittest.TestCase):

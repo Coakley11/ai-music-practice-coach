@@ -55,19 +55,25 @@ def _karaoke_performance_locks_song_key(session: dict[str, Any], pick_key: str) 
     and without this the durable half wrote tonight's key into the song's own Practice Key, so
     transposing Say for one evening left Say transposed for good.
 
-    Narrow on purpose. It is the song being sung, after the musician has re-keyed it during this
-    set, and nothing else: another song's key, or this song's key with no set running, persists
-    exactly as it always did.
+    Narrow on purpose: it is the song being sung and nothing else. Another song's key, or this
+    song's key with no set running, persists exactly as it always did.
+
+    It asks ``performance_locks_song_key``, which does NOT ask whether the song has already been
+    re-keyed this set. It used to ask ``performance_owns_song_key``, which does, and that made
+    the freeze depend on the order two calls happen to run in: on the Backing page one sidebar
+    gesture committed the durable store 43 lines before the retune registered the performance,
+    so the FIRST retune of a set wrote tonight's key over the musician's saved one and End Set
+    did not bring it back. Measured: Say saved D, queued Bb, sung in Ab, saved Ab for good.
     """
     pick = str(pick_key or "").strip()
     if not pick:
         return False
     try:
-        from karaoke_mode import performance_owns_song_key
+        from karaoke_mode import performance_locks_song_key
     except ImportError:
         return False
     try:
-        return bool(performance_owns_song_key(session, pick))
+        return bool(performance_locks_song_key(session, pick))
     except Exception:
         return False
 

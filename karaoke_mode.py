@@ -608,6 +608,38 @@ def performance_owns_song_key(session_state: Any, pick_key: str = "") -> bool:
     return wanted == str(entry.get("pick_key") or "").strip()
 
 
+def performance_locks_song_key(session_state: Any, pick_key: str = "") -> bool:
+    """Is this song's SAVED Practice Key frozen because a set is performing it?
+
+    The write-side predicate, and deliberately not the read-side one. It asks only whether a
+    set is performing this song - not whether the musician has already re-keyed it - because a
+    freeze that depends on the register is a freeze that depends on call ORDER, and ordering is
+    not a safety property.
+
+    Measured, with the register-dependent predicate here: one sidebar gesture on the Backing
+    page committed the durable store (``commit_backing_practice_key`` ->
+    ``set_practice_concert_key``) 43 lines BEFORE the retune registered the performance, so the
+    first retune of a set wrote tonight's Ab over the musician's own saved D and End Set did not
+    bring it back. Every later retune in the same set was protected, which is what made it look
+    correct.
+
+    While a set is performing a song, a key gesture is a performance retune and never a change
+    to what the song is saved in - so there is no state in which this should answer False for
+    the song being sung.
+    """
+    entry = _performance_entry(session_state)
+    if not isinstance(entry, Mapping):
+        return False
+    if not str(entry.get("entry_id") or "").strip():
+        return False
+    wanted = str(pick_key or "").strip()
+    if not wanted:
+        return True
+    # Only the song being sung. Another song's saved key, and this song's with no set running,
+    # persist exactly as they always did.
+    return wanted == str(entry.get("pick_key") or "").strip()
+
+
 def performance_key_for_pick(session_state: Any, pick_key: str = "") -> str:
     """Tonight's key for ``pick_key``, if that is the song being sung in one. "" otherwise.
 
