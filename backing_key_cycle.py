@@ -8180,7 +8180,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
     // one kept counting presses after its frame was replaced, but the timer it
     // scheduled for the switch never fired, so later presses changed nothing.
     // The parent-realm timer calls the live frame's __kcSwitchPrepared.
-    if (parentWin.__kcNavVersion !== 13) {{
+    if (parentWin.__kcNavVersion !== 14) {{
       try {{
         const navBoot = parentDoc.createElement('script');
         navBoot.textContent = `
@@ -8302,7 +8302,10 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
     var dlt = Number(delta || 0) < 0 ? -1 : 1;
     if (!ks.length) return false;
     // A manual Previous / Next is a deliberate move on from a completed final key.
-    try {{ if (W.__kcDual) W.__kcDual.finalCompleted = null; }} catch (eFc) {{}}
+    try {{
+      if (typeof W.__kcClearFinalCompleted === 'function') W.__kcClearFinalCompleted();
+      else if (W.__kcDual) W.__kcDual.finalCompleted = null;
+    }} catch (eFc) {{}}
     var nav = W.__kcNav;
     var base = W.__kcNavPending() ? String(nav.target || '') : '';
     // A press whose switch already landed (acknowledged) is not "in flight":
@@ -8386,7 +8389,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
   W.setInterval(function () {{
     try {{ var lk = liveKey(); if (lk) W.__kcLastLive = {{ key: lk, at: Date.now() }}; }} catch (e) {{}}
   }}, 150);
-  W.__kcNavVersion = 13;
+  W.__kcNavVersion = 14;
 }})();`;
         parentDoc.documentElement.appendChild(navBoot);
         navBoot.remove();
@@ -8395,7 +8398,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
     parentWin.__kcSwitchPrepared = function (delta, navOpts) {{
       const now = kcNow();
       // A manual Previous / Next is a deliberate move on from the end state.
-      state.finalCompleted = null;
+      clearFinalCompleted();
       const navSeq = navOpts && navOpts.navSeq ? Number(navOpts.navSeq) : 0;
       const navTarget = navOpts && navOpts.target ? String(navOpts.target).trim() : '';
       // A newer press superseded this switch while it was loading.
@@ -10972,6 +10975,20 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       }} catch (eFc) {{ return false; }}
     }}
     parentWin.__kcFinalTakeCompleted = finalTakeCompleted;
+    // Leaving the end state. The console's disable is undone here, not left to the next transport
+    // sync: that sync runs on playback events only, and a new start after the end kept Pause
+    // disabled for 11 s (browser trace 2026-11-16). Only a disable this page made is undone.
+    function clearFinalCompleted() {{
+      state.finalCompleted = null;
+      try {{
+        const b = parentDoc.querySelector('[class*="st-key-backing_key_cycle_pause_btn"] button');
+        if (b && b.getAttribute('data-kc-final-end') === '1') {{
+          b.removeAttribute('data-kc-final-end');
+          b.disabled = false;
+        }}
+      }} catch (eCf) {{}}
+    }}
+    parentWin.__kcClearFinalCompleted = clearFinalCompleted;
     function stopAtFinalKey(reason) {{
       // Final key finished — stay stopped. Manual Next wraps to the first key.
       try {{
@@ -11006,6 +11023,27 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           }} catch (eL) {{}}
         }}
         abortTransportPlayback({{ seekZero: false }});
+        // This element now holds the completed final take. Every bridge rerun's "missed ended"
+        // recovery, the ended watchdogs and the Resume path call onEnded for an ended active take;
+        // for this one that re-ran the final-key stop, also on the cycle a new start had just begun
+        // (browser trace 2026-11-16: a final_key_stop for Bm 6 s after the card Play). The tag names
+        // the take's URL and goes when the element plays again or loads another source. Its handler
+        // lives in the parent realm: this frame is replaced on every rerun, and a listener from a
+        // replaced frame never runs (the tag then outlived the take and Bm's own end was ignored).
+        try {{
+          const actT = activeAudio();
+          if (actT) {{
+            actT.__kcCompletedFinal = String(actT.currentSrc || actT.src || '');
+            if (!parentWin.__kcUntagCompletedFinal) {{
+              parentWin.__kcUntagCompletedFinal = parentWin.Function(
+                'return function(){{ try {{ this.__kcCompletedFinal = ""; }} catch (e) {{}} }};'
+              )();
+            }}
+            const untag = parentWin.__kcUntagCompletedFinal;
+            actT.addEventListener('play', untag);  // the same function: added once per element
+            actT.addEventListener('emptied', untag);
+          }}
+        }} catch (eTag) {{}}
         try {{
           if (typeof syncVisibleTransport === 'function') syncVisibleTransport();
         }} catch (eVis) {{}}
@@ -11048,6 +11086,17 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         if (parentWin.sessionStorage.getItem('kc_user_paused') === '1') return;
       }} catch (eUP) {{}}
       if (state._onEndedGate) return;
+      // The completed final take, still ended in its slot: nothing to end or advance.
+      try {{
+        const actE = activeAudio();
+        if (actE && actE.ended && actE.__kcCompletedFinal
+            && actE.__kcCompletedFinal === String(actE.currentSrc || actE.src || '')) {{
+          parentWin.__kcPlayDiag = parentWin.__kcPlayDiag || [];
+          parentWin.__kcPlayDiag.push({{ t: kcNow(), ev: 'onEnded_ignore_completed_final',
+            key: String(actE.getAttribute('data-kc-sounding') || '') }});
+          return;
+        }}
+      }} catch (eCfE) {{}}
       if (state.swapping || state.pendingHandoff) {{
         try {{
           parentWin.__kcPlayDiag = parentWin.__kcPlayDiag || [];
@@ -11789,7 +11838,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       }} catch (eNonce) {{}}
       if (!cmd.enabled) {{
         state.enabled = false;
-        state.finalCompleted = null;
+        clearFinalCompleted();
         cancelPendingPlays();
         clearHandoffCookie();
         try {{ parentWin.__kcPendingPlayingAck = null; }} catch (e) {{}}
@@ -11862,7 +11911,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       if (cmd.cycleId) {{
         const neuCycle = String(cmd.cycleId);
         if (state.cycleId && state.cycleId !== neuCycle) {{
-          state.finalCompleted = null;  // a new cycle: the old one's end state is over
+          clearFinalCompleted();  // a new cycle: the old one's end state is over
           // New Python cycle after Off/On — drop prior-cycle handoff identity so
           // acks are not rejected as stale_cycle while audio keeps advancing.
           state.passId = 0;
@@ -11966,7 +12015,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         }}
       }} catch (eNavG) {{}}
       // A deliberate restart / Play starts the cycle again: the end state is over.
-      if (cmd.restart || cmd.forcePlay) state.finalCompleted = null;
+      if (cmd.restart || cmd.forcePlay) clearFinalCompleted();
       // Stop / Pause own the audible buffer. Explicit arrangement Play is
       // handled after needsReplace is known (below) so a sticky arrangement
       // URL cannot clear a later Stop. Resume/restart always win over paused.
@@ -12447,7 +12496,12 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         if (cmd.restart || cmd.forcePlay || (cmd.resume && !cmd.paused)) {{
           if (!(last && cmdKey && cmdKey === last)) state.atFinalKey = false;
         }}
-        if (last && browserSounding && browserSounding === last) {{
+        // A deliberate restart / forcePlay to another key replaces the take that is sounding, so
+        // that take's key is not where the cycle is (it re-latched the final key after the end, and
+        // the new start's first take then ended the cycle). Resume keeps the latch: there the
+        // browser can be on the final key while the server is one behind.
+        const replacingSounding = !!((cmd.restart || cmd.forcePlay) && cmdKey && last && cmdKey !== last);
+        if (!replacingSounding && last && browserSounding && browserSounding === last) {{
           state.atFinalKey = true;
           const first = seq.length ? String(seq[0] || '').trim() : '';
           const ns = String(state.nextSounding || cmd.nextSounding || '').trim();

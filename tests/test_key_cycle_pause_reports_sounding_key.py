@@ -1227,6 +1227,74 @@ class TheCompletedFinalTakeIsNeverReplayed(unittest.TestCase):
         self._assert_final_take_not_replayed(self._after("stop", ("eval", "() => { window.__kcResumeAudio(); return true; }")))
 
 
+class ANewStartAfterTheEndIsANewCycle(unittest.TestCase):
+    """Browser trace 2026-11-16 (Shape of You, Guitar Shape, 12 keys Bm ... F#m, candidate 9300b6c0):
+    after F#m completed and the cycle ended, the card's Play started a new cycle at Bm. The command
+    arrived through a rerun's new bridge frame, whose "missed ended" recovery called onEnded for
+    the active take -- still the completed F#m, still ended -- while the final-key latch was set:
+    the page ran its final-key stop on the new cycle (a final_key_stop for Bm), disabled the
+    console's Pause for 11 s, and the server refused the report as not the final key."""
+
+    _SEQ = TheCompletedFinalTakeIsNeverReplayed._SEQ
+    _REMOUNT_JS = """async ([html, ms]) => { const f = document.getElementById('kc-bridge'); f.srcdoc = '';
+      await new Promise(r => setTimeout(r, 50)); f.srcdoc = html; await new Promise(r => setTimeout(r, ms)); return true; }"""
+    _MARK_JS = "() => { window.__kcMark = (window.__kcPlayDiag || []).length; return true; }"
+    _SINCE_JS = """() => { const dg = (window.__kcPlayDiag || []).slice(Number(window.__kcMark || 0));
+      const b = document.querySelector('[class*="st-key-backing_key_cycle_pause_btn"] button');
+      return {finalStops: dg.filter(r => r.ev === 'final_key_stop').map(r => (r.reason || '') + ':' + (r.key || '')),
+        atFinal: !!(window.__kcDual || {}).atFinalKey, disabled: !!(b && b.disabled),
+        marker: b ? b.getAttribute('data-kc-final-end') : null,
+        ended: !!(window.__kcFinalTakeCompleted && window.__kcFinalTakeCompleted())}; }"""
+
+    def _cmd(self, epoch, sounding, nxt="", **extra):
+        return _kc_cmd(epoch, sounding, nxt, sequence=list(self._SEQ), **extra)
+
+    def _remount(self, cmd: dict, ms: int = 1800) -> tuple:
+        html = kc.cycle_persistent_player_bridge_html(cmd_json=__import__("json").dumps(cmd))
+        return ("eval", "async () => { const f = (%s); return await f(%s); }" % (
+            self._REMOUNT_JS, __import__("json").dumps([html, ms])))
+
+    def _ended_and_sealed(self) -> list:
+        """F#m (final) completes; the server's sealing command arrives through a rerun, as in the app."""
+        start = self._cmd(10, "F#m", restart=True, autoplay=True, forcePlay=True)
+        seq = "() => { window.__kcDual.sequence = %s; return true; }" % __import__("json").dumps(self._SEQ)
+        seal = self._cmd(12, "F#m", paused=True, hardStop=True, autoplay=False, atFinalKey=True)
+        return [("cmd", start), ("eval", seq), ("eval", _FINISH_ACTIVE_JS),
+                ("eval", "async () => { await new Promise(r => setTimeout(r, 800)); return true; }"),
+                self._remount(seal), ("eval", self._MARK_JS)]
+
+    def _new_start(self, with_restart: bool) -> list:
+        # The card's Play: its first command (forcePlay) and, as in the app, the restart after it.
+        ops = [self._remount(self._cmd(15, "Bm", "Em", forcePlay=True, autoplay=True)), ("eval", self._SINCE_JS)]
+        if with_restart:
+            ops += [self._remount(self._cmd(15, "Bm", "Em", restart=True, autoplay=True)), ("eval", self._SINCE_JS)]
+        return ops
+
+    def test_the_old_final_take_never_ends_the_new_cycle(self) -> None:
+        snaps = _run_stop_race(self, self._ended_and_sealed() + self._new_start(True) + [("eval", _HEARD_JS)])
+        first, second, heard = snaps[-4]["eval"], snaps[-2]["eval"], snaps[-1]["eval"]
+        self.assertEqual(first["finalStops"], [], first)
+        self.assertEqual(second["finalStops"], [], second)
+        self.assertFalse(second["atFinal"], second)
+        self.assertEqual((heard["key"], heard["heard"]), ("Bm", ["bm.wav"]), heard)
+
+    def test_the_console_is_usable_as_soon_as_the_new_start_arrives(self) -> None:
+        snaps = _run_stop_race(self, self._ended_and_sealed() + self._new_start(False))
+        got = snaps[-1]["eval"]
+        self.assertEqual((got["disabled"], got["marker"], got["ended"]), (False, None, False), got)
+
+    def test_the_new_cycle_moves_on_from_its_first_key(self) -> None:
+        for with_restart in (True, False):
+            with self.subTest(with_restart=with_restart):
+                snaps = _run_stop_race(self, self._ended_and_sealed() + self._new_start(with_restart) + [
+                    ("eval", _FINISH_ACTIVE_JS),
+                    ("eval", "async () => { await new Promise(r => setTimeout(r, 1500)); return true; }"),
+                    ("eval", self._SINCE_JS), ("eval", _HEARD_JS)])
+                since, heard = snaps[-2]["eval"], snaps[-1]["eval"]
+                self.assertEqual(since["finalStops"], [], since)
+                self.assertEqual((heard["key"], heard["heard"]), ("Em", ["em.wav"]), heard)
+
+
 class FinalKeyEndsOnlyWhenItsTakeCompletes(unittest.TestCase):
     """The final key selected (or prepared) is not the final key completed: only the completion of
     the final key's own take ends the sequence. Two-key cycle Gm -> Cm, starting on Cm."""
