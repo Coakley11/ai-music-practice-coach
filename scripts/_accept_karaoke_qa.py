@@ -209,6 +209,16 @@ def button_with(page: Page, needle: str) -> dict | None:
     return None
 
 
+def synth_key_is(row: str, want: str) -> bool:
+    """Does this synthesizer-log entry name ``want``?
+
+    ``synth_keys`` returns "stage:key" strings - "synth_done:Ab" - so comparing the whole
+    string against a key never matches. Measured as E4 failing while printing
+    ['synth_submit:Ab', 'synth_done:Ab'], which is the pass it was looking for.
+    """
+    return key_token(str(row or "").split(":")[-1]) == key_token(want)
+
+
 def set_pk_token(page: Page, token: str) -> bool:
     """Move the Practice Key control on this page to ``token``, flats and all.
 
@@ -594,13 +604,13 @@ def phase_e_temporary_key(page: Page) -> bool:
         deadline = _time.time() + 180
         while _time.time() < deadline:
             new_keys = synth_keys(regen_rows())[len(before_synth):]
-            if any(key_token(k) == "ab" for k in new_keys):
+            if any(synth_key_is(k, "Ab") for k in new_keys):
                 break
             settle(page, 3)
     else:
         observe("Play was not available after the re-key, so no rebuild could be measured")
     mark("E4 the backing was rebuilt in the new key",
-         any(key_token(k) == "ab" for k in new_keys),
+         any(synth_key_is(k, "Ab") for k in new_keys),
          f"synthesized since the change: {new_keys or '(nothing)'}")
     chords = live_chords(page)
     if chords.get("current"):
