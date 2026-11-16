@@ -37,6 +37,19 @@ sys.path.insert(0, str(ROOT))
 
 URL = sys.argv[1] if len(sys.argv) > 1 and sys.argv[1].startswith("http") else "http://127.0.0.1:8614"
 SHEET_ON = "--sheet-on" in sys.argv
+#: Phone widths are the same journey in a narrower window, so the measurements that already
+#: proved the six-second hold and the return to the sung lyric are re-run there rather than
+#: reimplemented. --width 390 (or 360) also turns on the layout gates below.
+WIDTH = 1280
+HEIGHT = 900
+for _i, _a in enumerate(sys.argv):
+    if _a == "--width" and _i + 1 < len(sys.argv):
+        try:
+            WIDTH = int(sys.argv[_i + 1])
+            HEIGHT = 844 if WIDTH <= 400 else 900
+        except ValueError:
+            pass
+PHONE = WIDTH <= 400
 
 from _accept_issue69_karaoke_transposition import (  # noqa: E402
     click_key,
@@ -52,7 +65,7 @@ from walk_guitar_shape_key import pick_song  # noqa: E402
 
 OUT = SCRIPTS / "evidence-karaoke-slice2"
 OUT.mkdir(parents=True, exist_ok=True)
-TAG = "sheet-on" if SHEET_ON else "sheet-off"
+TAG = ("sheet-on" if SHEET_ON else "sheet-off") + (f"-{WIDTH}" if PHONE else "")
 GATES: dict[str, bool] = {}
 OBSERVED: list[str] = []
 
@@ -137,7 +150,9 @@ def main() -> int:
     report: dict = {"sheet_on": SHEET_ON}
     with sync_playwright() as pw:
         browser = pw.chromium.launch(headless=True)
-        context = browser.new_context(viewport={"width": 1280, "height": 900}, has_touch=True)
+        context = browser.new_context(viewport={"width": WIDTH, "height": HEIGHT},
+                                      has_touch=True, is_mobile=PHONE,
+                                      device_scale_factor=3 if PHONE else 1)
         page = context.new_page()
         page.set_default_timeout(30000)
         try:
