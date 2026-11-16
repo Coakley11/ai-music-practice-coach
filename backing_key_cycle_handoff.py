@@ -17,6 +17,32 @@ import streamlit.components.v1 as components
 HANDOFF_COOKIE = "kc_handoff"
 ACKED_IDS_KEY = "_kc_handoff_acked_ids"
 LAST_PASS_ID_KEY = "_kc_handoff_last_pass_id"
+# Epochs bumped only by the musician's Pause / Resume: they change the transport, never the
+# cycle position, so they do not make a handoff ack built just before them stale.
+TRANSPORT_ONLY_EPOCHS_KEY = "_kc_transport_only_epochs"
+
+
+def note_transport_only_epoch(session: dict[str, Any]) -> None:
+    """Record the current command epoch as a Pause / Resume bump (bounded list)."""
+    try:
+        cur = int(session.get("_kc_player_cmd_epoch") or 0)
+        kept = [int(e) for e in (session.get(TRANSPORT_ONLY_EPOCHS_KEY) or []) if int(e) > cur - 32]
+        if cur not in kept:
+            kept.append(cur)
+        session[TRANSPORT_ONLY_EPOCHS_KEY] = kept[-16:]
+    except Exception:
+        pass
+
+
+def forget_transport_only_epoch(session: dict[str, Any]) -> None:
+    """The current epoch was not transport-only after all (a Stop that went through Pause)."""
+    try:
+        cur = int(session.get("_kc_player_cmd_epoch") or 0)
+        session[TRANSPORT_ONLY_EPOCHS_KEY] = [
+            int(e) for e in (session.get(TRANSPORT_ONLY_EPOCHS_KEY) or []) if int(e) != cur
+        ]
+    except Exception:
+        pass
 MAX_ACKED = 32
 
 _COMPONENT_DIR = Path(__file__).resolve().parent / "kc_handoff_component"
@@ -148,7 +174,16 @@ def build_cycle_lead_sheet_html(
             capo_fret=int(capo["capo_fret"]) if capo else 0,
             capo_shape_key=display if capo else "",
         )
-        if display != key and html and not capo:
+        _respelled_only = False
+        try:
+            from backing_key_cycle import _keys_equivalent
+
+            # Concert mode renamed by Key Spelling (Db read as C#): same pitch,
+            # so there is no separate reading / sounding key to point out.
+            _respelled_only = display != key and _keys_equivalent(display, key)
+        except Exception:
+            _respelled_only = False
+        if display != key and html and not capo and not _respelled_only:
             # Keep concert audio identity visible on projected charts.
             tag = (
                 f"<div class='meta-row' style='margin:.25rem 0 .5rem'>"
@@ -428,7 +463,16 @@ def validate_playing_ack(
     try:
         cur_epoch = int(session.get("_kc_player_cmd_epoch") or 0)
         if epoch is not None and int(epoch) < cur_epoch - 1:
-            return False, "stale_epoch"
+            # Count only the epochs that could have changed the cycle position: a Pause and
+            # a Resume pressed while this take was handing off bumped the epoch twice, and
+            # the ack -- the take that is really playing -- was rejected (KC-F1, browser
+            # trace 2026-11-14: the first natural ack after every Pause/Resume).
+            transport = {int(e) for e in (session.get(TRANSPORT_ONLY_EPOCHS_KEY) or [])}
+            position_bumps = sum(
+                1 for e in range(int(epoch) + 1, cur_epoch + 1) if e not in transport
+            )
+            if position_bumps > 1:
+                return False, "stale_epoch"
     except Exception:
         pass
     playing = str(ack.get("playingKey") or "").strip()

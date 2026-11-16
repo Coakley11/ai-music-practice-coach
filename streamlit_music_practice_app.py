@@ -6513,7 +6513,16 @@ def live_follow_along_component_html(
       if (!clock) return true;
       try {{
         if (cycleOwnsAudio()) {{
-          // Single authority: parent buffer probe (same as cycle Pause/Resume).
+          // One authority with the Key Cycling console: would its Pause button Pause
+          // now? Judged from this frame's own buffer probe, a press during a pause
+          // whose hold flag had been cleared at a take's end became a second Pause,
+          // so Resume never reached the server.
+          try {{
+            if (typeof window.parent.__kcCyclePressPauses === "function") {{
+              return !window.parent.__kcCyclePressPauses();
+            }}
+          }} catch (eAuth) {{}}
+          // Fallback: parent buffer probe (same as cycle Pause/Resume).
           try {{
             if (typeof window.parent.__kcAnyAudibleBuffer === "function"
                 && window.parent.__kcAnyAudibleBuffer()) {{
@@ -21995,7 +22004,7 @@ elif _studio_page == "backing":
             except Exception:
                 pass
         _backing_written_key = (
-            _backing_musical.chart_badge_value if _backing_musical.show_chart_badge else ""
+            _backing_musical.card_chart_badge_value if _backing_musical.card_show_chart_badge else ""
         )
         if _developer_mode_enabled():
             render_backing_key_state_diagnostics(st, st.session_state, _backing_musical)
@@ -22089,7 +22098,7 @@ elif _studio_page == "backing":
                     )
                     _backing_practice_key = _backing_musical.practice_concert_key
                     _backing_written_key = (
-                        _backing_musical.chart_badge_value if _backing_musical.show_chart_badge else ""
+                        _backing_musical.card_chart_badge_value if _backing_musical.card_show_chart_badge else ""
                     )
                 except Exception:
                     pass
@@ -22103,7 +22112,7 @@ elif _studio_page == "backing":
                 )
                 _backing_practice_key = _backing_musical.practice_concert_key
                 _backing_written_key = (
-                    _backing_musical.chart_badge_value if _backing_musical.show_chart_badge else ""
+                    _backing_musical.card_chart_badge_value if _backing_musical.card_show_chart_badge else ""
                 )
             try:
                 from h3_live_key_trace import emit
@@ -23806,7 +23815,22 @@ elif _studio_page == "backing":
     # Do not clear settings_pending on a bare Play click — only when the
     # installed arrangement matches the selection (after generate / ready).
     # Explicit Play must leave Held/Pause and start the new (or ready) arrangement.
-    if _play_clicked or _play_needs_generate:
+    _kc_paused_build = False
+    try:
+        from backing_key_cycle import STATUS_HELD as _KC_HELD, get_owner_cycle_session as _kc_bag
+
+        # A Key Cycling take finished building (Next / Previous to a cold key)
+        # after the musician pressed Pause: install it, stay paused. Arming it as
+        # an explicit Play resumed the cycle behind the Pause.
+        _kc_paused_build = bool(
+            not _play_clicked
+            and _async_wav_ready
+            and str((_kc_bag(st.session_state) or {}).get("status") or "") == _KC_HELD
+            and (_kc_bag(st.session_state) or {}).get("enabled")
+        )
+    except Exception:
+        _kc_paused_build = False
+    if (_play_clicked or _play_needs_generate) and not _kc_paused_build:
         try:
             from backing_key_cycle import arm_key_cycle_for_explicit_play
 
@@ -23818,6 +23842,15 @@ elif _studio_page == "backing":
             st.session_state.pop("_kc_refresh_resume_from_start", None)
             st.session_state["_kc_restart_play"] = True
             st.session_state["_backing_autoplay"] = True
+    if _play_needs_generate and not _kc_paused_build:
+        # This run generates the take: a "needs regenerate" set while arming the
+        # cycle for it (no published take yet) is already being satisfied.
+        try:
+            from songs.key_state import clear_backing_needs_regen
+
+            clear_backing_needs_regen(st.session_state)
+        except Exception:
+            st.session_state[BACKING_NEEDS_REGEN] = False
     _cycle_prefetch_hit = bool(
         _cycle_continue_play
         and _backing_audio_ready

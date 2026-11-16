@@ -39,6 +39,8 @@ BACKING_KEY_CYCLE_SETTINGS_PENDING_KEY = "_backing_key_cycle_settings_pending_pl
 BACKING_KEY_CYCLE_PREPARED_KEY = "_backing_key_cycle_prepared"
 BACKING_KEY_CYCLE_PREFETCH_TARGET_KEY = "_backing_key_cycle_prefetch_target"
 BACKING_KEY_CYCLE_PASS_GAP_KEY = "_backing_key_cycle_pass_gap"
+# Path of the take last installed from the prepared bag (see promote_prepared_cycle_audio).
+KC_PROMOTED_WAV_PATH_KEY = "_kc_promoted_wav_path"
 # Hidden Streamlit bridge (karaoke-style parent button click from the audio iframe).
 BACKING_KEY_CYCLE_PASS_FINISHED_LABEL = "Key cycle pass finished"
 BACKING_KEY_CYCLE_PASS_FINISHED_KEY = "backing_key_cycle_pass_finished_bridge"
@@ -60,12 +62,69 @@ KC_HOLDER_HIDDEN_CSS = (
 )
 
 
+# Interval choices. The step name is what the Interval control and the saved
+# preference hold; the integer is the semitone size of one cycle move (the
+# cycle session's "interval"). Circle of Fourths moves 5 semitones per step:
+# up = C F Bb Eb ... (+5), down = C G D A ... (-5, i.e. ascending fifths).
+CYCLE_STEP_SEMITONE = "semitone"
+CYCLE_STEP_WHOLE = "whole"
+CYCLE_STEP_FOURTH = "fourth"
+CYCLE_INTERVAL_BY_STEP: dict[str, int] = {
+    CYCLE_STEP_SEMITONE: 1,
+    CYCLE_STEP_WHOLE: 2,
+    CYCLE_STEP_FOURTH: 5,
+}
+CYCLE_STEP_LABELS: dict[str, str] = {
+    CYCLE_STEP_SEMITONE: "Semitones",
+    CYCLE_STEP_WHOLE: "Whole tones",
+    CYCLE_STEP_FOURTH: "Circle of Fourths",
+}
+_CYCLE_STEP_ALIASES: dict[str, str] = {
+    "semitone": CYCLE_STEP_SEMITONE,
+    "semitones": CYCLE_STEP_SEMITONE,
+    "half": CYCLE_STEP_SEMITONE,
+    "whole": CYCLE_STEP_WHOLE,
+    "wholetone": CYCLE_STEP_WHOLE,
+    "whole_tone": CYCLE_STEP_WHOLE,
+    "whole tone": CYCLE_STEP_WHOLE,
+    "whole tones": CYCLE_STEP_WHOLE,
+    "fourth": CYCLE_STEP_FOURTH,
+    "fourths": CYCLE_STEP_FOURTH,
+    "circle_of_fourths": CYCLE_STEP_FOURTH,
+    "circle of fourths": CYCLE_STEP_FOURTH,
+}
+
+
+def normalize_cycle_interval(value: Any) -> int:
+    """One cycle move in semitones: 1, 2 or 5. Anything else is a semitone."""
+    try:
+        mag = abs(int(value or 1))
+    except (TypeError, ValueError):
+        return 1
+    return mag if mag in CYCLE_INTERVAL_BY_STEP.values() else 1
+
+
+def normalize_cycle_step_name(value: Any) -> str:
+    """Interval control value (semitone | whole | fourth); '' when unrecognised."""
+    return _CYCLE_STEP_ALIASES.get(str(value or "").strip().lower(), "")
+
+
+def cycle_step_name_for_interval(interval: Any) -> str:
+    mag = normalize_cycle_interval(interval)
+    for name, size in CYCLE_INTERVAL_BY_STEP.items():
+        if size == mag:
+            return name
+    return CYCLE_STEP_SEMITONE
+
+
+def cycle_interval_for_step_name(step: Any) -> int:
+    return CYCLE_INTERVAL_BY_STEP.get(normalize_cycle_step_name(step) or CYCLE_STEP_SEMITONE, 1)
+
+
 def _queue_key_cycle_widget_seed(
     session: dict[str, Any], *, interval: int, direction: str
 ) -> None:
-    session[_BACKING_KEY_CYCLE_STEP_UI_SEED_KEY] = (
-        "whole" if int(interval or 1) >= 2 else "semitone"
-    )
+    session[_BACKING_KEY_CYCLE_STEP_UI_SEED_KEY] = cycle_step_name_for_interval(interval)
     session[_BACKING_KEY_CYCLE_DIRECTION_UI_SEED_KEY] = (
         "down" if str(direction).lower() == "down" else "up"
     )
@@ -82,7 +141,7 @@ def _apply_queued_key_cycle_widget_seed(session: dict[str, Any]) -> None:
 
 KEY_CYCLE_TOOLTIP = (
     "Automatically repeat the backing track in a new key after each play-through. "
-    "Choose half-step or whole-step changes, moving up or down. "
+    "Choose semitones, whole tones or the Circle of Fourths, ascending or descending. "
     "Your selected Practice Key stays the same."
 )
 
@@ -297,8 +356,10 @@ def cycle_concert_practice_key(
 
 
 def cycle_sequence_length(*, interval: int) -> int:
-    """Distinct keys in one full repeating cycle (12 semitone / 6 whole-tone)."""
-    return 6 if int(interval) >= 2 else 12
+    """Distinct keys in one full repeating cycle: 12 semitone, 6 whole-tone, 12 fourths."""
+    import math
+
+    return 12 // math.gcd(normalize_cycle_interval(interval), 12)
 
 
 def cycle_key_sequence(session: dict[str, Any], owner: str = "") -> list[str]:
@@ -310,9 +371,7 @@ def cycle_key_sequence(session: dict[str, Any], owner: str = "") -> list[str]:
         or current_backing_owner_practice_key(session)
         or "C"
     ).strip() or "C"
-    interval = int(data.get("interval") or 1)
-    if interval not in {1, 2}:
-        interval = 1
+    interval = normalize_cycle_interval(data.get("interval"))
     direction = str(data.get("direction") or "up")
     delta = -interval if direction == "down" else interval
     prefs = (
@@ -363,7 +422,10 @@ def project_cycle_display_key(
     concert = str(concert_key or "").strip() or "C"
     mode = cycle_chart_mode(session)
     if mode == "concert":
-        return concert
+        # The cycle keeps its own concert tokens (audio identity, prepared takes);
+        # the musician reads them with the live Key Spelling preference, so a
+        # spelling change relabels without moving the cycle.
+        return apply_spelling_prefs_to_key(concert, spelling_prefs_from_session(session)) or concert
     if mode == "written":
         try:
             from instrument_transposition import written_key_for_instrument
@@ -889,9 +951,7 @@ def cycle_sequence_index(session: dict[str, Any], owner: str = "") -> int:
         if _keys_equivalent(key_tok, cur):
             return i
     # Fall back: map offset onto sequence order (direction-aware).
-    interval = int(data.get("interval") or 1)
-    if interval not in {1, 2}:
-        interval = 1
+    interval = normalize_cycle_interval(data.get("interval"))
     n = len(seq)
     direction = str(data.get("direction") or "up")
     raw = int(data.get("offset_semitones") or 0) // interval
@@ -1237,9 +1297,7 @@ def reanchor_key_cycle_from_practice_key(
     if already:
         return old
 
-    mag = int(old.get("interval") or 1)
-    if mag not in {1, 2}:
-        mag = 1
+    mag = normalize_cycle_interval(old.get("interval"))
     direc = "down" if str(old.get("direction") or "up").lower() == "down" else "up"
     prefs = (
         dict(old["spelling_prefs"])
@@ -1358,11 +1416,14 @@ def reset_key_cycle_position_for_settings(
     ).strip() or "C"
     old_cur = str(data.get("current_playback_key") or "").strip()
     if interval is not None:
-        data["interval"] = 2 if int(interval) >= 2 else 1
+        data["interval"] = normalize_cycle_interval(interval)
     if direction is not None:
         data["direction"] = "down" if str(direction).lower() == "down" else "up"
     if spelling_prefs is not None:
         data["spelling_prefs"] = dict(spelling_prefs)
+    else:
+        # The sequence is rebuilt anyway: name it with the live Key Spelling.
+        data["spelling_prefs"] = spelling_prefs_from_session(session)
     data["base_practice_key"] = base
     data["start_cycle_key"] = base
     data["current_playback_key"] = base
@@ -1462,6 +1523,16 @@ def play_wav_adoption_needed(
     """
     fresh = str(fresh_url or "").strip()
     if not fresh:
+        return False
+    # The live take was promoted from the prepared bag (natural handoff, Next,
+    # Previous): it is the current key's prepared audio, never a new Play. Seen
+    # as one (its URL differs from the Play-time WAV), it was adopted as an
+    # arrangement replace whose sticky markers (cleared only by a forcePlay
+    # publish) made the pass bridge drop every later natural handoff as
+    # "explicit_play_owns": the browser advanced, Python stayed, and the next
+    # republish snapped the audio back -- the advance-then-revert stutter.
+    _promoted = str(session.get(KC_PROMOTED_WAV_PATH_KEY) or "").strip()
+    if _promoted and _promoted == str(session.get("_last_backing_wav_path") or "").strip():
         return False
     # A WAV that is the prepared audio of a DIFFERENT cycle key is never a new Play.
     try:
@@ -1903,6 +1974,9 @@ def note_key_cycle_arrangement_settings_changed(session: dict[str, Any]) -> None
     # used to swallow the FIRST real change after a Play, so nothing regenerated).
     # Scope-only edits used to early-return when Tempo/Feel still matched.
     user_edit = bool(session.pop("_kc_user_arrangement_edit", False))
+    if user_edit:
+        # The rebuilt take is an arrangement replace, not a prepared handoff.
+        session.pop(KC_PROMOTED_WAV_PATH_KEY, None)
     if session.pop("_kc_settings_applied_this_play", None) and not user_edit:
         return
     if not user_edit:
@@ -2857,6 +2931,10 @@ def promote_prepared_cycle_audio(session: dict[str, Any], sounding_key: str) -> 
         return False
     session["_last_backing_wav_path"] = path
     session["_last_backing_signature"] = sig
+    # This take came from the prepared bag (a key handoff / Next / Previous),
+    # not from a Play-time generate: play_wav_adoption_needed must never adopt
+    # it as an explicit arrangement Play.
+    session[KC_PROMOTED_WAV_PATH_KEY] = path
     session.pop("_last_backing_wav", None)
     session.pop("_last_backing_wav_b64", None)
     url = str(entry.get("static_url") or "").strip()
@@ -2979,20 +3057,19 @@ def mark_cycle_next_pass_playing_clock(
 
 def remembered_key_cycle_settings(session: dict[str, Any], data: dict[str, Any] | None = None) -> tuple[str, str]:
     """Interval / Direction to show: the saved choice, else the live cycle session, else Semitone / Up."""
-    step = str(session.get(BACKING_KEY_CYCLE_STEP_KEY) or "").strip().lower()
+    step = normalize_cycle_step_name(session.get(BACKING_KEY_CYCLE_STEP_KEY))
     direc = str(session.get(BACKING_KEY_CYCLE_DIRECTION_KEY) or "").strip().lower()
     enabled = bool(data and data.get("enabled"))
-    if step not in {"semitone", "whole"}:
-        step = ("whole" if int(data.get("interval") or 1) == 2 else "semitone") if enabled else "semitone"
+    if not step:
+        step = cycle_step_name_for_interval(data.get("interval")) if enabled else CYCLE_STEP_SEMITONE
     if direc not in {"up", "down"}:
         direc = ("down" if str(data.get("direction") or "up").lower() == "down" else "up") if enabled else "up"
     return step, direc
 
 
 def cycle_step_semitones(session: dict[str, Any]) -> int:
-    step = str(session.get(BACKING_KEY_CYCLE_STEP_KEY) or "semitone").strip().lower()
+    magnitude = cycle_interval_for_step_name(session.get(BACKING_KEY_CYCLE_STEP_KEY))
     direction = str(session.get(BACKING_KEY_CYCLE_DIRECTION_KEY) or "up").strip().lower()
-    magnitude = 2 if step in {"whole", "wholetone", "whole_tone", "whole tone"} else 1
     return magnitude if direction != "down" else -magnitude
 
 
@@ -3072,7 +3149,7 @@ def _empty_session(
         "start_cycle_key": start,
         "current_playback_key": start,
         "offset_semitones": 0,
-        "interval": 1 if int(interval) not in {1, 2} else int(interval),
+        "interval": normalize_cycle_interval(interval),
         "direction": "down" if str(direction).lower() == "down" else "up",
         "spelling_prefs": dict(spelling_prefs or default_spelling_prefs()),
         "pass_index": 0,
@@ -3398,14 +3475,14 @@ def start_key_cycle(
     base = current_backing_owner_practice_key(session)
     prefs = spelling_prefs or spelling_prefs_from_session(session)
     step = cycle_step_semitones(session) if interval is None else (
-        (2 if int(interval) >= 2 else 1) * (-1 if str(direction).lower() == "down" else 1)
+        normalize_cycle_interval(interval) * (-1 if str(direction).lower() == "down" else 1)
     )
     mag = abs(int(step)) or 1
     direc = "down" if int(step) < 0 else "up"
     if direction:
         direc = "down" if str(direction).lower() == "down" else "up"
     if interval is not None:
-        mag = 2 if int(interval) >= 2 else 1
+        mag = normalize_cycle_interval(interval)
     # New cycles always begin at Saved Practice Key unless a caller passes start_key
     # (tests). There is no musician-facing start-key control.
     start = str(start_key or base).strip() or base
@@ -3480,8 +3557,18 @@ def pause_key_cycle(session: dict[str, Any]) -> dict[str, Any] | None:
     data["status"] = STATUS_HELD
     _put_owner_cycle_session(session, owner, data)
     session["_kc_player_cmd_epoch"] = int(session.get("_kc_player_cmd_epoch") or 0) + 1
+    try:
+        from backing_key_cycle_handoff import note_transport_only_epoch
+
+        note_transport_only_epoch(session)
+    except Exception:
+        pass
     session.pop("_kc_resume_play", None)
     session.pop("_kc_restart_play", None)
+    # A queued "prepare and play the next take" (Next / Previous to a cold key)
+    # must not start it behind the Pause. Resume re-queues it when no take is
+    # mounted (resume_key_cycle), so the position is kept and nothing is lost.
+    session.pop(BACKING_KEY_CYCLE_CONTINUE_PLAY_KEY, None)
     session["_kc_pause_audio"] = True
     # Pause must not leave BACKING_AUTOPLAY armed — remounts would forcePlay.
     session["_backing_autoplay"] = False
@@ -3510,6 +3597,12 @@ def resume_key_cycle(session: dict[str, Any]) -> dict[str, Any] | None:
     data.pop(CYCLE_SESSION_OVER, None)
     _put_owner_cycle_session(session, owner, data)
     session["_kc_player_cmd_epoch"] = int(session.get("_kc_player_cmd_epoch") or 0) + 1
+    try:
+        from backing_key_cycle_handoff import note_transport_only_epoch
+
+        note_transport_only_epoch(session)
+    except Exception:
+        pass
     session.pop("_backing_transport_user_stopped", None)
     session.pop("_kc_hard_stop", None)
     session.pop("_kc_pause_audio", None)
@@ -3592,6 +3685,8 @@ def arm_key_cycle_for_explicit_play(session: dict[str, Any]) -> dict[str, Any] |
     else:
         data = None
     session["_kc_player_cmd_epoch"] = int(session.get("_kc_player_cmd_epoch") or 0) + 1
+    # Explicit Play owns the next take (even the first key's prepared one).
+    session.pop(KC_PROMOTED_WAV_PATH_KEY, None)
     session.pop("_backing_transport_user_stopped", None)
     session.pop("_kc_hard_stop", None)
     session.pop("_kc_pause_audio", None)
@@ -3602,7 +3697,11 @@ def arm_key_cycle_for_explicit_play(session: dict[str, Any]) -> dict[str, Any] |
     # Explicit Play must not flip to Running/Pause with an empty dual-buffer.
     # Restored Held cycles often lack static/kc after a clean; force CONTINUE so
     # Play regenerates (or spills+publishes) before the bridge enables.
-    if not ensure_cycle_current_static_url(session):
+    # Only an active cycle has a dual-buffer to fill. With cycling Off this ran
+    # anyway on every Play: it left Key Cycling replace markers behind and set
+    # "needs regenerate" after the page had cleared it for the take it was
+    # generating, so "Playback settings changed" showed over a fresh take.
+    if data is not None and not ensure_cycle_current_static_url(session):
         session[BACKING_KEY_CYCLE_CONTINUE_PLAY_KEY] = True
         try:
             from songs.key_state import BACKING_NEEDS_REGEN
@@ -3624,6 +3723,13 @@ def hard_stop_key_cycle_audio(session: dict[str, Any]) -> dict[str, Any] | None:
     not seek to t=0. Turn off cycling remains the separate disable action.
     """
     data = pause_key_cycle(session)
+    # A Stop is not transport-only: acks built before it stay stale.
+    try:
+        from backing_key_cycle_handoff import forget_transport_only_epoch
+
+        forget_transport_only_epoch(session)
+    except Exception:
+        pass
     session["_kc_hard_stop"] = True
     session["_kc_pause_audio"] = True
     session.pop("_kc_resume_play", None)
@@ -3746,7 +3852,7 @@ def jump_key_cycle_to_key(
             extra={"sequence": list(seq)},
         )
         return False, data
-    mag = 2 if int(data.get("interval") or 1) >= 2 else 1
+    mag = normalize_cycle_interval(data.get("interval"))
     unit = -mag if str(data.get("direction") or "up") == "down" else mag
     target = seq[idx]
     data = dict(data)
@@ -3953,7 +4059,7 @@ def end_key_cycle_on_page_leave(session: dict[str, Any]) -> None:
     session[BACKING_KEY_CYCLE_DIRECTION_KEY] = _direc
     session[BACKING_KEY_SPELLING_PREFS_KEY] = spelling_prefs_from_session(session)
     session["backing_key_cycle_enabled_ui"] = "Off"
-    _queue_key_cycle_widget_seed(session, interval=2 if _step == "whole" else 1, direction=_direc)
+    _queue_key_cycle_widget_seed(session, interval=cycle_interval_for_step_name(_step), direction=_direc)
     session["_key_cycle_force_ui_off"] = True
     # Drop spelling widget keys so they remount from the kept preferences.
     for sharp, flat in ENHARMONIC_SPELLING_PAIRS:
@@ -3987,9 +4093,7 @@ def _step_owner_cycle(
     if status not in {STATUS_RUNNING, STATUS_HELD}:
         return data
     data = dict(data)
-    mag = int(data.get("interval") or 1)
-    if mag not in {1, 2}:
-        mag = 1
+    mag = normalize_cycle_interval(data.get("interval"))
     unit = -mag if str(data.get("direction") or "up") == "down" else mag
     prefs = data.get("spelling_prefs") if isinstance(data.get("spelling_prefs"), dict) else spelling_prefs_from_session(session)
     start = str(data.get("start_cycle_key") or data.get("base_practice_key") or "C").strip() or "C"
@@ -4348,6 +4452,38 @@ def _confirm_owner_cycle_to_playing_key(
             }
         return changed, after
 
+    # KC-F1: the confirmation for ``expected`` never landed (browser trace 2026-11-14: the
+    # first natural ack after a Pause/Resume was rejected as stale_epoch), so the page's next
+    # one is two steps ahead and the skip guard below refused it -- the server stayed a key
+    # behind and its commands pulled the page back. A natural ack proves the step in between
+    # only when it comes FROM the expected key and plays the key after it, in this cycle:
+    # then the server follows exactly those two steps. Any other jump is still refused.
+    if not manual and from_key and _keys_equivalent(from_key, expected):
+        after_expected = str(peek_cycle_key_at_delta(session, steps=2) or "").strip()
+        if after_expected and _keys_equivalent(after_expected, want):
+            after = _step_owner_cycle(
+                session, steps=2, force=False, queue_continue=False, allow_wrap=False
+            )
+            after_key = str((after or {}).get("current_playback_key") or "")
+            changed = bool(after_key and not _keys_equivalent(after_key, before))
+            _log_cycle_key_write(
+                session,
+                trigger="playing_ack_advance_chained",
+                old_key=before,
+                new_key=after_key or want,
+                cycle_id=cycle_id,
+                pass_id=pass_id,
+                extra={"fromKey": from_key, "expected": expected},
+            )
+            if changed:
+                session["_kc_last_playing_confirm"] = {
+                    "key": after_key or want,
+                    "passId": pass_id,
+                    "cycleId": cycle_id,
+                    "t": __import__("time").time(),
+                }
+            return changed, after
+
     # Manual Previous: the browser already switched audio one step BACK. Python must
     # follow it, or the next republish snaps the highlight/sheet back to the old key.
     if manual:
@@ -4400,9 +4536,7 @@ def _confirm_owner_cycle_to_playing_key(
         else spelling_prefs_from_session(session)
     )
     start = str(data.get("start_cycle_key") or data.get("base_practice_key") or "C").strip() or "C"
-    interval = int(data.get("interval") or 1)
-    if interval not in {1, 2}:
-        interval = 1
+    interval = normalize_cycle_interval(data.get("interval"))
     direction = str(data.get("direction") or "up")
     unit = -interval if direction == "down" else interval
     new_offset = None
@@ -4497,6 +4631,155 @@ def _confirm_owner_cycle_to_playing_key(
     return stepped, data
 
 
+def _adopt_handoff_made_before_pause(
+    session: dict[str, Any],
+    owner: str,
+    data: dict[str, Any],
+    ack: dict[str, Any],
+) -> bool:
+    """Pause pressed just after the browser's natural handoff to the next key.
+
+    Paused audio cannot hand off, so a natural playing ack that reaches Python
+    while the cycle is held describes the key that was sounding when Pause was
+    pressed. Refusing it (the old "not running" early return) left Python one
+    key behind the paused buffer: the console snapped back to the previous key
+    and Resume had no take for the key it showed. Adopt it and stay paused.
+    """
+    from backing_key_cycle_handoff import mark_ack_consumed, mark_pass_id_seen, validate_playing_ack
+
+    ok, reason = validate_playing_ack(session, ack, expect_cycle_id=str(data.get("cycle_id") or ""))
+    if not ok:
+        if reason in {"stale_cycle", "settings_pending", "stale_pass_id"}:
+            mark_ack_consumed(session, str(ack.get("ackId") or ""))
+        return False
+    before = str(data.get("current_playback_key") or "").strip()
+    want = str(ack.get("playingKey") or "").strip()
+    expected = str(next_cycle_playback_key(session) or "").strip()
+    mark_ack_consumed(session, str(ack.get("ackId") or ""))
+    if not want or not _keys_equivalent(want, expected) or session.get("_kc_arr_key_lock"):
+        _log_cycle_key_write(
+            session,
+            trigger="paused_ack_reject_not_next",
+            old_key=before,
+            new_key=want,
+            cycle_id=str(data.get("cycle_id") or ""),
+            pass_id=ack.get("passId"),
+            extra={"expected": expected},
+        )
+        return False
+    return _hold_cycle_at_next_key(
+        session, owner, data, want, trigger="paused_ack_adopt_handoff_before_pause", pass_id=ack.get("passId")
+    )
+
+
+def _hold_cycle_at_next_key(
+    session: dict[str, Any],
+    owner: str,
+    data: dict[str, Any],
+    key: str,
+    *,
+    trigger: str,
+    pass_id: Any = None,
+) -> bool:
+    """Move the paused cycle onto ``key`` (its next key) and keep it paused.
+
+    The browser holds that key's take paused: nothing is remounted, restarted
+    or regenerated; Resume continues it.
+    """
+    seq = cycle_key_sequence(session, owner)
+    idx = next((i for i, k in enumerate(seq) if _keys_equivalent(k, key)), -1)
+    if idx < 0:
+        return False
+    before = str(data.get("current_playback_key") or "").strip()
+    mag = normalize_cycle_interval(data.get("interval"))
+    unit = -mag if str(data.get("direction") or "up") == "down" else mag
+    data = dict(data)
+    data["current_playback_key"] = seq[idx]
+    data["offset_semitones"] = int(idx) * int(unit)
+    data["pass_index"] = int(data.get("pass_index") or 0) + 1
+    data["passes_completed"] = int(data.get("passes_completed") or 0) + 1
+    data["pass_id"] = int(data.get("pass_id") or 0) + 1
+    data["pending_pass_advance"] = False
+    data["status"] = STATUS_HELD
+    _put_owner_cycle_session(session, owner, data)
+    if pass_id is not None:
+        try:
+            from backing_key_cycle_handoff import mark_pass_id_seen
+
+            mark_pass_id_seen(session, int(pass_id or 0))
+        except Exception:
+            pass
+    promote_prepared_cycle_audio(session, seq[idx])
+    session["_kc_skip_audio_remount"] = True
+    session.pop(BACKING_KEY_CYCLE_CONTINUE_PLAY_KEY, None)
+    session["_kc_last_playing_confirm"] = {
+        "key": seq[idx],
+        "passId": pass_id,
+        "cycleId": str(data.get("cycle_id") or ""),
+        "t": __import__("time").time(),
+    }
+    _log_cycle_key_write(
+        session,
+        trigger=trigger,
+        old_key=before,
+        new_key=seq[idx],
+        cycle_id=str(data.get("cycle_id") or ""),
+        pass_id=pass_id,
+    )
+    return True
+
+
+def adopt_sounding_key_at_pause(
+    session: dict[str, Any], sounding: str, *, cycle_id: str = "", from_key: str = ""
+) -> bool:
+    """Pause froze the key that was SOUNDING (the card's Pause report carries it).
+
+    A Pause within ~0.5 s of an automatic key change interrupts that handoff
+    before the page reports it: the browser holds the new key, the server
+    still the previous one. The report names the key heard at the press; it is
+    adopted only when it is the cycle's next key (the interrupted automatic
+    change), for the same cycle, and the cycle is paused. Anything else --
+    the current key, another key, a stale cycle -- changes nothing, so a retry
+    of the same command, or a late handoff ack for the same move, cannot step
+    twice. Returns True when the paused position moved.
+    """
+    owner = resolve_cycle_owner(session)
+    data = get_owner_cycle_session(session, owner)
+    want = str(sounding or "").strip()
+    if not data or not data.get("enabled") or not want:
+        return False
+    if str(data.get("status") or "") != STATUS_HELD:
+        return False
+    cid = str(data.get("cycle_id") or "").strip()
+    if cycle_id and cid and str(cycle_id).strip() != cid:
+        return False
+    before = str(data.get("current_playback_key") or "").strip()
+    if _keys_equivalent(before, want):
+        return False
+    expected = str(next_cycle_playback_key(session) or "").strip()
+    # Paused at the end of a take: the paused position is the start of the key after it.
+    # When the server is also a confirmation behind (KC-F1), that is two steps ahead -- proven
+    # only when the report names the finished take as the expected key and the paused key as
+    # the one after it, in this cycle.
+    fk = str(from_key or "").strip()
+    if (fk and _keys_equivalent(fk, expected) and not session.get("_kc_arr_key_lock")
+            and _keys_equivalent(want, str(peek_cycle_key_at_delta(session, steps=2) or "").strip())):
+        _hold_cycle_at_next_key(session, owner, data, expected, trigger="pause_report_adopt_finished_take")
+        data2 = get_owner_cycle_session(session, owner) or data
+        return _hold_cycle_at_next_key(session, owner, data2, want, trigger="pause_report_adopt_sounding_key")
+    if not _keys_equivalent(want, expected) or session.get("_kc_arr_key_lock"):
+        _log_cycle_key_write(
+            session,
+            trigger="pause_report_reject_not_next",
+            old_key=before,
+            new_key=want,
+            cycle_id=cid,
+            extra={"expected": expected},
+        )
+        return False
+    return _hold_cycle_at_next_key(session, owner, data, want, trigger="pause_report_adopt_sounding_key")
+
+
 def note_backing_pass_finished(
     session: dict[str, Any],
     *,
@@ -4524,6 +4807,13 @@ def note_backing_pass_finished(
         and handoff_ack.get("manualSwitch")
         and handoff_ack.get("resumedFromPause")
     )
+    if (
+        str(data.get("status") or "") == STATUS_HELD
+        and isinstance(handoff_ack, dict)
+        and not handoff_ack.get("manualSwitch")
+        and str(handoff_ack.get("kind") or "") == "playing"
+    ):
+        return _adopt_handoff_made_before_pause(session, owner, data, handoff_ack)
     if str(data.get("status") or "") != STATUS_RUNNING and not _resuming_manual_ack:
         return False
     # Arrangement auto-apply rebuilds the CURRENT key — ignore pass-end /
@@ -5325,7 +5615,70 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         if (cmd.stepCharts && typeof cmd.stepCharts === 'object') {{
           Object.keys(cmd.stepCharts).forEach((k) => keepChart(k, cmd.stepCharts[k]));
         }}
-        if (cmd.nextUrl && cmd.nextSounding && String(cmd.nextSounding) !== String(cmd.sounding || '')) {{
+        // A server one confirmation behind (KC-F1) names the key the page is already
+        // playing as "next". Arming that made the end-of-take check refuse the real next
+        // key (browser trace 2026-11-14: playing Dm, expected Gm, armed Dm) and the cycle
+        // replayed or stepped back. Then the server's "following" key is the page's next.
+        let pageCurN = '';
+        let pageCurEnded = false;
+        try {{
+          const actN = activeAudio();
+          if (actN && String(actN.currentSrc || actN.src || '').trim()) pageCurN = String(actN.getAttribute('data-kc-sounding') || '');
+          const durN = actN ? Number(actN.duration || 0) : 0;
+          pageCurEnded = !!(actN && (actN.ended || (durN > 0 && Number(actN.currentTime || 0) >= durN)));
+        }} catch (eCurN) {{ pageCurN = ''; }}
+        // The mirror case: a server one key AHEAD. A take that ended inside a Pause holds the
+        // server at the start of the next key (the boundary rule) while the page's active take is
+        // still the finished one. The server's current take is then the page's next, and its
+        // "next" the one after. Arming the server's "next" made the end-of-take check refuse it
+        // and drop it, so nothing was prepared after the Resume; the late Resume answer then
+        // loaded it cold (browser trace 2026-11-15: Gm ended in the Pause, Cm resumed, Fm silent).
+        // Only when the page stays where it is (no restart / forced play moving it to that take).
+        const expectN = pageCurN ? expectedNextInSequence(pageCurN) : '';
+        if (pageCurN && pageCurEnded && expectN && cmd.currentUrl && String(cmd.sounding || '') === expectN
+            && !cmd.restart && !cmd.forcePlay
+            && (!cmd.cycleId || !state.cycleId || String(cmd.cycleId) === String(state.cycleId))) {{
+          parentWin.__kcUrlToKey[String(cmd.currentUrl)] = expectN;
+          state.nextUrl = String(cmd.currentUrl);
+          state.nextSounding = expectN;
+          if (cmd.currentChartHtml) parentWin.__kcChartByKey[expectN] = String(cmd.currentChartHtml);
+          const fKey = String(cmd.nextSounding || '');
+          if (cmd.nextUrl && fKey && fKey !== expectN && fKey !== pageCurN) {{
+            parentWin.__kcUrlToKey[String(cmd.nextUrl)] = fKey;
+            state.followingUrl = String(cmd.nextUrl);
+            state.followingSounding = fKey;
+            state.followingChartHtml = String(cmd.nextChartHtml || '');
+            const aKey = String(cmd.followingSounding || '');
+            if (cmd.followingUrl && aKey && aKey !== fKey && aKey !== expectN) {{
+              parentWin.__kcUrlToKey[String(cmd.followingUrl)] = aKey;
+              state.aheadUrl = String(cmd.followingUrl);
+              state.aheadSounding = aKey;
+              state.aheadChartHtml = String(cmd.followingChartHtml || '');
+            }}
+          }}
+          try {{
+            parentWin.__kcPlayDiag = parentWin.__kcPlayDiag || [];
+            parentWin.__kcPlayDiag.push({{ t: kcNow(), ev: 'neighbors_server_one_ahead', page: pageCurN,
+              next: expectN, following: String(state.followingSounding || ''), ahead: String(state.aheadSounding || '') }});
+          }} catch (eD1) {{}}
+          if (cmd.prevUrl && cmd.prevSounding) {{
+            parentWin.__kcUrlToKey[String(cmd.prevUrl)] = String(cmd.prevSounding);
+          }}
+          if (Array.isArray(cmd.liveUrls)) {{
+            parentWin.__kcLiveUrls = cmd.liveUrls.map((u) => String(u || '')).filter(Boolean);
+            retireUnlistedParked();
+          }}
+          ensureNeighborDecode();
+          return;
+        }}
+        if (pageCurN && cmd.nextSounding && String(cmd.nextSounding) === pageCurN
+            && String(cmd.sounding || '') !== pageCurN) {{
+          if (cmd.followingUrl && cmd.followingSounding && String(cmd.followingSounding) !== pageCurN) {{
+            parentWin.__kcUrlToKey[String(cmd.followingUrl)] = String(cmd.followingSounding);
+            state.nextUrl = String(cmd.followingUrl);
+            state.nextSounding = String(cmd.followingSounding);
+          }}
+        }} else if (cmd.nextUrl && cmd.nextSounding && String(cmd.nextSounding) !== String(cmd.sounding || '')) {{
           parentWin.__kcUrlToKey[String(cmd.nextUrl)] = String(cmd.nextSounding);
           state.nextUrl = String(cmd.nextUrl);
           state.nextSounding = String(cmd.nextSounding);
@@ -5341,7 +5694,15 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
             parentWin.__kcChartByKey[String(cmd.prevSounding)] = String(cmd.prevChartHtml);
           }}
         }}
-        if (cmd.followingUrl && cmd.followingSounding) {{
+        if (cmd.followingUrl && cmd.followingSounding
+            && String(cmd.followingSounding) === String(state.nextSounding || '')
+            && String(cmd.nextSounding || '') === pageCurN) {{
+          // Shifted one step above (server one behind): the take after next is "ahead".
+          if (cmd.aheadUrl && cmd.aheadSounding) {{
+            state.followingUrl = String(cmd.aheadUrl);
+            state.followingSounding = String(cmd.aheadSounding);
+          }}
+        }} else if (cmd.followingUrl && cmd.followingSounding) {{
           parentWin.__kcUrlToKey[String(cmd.followingUrl)] = String(cmd.followingSounding);
           state.followingUrl = String(cmd.followingUrl);
           state.followingSounding = String(cmd.followingSounding);
@@ -5454,7 +5815,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           parentWin.__kcEndedWatch
           && (
             typeof parentWin.__kcFinishPendingHandoff !== 'function'
-            || parentWin.__kcWatchVersion !== 31
+            || parentWin.__kcWatchVersion !== 32
           )
         );
         if (needReinstall) {{
@@ -5469,7 +5830,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       }} catch (e) {{}}
       if (parentWin.__kcEndedWatchInstalled && parentWin.__kcEndedWatch
           && typeof parentWin.__kcFinishPendingHandoff === 'function'
-          && parentWin.__kcWatchVersion === 31) return;
+          && parentWin.__kcWatchVersion === 32) return;
       try {{
         const boot = parentDoc.createElement('script');
         boot.textContent = `
@@ -5508,6 +5869,11 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
               try {{
                 var ts = window.__backingTransportState;
                 if (ts && ts.transport && ts.transport !== 'playing') return;
+                // The musician's hold (Pause / Stop) is the page's own and immediate;
+                // the server's transport state above confirms it seconds later.
+                var dual = window.__kcDual;
+                if (dual && dual.userPaused) return;
+                try {{ if (window.sessionStorage.getItem('kc_user_paused') === '1') return; }} catch (eUp) {{}}
                 var owner = window.__kcNavOwnerEl;
                 if (typeof window.__kcNavPending === 'function' && window.__kcNavPending() && owner && owner !== el) return;
                 el.muted = false;
@@ -5573,6 +5939,66 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
     }} catch (e) {{}}
   }};
   window.__kcAttachEndedListeners();
+  // A take the cycle has made its playing take must be heard. A slot silenced as idle
+  // (muted, volume 0) and then started by a path that only unmutes it -- a play() rejected
+  // or interrupted by a new load, or a settle that beat kickPlay -- played its whole take
+  // at volume 0 while the server reported Running (browser trace 2026-11-15, Fm). Only a
+  // muted flag and a ZERO volume are restored, to the player's intended level; any other
+  // level a volume control set is left alone. Never while paused or just after a Stop.
+  // The visible take carries the browser's own media controls. A mute or level the musician sets
+  // there is THEIR choice: a volume change within 1.5 s of their touching the player is recorded
+  // as the intended level (st.intendedVolume) or as a mute (st.userMuted). The page's own
+  // writes (idle parking, the mute-then-play start) come without a touch and are not recorded.
+  // Listened for once on the document, in the capture phase (which also sees the non-bubbling
+  // volumechange), so players the page recreates are covered without hooking each one.
+  window.__kcArmUserVolumeIntent = function() {{
+    try {{
+      var doc = window.document;
+      if (doc.__kcVolIntentHooked) return;
+      doc.__kcVolIntentHooked = true;
+      var isKc = function(el) {{ return !!(el && el.tagName === 'AUDIO' && /^kc-buf-/.test(String(el.id || ''))); }};
+      var mark = function(ev) {{ if (isKc(ev.target)) ev.target.__kcUserTouchAt = Date.now(); }};
+      doc.addEventListener('pointerdown', mark, true);
+      doc.addEventListener('keydown', mark, true);
+      doc.addEventListener('volumechange', function(ev) {{
+        var el = ev.target;
+        if (!isKc(el) || Date.now() - Number(el.__kcUserTouchAt || 0) > 1500) return;
+        var st = window.__kcDual;
+        if (!st) return;
+        var v = Number(el.volume);
+        st.userMuted = !!el.muted || !(v > 0.01);
+        if (v > 0.01) st.intendedVolume = v;
+        window.__kcPlayDiag = window.__kcPlayDiag || [];
+        window.__kcPlayDiag.push({{ t: performance.now(), ev: 'user_volume_intent', id: el.id,
+          muted: !!el.muted, volume: v }});
+      }}, true);
+    }} catch (eHook) {{}}
+  }};
+  window.__kcArmUserVolumeIntent();
+  window.__kcEnsureAudible = function(el, why) {{
+    try {{
+      window.__kcArmUserVolumeIntent();
+      var st = window.__kcDual;
+      if (!st || !el || st.enabled === false) return false;
+      var act = window.document.getElementById(st.active === 0 ? 'kc-buf-0' : 'kc-buf-1');
+      if (el !== act || el.paused || el.ended) return false;
+      var held = !!st.userPaused;
+      try {{ held = held || window.sessionStorage.getItem('kc_user_paused') === '1'; }} catch (eUP) {{}}
+      if (held) return false;
+      if (st.stoppedCycleId && (Date.now() - Number(st.stoppedAt || 0)) < 20000) return false;
+      if (st.userMuted) return false;  // the musician muted the player: keep it that way
+      var wasMuted = !!el.muted;
+      var wasVol = Number(el.volume);
+      if (!wasMuted && wasVol > 0.01) return false;
+      var iv = Number(st.intendedVolume);
+      if (wasMuted) el.muted = false;
+      if (!(wasVol > 0.01)) el.volume = (iv > 0.01 && iv <= 1) ? iv : 1;
+      window.__kcPlayDiag = window.__kcPlayDiag || [];
+      window.__kcPlayDiag.push({{ t: performance.now(), ev: 'audible_restored', why: String(why || ''), id: el.id,
+        key: String(el.getAttribute('data-kc-sounding') || ''), wasMuted: wasMuted, wasVolume: wasVol, volume: Number(el.volume) }});
+      return true;
+    }} catch (e) {{ return false; }}
+  }};
   window.__kcFinishPendingHandoff = function(reason) {{
     try {{
       var st = window.__kcDual;
@@ -5590,9 +6016,11 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         return false;
       }}
       var ph = st.pendingHandoff;
+      var actS = window.document.getElementById(st.active === 0 ? 'kc-buf-0' : 'kc-buf-1');
       if (st.handoffSettledToken && st.handoffSettledToken === ph.token) {{
         st.swapping = false;
         st.pendingHandoff = null;
+        window.__kcEnsureAudible(actS, 'finish_settled:' + (reason || ''));
         return true;
       }}
       if (window.__kcLastGapMs != null && window.__kcLastHandoffAck
@@ -5600,6 +6028,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           && st.handoffSettledToken === ph.token) {{
         st.swapping = false;
         st.pendingHandoff = null;
+        window.__kcEnsureAudible(actS, 'finish_acked:' + (reason || ''));
         return true;
       }}
       var doc = window.document;
@@ -5610,6 +6039,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       // paused can lag while currentTime advances after play() on recycled buffers.
       var playing = !act.ended && ct >= 0.02 && (!act.paused || ct >= 0.05);
       if (!playing) return false;
+      window.__kcEnsureAudible(act, 'finish:' + (reason || ''));
       var endedAt = Number(ph.endedAt || st.endedAt || 0);
       var playingAt = performance.now();
       var swapAt = Number(st.swapStartedAt || 0);
@@ -5697,6 +6127,8 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         }}
       }} catch (eQ) {{}}
       window.__kcLastHandoffAck = ack;
+      try {{ if (window.__kcNav && Number(window.__kcNav.ackSeq || 0) > 0) window.__kcNav.settled = true; }} catch (eNs) {{}}
+      try {{ window.__kcNaturalPending = {{ key: String(ack.playingKey || ''), from: String(ack.fromKey || ''), ackId: String(ack.ackId || ''), at: Date.now() }}; }} catch (eNp) {{}}
       window.__kcLastGapMs = gapMs;
       window.__kcLastSounding = playingKey;
       window.__kcLastChartMs = st.chartMs;
@@ -5762,7 +6194,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
     }}
   }};
   if (window.__kcEndedWatch) return;
-  window.__kcWatchVersion = 31;
+  window.__kcWatchVersion = 32;
   window.__kcEndedWatchInstalled = true;
   window.__kcEndedWatch = window.setInterval(function(){{
     try {{
@@ -5772,6 +6204,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       var doc = window.document;
       var act = doc.getElementById(st.active === 0 ? 'kc-buf-0' : 'kc-buf-1');
       var idle = doc.getElementById(st.active === 0 ? 'kc-buf-1' : 'kc-buf-0');
+      try {{ if (typeof window.__kcArmUserVolumeIntent === 'function') window.__kcArmUserVolumeIntent(); }} catch (eAv) {{}}
       // Tell Python the CURRENT cycle/epoch is genuinely (audibly) playing, once per
       // cycle:epoch. Python uses it to end the spurious-Off remount guard; it is not a
       // key handoff and never advances the cycle. Runs in the parent realm because
@@ -6858,8 +7291,21 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           state.sequence = seq;
           state.displaySequence = (labels.length === seq.length) ? labels : seq;
           // Track final-key so onEnded cannot wrap to the first neighbor.
+          // From the page's OWN active take, as the applyCmd latch does: the server's key is the
+          // key selected, not the take playing. A second-last take that ended inside a Pause holds
+          // the server at the start of the final key; latching "final" from that ended the cycle
+          // at Resume and the final key was never heard (test 2026-11-15, Gm -> Cm). The final key
+          // ends the sequence only when ITS take completes (onEnded on the final key's take).
+          // The server's key is used only while no take is loaded.
           try {{
-            const cur = String(sounding || state.sounding || parentWin.__kcLastSounding || '').trim();
+            let pageKey = '';
+            try {{
+              const actF = activeAudio();
+              if (actF && String(actF.getAttribute('src') || '').trim()) {{
+                pageKey = String(actF.getAttribute('data-kc-sounding') || '').trim();
+              }}
+            }} catch (eActF) {{ pageKey = ''; }}
+            const cur = pageKey || String(sounding || state.sounding || parentWin.__kcLastSounding || '').trim();
             if (seq.length && cur && cur === String(seq[seq.length - 1] || '').trim()) {{
               state.atFinalKey = true;
             }} else if (seq.length && cur && cur !== String(seq[seq.length - 1] || '').trim()) {{
@@ -6947,6 +7393,52 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           const soundingEl = bar.querySelector('.ui-key-cycle-sounding')
             || bar.querySelector('strong');
           if (soundingEl) soundingEl.textContent = s;
+          // Key Cycling console: Current / Next / Sounding / capo follow the
+          // sounding key on a seamless handoff, before Python re-renders.
+          try {{
+            const seqC = String(bar.getAttribute('data-seq') || '').split(',').map((k) => k.trim()).filter(Boolean);
+            const parse = (name) => {{
+              try {{ return JSON.parse(bar.getAttribute(name) || '[]'); }} catch (eJ) {{ return []; }}
+            }};
+            const labs = parse('data-kc-labels');
+            const sounds = parse('data-kc-sounding-labels');
+            const capos = parse('data-kc-capos');
+            const pcOf = (tok) => {{
+              const m = String(tok || '').trim().match(/^([A-G])([#b♯♭]?)(m?)/);
+              if (!m) return '';
+              const base = {{C:0,D:2,E:4,F:5,G:7,A:9,B:11}}[m[1]];
+              const acc = (m[2] || '').replace('♯', '#').replace('♭', 'b');
+              return String((base + (acc === '#' ? 1 : acc === 'b' ? 11 : 0)) % 12) + (m[3] || '');
+            }};
+            let ix = seqC.indexOf(s);
+            if (ix < 0) ix = seqC.map(pcOf).indexOf(pcOf(s));
+            const nC = seqC.length;
+            if (ix >= 0 && nC) {{
+              const nx = (ix + 1) % nC;
+              const put = (cls, val) => {{
+                const el = bar.querySelector(cls);
+                if (el && val != null && String(val) !== '') el.textContent = String(val);
+              }};
+              put('.kc-console-current', labs[ix]);
+              put('.kc-console-next', labs[nx]);
+              put('.kc-console-sounding', sounds[ix]);
+              put('.kc-console-next-sounding', sounds[nx]);
+              if (capos.length === nC) {{
+                put('.kc-console-capo', 'Fret ' + capos[ix]);
+                put('.kc-console-next-capo', 'Fret ' + capos[nx]);
+              }}
+              put('.kc-console-position', String(ix + 1) + ' / ' + String(nC));
+              try {{
+                const ring = bar.querySelector('.kc-ring');
+                if (ring) ring.style.setProperty('--kc-p', String((100 * (ix + 1)) / nC) + '%');
+                bar.querySelectorAll('.kc-dot').forEach((d) => {{
+                  const i = Number(d.getAttribute('data-i'));
+                  d.classList.toggle('is-now', i === ix);
+                  d.classList.toggle('is-next', i === nx);
+                }});
+              }} catch (eRing) {{}}
+            }}
+          }} catch (eCon) {{}}
           // Shape mode: derived capo fret must track sounding on seamless
           // advances (Streamlit may not remount the playbar HTML).
           try {{
@@ -6997,6 +7489,12 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       // (audio stays paused, labels stay Pause, userPaused=false).
       try {{ state.playKickUntil = 0; }} catch (eKick) {{}}
       try {{ parentWin.__kcTransportPaused = true; }} catch (eTP) {{}}
+      // Cancel a handoff already in flight: its callbacks (beginPlay / kickPlay,
+      // the seek fallback, the re-kick) each check only that the token is still
+      // theirs. Browser trace 2026-11-14: a Pause ~1 s before an automatic
+      // change let that handoff start the next take behind the Pause (heard Dm,
+      // Gm sounding 1 s later, server frozen on Gm) in 3 of 6 Lead Sheet rounds.
+      state.handoffToken = null;
       state.pendingHandoff = null;
       state.swapping = false;
       state.ending = false;
@@ -7025,8 +7523,13 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
     parentWin.__kcHardStop = function () {{
       const t0 = Number(parentWin.__kcClickT0 || kcNow());
       abortTransportPlayback({{ seekZero: false }});
-      // Commands up to this epoch were built before the Stop (see applyCmd).
+      // Commands up to this epoch were built before the Stop (see applyCmd), and
+      // so is every running command of this same cycle until the server's own off.
       state.stoppedEpoch = Number(state.epoch);
+      try {{
+        state.stoppedCycleId = String(state.cycleId || (parentWin.__kcLastCmd || {{}}).cycleId || '');
+      }} catch (eSc) {{ state.stoppedCycleId = ''; }}
+      state.stoppedAt = Date.now();
       parentWin.__kcLastStopMs = kcNow() - t0;
       try {{
         const act = activeAudio();
@@ -7290,53 +7793,37 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       try {{ syncVisibleTransport(); }} catch (eV0) {{}}
       return t;
     }};
+    // The live player (the Lead Sheet's Pause / Resume button) presses the Key Cycling
+    // Pause button itself: the same gesture, handler, card command and server toggle as
+    // a click on the console, so the sounding key, the stale-command guard and a press
+    // in a silent handoff gap are handled once, for both controls. Synchronous: the
+    // live player's own delayed click was scheduled on this bridge frame, which a
+    // Streamlit rerun replaces -- the timer died with it, the server stayed Held and the
+    // resumed audio was silenced again 1-3 s later.
+    parentWin.__kcPressCycleTransport = function () {{
+      try {{
+        const all = [...parentDoc.querySelectorAll('[class*="st-key-backing_key_cycle_pause_btn"] button')];
+        const b = all.find((x) => x.offsetParent !== null) || all[0];
+        if (!b || b.disabled) return false;
+        b.click();
+        return true;
+      }} catch (ePress) {{ return false; }}
+    }};
+    // Would a press of the Key Cycling Pause button Pause now (the console's own decision)?
+    function kcLivePressPauses() {{
+      try {{
+        if (typeof parentWin.__kcCyclePressPauses === 'function') return !!parentWin.__kcCyclePressPauses();
+      }} catch (eDec) {{}}
+      try {{
+        return kcPauseBtnMode(parentDoc.querySelector('[class*="st-key-backing_key_cycle_pause_btn"] button')) === 'pause';
+      }} catch (eMode) {{ return false; }}
+    }}
     parentWin.__kcRequestCycleResume = function () {{
-      // Live Resume: kick audio, then leave Streamlit Held exactly once.
-      // Capture Held intent before syncVisibleTransport rewrites the label.
-      let needStreamlitResume = false;
-      try {{
-        const b0 = parentDoc.querySelector(
-          '[class*="st-key-backing_key_cycle_pause_btn"] button'
-        );
-        if (b0) {{
-          if (kcPauseBtnMode(b0) === 'resume') needStreamlitResume = true;
-        }}
-      }} catch (eLab) {{}}
-      try {{
-        if (state.userPaused
-            || parentWin.sessionStorage.getItem('kc_user_paused') === '1') {{
-          needStreamlitResume = true;
-        }}
-      }} catch (eHold) {{}}
-      try {{
-        state.userPaused = false;
-        parentWin.sessionStorage.setItem('kc_user_paused', '0');
-        state.playKickUntil = Date.now() + 4500;
-        parentWin.__kcTransportPaused = false;
-        parentWin.__kcHadAudible = true;
-        state._silentSince = 0;
-      }} catch (eClr) {{}}
-      try {{
-        if (typeof parentWin.__kcResumeAudio === 'function') parentWin.__kcResumeAudio({{ force: true }});
-      }} catch (eR) {{}}
-      try {{ syncVisibleTransport(); }} catch (eV0) {{}}
-      if (!needStreamlitResume) return;
-      // Delay past Live-Pause remount settle — an immediate click was lost while
-      // Streamlit still swapped the Pause widget (SeekAndPlay later cleared Held).
-      window.setTimeout(() => {{
-        try {{
-          const b = parentDoc.querySelector(
-            '[class*="st-key-backing_key_cycle_pause_btn"] button'
-          );
-          if (!b) return;
-          parentWin.__kcSkipPauseHandler = true;
-          try {{ b.click(); }} catch (eClk) {{}}
-          window.setTimeout(() => {{
-            try {{ parentWin.__kcSkipPauseHandler = false; }} catch (eC) {{}}
-            try {{ syncVisibleTransport(); }} catch (eV) {{}}
-          }}, 800);
-        }} catch (eB) {{}}
-      }}, 350);
+      // Live Resume: one press of the console's button, only when that press resumes.
+      if (kcLivePressPauses()) return;  // already playing
+      if (!parentWin.__kcPressCycleTransport()) {{
+        try {{ if (typeof parentWin.__kcResumeAudio === 'function') parentWin.__kcResumeAudio(); }} catch (eR) {{}}
+      }}
     }};
     parentWin.__kcPauseAudio = function () {{
       // Capture hold position BEFORE silencing — Resume must continue here,
@@ -7372,24 +7859,15 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       try {{ syncVisibleTransport(); }} catch (eV) {{}}
     }};
     parentWin.__kcRequestCyclePause = function () {{
-      // Live Stop already paused dual-buffer; click cycle Pause so Streamlit
-      // enters Held. Skip the client toggle (buffers already held).
-      try {{
-        parentWin.__kcPauseAudio();
-      }} catch (eP) {{}}
-      try {{
-        const b = parentDoc.querySelector(
-          '[class*="st-key-backing_key_cycle_pause_btn"] button'
-        );
-        if (!b) return;
-        if (kcPauseBtnMode(b) !== 'pause') return;
-        parentWin.__kcProgrammaticPauseClick = true;
-        try {{ b.click(); }} catch (eClk) {{}}
-        window.setTimeout(() => {{
-          try {{ parentWin.__kcProgrammaticPauseClick = false; }} catch (eC) {{}}
-          try {{ syncVisibleTransport(); }} catch (eV) {{}}
-        }}, 800);
-      }} catch (eSt) {{}}
+      // Live Pause: one press of the console's button, only when that press pauses
+      // (a held player is left alone -- the server toggles on that click). It used to
+      // pause the audio itself and send its own click, skipping the card's sounding
+      // key and stale-command guard: a take starting in a handoff gap leaked through
+      // and the paused key could freeze one behind.
+      if (!kcLivePressPauses()) return;  // already paused
+      if (!parentWin.__kcPressCycleTransport()) {{
+        try {{ parentWin.__kcPauseAudio(); }} catch (eP) {{}}
+      }}
     }};
     parentWin.__kcResumeAudio = function (opts) {{
       // Pending Practice Key / arrangement regeneration: the buffer in hand belongs to
@@ -7479,10 +7957,33 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           parentWin.__kcLastSeekT = parentWin.__kcFollowForceTime;
         }}
       }} catch (eSeek) {{}}
+      // A take that has finished is never played again: play() on an ended element
+      // restarts it from 0. Finished (ended, not "nearly ended" -- no time margin), the
+      // cycle moves on to the next key through the usual end-of-take path instead (browser
+      // trace 2026-11-14: Resume with 0.4 s left -> the 500 / 1500 ms kicks replayed
+      // the same key from the start).
+      const finished = (el) => {{
+        try {{
+          return !!el && (el.ended || (Number(el.duration || 0) > 0
+            && Number(el.currentTime || 0) >= Number(el.duration)));
+        }} catch (eF) {{ return false; }}
+      }};
+      if (finished(act)) {{
+        try {{ act.muted = false; act.volume = 1; }} catch (eUf) {{}}
+        try {{
+          if (typeof parentWin.__kcOnEnded === 'function') {{
+            window.setTimeout(() => {{ try {{ parentWin.__kcOnEnded(); }} catch (eOe) {{}} }}, 0);
+          }}
+        }} catch (eOn) {{}}
+        try {{ syncVisibleTransport(); }} catch (eVf) {{}}
+        return;
+      }}
       try {{ act.muted = false; act.volume = 1; }} catch (eU) {{}}
       const myGen = state.playGen;
       const kick = () => {{
         if (myGen !== state.playGen) return;
+        // The take finished (or the cycle moved to another take) since Resume: leave it.
+        if (finished(act) || act !== activeAudio()) return;
         try {{
           state.userPaused = false;
           parentWin.sessionStorage.setItem('kc_user_paused', '0');
@@ -7594,7 +8095,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
     // one kept counting presses after its frame was replaced, but the timer it
     // scheduled for the switch never fired, so later presses changed nothing.
     // The parent-realm timer calls the live frame's __kcSwitchPrepared.
-    if (parentWin.__kcNavVersion !== 7) {{
+    if (parentWin.__kcNavVersion !== 12) {{
       try {{
         const navBoot = parentDoc.createElement('script');
         navBoot.textContent = `
@@ -7619,6 +8120,22 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       }});
     }}
     return out;
+  }}
+  function liveKey() {{
+    // The key of a take that is actually sounding (unmuted, advancing), or ''.
+    // The audible take nearest its start: at a handoff the outgoing take is
+    // still ending (and incoming takes were warmed up muted, so their start
+    // stamps are older than the outgoing take's).
+    // No minimum currentTime: the swap silences the outgoing take and unmutes +
+    // plays the incoming one in the same task, so in the first ~50 ms of a
+    // handoff the incoming take (currentTime ~0) IS the take Resume continues.
+    // A minimum made a Pause at that instant report the outgoing key.
+    var live = null;
+    Array.prototype.slice.call(D.querySelectorAll('audio[id^="kc-"]')).forEach(function (a) {{
+      if (!a.paused && !a.ended && !a.muted && Number(a.volume) > 0.01
+          && (!live || Number(a.currentTime) < Number(live.currentTime))) live = a;
+    }});
+    return String((live && live.getAttribute('data-kc-sounding')) || '').trim();
   }}
   function audibleKey() {{
     var bufs = [D.getElementById('kc-buf-0'), D.getElementById('kc-buf-1')].filter(Boolean);
@@ -7649,6 +8166,49 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       var r = W.__kcSwitchPrepared(dlt, {{ target: target, navSeq: Number(seq) }});
       log({{ t: Date.now(), switched: Number(seq), result: r, last: W.__kcLastSwitch || null }});
     }} catch (e) {{ log({{ t: Date.now(), switchError: String((e && e.message) || e) }}); }}
+    W.setTimeout(W.__kcNavWatchdog, ACK_WATCHDOG_MS, Number(seq), target);
+  }};
+  // The switch runs in a bridge frame that Streamlit replaces on every rerun;
+  // its ack is posted from a playback callback. A frame replaced in between
+  // never posted it: the musician heard the new key, Python never heard of the
+  // press and later republished the old key (a lost Previous / Next, then a
+  // revert). The navigator lives in the page, so it posts the press itself
+  // when no ack for it was recorded. Python adopts a key idempotently, so a
+  // late real ack after this one changes nothing.
+  var ACK_WATCHDOG_MS = 2500;
+  W.__kcNavWatchdog = function (seq, target) {{
+    var nav = W.__kcNav;
+    if (!nav || Number(nav.seq) !== Number(seq)) return;
+    if (Number(nav.ackSeq || 0) > 0) return;
+    try {{
+      var cmd = W.__kcLastCmd || {{}};
+      var playingEl = null;
+      D.querySelectorAll('audio[id^="kc-"]').forEach(function (a) {{
+        if (!playingEl && !a.paused && !a.ended && String(a.getAttribute('data-kc-sounding') || '') === String(target)) playingEl = a;
+      }});
+      W.__kcSwitchSeq = Math.max(Number(W.__kcSwitchSeq || 0) + 1, Date.now());
+      var ack = {{
+        switchSeq: W.__kcSwitchSeq,
+        kind: 'playing',
+        ackId: 'navwd_' + Date.now().toString(36) + '_' + String(seq),
+        cycleId: String(cmd.cycleId || ''),
+        passId: Number(cmd.passId || 0),
+        playingKey: String(target || ''),
+        fromKey: String(W.__kcLastSounding || ''),
+        gapMs: 0,
+        natural: false,
+        manualSwitch: true,
+        navSeq: Number(seq),
+        cold: !playingEl,
+        playingUrl: playingEl ? String(playingEl.currentSrc || playingEl.getAttribute('src') || '') : '',
+        resumedFromPause: false,
+      }};
+      W.__kcPendingPlayingAck = ack;
+      W.__kcPendingPlayingAckQueue = W.__kcPendingPlayingAckQueue || [];
+      W.__kcPendingPlayingAckQueue.push(ack);
+      nav.ackSeq = ack.switchSeq;
+      log({{ t: Date.now(), watchdogAck: Number(seq), target: String(target), cold: !playingEl }});
+    }} catch (eWd) {{ log({{ t: Date.now(), watchdogError: String((eWd && eWd.message) || eWd) }}); }}
   }};
   // One logical cycle position per press, from the newest REQUESTED key --
   // never from the audible one, which lags while a switch loads.
@@ -7658,6 +8218,13 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
     if (!ks.length) return false;
     var nav = W.__kcNav;
     var base = W.__kcNavPending() ? String(nav.target || '') : '';
+    // A press whose switch already landed (acknowledged) is not "in flight":
+    // if the music moved on since (a natural handoff), count from the key that
+    // is really playing. Only a press still coalescing counts from its target.
+    if (base && Number(nav.ackSeq || 0) > 0) {{
+      var live = liveKey();
+      if (live && live !== base && ks.indexOf(live) >= 0) base = live;
+    }}
     if (!base || ks.indexOf(base) < 0) base = audibleKey();
     var idx = ks.indexOf(base);
     if (idx < 0) {{
@@ -7726,7 +8293,13 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
     }});
   }}
   W.setInterval(enforceSingleOwner, 250);
-  W.__kcNavVersion = 7;
+  // The sounding key for the transport (Pause reports it; see the card's
+  // cycleSoundingAtPause), refreshed while something is audible.
+  W.__kcLiveKey = liveKey;
+  W.setInterval(function () {{
+    try {{ var lk = liveKey(); if (lk) W.__kcLastLive = {{ key: lk, at: Date.now() }}; }} catch (e) {{}}
+  }}, 150);
+  W.__kcNavVersion = 12;
 }})();`;
         parentDoc.documentElement.appendChild(navBoot);
         navBoot.remove();
@@ -8331,10 +8904,12 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         const labelEl = btn.querySelector('p') || btn;
         const cur = String(labelEl.textContent || '').replace(/\\s+/g, ' ').trim();
         if (cur !== want) labelEl.textContent = want;
-        // The Material icon beside the label follows it: play on Resume, pause on Pause.
-        const iconEl = btn.querySelector('[data-testid="stIconMaterial"]');
-        const wantIcon = paused ? 'play_arrow' : 'pause';
-        if (iconEl && String(iconEl.textContent || '').trim() !== wantIcon) iconEl.textContent = wantIcon;
+        // The icon follows the real playback state too (Key Cycling console).
+        try {{
+          const ico = btn.querySelector('[data-testid="stIconMaterial"]');
+          const glyph = paused ? 'play_arrow' : 'pause';
+          if (ico && String(ico.textContent || '').trim() !== glyph) ico.textContent = glyph;
+        }} catch (eIco) {{}}
       }}
       // Live Follow-Along: Stop while playing, Resume when held (not Pause).
       try {{
@@ -8428,7 +9003,19 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           const bufs = ['kc-buf-0', 'kc-buf-1']
             .map((id) => parentDoc.getElementById(id))
             .filter(Boolean);
-          const playing = bufs.find((a) => a && !a.paused && Number(a.currentTime || 0) > 0.05);
+          // A handoff can play from a kc-prep-* / kc-park-* element: when no
+          // dual buffer is playing, read the audible Key Cycling player nearest
+          // its start (reading the paused buffer kept its old key and the
+          // console trailed the music until Python re-rendered it). Nearest its
+          // start, not page order or start time: at a handoff the outgoing take
+          // is still ending, and incoming takes were warmed up muted earlier.
+          let playing = bufs.find((a) => a && !a.paused && Number(a.currentTime || 0) > 0.05);
+          if (!playing) {{
+            [...parentDoc.querySelectorAll('audio[id^="kc-"]')].forEach((a) => {{
+              if (a && !a.paused && !a.ended && !a.muted && Number(a.volume) > 0.01 && Number(a.currentTime || 0) > 0.05
+                  && (!playing || Number(a.currentTime) < Number(playing.currentTime))) playing = a;
+            }});
+          }}
           const act = playing || activeAudio();
           const live = act
             ? String(act.getAttribute('data-kc-sounding') || '').trim()
@@ -8484,7 +9071,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           const btnHit = (path || []).find((el) => el && el.tagName === 'BUTTON')
             || (raw && raw.closest && raw.closest('button'));
           if (btnHit) {{
-            const lab = (btnHit.innerText || btnHit.textContent || '').replace(/\\s+/g, ' ').trim();
+            const lab = kcPauseBtnLabel(btnHit);
             if (/^(⏸\\s*)?Pause$|^(▶\\s*)?Resume$/i.test(lab)
               || /Pause playback|Resume playback/i.test(lab)) {{
               // Streamlit's button only toggles when the card channel was not
@@ -8493,8 +9080,8 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
                 parentWin.__kcPauseBtnHandler(ev);
               }}
               if (typeof parentWin.__kcPauseRouted === 'function') parentWin.__kcPauseRouted(ev);
-            }} else if (/^(◀\\s*)?Previous( key)?$/i.test(lab)
-                || /^(▶\\s*)?Next( key)?$/i.test(lab)) {{
+            }} else if (/^([◀⏮]\\s*)?Previous( key)?$/i.test(lab)
+                || /^([▶⏭]\\s*)?Next( key)?(\\s*[▶⏭])?$/i.test(lab)) {{
               if (typeof parentWin.__kcStepBtnHandler === 'function') {{
                 parentWin.__kcStepBtnHandler({{
                   currentTarget: btnHit, target: btnHit, type: (ev && ev.type) || 'click', orig: ev,
@@ -8543,7 +9130,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         }}
         const btn = t.closest('button') || (t.tagName === 'BUTTON' ? t : null);
         if (!btn) return;
-        const label = (btn.innerText || btn.textContent || '').replace(/\\s+/g, ' ').trim();
+        const label = kcPauseBtnLabel(btn);
         // Cycle Pause/Resume may render without a stable key class after remount.
         if (/^(⏸\\s*)?Pause$|^(▶\\s*)?Resume$/i.test(label)) {{
           if (typeof parentWin.__kcPauseBtnHandler === 'function') {{
@@ -8552,8 +9139,8 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           if (typeof parentWin.__kcPauseRouted === 'function') parentWin.__kcPauseRouted(ev);
           return;
         }}
-        if (/^(◀\\s*)?Previous( key)?$/i.test(label)
-            || /^(▶\\s*)?Next( key)?$/i.test(label)) {{
+        if (/^([◀⏮]\\s*)?Previous( key)?$/i.test(label)
+            || /^([▶⏭]\\s*)?Next( key)?(\\s*[▶⏭])?$/i.test(label)) {{
           if (typeof parentWin.__kcStepBtnHandler === 'function') {{
             parentWin.__kcStepBtnHandler({{
               currentTarget: btn, target: btn, type: (ev && ev.type) || 'click', orig: ev,
@@ -8564,12 +9151,62 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           try {{ if (ev.stopImmediatePropagation) ev.stopImmediatePropagation(); }} catch (eI2) {{}}
           return;
         }}
+        const kcStopRoot = t.closest('[class*="st-key-backing_key_cycle_stop_btn"]');
+        if (kcStopRoot) {{
+          // Key Cycling Stop: silence now; the page re-presses it until Python
+          // has turned cycling off (a Streamlit button press can be lost while
+          // handoff acks rerun the page). Stop is idempotent.
+          if (!parentWin.__kcStopWanted) parentWin.__kcStopTries = 0;
+          parentWin.__kcStopWanted = Date.now();
+          try {{ if (typeof parentWin.__kcHardStop === 'function') parentWin.__kcHardStop(); }} catch (eKs) {{}}
+          return;
+        }}
         const stopRoot = t.closest('[class*="st-key-stop_backing_btn"]');
         if (stopRoot || label === '■ Stop' || label.indexOf('■ Stop') === 0) {{
           parentWin.__kcClickT0 = kcNow();
           if (typeof parentWin.__kcHardStop === 'function') parentWin.__kcHardStop();
           return;
         }}
+      }};
+      // The one decision for every Key Cycling Pause/Resume control -- the console's
+      // button and the Lead Sheet's live player: would a press made now Pause (true)
+      // or Resume (false)? If a buffer is running → Pause (hold place). Otherwise →
+      // Resume. Explicit user hold + silent buffers → Resume (not a no-op).
+      function kcCyclePressPauses(label) {{
+        const prog = !!parentWin.__kcProgrammaticResumeClick;
+        let running = false;
+        try {{
+          running = (typeof anyAudibleBuffer === 'function' && anyAudibleBuffer())
+            || (typeof anyBufferRunning === 'function' && anyBufferRunning());
+        }} catch (eRun) {{ running = false; }}
+        // Do NOT treat playKick alone as running while deciding Pause —
+        // that blocked Pause during the post-Play grace window.
+        let held = false;
+        try {{
+          held = !!(state.userPaused)
+            || parentWin.sessionStorage.getItem('kc_user_paused') === '1';
+        }} catch (eH) {{ held = !!state.userPaused; }}
+        // "Starting…": a Previous / Next (or Play) take is still loading, so
+        // nothing is audible yet, but the transport is running: that press is
+        // a Pause, not a Resume (it used to start the take behind the Pause).
+        const starting = !prog && !running && !held && /^Starting/i.test(String(label || ''));
+        if (starting) running = true;
+        // The transport is playing and the musician is not holding: this press
+        // is a Pause even when nothing is audible at this instant -- the few
+        // milliseconds between one take ending and the next starting at an
+        // automatic key change, or a take still loading. Judged by sound
+        // alone, that press became a Resume no-op and cycling carried on.
+        let tpIntent = '';
+        try {{ tpIntent = String(((parentWin.__backingTransportState || {{}}).transport) || ''); }} catch (eTp) {{ tpIntent = ''; }}
+        if (!prog && !running && !held && tpIntent === 'playing') running = true;
+        return !prog && running;
+      }}
+      parentWin.__kcCyclePressPauses = function () {{
+        let label = '';
+        try {{
+          label = kcPauseBtnLabel(parentDoc.querySelector('[class*="st-key-backing_key_cycle_pause_btn"] button'));
+        }} catch (eL) {{}}
+        return kcCyclePressPauses(label);
       }};
       parentWin.__kcPauseBtnHandler = function () {{
         const now = kcNow();
@@ -8607,22 +9244,8 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           }} catch (eL) {{}}
           try {{ parentWin.__kcLastPauseLabel = label; }} catch (eLb) {{}}
           // Programmatic live-Resume must never flip to Pause mid-gesture.
-          // If a buffer is running → Pause (hold place). Otherwise → Resume.
-          // Explicit user hold + silent buffers → Resume (not a no-op).
           const prog = !!parentWin.__kcProgrammaticResumeClick;
-          let running = false;
-          try {{
-            running = (typeof anyAudibleBuffer === 'function' && anyAudibleBuffer())
-              || (typeof anyBufferRunning === 'function' && anyBufferRunning());
-          }} catch (eRun) {{ running = false; }}
-          // Do NOT treat playKick alone as running while deciding Pause —
-          // that blocked Pause during the post-Play grace window.
-          let held = false;
-          try {{
-            held = !!(state.userPaused)
-              || parentWin.sessionStorage.getItem('kc_user_paused') === '1';
-          }} catch (eH) {{ held = !!state.userPaused; }}
-          const doResume = prog || (!running && (held || true)) && !running;
+          const running = kcCyclePressPauses(label);
           // Simplify: running (audible) → Pause; otherwise → Resume.
           if (prog || !running) {{
             // A setting changed while paused: the paused take is obsolete and
@@ -8631,6 +9254,54 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
             const restartPending = !!((parentWin.__backingTransportState || {{}}).restart_on_resume);
             if (!restartPending && typeof parentWin.__kcResumeAudio === 'function') parentWin.__kcResumeAudio();
           }} else {{
+            // The key sounding at the press, captured before the audio stops
+            // (the card's Pause report carries it to the server).
+            try {{
+              // Nothing audible (the silent gap between two takes): the key Resume will
+              // play. The handoff may already have made the incoming take the active one
+              // -- reporting the last audible key then froze the console on Gm while
+              // Resume played Cm (browser trace 2026-11-14). A finished active take
+              // continues to the next key (see __kcResumeAudio).
+              // One authoritative paused position, decided when Pause takes effect:
+              // - the active take has not ended: its key (and position) stays;
+              // - it has ended: the start of the next key -- unless it was the
+              //   final key, which keeps its completed end state (no wrap);
+              // - the incoming take already became active in a handoff: that key.
+              // Resume plays exactly this (see __kcResumeAudio); the report carries
+              // the finished take as ``from`` so the server can verify the step.
+              let pauseKey = '';
+              let pauseFrom = '';
+              try {{
+                const actP = (typeof activeAudio === 'function') ? activeAudio() : null;
+                const srcP = actP ? String(actP.currentSrc || actP.src || '').trim() : '';
+                if (actP && srcP) {{
+                  const curP = String(actP.getAttribute('data-kc-sounding') || '');
+                  const doneP = actP.ended || (Number(actP.duration || 0) > 0
+                    && Number(actP.currentTime || 0) >= Number(actP.duration));
+                  if (!doneP) {{
+                    pauseKey = curP;
+                  }} else {{
+                    const seqKnown = Array.isArray(state.sequence) && state.sequence.length > 0;
+                    const nextP = seqKnown
+                      ? (typeof expectedNextInSequence === 'function' ? expectedNextInSequence(curP) : '')
+                      : (state.nextSounding && state.nextSounding !== curP ? String(state.nextSounding) : '');
+                    if (nextP) {{
+                      pauseKey = nextP;
+                      pauseFrom = curP;
+                    }} else {{
+                      pauseKey = curP;  // the final key, completed
+                    }}
+                  }}
+                }}
+              }} catch (eGap) {{ pauseKey = ''; pauseFrom = ''; }}
+              parentWin.__kcPauseSounding = {{
+                key: pauseKey
+                  || (typeof parentWin.__kcLiveKey === 'function' ? String(parentWin.__kcLiveKey() || '') : '')
+                  || String((parentWin.__kcLastLive || {{}}).key || ''),
+                from: pauseFrom,
+                at: Date.now(),
+              }};
+            }} catch (ePs) {{}}
             if (typeof parentWin.__kcPauseAudio === 'function') parentWin.__kcPauseAudio();
             else if (typeof abortTransportPlayback === 'function') abortTransportPlayback({{ seekZero: false }});
             parentWin.__kcLastPauseMs = kcNow() - parentWin.__kcClickT0;
@@ -8722,8 +9393,8 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           try {{
             const lab = String((btn.innerText || btn.textContent || ''))
               .replace(/\\s+/g, ' ').trim();
-            if (/^(◀\\s*)?Previous( key)?$/i.test(lab)) delta = -1;
-            else if (/^(▶\\s*)?Next( key)?$/i.test(lab)) delta = 1;
+            if (/^([◀⏮]\\s*)?Previous( key)?$/i.test(lab)) delta = -1;
+            else if (/^([▶⏭]\\s*)?Next( key)?(\\s*[▶⏭])?$/i.test(lab)) delta = 1;
           }} catch (eLab) {{}}
         }}
         if (!delta) return;
@@ -8934,6 +9605,27 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
               parentWin.__kcPinTransportRow();
             }}
             enforceAudibleSurfaces();
+            // Key Cycling Stop retry (see __kcOnTransportClick).
+            if (parentWin.__kcStopWanted) {{
+              const consoleUp = !!parentDoc.querySelector('.ui-key-cycle-playbar.kc-console');
+              if (!consoleUp) {{
+                parentWin.__kcStopWanted = 0;
+                parentWin.__kcStopTries = 0;
+              }} else if (Date.now() - Number(parentWin.__kcStopWanted) > 2500) {{
+                const tries = Number(parentWin.__kcStopTries || 0);
+                if (tries >= 5) {{
+                  parentWin.__kcStopWanted = 0;
+                }} else {{
+                  parentWin.__kcStopTries = tries + 1;
+                  parentWin.__kcStopWanted = Date.now();
+                  const sb = parentDoc.querySelector('[class*="st-key-backing_key_cycle_stop_btn"] button');
+                  if (sb && !sb.disabled) {{
+                    try {{ (parentWin.__kcStopRetryLog = parentWin.__kcStopRetryLog || []).push(Date.now()); }} catch (eRl) {{}}
+                    sb.click();
+                  }}
+                }}
+              }}
+            }}
           }} catch (eArm) {{}}
         }}, 200);
       }}
@@ -9148,6 +9840,19 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       // opening notes / count-in are never skipped by muted pre-roll.
       let warmLive = false;
       try {{
+        // A warm start is promoted only when the slot holds the take being switched to. Warm
+        // with another take (a key the cycle refused), promoting it played that take, and the
+        // load of the verified take below then interrupted its play() for good -- nothing
+        // sounded (2026-11-15: idle slot warm with the finished Gm, the switch to Cm stalled).
+        if (now && state._kcWarmStarted && nextUrl && !urlsMatch(now, nextUrl)) {{
+          try {{ now.pause(); }} catch (eWx) {{}}
+          state._kcWarmStarted = false;
+          try {{
+            parentWin.__kcPlayDiag = parentWin.__kcPlayDiag || [];
+            parentWin.__kcPlayDiag.push({{ t: kcNow(), ev: 'warm_promote_other_take_refused', id: now.id,
+              held: String(now.getAttribute('data-kc-url') || '').slice(-40), want: String(nextUrl).slice(-40) }});
+          }} catch (eWd) {{}}
+        }}
         if (now && state._kcWarmStarted) {{
           const ctBefore = Number(now.currentTime || 0);
           try {{ now.pause(); }} catch (ePs) {{}}
@@ -9241,10 +9946,16 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       if (nextUrl) state.playingUrl = nextUrl;
       try {{
         if (now && nextUrl) {{
+          // Ask BEFORE stamping the URL: urlsMatch trusts data-kc-url, so asked afterwards it
+          // was always true and this load never ran. A switch into an emptied slot then
+          // started nothing, and into a stale one played that take under the new key's label
+          // (browser trace 2026-11-15: Fm only loaded when a remounted bridge reloaded it,
+          // interrupting its muted start -- the silent-Fm chain).
+          const holdsNext = urlsMatch(now, nextUrl);
           now.setAttribute('data-kc-url', nextUrl);
           if (playingKeyAtFlip) now.setAttribute('data-kc-sounding', playingKeyAtFlip);
           // Cold swap: idle may never have been armed (nextReady stayed 0). Load now.
-          if (!urlsMatch(now, nextUrl)) {{
+          if (!holdsNext) {{
             now.preload = 'auto';
             now.src = nextUrl;
             try {{ now.load(); }} catch (eLdN) {{}}
@@ -9678,6 +10389,10 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
             parentWin.__kcPendingPlayingAckQueue.shift();
           }}
           parentWin.__kcLastHandoffAck = ack;
+          // A natural handoff moved the music on: the next Previous / Next counts
+          // from what is sounding, not from an older, already-applied press target.
+          try {{ if (parentWin.__kcNav && Number(parentWin.__kcNav.ackSeq || 0) > 0) parentWin.__kcNav.settled = true; }} catch (eNs) {{}}
+          try {{ parentWin.__kcNaturalPending = {{ key: String(ack.playingKey || ''), from: String(ack.fromKey || ''), ackId: String(ack.ackId || ''), at: Date.now() }}; }} catch (eNp) {{}}
           parentWin.__kcTimingLast = timing;
           parentWin.__kcAckLog = parentWin.__kcAckLog || [];
           parentWin.__kcAckLog.push({{
@@ -9940,6 +10655,10 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           return;
         }}
         if (timing.playingAt == null) timing.playingAt = kcNow();
+        // This handoff now counts as playing: make sure it is heard (see __kcEnsureAudible).
+        try {{
+          if (typeof parentWin.__kcEnsureAudible === 'function') parentWin.__kcEnsureAudible(now, 'handoff_playing');
+        }} catch (eEa) {{}}
         commitVisualSync(key);
         const gapMs = Math.max(0, timing.playingAt - timing.endedAt);
         publishAck(gapMs);
@@ -10041,8 +10760,24 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
               if (pm && pm.then) {{
                 pm.then(() => {{
                   try {{ now.muted = false; }} catch (eM) {{}}
+                  // kickPlay returns early once the handoff has settled, and it is the only
+                  // place this path set the volume back.
+                  try {{
+                    if (state.handoffToken === handoffToken && typeof parentWin.__kcEnsureAudible === 'function') {{
+                      parentWin.__kcEnsureAudible(now, 'begin_play_resolved');
+                    }}
+                  }} catch (eEa1) {{}}
                   kickPlay();
-                }}).catch(() => {{ try {{ now.muted = false; }} catch (eM2) {{}} }});
+                }}).catch(() => {{
+                  try {{ now.muted = false; }} catch (eM2) {{}}
+                  // Rejected (e.g. interrupted by a new load): whatever plays it later settles
+                  // through onPlaying / the parent's finish, which restore the volume too.
+                  try {{
+                    if (state.handoffToken === handoffToken && typeof parentWin.__kcEnsureAudible === 'function') {{
+                      parentWin.__kcEnsureAudible(now, 'begin_play_rejected');
+                    }}
+                  }} catch (eEa2) {{}}
+                }});
               }}
             }} catch (eM0) {{}}
           }}
@@ -10230,9 +10965,42 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
               nextUrl: String(state.nextUrl || '').slice(-40),
             }});
           }} catch (eStale) {{}}
+          // The armed take one step too far (a server one key ahead) is still the take after
+          // expectNext: keep it as "following" so it is prepared as soon as expectNext plays,
+          // not left for the server's answer to the Resume, which can arrive after expectNext
+          // has already ended (browser trace 2026-11-15: Fm then loaded cold and played silent).
+          try {{
+            if (state.nextUrl && expectedNextInSequence(expectNext) === armedNext && kcUrlIsLive(state.nextUrl)) {{
+              const oldF = String(state.followingSounding || '');
+              const oldFUrl = String(state.followingUrl || '');
+              const oldFChart = String(state.followingChartHtml || '');
+              state.followingUrl = String(state.nextUrl);
+              state.followingSounding = armedNext;
+              state.followingChartHtml = String(state.nextChartHtml || '');
+              if (oldF && oldFUrl && oldF !== armedNext && oldF === expectedNextInSequence(armedNext)) {{
+                state.aheadUrl = oldFUrl;
+                state.aheadSounding = oldF;
+                state.aheadChartHtml = oldFChart;
+              }}
+            }}
+          }} catch (eKeepF) {{}}
           // Drop the wrong neighbor; wait for Python/prefetch to arm expectNext.
           state.nextUrl = '';
           state.nextSounding = '';
+          // The idle slot must not hand the refused take in through trySwap's fallback (that
+          // would skip expectNext): name expectNext's own take when the server has sent exactly one.
+          try {{
+            const idleS = idleAudio();
+            const idleKey = idleS ? String(idleS.getAttribute('data-kc-sounding') || '') : '';
+            if (idleKey && idleKey !== expectNext) {{
+              const map = parentWin.__kcUrlToKey || {{}};
+              const cands = Object.keys(map).filter((u) => map[u] === expectNext && kcUrlIsLive(u));
+              if (cands.length === 1) {{
+                state.nextUrl = cands[0];
+                state.nextSounding = expectNext;
+              }}
+            }}
+          }} catch (eIdleS) {{}}
           // Fall through to trySwap which will wait for late prep.
         }}
         // Empty / unloaded buffers must not count as a completed pass.
@@ -10388,13 +11156,73 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         }}
         return;
       }}
+      // The take whose end this is: the wait below belongs to it alone.
+      let waitFrom = null;
       const trySwap = (attempt) => {{
         if (!state.enabled) {{ state.ending = false; state._onEndedGate = false; return; }}
         if (state.swapping || state.pendingHandoff) {{ state.ending = false; return; }}
+        if (attempt === 0) {{
+          try {{
+            const a0 = activeAudio();
+            waitFrom = a0 ? {{ el: a0, url: String(a0.getAttribute('data-kc-url') || a0.getAttribute('src') || ''),
+              key: String(a0.getAttribute('data-kc-sounding') || parentWin.__kcLastSounding || '').trim() }} : null;
+          }} catch (eWf) {{ waitFrom = null; }}
+        }}
+        // Waiting for the next take: if a command meanwhile put another take in the active slot
+        // (a new URL or key there, or it is playing again), this end-of-take is over and that
+        // command owns what plays. Switching on would skip that take (Cm loaded by the server's
+        // late command, then the wait "finished" it and moved to Fm).
+        if (attempt > 0) {{
+          try {{
+            const actW = activeAudio();
+            const durW = actW ? Number(actW.duration || 0) : 0;
+            const finW = !!(actW && (actW.ended || (durW > 0 && Number(actW.currentTime || 0) >= durW - 0.05)));
+            const urlW = actW ? String(actW.getAttribute('data-kc-url') || actW.getAttribute('src') || '') : '';
+            const keyW = actW ? String(actW.getAttribute('data-kc-sounding') || '').trim() : '';
+            const replaced = !!(waitFrom && (actW !== waitFrom.el || (waitFrom.url && urlW && urlW !== waitFrom.url)
+              || (waitFrom.key && keyW && keyW !== waitFrom.key)));
+            if (actW && (replaced || (!actW.paused && !finW))) {{
+              state.ending = false;
+              state._onEndedGate = false;
+              try {{
+                parentWin.__kcPlayDiag = parentWin.__kcPlayDiag || [];
+                parentWin.__kcPlayDiag.push({{ t: kcNow(), ev: 'trySwap_active_taken_over', attempt: attempt,
+                  key: keyW, replaced: replaced, from: waitFrom ? waitFrom.key : '' }});
+              }} catch (eDw) {{}}
+              return;
+            }}
+          }} catch (eW) {{}}
+        }}
         const idle2 = idleAudio();
-        const nxt = state.nextUrl
-          || (idle2 && idle2.getAttribute('data-kc-url'))
-          || '';
+        // A take is promoted only when it is verified as the expected next key of this cycle.
+        // The idle slot can still hold an old take -- the finished key's own, after a server one
+        // behind had armed the page's own key as next (browser trace 2026-11-15: Gm ended inside
+        // the Pause, Resume replayed Gm from 0 out of the idle slot). Identity is the server's own
+        // URL -> key map and the cycle's live takes (both reset with the cycle), never the label.
+        // Otherwise wait here for the legitimate take (late prep / the server's next command).
+        let expectS = '';
+        try {{
+          const actS = activeAudio();
+          // The key after the take that ENDED (recorded when this wait began), not a label written since.
+          expectS = expectedNextInSequence((waitFrom && waitFrom.key) || String(
+            (actS && actS.getAttribute('data-kc-sounding')) || parentWin.__kcLastSounding || '').trim());
+        }} catch (eExS) {{ expectS = ''; }}
+        let nxt = String(state.nextUrl || '');
+        if (nxt && expectS) {{
+          const ownerN = kcUrlKeyOf(nxt);
+          if (ownerN && ownerN !== expectS) nxt = '';  // an armed take of another key: not this one
+        }}
+        if (!nxt && idle2) {{
+          const idleUrl = String(idle2.getAttribute('data-kc-url') || '');
+          if (idleUrl && (!expectS || (kcUrlKeyOf(idleUrl) === expectS && kcUrlIsLive(idleUrl)))) nxt = idleUrl;
+          else if (idleUrl && attempt === 0) {{
+            try {{
+              parentWin.__kcPlayDiag = parentWin.__kcPlayDiag || [];
+              parentWin.__kcPlayDiag.push({{ t: kcNow(), ev: 'trySwap_idle_take_refused', expect: expectS,
+                idleKey: kcUrlKeyOf(idleUrl), idleUrl: idleUrl.slice(-40) }});
+            }} catch (eDr) {{}}
+          }}
+        }}
         if (idle2 && nxt) {{
           state.ending = false;
           doSeamlessSwap(idle2, nxt);
@@ -10653,10 +11481,25 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       // run replays its Play (same epoch, so the stale check below lets it through).
       // Python bumps the epoch on Stop / Pause / Resume / Play, so every later
       // command is newer and applies normally.
+      // A newer epoch alone is not "after the Stop": a Resume pressed a few seconds
+      // before bumps the epoch, and the server can answer it after the page's Stop.
+      // Browser trace 2026-11-14: Stop with the page at epoch 9; the server's Resume
+      // command (epoch 10, still running) arrived 1.5 s later, cleared this guard and
+      // played until the server's own Stop command (epoch 11, off) 5.5 s after the
+      // click -- 3/4 on dev too. Until the server's off command (or a hard stop)
+      // arrives, a running command of the SAME cycle is from before the Stop; a new
+      // Start comes with a new cycle. Bounded like the other transport guards (20 s):
+      // a Stop the server never received must not leave the page silent for good.
       if (cmd.epoch != null && state.stoppedEpoch != null) {{
-        if (Number(cmd.epoch) > Number(state.stoppedEpoch)) {{
+        const stopCycle = (Date.now() - Number(state.stoppedAt || 0) < 20000) ? String(state.stoppedCycleId || '') : '';
+        const cmdCycle = String(cmd.cycleId || '');
+        const afterStop = !cmd.enabled || !!cmd.hardStop || ((stopCycle && cmdCycle)
+          ? cmdCycle !== stopCycle
+          : Number(cmd.epoch) > Number(state.stoppedEpoch));
+        if (afterStop) {{
           state.stoppedEpoch = null;
-        }} else if (cmd.enabled && state.userPaused && !cmd.hardStop) {{
+          state.stoppedCycleId = '';
+        }} else if (cmd.enabled && !cmd.hardStop) {{
           try {{
             const bag = parentWin.__kcApplyTrace || (parentWin.__kcApplyTrace = []);
             bag.push({{ t: Date.now(), reason: 'before_stop', epoch: cmd.epoch, stoppedEpoch: state.stoppedEpoch }});
@@ -10695,6 +11538,39 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           return;
         }}
       }} catch (ePauseGuard) {{}}
+      // The epoch guard above records the epoch APPLIED at the click. When the
+      // user resumes before the Pause's own (newer-epoch) paused command has
+      // arrived, that command looked newer and silenced the resumed take, and
+      // its abort latched userPaused: every later press toggled the wrong way.
+      // Same rule as the card's own label: the user's newest click stands
+      // until Python's command echoes it (transportConsumed); after that,
+      // Python's transport state is authoritative again. Only the transport
+      // bit that click already decided is neutralised; the rest of the command
+      // (epoch, next takes, charts, consumed acks) applies as before. Dropping
+      // the whole command lost its epoch, so natural handoff acks were
+      // rejected as stale_epoch and the page ran out of next takes.
+      try {{
+        const tl = parentWin.__backingTransportLocal;
+        if (
+          tl && tl.token && Date.now() < Number(tl.until || 0) && cmd.enabled
+          && String(cmd.transportConsumed || '') !== String(tl.token)
+          && !cmd.forcePlay && !cmd.restart && !cmd.arrangementReload
+          && !cmd.forceArrangementReplace && !cmd.hardStop
+        ) {{
+          const wantsPause = !!cmd.paused && !cmd.resume;
+          const wantsPlay = !cmd.paused && (!!cmd.resume || !!cmd.autoplay);
+          if ((tl.intent === 'playing' && wantsPause) || (tl.intent === 'paused' && wantsPlay)) {{
+            parentWin.__kcStaleTransportCmdDrops = Number(parentWin.__kcStaleTransportCmdDrops || 0) + 1;
+            try {{
+              const bag = parentWin.__kcApplyTrace || (parentWin.__kcApplyTrace = []);
+              bag.push({{ t: Date.now(), reason: 'stale_transport_cmd', epoch: cmd.epoch, intent: tl.intent,
+                          paused: !!cmd.paused, echo: String(cmd.transportConsumed || '') }});
+              if (bag.length > 40) bag.shift();
+            }} catch (eTl) {{}}
+            cmd = Object.assign({{}}, cmd, {{ paused: false, resume: false, autoplay: false }});
+          }}
+        }}
+      }} catch (eTransportGuard) {{}}
       const detail = parentDoc.getElementById('kc-persistent-detail');
       // Cache projection bundles by sounding before any liveHandoff merge so
       // seamless swap can adopt nextDisplayProjection without chord-text heuristics.
@@ -10820,6 +11696,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         state.passId = 0;
         state.epoch = -1;
         state.stoppedEpoch = null;
+        state.stoppedCycleId = '';
         state.handoffSettledToken = null;
         try {{ parentWin.sessionStorage.setItem('kc_user_paused', '0'); }} catch (eSS0) {{}}
         teardownKeyCycleWatchers();
@@ -10874,6 +11751,30 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         }}
         state.cycleId = neuCycle;
       }}
+      // A natural handoff Python has not adopted yet: the page already plays the
+      // next key, and a command Python built before it read that ack still names
+      // the key the page left. Applied, it reloaded that take -- the music went
+      // back a key for a second or two until the ack landed (and the console
+      // with it). Hold such a command until Python lists the ack as consumed;
+      // from then on its key is authoritative again (a refused handoff still
+      // converges). Stop / Pause / an explicit Play are never held.
+      try {{
+        const nat = parentWin.__kcNaturalPending;
+        if (nat && nat.key) {{
+          const cmdS2 = String(cmd.sounding || '');
+          const consumed = Array.isArray(cmd.consumedAckIds) ? cmd.consumedAckIds.map(String) : [];
+          if (cmdS2 === nat.key || consumed.indexOf(String(nat.ackId)) >= 0 || (Date.now() - Number(nat.at || 0)) > 20000) {{
+            parentWin.__kcNaturalPending = null;
+          }} else if (cmdS2 && cmdS2 === nat.from && !cmd.hardStop && !cmd.paused && !cmd.forcePlay) {{
+            try {{
+              const bag = parentWin.__kcNavLog || (parentWin.__kcNavLog = []);
+              bag.push({{ t: Date.now(), heldStaleCmd: cmdS2, playing: nat.key, ackId: nat.ackId, restart: !!cmd.restart }});
+              if (bag.length > 60) parentWin.__kcNavLog = bag.slice(-60);
+            }} catch (eHl) {{}}
+            return;
+          }}
+        }}
+      }} catch (eNat) {{}}
       if (cmd.passId != null && Number(cmd.passId) >= Number(state.passId || 0)) {{
         state.passId = Number(cmd.passId);
       }}
@@ -10942,6 +11843,31 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         if (detail) detail.textContent = cmd.hardStop ? 'Stopped' : 'Paused';
         return;
       }}
+      // The server's answer to a Resume the page already made (the console's or the
+      // Lead Sheet's press resumed the audio at once): it often arrives seconds later,
+      // after the resumed take has finished and the cycle has moved on. Applying it then
+      // reloaded the paused take -- the cycle stepped back (browser trace 2026-11-14:
+      // Resume on Gm, the page went on to Cm, the answer 11 s later replayed Gm). While
+      // the page is playing, has finished that take, is handing off, or holds another
+      // take, the answer only refreshes the neighbours. A deliberate restart (Play,
+      // Next / Previous) is not an answer and still applies.
+      if (cmd.resume && !cmd.restart && !state.userPaused) {{
+        const actE = activeAudio();
+        const curE = String(cmd.currentUrl || '').trim();
+        const srcE = actE ? String(actE.currentSrc || actE.src || '').trim() : '';
+        const movedOn = !!(srcE && curE && !urlsMatch(actE, curE));
+        if (actE && srcE && (!actE.paused || actE.ended || state.swapping || state.pendingHandoff || movedOn)) {{
+          try {{ noteCmdNeighbors(cmd); }} catch (eNoteEcho) {{}}
+          try {{
+            const bagE = parentWin.__kcApplyTrace || (parentWin.__kcApplyTrace = []);
+            bagE.push({{ t: Date.now(), reason: 'resume_answer_kept', epoch: cmd.epoch, sounding: String(cmd.sounding || ''),
+              movedOn: movedOn, ended: !!actE.ended, playing: !actE.paused }});
+            if (bagE.length > 40) bagE.shift();
+          }} catch (eTrE) {{}}
+          if (detail) detail.textContent = 'Resumed';
+          return;
+        }}
+      }}
       if (cmd.restart || cmd.resume) {{
         cancelPendingPlays();
         state.userPaused = false;
@@ -10965,6 +11891,25 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           return;
         }}
         const actR = actR0 || activeAudio();
+        // A Resume never replays a take that has finished (play() on an ended element
+        // restarts it from 0): the cycle goes on to the next key through the usual
+        // end-of-take path. A deliberate restart still loads and plays from the start.
+        try {{
+          if (actR && cmd.resume && !cmd.restart && sameUrl && (actR.ended || (Number(actR.duration || 0) > 0
+              && Number(actR.currentTime || 0) >= Number(actR.duration)))) {{
+            if (typeof parentWin.__kcOnEnded === 'function') {{
+              window.setTimeout(() => {{ try {{ parentWin.__kcOnEnded(); }} catch (eOe2) {{}} }}, 0);
+            }}
+            try {{
+              const bagF = parentWin.__kcApplyTrace || (parentWin.__kcApplyTrace = []);
+              bagF.push({{ t: Date.now(), reason: 'resume_finished_take_continues', epoch: cmd.epoch, sounding: String(cmd.sounding || '') }});
+              if (bagF.length > 40) bagF.shift();
+            }} catch (eTrF) {{}}
+            if (detail) detail.textContent = 'Resumed';
+            try {{ noteCmdNeighbors(cmd); }} catch (eNoteF) {{}}
+            return;
+          }}
+        }} catch (eFin) {{}}
         if (actR) {{
           if (cmd.sounding) {{
             try {{ actR.setAttribute('data-kc-sounding', String(cmd.sounding)); }} catch (eSk) {{}}
@@ -11228,6 +12173,10 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       // Same-key arrangement replace (new BPM/feel/scope file) is NOT a handoff.
       let liveHandoff = false;
       let browserSounding = '';
+      // Declared outside the try below: it is read after it (needsReplace). As a const inside,
+      // every command for another take than the page's (a server one confirmation behind) threw
+      // a ReferenceError here and the rest of the command was never applied.
+      let sameKeyNewFile = false;
       try {{
         const actUrl = act ? (act.getAttribute('data-kc-url') || '') : '';
         browserSounding = act
@@ -11251,7 +12200,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         const pythonMatchesBrowser = !!(
           cmdSounding && browserSounding && cmdSounding === browserSounding
         );
-        const sameKeyNewFile = !!(
+        sameKeyNewFile = !!(
           pythonMatchesBrowser
           && cur
           && act
@@ -11994,6 +12943,16 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
 </script></body></html>"""
 
 
+def _card_transport_echo(session: Any) -> str:
+    """The card's ``consumed`` echo: the newest transport click Python applied."""
+    try:
+        from backing_card_commands import card_echo_token
+
+        return card_echo_token(session)
+    except Exception:
+        return ""
+
+
 def render_backing_key_cycle_persistent_player(
     st: Any,
     session: dict[str, Any],
@@ -12346,6 +13305,11 @@ def render_backing_key_cycle_persistent_player(
         "displayReproject": _display_reproject,
         "displayProjectionId": _cmd_proj_id,
         "displayCmdNonce": int(session.get("_kc_display_cmd_nonce") or 0),
+        # Handoff acks Python has applied (newest first). The page holds back a
+        # command naming the key it naturally left until its ack is listed here.
+        "consumedAckIds": [
+            str(x) for x in (session.get("_kc_handoff_acked_ids") or [])[:12] if str(x or "").strip()
+        ],
         "followTimelineSpace": FOLLOW_TIMELINE_SPACE_CONCERT,
         # Everything cleanup keeps on disk; the browser retires parked/prepared
         # elements holding anything else.
@@ -12418,6 +13382,10 @@ def render_backing_key_cycle_persistent_player(
         "hardStop": bool(hard_stop),
         "restart": bool(restart_play),
         "ackedSwitchSeq": int(session.get("_kc_acked_switch_seq") or 0),
+        # The newest card transport click this run had applied (the card's own
+        # ``consumed`` echo). The page ignores the pause/play bit of a command
+        # built before the user's newest Pause/Resume click instead of undoing it.
+        "transportConsumed": _card_transport_echo(session),
         "arrangementReload": _arrangement_reload,
         "arrangementUrl": _arrange_url,
         "forceArrangementReplace": bool(_force_replace or _oneshot_reload),
@@ -13032,7 +14000,7 @@ def cycle_status_lines(session: dict[str, Any]) -> list[str]:
     temp = str(data.get("current_playback_key") or base)
     saved = str(data.get("base_practice_key") or base)
     passes = int(data.get("passes_completed") or 0)
-    interval = "Whole tone" if int(data.get("interval") or 1) == 2 else "Semitone"
+    interval = CYCLE_STEP_LABELS[cycle_step_name_for_interval(data.get("interval"))]
     direction = str(data.get("direction") or "up").title()
     return [
         f"Key Cycle Practice: {status}",
@@ -13063,7 +14031,9 @@ def apply_backing_key_cycle(session: dict[str, Any], *, semitones: int | None = 
     if not data or not data.get("enabled"):
         # Start a one-shot running session from current base if tests call apply directly.
         if semitones is not None:
-            session[BACKING_KEY_CYCLE_STEP_KEY] = "whole" if abs(int(semitones)) >= 2 else "semitone"
+            session[BACKING_KEY_CYCLE_STEP_KEY] = cycle_step_name_for_interval(
+                5 if abs(int(semitones)) >= 5 else (2 if abs(int(semitones)) >= 2 else 1)
+            )
             session[BACKING_KEY_CYCLE_DIRECTION_KEY] = "down" if int(semitones) < 0 else "up"
         start_key_cycle(session)
         if semitones is not None and int(semitones) != 0:
@@ -13171,8 +14141,11 @@ def render_backing_key_cycle_controls(st: Any, session: dict[str, Any]) -> None:
         active_enter=active,
         base=base,
     )
-    # Stale force-off from a prior stop must not clobber a same-session user On.
-    if force_off and user_toggled and str(session.get(mode_key) or "") == "On":
+    explicit_stop = bool(session.pop("_kc_explicit_stop_force_off", False))
+    # Stale force-off from a prior stop must not clobber a same-session user On --
+    # but the console's Stop is never stale here: a toggle recorded with it is the
+    # same click's widget echo; a real On after it arrives in a later run.
+    if force_off and user_toggled and not explicit_stop and str(session.get(mode_key) or "") == "On":
         force_off = False
     if force_off:
         session[mode_key] = "Off"
@@ -13333,15 +14306,14 @@ def render_backing_key_cycle_controls(st: Any, session: dict[str, Any]) -> None:
     if not on:
         return
 
-    c1, c2 = st.columns(2)
+    # Interval on its own row (three choices), Direction below it.
+    c1 = c2 = None
 
     def _on_cycle_interval_or_direction_change() -> None:
         """User flipped Interval/Direction → rebuild sequence from saved Practice Key."""
-        mag = 2 if str(session.get(step_key) or "semitone") == "whole" else 1
+        mag = cycle_interval_for_step_name(session.get(step_key))
         direc = str(session.get(dir_key) or "up")
-        session[BACKING_KEY_CYCLE_STEP_KEY] = (
-            "whole" if mag == 2 else "semitone"
-        )
+        session[BACKING_KEY_CYCLE_STEP_KEY] = cycle_step_name_for_interval(mag)
         session[BACKING_KEY_CYCLE_DIRECTION_KEY] = (
             "down" if str(direc).lower() == "down" else "up"
         )
@@ -13353,21 +14325,30 @@ def render_backing_key_cycle_controls(st: Any, session: dict[str, Any]) -> None:
             direction=session[BACKING_KEY_CYCLE_DIRECTION_KEY],
         )
 
-    with c1:
+    class _Row:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_a):
+            return False
+
+    with (c1 or _Row()):
         st.radio(
             "Interval",
-            options=["semitone", "whole"],
-            format_func=lambda v: "Semitone" if v == "semitone" else "Whole tone",
+            options=list(CYCLE_INTERVAL_BY_STEP),
+            format_func=lambda v: CYCLE_STEP_LABELS.get(str(v), str(v)),
             key=step_key,
             horizontal=True,
             on_change=_on_cycle_interval_or_direction_change,
         )
-        session[BACKING_KEY_CYCLE_STEP_KEY] = str(session.get(step_key) or "semitone")
-    with c2:
+        session[BACKING_KEY_CYCLE_STEP_KEY] = (
+            normalize_cycle_step_name(session.get(step_key)) or CYCLE_STEP_SEMITONE
+        )
+    with (c2 or _Row()):
         st.radio(
             "Direction",
             options=["up", "down"],
-            format_func=lambda v: str(v).title(),
+            format_func=lambda v: "Ascending" if str(v) == "up" else "Descending",
             key=dir_key,
             horizontal=True,
             on_change=_on_cycle_interval_or_direction_change,
@@ -13379,7 +14360,7 @@ def render_backing_key_cycle_controls(st: Any, session: dict[str, Any]) -> None:
     # remount defaults cannot wipe the new sequence.
     data = get_owner_cycle_session(session, owner)
     if data and data.get("enabled"):
-        mag = 2 if str(session.get(BACKING_KEY_CYCLE_STEP_KEY) or "semitone") == "whole" else 1
+        mag = cycle_interval_for_step_name(session.get(BACKING_KEY_CYCLE_STEP_KEY))
         direc = str(session.get(BACKING_KEY_CYCLE_DIRECTION_KEY) or "up")
         applied = session.get("_kc_cycle_settings_applied")
         cur_id = str(data.get("cycle_id") or "")
@@ -13465,18 +14446,14 @@ def render_backing_key_cycle_controls(st: Any, session: dict[str, Any]) -> None:
                     label_visibility="visible",
                 )
                 prefs[pair] = str(choice_spell)
+        _prior_prefs = spelling_prefs_from_session(session)
         session[BACKING_KEY_SPELLING_PREFS_KEY] = prefs
-        if data and data.get("enabled"):
-            data = dict(get_owner_cycle_session(session, owner) or data)
-            old_prefs = data.get("spelling_prefs") if isinstance(data.get("spelling_prefs"), dict) else {}
-            if old_prefs != prefs:
-                reset_key_cycle_position_for_settings(
-                    session,
-                    spelling_prefs=prefs,
-                )
-            else:
-                data["spelling_prefs"] = prefs
-                _put_owner_cycle_session(session, owner, data)
+        if data and data.get("enabled") and _prior_prefs != prefs:
+            # Spelling is notation only: same position, same sounding pitch, same
+            # audio and timing. Every label, chart and the Live Mission Example
+            # are re-read with the new spelling (the cycle's own concert tokens,
+            # which identify the prepared takes, are left alone).
+            reproject_key_cycle_display(session, force=True)
 
 
 def _toggle_key_cycle_pause_resume(session: dict[str, Any]) -> None:
@@ -13494,6 +14471,38 @@ def _toggle_key_cycle_pause_resume(session: dict[str, Any]) -> None:
     else:
         pause_playback(session, reason="key_cycle_pause")
         pause_key_cycle(session)
+
+
+def _stop_key_cycle_from_button(session: dict[str, Any]) -> None:
+    """Stop: Key Cycling off, pending advances cancelled, Practice Key context back.
+
+    Runs before the script (a callback), so it cannot be lost to a rerun. The
+    page's teardown mounts the disabled player in this same run (the flags
+    below), which cancels the dual-buffer and any prepared handoff.
+    """
+    # Widget callbacks run before the page applies the card's command, so a card
+    # Pause / Resume pressed just before this Stop is still pending here. Applied
+    # after the Stop, that Resume started playback again (browser trace
+    # 2026-11-14: Stop at +1.4 s, the earlier Resume applied at +3.2 s). Stop
+    # supersedes it: commit it unapplied (its echo also clears the card's own
+    # pending intent). A Play is not touched.
+    try:
+        from backing_card_commands import commit_card_command, pending_card_command
+
+        _card_action, _card_token = pending_card_command(session)
+        if _card_action in ("pause", "resume") and _card_token:
+            commit_card_command(session, _card_token)
+    except Exception:
+        pass
+    stop_key_cycle(session)
+    session["_kc_force_player_off"] = True
+    session["_kc_player_needs_teardown"] = True
+    # The Stop's force-off must win on the next controls render. The click that
+    # stops also posts every widget's value; a radio the server had no value for
+    # then "changes" to On in this same callback batch and marks a user toggle,
+    # which let the force-off be cancelled and started a new cycle 2 s after
+    # Stop (browser trace 2026-11-14, 4/4 with a Resume still pending).
+    session["_kc_explicit_stop_force_off"] = True
 
 
 def _step_key_cycle_from_button(session: dict[str, Any], steps: int) -> None:
@@ -13602,11 +14611,12 @@ def render_backing_key_cycle_playback_bar(st: Any, session: dict[str, Any]) -> N
         is_pending = _keys_equivalent(key_tok, pending_sounding)
         is_audible = bool(audible) and _keys_equivalent(key_tok, audible)
         # data-key stays concert so JS handoff highlight matches audio identity.
+        # The chips are no longer shown (the console shows Current / Next); the
+        # page script still reads them as the sequence and the highlighted key.
         if is_pending and (preparing_key or pending_vs_audible) and not is_audible:
             chips.append(
                 f'<span class="ui-key-cycle-chip ui-key-cycle-chip-pending" data-pending="1"'
-                f' data-key="{concert_attr}" data-display="{visible}"'
-                f' title="Next Play sounding {concert_attr}">{visible}</span>'
+                f' data-key="{concert_attr}" data-display="{visible}">{visible}</span>'
             )
         elif i == idx or (is_pending and not pending_vs_audible and not preparing_key):
             chips.append(
@@ -13616,8 +14626,7 @@ def render_backing_key_cycle_playback_bar(st: Any, session: dict[str, Any]) -> N
         elif is_audible and pending_vs_audible:
             chips.append(
                 f'<span class="ui-key-cycle-chip ui-key-cycle-chip-audible" data-audible="1"'
-                f' data-key="{concert_attr}" data-display="{visible}"'
-                f' title="Still sounding {concert_attr}">{visible}</span>'
+                f' data-key="{concert_attr}" data-display="{visible}">{visible}</span>'
             )
         else:
             chips.append(
@@ -13628,32 +14637,25 @@ def render_backing_key_cycle_playback_bar(st: Any, session: dict[str, Any]) -> N
     cycle_id = str(data.get("cycle_id") or session.get("_kc_cycle_id") or "").strip()
     seq_joined = ",".join(sequence)
     display_joined = ",".join(display_labels)
-    reading_line = ""
-    if chart_mode != "concert" and reading_now and not _keys_equivalent(reading_now, sounding):
-        mode_label = "Written" if chart_mode == "written" else "Shape"
-        reading_line = (
-            f'<div><span>{mode_label} <strong>{html_escape(reading_now)}</strong>'
-            f'<span style="opacity:.65"> · reading mode</span></span></div>'
-        )
     capo_line = ""
     shape_tonic_attr = ""
     if chart_mode == "shape":
+        # The one capo source (shared with the cycle Lead Sheet and the in-app sheet).
         capo_proj = cycle_shape_projection(
             session, sounding or pending_sounding or saved or "C"
         )
         if capo_proj:
             selected_shape = str(capo_proj["shape_tonic"])
-            capo_fret = int(capo_proj["capo_fret"])
             if selected_shape:
                 shape_tonic_attr = f' data-shape-tonic="{html_escape(selected_shape)}"'
-            # Class + data-fret so client syncHighlight can refresh the fret on
-            # seamless key advances without waiting for a Streamlit remount.
+            # Hidden hooks: the page script refreshes the fret on a seamless
+            # handoff; the console shows the musician-facing readout.
             capo_line = (
-                f'<div class="ui-key-cycle-capo"><span>Guitar shape '
+                f'<span class="kc-sr">Guitar shape '
                 f'<strong class="ui-key-cycle-shape-tonic">{html_escape(selected_shape)}</strong>'
-                f'<span style="opacity:.65"> · current capo fret </span>'
+                f'<span> · current capo fret </span>'
                 f'<strong class="ui-key-cycle-capo-fret" data-kc-capo-fret="1">'
-                f'{int(capo_fret)}</strong></span></div>'
+                f'{int(capo_proj["capo_fret"])}</strong></span>'
             )
     # The audible buffer is stale while settings wait for Play/Resume or the new
     # anchor's / arrangement's WAV is still being generated: the page script must not
@@ -13669,127 +14671,187 @@ def render_backing_key_cycle_playback_bar(st: Any, session: dict[str, Any]) -> N
     hold_stale_attr = (
         ' data-hold-stale="1"' if (settings_pending or _pk_regen_live or preparing_arr) else ""
     )
-    # st.html preserves classes/styles that st.markdown sanitizes away.
+
+    # ---- Console: Current / Next / Sounding (+ capo) and the transport. ----
+    import json as _json
+
+    from key_cycle_console import (
+        CONSOLE_CSS,
+        CONSOLE_PAUSED,
+        CONSOLE_PLAYING,
+        CONSOLE_STARTING,
+        CONSOLE_STOPPED,
+        _pretty,
+        console_model,
+        console_readout_html,
+        live_mission_model,
+        render_live_mission_panel,
+    )
+
+    if transport_stopped:
+        console_status = CONSOLE_STOPPED
+    elif held or user_stopped:
+        console_status = CONSOLE_PAUSED
+    elif not has_mounted_audio:
+        console_status = CONSOLE_STARTING
+    else:
+        console_status = CONSOLE_PLAYING
+    current_concert = sounding or pending_sounding or saved or "C"
+    model = console_model(session, current_concert=current_concert, status=console_status)
+    notes: list[str] = []
+    if preparing_arr and not preparing_key:
+        notes.append("preparing arrangement…")
+    if preparing_key:
+        notes.append("preparing next…")
+    if pending_vs_audible:
+        notes.append("next Play: " + _pretty(pending_sounding))
+    if settings_pending and not pending_vs_audible:
+        notes.append("cycle settings pending Play")
+    notes_html = (
+        f'<div class="kc-console-note">{html_escape(" · ".join(notes))}</div>' if notes else ""
+    )
+    pretty_labels = [_pretty(x) for x in model.get("labels") or []]
+    pretty_sounding = [_pretty(x) for x in model.get("sounding_labels") or []]
     bar_html = (
-        "<style>"
-        ".ui-key-cycle-playbar{display:flex;flex-direction:column;gap:.35rem;"
-        "margin:.35rem 0;font-size:.85rem;opacity:.95}"
-        ".ui-key-cycle-chip{display:inline-block;padding:.12rem .4rem;margin:.1rem;"
-        "border-radius:999px;background:rgba(127,127,127,.18);font-size:.8rem;opacity:.85}"
-        ".ui-key-cycle-chip-on{background:#1f6feb!important;color:#fff!important;"
-        "font-weight:700!important;opacity:1!important}"
-        ".ui-key-cycle-chip-pending{background:#0e7490!important;color:#fff!important;"
-        "font-weight:700!important;opacity:1!important;outline:1px dashed rgba(255,255,255,.55)}"
-        ".ui-key-cycle-chip-audible{background:#64748b!important;color:#fff!important;"
-        "opacity:1!important}"
-        "</style>"
-        f'<div class="ui-key-cycle-playbar" data-cycle-id="{html_escape(cycle_id)}" '
+        CONSOLE_CSS
+        + f'<div class="ui-key-cycle-playbar kc-console" data-cycle-id="{html_escape(cycle_id)}" '
+        f'data-status="{html_escape(console_status)}" '
         f'data-seq="{html_escape(seq_joined)}" '
         f'data-display-seq="{html_escape(display_joined)}" '
-        f'data-chart-mode="{html_escape(chart_mode)}"{shape_tonic_attr}{hold_stale_attr}>'
-        f'<div><span>Sounding <strong class="ui-key-cycle-sounding">{html_escape(sounding) or "—"}</strong>'
-        f'<span style="opacity:.65"> · saved {html_escape(saved) or "—"}</span>'
-        f'{"<span style=\"opacity:.75;margin-left:.4rem\">· preparing arrangement…</span>" if preparing_arr and not preparing_key else ""}'
-        f'{"<span style=\"opacity:.75;margin-left:.4rem\">· preparing next…</span>" if preparing_key else ""}'
-        f'{"<span style=\"opacity:.75;margin-left:.4rem\">· next Play: " + html_escape(pending_sounding) + "</span>" if pending_vs_audible else ""}'
-        f'{"<span style=\"opacity:.75;margin-left:.4rem\">· cycle settings pending Play</span>" if settings_pending and not pending_vs_audible else ""}'
-        f'</span></div>'
-        f'{reading_line}'
-        f'{capo_line}'
-        f'<div class="ui-key-cycle-seq" style="display:flex;flex-wrap:wrap;align-items:center;'
-        f'gap:.05rem;line-height:1.6" title="One full cycle in reading order (audio stays concert)">'
-        f'{"".join(chips)}</div></div>'
+        f'data-kc-labels="{html_escape(_json.dumps(pretty_labels))}" '
+        f'data-kc-sounding-labels="{html_escape(_json.dumps(pretty_sounding))}" '
+        f'data-kc-capos="{html_escape(_json.dumps(model.get("capo_labels") or []))}" '
+        f'data-chart-mode="{html_escape(chart_mode)}"{shape_tonic_attr}{hold_stale_attr} '
+        f'role="group" aria-label="Key Cycling">'
+        f'<span class="kc-sr">Sounding <strong class="ui-key-cycle-sounding">{html_escape(sounding) or "—"}</strong></span>'
+        f"{capo_line}"
+        f"{console_readout_html(model)}"
+        f"{notes_html}"
+        f'<div class="ui-key-cycle-seq" aria-hidden="true">{"".join(chips)}</div></div>'
     )
+
+    live = None
     try:
-        st.html(bar_html)
+        live = live_mission_model(session, current_concert=model.get("current_concert") or current_concert)
     except Exception:
-        st.markdown(bar_html, unsafe_allow_html=True)
-    # Chart follow must not bury Pause; sticky keeps the row hittable over the sheet.
-    st.markdown(
-        """
+        live = None
+
+    def _columns(spec: list[int]) -> list[Any]:
+        try:
+            return list(st.columns(spec, gap="medium"))
+        except TypeError:
+            return list(st.columns(len(spec)))
+
+    class _Here:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_a):
+            return False
+
+    left: Any = None
+    right: Any = None
+    if live is not None:
+        left, right = _columns([5, 6])[:2]
+
+    stop_clicked = False
+    with (left if left is not None else _Here()):
+        try:
+            st.html(bar_html)
+        except Exception:
+            st.markdown(bar_html, unsafe_allow_html=True)
+        st.markdown(KC_TRANSPORT_CSS, unsafe_allow_html=True)
+        try:
+            row = st.container(horizontal=True, key="kc_transport_row", gap="small")
+        except (AttributeError, TypeError):
+            row = _Here()
+        with row:
+            # The bridge normally takes Previous / Next / Pause in the browser
+            # (see __kcStepBtnHandler / __kcPauseBtnHandler, matched by these
+            # keys); these server paths only run before it is installed.
+            # Callbacks, not `if st.button: ...; st.rerun()`: a press made while
+            # that rerun was running was dropped.
+            # No ``help=`` tooltips here: Streamlit renders a button with a
+            # tooltip twice (a visible one in the tooltip wrapper and a hidden
+            # copy without handlers), and page scripts that look a transport
+            # button up by its key could take the dead copy. The labels say it.
+            def _btn(label: str, key: str, **kw: Any) -> bool:
+                try:
+                    return bool(st.button(label, key=key, width="stretch", **kw))
+                except TypeError:
+                    return bool(st.button(label, key=key, use_container_width=True, **kw))
+
+            _btn(
+                "Previous",
+                "backing_key_cycle_prev_btn",
+                icon=":material/skip_previous:",
+                disabled=transport_stopped,
+                on_click=_step_key_cycle_from_button,
+                args=(session, -1),
+            )
+            _btn(
+                pause_label,
+                "backing_key_cycle_pause_btn",
+                # The page script swaps this icon with the label as playback changes.
+                icon=KC_PAUSE_ICON if pause_label != "Resume" else KC_RESUME_ICON,
+                type="primary",
+                on_click=_toggle_key_cycle_pause_resume,
+                args=(session,),
+                disabled=transport_stopped,
+            )
+            _btn(
+                "Next",
+                "backing_key_cycle_advance_btn",
+                icon=":material/skip_next:",
+                disabled=transport_stopped,
+                on_click=_step_key_cycle_from_button,
+                args=(session, 1),
+            )
+            # A callback, like Previous / Next / Pause: a button's True value
+            # lives for one run only, and an earlier st.rerun() in that run (the
+            # pass bridge after an ack) used to swallow the Stop press.
+            _btn(
+                "Stop",
+                "backing_key_cycle_stop_btn",
+                icon=":material/stop:",
+                on_click=_stop_key_cycle_from_button,
+                args=(session,),
+            )
+    if not is_cycle_active(session):
+        return
+    if live is not None and right is not None:
+        with right:
+            render_live_mission_panel(st, session, live)
+
+
+KC_TRANSPORT_CSS = """
 <style>
-[class*="st-key-backing_key_cycle_pause_btn"],
-[class*="st-key-backing_key_cycle_prev_btn"],
-[class*="st-key-backing_key_cycle_advance_btn"],
-[class*="st-key-backing_key_cycle_stop_btn"] {
-  position: sticky !important;
-  top: 3.25rem !important;
-  z-index: 1002 !important;
-  background: var(--background-color, #0e1117);
-}
-[class*="st-key-backing_key_cycle_pause_btn"] button,
-[class*="st-key-backing_key_cycle_prev_btn"] button,
-[class*="st-key-backing_key_cycle_advance_btn"] button,
-[class*="st-key-backing_key_cycle_stop_btn"] button {
-  position: relative !important;
-  z-index: 1003 !important;
+/* Player-style transport in the app palette: a dark navy pill, gold centre
+   control (the app's gold primary), purple-edged step buttons. */
+[class*="st-key-kc_transport_row"]{gap:.45rem!important;flex-wrap:nowrap!important;align-items:center!important;
+  background:linear-gradient(160deg,#0f172a 0%,#211e54 100%);border:1px solid rgba(250,204,21,.28);
+  border-radius:999px;padding:.4rem .55rem!important;margin-top:.45rem;box-shadow:0 8px 22px rgba(30,27,75,.3)}
+[class*="st-key-kc_transport_row"] > div{flex:1 1 0!important;min-width:0!important}
+[class*="st-key-kc_transport_row"] button{min-height:2.7rem;border-radius:999px!important;white-space:nowrap;
+  padding-left:.35rem!important;padding-right:.35rem!important;font-weight:800!important;
+  background:rgba(255,255,255,.06)!important;border:1px solid rgba(139,92,246,.55)!important;color:#eef2ff!important}
+[class*="st-key-kc_transport_row"] button *{color:inherit!important}
+[class*="st-key-kc_transport_row"] button:hover:not(:disabled){border-color:#facc15!important;color:#ffffff!important}
+[class*="st-key-kc_transport_row"] button:focus-visible{outline:2px solid #facc15!important;outline-offset:2px}
+[class*="st-key-kc_transport_row"] button:disabled{opacity:.45!important}
+[class*="st-key-backing_key_cycle_pause_btn"] button{background:linear-gradient(180deg,#fbbf24 0%,#f59e0b 100%)!important;
+  border:2px solid #facc15!important;color:#3b2300!important;box-shadow:0 0 0 3px rgba(250,204,21,.18)}
+[class*="st-key-backing_key_cycle_stop_btn"] button{border-color:rgba(248,113,113,.65)!important;color:#fecaca!important}
+@media (max-width:480px){
+  /* Icon-only on a phone; the label stays as the accessible name. */
+  [class*="st-key-backing_key_cycle_prev_btn"] button p,
+  [class*="st-key-backing_key_cycle_advance_btn"] button p,
+  [class*="st-key-backing_key_cycle_stop_btn"] button p{position:absolute!important;width:1px!important;height:1px!important;
+    overflow:hidden!important;clip:rect(0 0 0 0)!important;white-space:nowrap!important}
+  [class*="st-key-kc_transport_row"] button{font-size:.86rem!important}
 }
 </style>
-        """,
-        unsafe_allow_html=True,
-    )
-    b1, b2, b3, b4 = st.columns(4)
-    # Icons beside unchanged labels (the labels are what the bridge and the tests read). Material icons, as the
-    # Backing card's own buttons use; the browser swaps play / pause with the label (see the 'Resume' writer).
-    with b1:
-        st.button(
-            pause_label,
-            key="backing_key_cycle_pause_btn",
-            icon=KC_PAUSE_ICON if pause_label != "Resume" else KC_RESUME_ICON,
-            use_container_width=True,
-            on_click=_toggle_key_cycle_pause_resume,
-            args=(session,),
-            disabled=transport_stopped,
-        )
-    # The bridge normally takes these clicks in the browser (see
-    # __kcStepBtnHandler); this server path only runs before it is installed.
-    # Callbacks, not `if st.button: ...; st.rerun()`: a press made while that
-    # rerun was running was dropped.
-    with b2:
-        st.button(
-            "Previous key",
-            key="backing_key_cycle_prev_btn",
-            icon=":material/skip_previous:",
-            use_container_width=True,
-            disabled=transport_stopped,
-            on_click=_step_key_cycle_from_button,
-            args=(session, -1),
-        )
-    with b3:
-        st.button(
-            "Next key",
-            key="backing_key_cycle_advance_btn",
-            icon=":material/skip_next:",
-            use_container_width=True,
-            disabled=transport_stopped,
-            on_click=_step_key_cycle_from_button,
-            args=(session, 1),
-        )
-    with b4:
-        if st.button(
-            "Turn off cycling",
-            key="backing_key_cycle_stop_btn",
-            icon=":material/sync_disabled:",  # the 🔄 of "Key Cycling", crossed out
-            use_container_width=True,
-        ):
-            stop_key_cycle(session)
-            # Must disable the dual-buffer *before* rerun — teardown after this
-            # playbar return is skipped when st.rerun() aborts the script.
-            try:
-                render_backing_key_cycle_persistent_player(
-                    st,
-                    session,
-                    current_url="",
-                    next_url="",
-                    autoplay=False,
-                    force_disable=True,
-                )
-                session["_kc_persistent_player_mounted"] = False
-                session.pop("_kc_player_needs_teardown", None)
-                session.pop("_kc_force_player_off", None)
-            except Exception:
-                pass
-            st.rerun()
+"""
 
 
 def html_escape(text: str) -> str:
@@ -13830,6 +14892,7 @@ __all__ = [
     "STATUS_OFF",
     "STATUS_RUNNING",
     "STATUS_STOPPED",
+    "adopt_sounding_key_at_pause",
     "advance_key_cycle_now",
     "apply_backing_key_cycle",
     "arm_key_cycle_prefetch",
