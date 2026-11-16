@@ -122,14 +122,34 @@ class WhenTheStoreRefusesTheType(unittest.TestCase):
         self.assertTrue(ref)
         self.assertEqual(self.attempts, ["image/jpeg"])
 
-    def test_a_refused_type_is_retried_as_an_opaque_blob(self) -> None:
+    def test_a_refused_type_is_not_quietly_sent_as_an_opaque_blob(self) -> None:
+        """A file keeps the type it really has. The bucket is what has to change.
+
+        Storing a PDF as application/octet-stream loses the type in the one place that is meant
+        to know it, and leaning on that would turn a storage misconfiguration into permanent app
+        behaviour. So the bridge is off unless deliberately switched on.
+        """
         self.refuse = {"application/pdf"}
         ref, err = media_storage.upload_song_document_cloud("ws", "doc3", PDF)
-        self.assertTrue(ref, "the reference still reached the cloud")
+        self.assertEqual(ref, "")
+        self.assertEqual(self.attempts, ["application/pdf"], "no silent second type")
+        self.assertIn("has to allow", err)
+
+    def test_the_transitional_bridge_only_runs_when_switched_on(self) -> None:
+        """So a musician can still get references off one device while the bucket is wrong."""
+        import os
+
+        self.refuse = {"application/pdf"}
+        os.environ["MUSIC_DOCUMENT_CLOUD_TYPE_BRIDGE"] = "1"
+        try:
+            ref, err = media_storage.upload_song_document_cloud("ws", "doc3b", PDF)
+        finally:
+            os.environ.pop("MUSIC_DOCUMENT_CLOUD_TYPE_BRIDGE", None)
+        self.assertTrue(ref)
         self.assertEqual(self.attempts,
                          ["application/pdf", media_storage.DOCUMENT_FALLBACK_CONTENT_TYPE])
 
-    def test_when_both_are_refused_the_message_names_the_cause_and_the_fix(self) -> None:
+    def test_when_the_type_is_refused_the_message_names_the_cause_and_the_fix(self) -> None:
         self.refuse = {"application/pdf", media_storage.DOCUMENT_FALLBACK_CONTENT_TYPE}
         ref, err = media_storage.upload_song_document_cloud("ws", "doc4", PDF)
         self.assertEqual(ref, "")

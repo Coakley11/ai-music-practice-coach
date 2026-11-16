@@ -441,10 +441,18 @@ def save_song_document_local(
 #: Measured on a phone: "415 invalid_mime_type: application/pdf is not supported".
 _MIME_REFUSED_MARKERS = ("invalid_mime_type", "mime type", "mime_type", "415")
 
-#: Tried when a specific type is refused. A bucket that lists no type for PDFs or images may
-#: still accept an opaque blob, and the reference is ours to interpret - we record the real type
-#: ourselves and never rely on the store to tell us what the file was.
+#: A transitional bridge, OFF by default, for the window before the private bucket allows the
+#: reference types. A file should keep the content type it really has: storing a PDF as an opaque
+#: blob loses the type in the one place that is supposed to know it, and leaning on it would turn
+#: a storage misconfiguration into a permanent app behaviour. The fix is the bucket's allowed-type
+#: list; this only exists so a musician can get their references off one device in the meantime,
+#: and only when switched on deliberately with MUSIC_DOCUMENT_CLOUD_TYPE_BRIDGE=1.
 DOCUMENT_FALLBACK_CONTENT_TYPE = "application/octet-stream"
+
+
+def _type_bridge_enabled() -> bool:
+    return str(os.environ.get("MUSIC_DOCUMENT_CLOUD_TYPE_BRIDGE") or "").strip().lower() in (
+        "1", "true", "yes", "on")
 
 
 def _mime_was_refused(error: Any) -> bool:
@@ -500,7 +508,7 @@ def upload_song_document_cloud(
         except ImportError:
             declared = "application/pdf"
     attempts = [declared]
-    if declared != DOCUMENT_FALLBACK_CONTENT_TYPE:
+    if _type_bridge_enabled() and declared != DOCUMENT_FALLBACK_CONTENT_TYPE:
         attempts.append(DOCUMENT_FALLBACK_CONTENT_TYPE)
     last = ""
     for content_type in attempts:
