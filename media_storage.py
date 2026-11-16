@@ -437,14 +437,52 @@ def save_song_document_local(
         return "", str(exc)
 
 
+#: A refusal of the TYPE, as the storage API words it, rather than any other upload failure.
+#: Measured on a phone: "415 invalid_mime_type: application/pdf is not supported".
+_MIME_REFUSED_MARKERS = ("invalid_mime_type", "mime type", "mime_type", "415")
+
+#: Tried when a specific type is refused. A bucket that lists no type for PDFs or images may
+#: still accept an opaque blob, and the reference is ours to interpret - we record the real type
+#: ourselves and never rely on the store to tell us what the file was.
+DOCUMENT_FALLBACK_CONTENT_TYPE = "application/octet-stream"
+
+
+def _mime_was_refused(error: Any) -> bool:
+    text = str(error or "").lower()
+    return any(marker in text for marker in _MIME_REFUSED_MARKERS)
+
+
+def document_mime_rejected_message(mime_type: Any, error: Any) -> str:
+    """Why the cloud copy was refused, and what would let it through.
+
+    A musician seeing only "cloud save failed" cannot act, and neither can whoever configures
+    the bucket. This names the type that was refused and the types the private store needs to
+    allow for references to follow a musician between devices.
+    """
+    from upload_media import document_mime_types_accepted
+
+    want = ", ".join(document_mime_types_accepted())
+    return (
+        f"the private storage refused the file type {str(mime_type or '').strip() or 'unknown'} "
+        f"({str(error or '').strip()}). Your file is saved on this device. To let references "
+        f"sync between devices, the private media bucket has to allow: {want}"
+    )
+
+
 def upload_song_document_cloud(
     workspace_id: str,
     document_id: str,
     data: bytes,
     *,
     user_id: str | None = None,
+    mime_type: str = "",
 ) -> tuple[str, str]:
-    """Upload to the private media bucket. ``(storage_ref, error)``."""
+    """Upload to the private media bucket. ``(storage_ref, error)``.
+
+    The declared content type is the type the file really is. It used to be hardcoded to
+    ``application/pdf`` for every reference, which is wrong for a photograph and is what the
+    store refused with ``415 invalid_mime_type``.
+    """
     if not _cloud_storage_enabled():
         return "", "cloud_disabled"
     client = _service_storage_client()
@@ -453,16 +491,32 @@ def upload_song_document_cloud(
     bucket = _media_bucket()
     uid = user_id or _resolve_user_id()
     object_key = build_song_document_object_key(uid, workspace_id, document_id)
-    try:
-        storage = client.storage.from_(bucket)
-        storage.upload(
-            object_key,
-            data,
-            file_options={"content-type": "application/pdf", "upsert": "true"},
-        )
-        return build_storage_ref(bucket, object_key), ""
-    except Exception as exc:
-        return "", str(exc)
+    declared = str(mime_type or "").strip()
+    if not declared:
+        try:
+            from upload_media import document_mime_type
+
+            declared = document_mime_type(data) or "application/pdf"
+        except ImportError:
+            declared = "application/pdf"
+    attempts = [declared]
+    if declared != DOCUMENT_FALLBACK_CONTENT_TYPE:
+        attempts.append(DOCUMENT_FALLBACK_CONTENT_TYPE)
+    last = ""
+    for content_type in attempts:
+        try:
+            storage = client.storage.from_(bucket)
+            storage.upload(
+                object_key,
+                data,
+                file_options={"content-type": content_type, "upsert": "true"},
+            )
+            return build_storage_ref(bucket, object_key), ""
+        except Exception as exc:
+            last = str(exc)
+            if not _mime_was_refused(last):
+                return "", last
+    return "", document_mime_rejected_message(declared, last)
 
 
 def download_song_document_cloud(
@@ -507,6 +561,7 @@ def persist_song_document(
     user_id: str | None = None,
     reuse_storage_ref: str = "",
     reuse_local_path: str = "",
+    mime_type: str = "",
 ) -> dict[str, Any]:
     """Store one document and say honestly where it ended up.
 
@@ -538,7 +593,7 @@ def persist_song_document(
 
     rel, local_err = save_song_document_local(workspace_id, document_id, data)
     ref, cloud_err = upload_song_document_cloud(
-        workspace_id, document_id, data, user_id=user_id
+        workspace_id, document_id, data, user_id=user_id, mime_type=mime_type
     )
     if ref:
         status, error = DOCUMENT_STORAGE_CLOUD, ""

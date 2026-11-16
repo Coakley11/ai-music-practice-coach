@@ -42,7 +42,9 @@ class LifecycleCase(unittest.TestCase):
         self.cloud_enabled = True
         self.workspace = self.WORKSPACE
 
-        def upload(ws, did, data, user_id=None):
+        # ``mime_type`` arrived with image references: the upload declares the type the
+        # file really is, because the private store refuses one that is not allowed.
+        def upload(ws, did, data, user_id=None, mime_type=""):
             if not self.cloud_enabled:
                 return "", "cloud_disabled"
             key = media_storage.build_song_document_object_key(
