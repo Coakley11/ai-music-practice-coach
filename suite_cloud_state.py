@@ -668,6 +668,59 @@ def plan_own_write_recovery(own_rev: int, expected: int, candidate: int) -> tupl
     return "superseded", own, cand
 
 
+def _recover_local_revision_ahead_of_cloud(
+    ss: Any, storage: Any, storage_app_key: str, prep: dict[str, Any], state: Any
+) -> tuple[dict[str, Any], dict[str, Any]] | None:
+    """Pre-flight refused the write because the candidate revision is not above the 'applied' revision.
+
+    That is a genuine problem only when the cloud really is at (or beyond) that revision. Overlapping or interrupted runs
+    can also push the session's LOCAL revision ahead of what the cloud holds (writes that never landed): the next
+    candidate then equals the local revision, and the session is refused for a conflict that does not exist.
+    When the cloud row was last written by THIS session at a revision at or below the local one, the cloud is simply behind
+    our own newer local state: write on top of it at a revision above both. A row last written by another session, or one
+    whose stored revision is above our local one, is left refused exactly as before.
+    """
+    try:
+        token = _music_writer_token(ss)
+        if not token or not isinstance(state, dict):
+            return None
+        applied = int(prep.get("device_applied_revision") or 0)
+        candidate = int(prep.get("candidate_revision") or 0)
+        if candidate > applied or applied <= 0:
+            return None
+        own_rev = _own_write_revision(storage, storage_app_key, token)
+        if own_rev <= 0 or own_rev > applied:
+            return None
+        new_candidate = max(candidate, applied) + 1
+        from workspace_revision import stamp_workspace_revision_into_state
+
+        stamped = stamp_workspace_revision_into_state(copy.deepcopy(state), new_candidate)
+        try:
+            from music_device_applied_revision import set_device_applied_revision_from_authoritative_hydrate
+
+            set_device_applied_revision_from_authoritative_hydrate(
+                ss, own_rev, stage="own_write_local_ahead_recovery", source="own_write_readback",
+            )
+        except ImportError:
+            pass
+        return (
+            dict(
+                prep,
+                blocked_precheck=False,
+                candidate_revision=new_candidate,
+                expected_revision=own_rev,
+                precondition_expected_revision=own_rev,
+                device_applied_revision=own_rev,
+                applied_revision_before_prep=own_rev,
+                own_write_recovered=True,
+                local_revision_ahead_of_cloud=True,
+            ),
+            stamped,
+        )
+    except Exception:
+        return None
+
+
 def _stored_composition_matches(storage: Any, storage_app_key: str, state: Any) -> bool:
     """Does the stored Composition content equal what this run is about to write? (Used only to confirm that an
     equal-revision clash is the same content already persisted.) Unknown or different -> False (treated as conflict)."""
@@ -829,6 +882,37 @@ def save_cloud_full_session(
             prep = prepare_music_conditional_write(ss, state if isinstance(state, dict) else {})
             candidate = int(prep.get("candidate_revision") or base.cloud_payload_revision or 0)
             expected = int(prep.get("precondition_expected_revision") or 0)
+            if prep.get("blocked_precheck"):
+                bumped = _recover_local_revision_ahead_of_cloud(ss, storage, storage_app_key, prep, state)
+                if bumped is not None:
+                    prep, state = bumped
+                    candidate = int(prep.get("candidate_revision") or candidate)
+                    expected = int(prep.get("precondition_expected_revision") or 0)
+            if prep.get("blocked_precheck"):
+                newer_own = _own_write_revision(storage, storage_app_key, _music_writer_token(ss) or "")
+                if newer_own > 0 and newer_own > int(prep.get("candidate_revision") or 0):
+                    # The pre-flight refused an OLDER run: the cloud already holds a newer write of this same session.
+                    # Not a conflict (no banner, no block); nothing is written and the newest local state stays unsaved
+                    # so the next save carries it.
+                    cas = {
+                        "accepted": False, "rows_affected": 0, "write_mode": "own_write_superseded",
+                        "conditional_write_attempted": False, "unconditional_upsert_attempted": False,
+                        "reason": "superseded_by_newer_own_write",
+                    }
+                    record_conditional_write_result(ss or {}, prep=prep, cas=cas, saved=False)
+                    result = replace(
+                        base,
+                        failure_stage="superseded_by_newer_own_write",
+                        cloud_client_available=True,
+                        cloud_upsert_attempted=False,
+                        cloud_upsert_succeeded=False,
+                        conditional_write_attempted=False,
+                        stale_write_blocked=False,
+                        storage_module=module_name,
+                        storage_app_key=storage_app_key,
+                    )
+                    _record_cloud_save_result(ss, result)
+                    return result
             if prep.get("blocked_precheck"):
                 cas = {
                     "accepted": False,

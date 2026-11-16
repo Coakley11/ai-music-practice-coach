@@ -92,7 +92,8 @@ class Device:
         state = {"composition_workspace_state": {"active_document": {"content": run.content}}, "workspace_revision": 0}
         prepared = {"candidate_revision": run.candidate, "precondition_expected_revision": run.expected,
                     "expected_revision": run.expected, "device_applied_revision": run.expected,
-                    "applied_revision_before_prep": run.expected, "blocked_precheck": False, "violations_precheck": []}
+                    "applied_revision_before_prep": run.expected, "blocked_precheck": run.candidate <= run.expected,
+                    "violations_precheck": (["REVISION_REUSED_WITH_DIFFERENT_PAYLOAD"] if run.candidate <= run.expected else [])}
         patches = [
             mock.patch.object(scs, "_streamlit_session", return_value=self.ss),
             mock.patch.object(scs, "_cloud_save_account_context", return_value={}),
@@ -307,6 +308,52 @@ class TestReversedCompletionOrder(unittest.TestCase):
         r = a.complete(first)                                              # already persisted: no write, no conflict
         self.assertTrue(r.success, getattr(r, "failure_stage", ""))
         self.assertEqual(stored_content(store), "same")
+
+
+class TestLocalRevisionAheadOfCloud(unittest.TestCase):
+    """Writes that never landed can push the session's LOCAL revision ahead of the cloud. The next candidate then equals
+    the local revision and the pre-flight refused the session for a conflict that does not exist (the banner 'This
+    workspace changed on another device' with no other device involved)."""
+
+    def test_cloud_last_written_by_us_and_behind_our_local_revision_is_not_a_conflict(self):
+        store = FakeStore(); a = Device(store)
+        self.assertTrue(a.save("v1").success)                              # cloud at 1, written by this session
+        a.applied = a.counter = 9                                          # local revision ran ahead (writes never landed)
+        r = a.save("v2", revision=9)                                       # candidate 9 is not above applied 9
+        self.assertTrue(r.success, getattr(r, "failure_stage", ""))
+        self.assertEqual(stored_content(store), "v2")
+        self.assertGreater(store.stored_revision(), 9)
+        self.assertFalse(a.ss.get("_music_stale_write_blocked"))
+        self.assertTrue(a.save("v3").success)                              # and saving carries on
+
+    def test_cloud_last_written_by_another_session_stays_refused(self):
+        store = FakeStore(); a = Device(store, "A"); b = Device(store, "B")
+        self.assertTrue(b.save("B wrote this").success)                    # cloud at 1, written by B
+        a.applied = a.counter = 9
+        before = (store.stored_revision(), stored_content(store))
+        r = a.save("A edit", revision=9)
+        self.assertFalse(r.success)                                        # not ours: genuine conflict, refused
+        self.assertEqual((store.stored_revision(), stored_content(store)), before)
+
+    def test_cloud_ahead_of_our_local_revision_is_not_adopted(self):
+        store = FakeStore(); a = Device(store)
+        for i in range(5):
+            self.assertTrue(a.save("v%d" % i).success)                     # cloud at 5, ours
+        a.applied = 3                                                      # local believes 3, candidate 3: older run
+        r = a.save("an old straggler", revision=3)
+        self.assertEqual(stored_content(store), "v4")                      # the newer committed content survives
+        self.assertFalse(r.success)
+        self.assertEqual(r.failure_stage, "superseded_by_newer_own_write") # an older run, not a conflict ...
+        self.assertFalse(a.ss.get("_music_stale_write_blocked"))           # ... so no banner and no block
+
+    def test_repeated_local_ahead_episodes(self):
+        store = FakeStore(); a = Device(store)
+        self.assertTrue(a.save("v0").success)
+        for i in range(1, 6):
+            a.applied = a.counter = store.stored_revision() + 4            # ahead again each time
+            r = a.save("v%d" % i, revision=a.counter)
+            self.assertTrue(r.success, "episode %d: %s" % (i, getattr(r, "failure_stage", "")))
+            self.assertEqual(stored_content(store), "v%d" % i)
 
 
 class TestGenuineCrossDeviceConflicts(unittest.TestCase):
