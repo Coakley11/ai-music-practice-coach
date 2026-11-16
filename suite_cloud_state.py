@@ -86,6 +86,18 @@ def _record_cloud_save_result(session: dict[str, Any] | None, result: CloudSaveR
     session[CLOUD_SAVE_DIAG_KEY] = result.to_diag()
     session["_suite_last_cloud_save_failure_stage"] = result.failure_stage or None
     session["_suite_last_cloud_save_exception"] = result.exception or None
+    if not result.success:
+        try:  # a refused/failed cloud write must leave a trace in the app logs (codes only, no content or ids)
+            from composition_save_verification import _scrub
+
+            print(
+                f"[music_cloud_save] FAILED stage={_scrub(result.failure_stage, 60) or '-'} "
+                f"exception={_scrub(result.exception, 160) or '-'} stale_blocked={bool(result.stale_write_blocked)} "
+                f"account_resolved={bool(result.account_id_resolved)} cas_attempted={bool(result.conditional_write_attempted)}",
+                flush=True,
+            )
+        except Exception:
+            pass
 
 
 def _cloud_save_account_context() -> dict[str, Any]:
