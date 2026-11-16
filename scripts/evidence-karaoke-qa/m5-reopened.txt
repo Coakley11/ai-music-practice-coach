@@ -1,0 +1,327 @@
+←
+
+→
+
+keyboard_arrow_down
+
+Account & Workspace
+
+Active workspace: Daniel
+
+Shared suite profile (no individual sign-in on this deploy).
+
+Command Center
+
+🏠
+
+Saved Sessions
+
+Your last page, filters, and inputs reload automatically.
+
+Reset to default
+
+Membership
+
+Current access: Open access
+
+View plans
+
+🎼 ACTIVE SONG
+
+CUSTOM PROGRESSION
+Blue Bossa
+
+🎼 Songs
+
+Edit chords in Custom Progression Lab.
+
+📜 Song Original Key: Cm
+
+Practice / Concert Key
+
+🎸 YOUR PRACTICE SETUP
+
+Instrument
+
+📈 Level
+
+🔍 Practice focus
+
+💬 MUSIC COACH
+
+💬 Ask the Music Coach
+
+Get help with practice, theory, navigation, backing tracks, karaoke, or this app.
+
+Question
+
+💬 Ask the Music Coach
+
+⏱️ SESSION
+
+⏱️ Session: 30 min (adjust on the Practice page)
+
+☰ Pages
+
+Deploy
+🎵 Daniel Cohen Music Practice Coach AI
+
+AI-powered practice studio for songs, backing tracks, harmony, improvisation, recording, and instrument-specific coaching.
+
+📖 Tutorial
+
+🏠
+Home
+
+Open
+
+🎯
+Practice
+
+Open
+
+🎼
+Songs
+
+Open
+
+🎧
+Backing
+
+Open
+
+✍️
+Custom
+
+Open
+
+🪶
+Compose
+
+Open
+
+🎨
+Creative
+
+Open
+
+🎙️
+Upload
+
+Open
+
+🎚️
+Multitrack
+
+Open
+
+📓
+Log
+
+Open
+
+🎤
+
+SONG CATALOG
+
+Songs
+
+Song Selection
+
+Pick songs in **Active Song**, use **Edit Song Chart** for chords, or build your **Karaoke Performance Setlist** below.
+
+🎤
+Vocal practice mode · Breath Control — Breath, resonance, and vowel consistency more than volume. · Choose your active song for the whole studio.
+
+MUSIC SOURCE
+
+🎵 Song Selection (catalog song)
+
+✍️ Custom Progression
+
+🪶 Composition
+
+CURRENT ACTIVE SONG
+
+✍️ This is your song — Practice, Creative, Backing Track, and charts follow this custom progression.
+
+CUSTOM SONGS
+
+Cloud storage is not configured on this deployment. Custom songs are kept on this server only and are lost when the app restarts.
+
+➕ New Song
+
+▸ Blue Bossa · Nov 15, 2026 09:01 PM · Cm · Bossa · 120 BPM
+
+✕
+
+CUSTOM
+Your progression
+Cm7
+Fm7
+Dm7b5
+G7b9
+✍️
+CUSTOM
+🌴
+BOSSA
+Blue Bossa
+
+📜
+ORIGINAL KEY
+
+C minor
+
+🗝️
+I’M PLAYING IN
+
+Tap to change
+
+⏱
+BPM
+120
+🥁
+Meter
+4/4
+✨
+Style
+🌴
+Bossa
+📀
+Source
+✍️
+Custom
+🎸
+Your setup
+🚀
+Intermediate
+🎤
+Voice
+🎤
+Breath Control
+📈
+Chart levels
+🌱
+Beginner
+🚀
+Intermediate
+🧠
+Advanced
+Common in Bossa
+🎹
+Piano
+🎸
+Guitar
+🎤
+Voice
+🎼
+Harmony
+
+Built mainly from ii–V pairs (Dm7♭5–G7♭9, E♭m7–A♭7) in C minor that point at different chords. The verse moves to D♭maj7 (♭II) before returning.
+
+🎶
+Melody
+
+Shape phrases in 17-bar sections that land on the 3rd of each new chord as the harmony changes, keeping the bossa nova pulse. The Generated Practice Melody on the Practice page (Chart & Melody) offers more ideas over these changes (generated for this song's chords, not the original melody).
+
+🔍
+Your focus: Breath Control
+
+Plan breaths at the ends of phrases so the 17-bar sections flow without breaking a line.
+
+🔥
+Your challenge
+
+Sing the verse at 95 BPM breathing only every 4 bars, keeping the sound steady to the end of each phrase.
+
+✍️ Custom chart
+
+Open the Custom page chord editor for this active custom progression — source, title, progression, and Practice Key are preserved.
+
+✍️ Edit custom chart
+
+🎤 Add again (1 in set)
+
+LOAD LAST SONG
+
+Load Last Song — 💜 Just the Two of Us — Grover Washington Jr. / Bill Withers
+
+🎯 Practice
+
+🎧 Backing
+
+🎨 Creative
+
+🎤 Karaoke
+
+📖 Chord Coach
+
+🧭 Song-Aware Coaching
+
+keyboard_arrow_right
+
+Lyrics
+
+VOCAL PERFORMANCE
+
+🎤 Karaoke Performance Setlist (3 queued)
+
+Practice Key: Use the Practice Key control in the left sidebar before adding a song. The current Practice Key is saved with that Karaoke entry.
+
+Click a song to make it the active editing/viewing song (lyrics, song card, backing defaults switch to it). Queue order and karaoke state stay untouched.
+
+CATALOG
+NOW SINGING
+
+1. Say · Bb
+
+↑
+
+↓
+
+✕
+
+CATALOG
+
+2. Just the Two of Us · Db
+
+↑
+
+↓
+
+✕
+
+CUSTOM
+NOW EDITING
+
+3. Blue Bossa · Cm
+
+↑
+
+↓
+
+✕
+
+▶️ Start Karaoke Set
+
+⏹️ End Karaoke Set
+
+🗑️ Clear Setlist
+
+Auto-advance between songs
+
+Countdown before each song
+
+Countdown length
+
+5
+
+1
+
+10
+
+Show chords while singing
+
+Lyric color
+
+Key cycling off

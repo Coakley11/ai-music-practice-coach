@@ -1,0 +1,58 @@
+worktree : /c/tmp/ai-music-slice2
+script   : scripts/_accept_karaoke_mixed_source.py
+port     : 8619
+cleared  : ignored app state under /c/tmp/ai-music-slice2/data (tracked fixtures kept)
+server pid: 186035
+[PASS] M1 app renders  
+picked Say dropdown=True landed=True sidebar_song='SONG\n\nSONG\nSay — John Mayer\n\n🎼 Songs\n\nSay · Pop\n\n📜 Song Original Key: Bb\n\n🗝️ Practice / Co'
+[PASS] M2 Say is queued in its own key  sidebar='Bb'
+picked Just the Two of Us dropdown=True landed=True sidebar_song='SONG\n\nSONG\nJust the Two of Us — Grover Washington Jr. / Bill Withers\n\n🎼 Songs\n\nJust the Tw'
+    Practice Key Db: 'Db' -> 'Db' (clicked 'Db') -> 'Db' after the rerun
+[PASS] M3 Just the Two of Us is queued in Db  sidebar='Db'
+[PASS] M4 a Custom progression is the active song  expanders=True/True load=True save=True active=True
+[PASS] M5 the Custom progression is queued  
+[PASS] M6 three entries of mixed material  [('catalog', 'Catalog'), ('catalog', 'Catalog'), ('custom', 'Custom')]
+[PASS] M7 the Custom row says Custom, from its metadata  [('Custom', '3. Blue Bossa ? Cm')]
+[PASS] M8 the Catalog rows say Catalog  ['Catalog', 'Catalog']
+[PASS] M9 the kinds are painted differently  {'catalog': 'rgba(220, 38, 38, 0.82)', 'custom': 'rgba(21, 128, 61, 0.86)'}
+[PASS] M10 a Custom title that looks like a standard is still Custom  label='3. Blue Bossa ? Cm'
+    saved keys before the performance: ['bb', 'db', 'cm']
+[PASS] M11 the mixed set performs  Now Singing row 0 (start helper True)
+[PASS] M12 Next moves Now Singing  row 0 -> 1 (helper True)
+[PASS] M13 Previous brings it back  row 1 -> 0 (helper True)
+    Practice Key F: FAILED, still 'F'
+[FAIL] M14 a temporary key change takes during the performance  'Backing source: Catalog song ? Say ? Bb ? 82 BPM' -> 'Backing source: Catalog song ? Say ? Bb ? 82 BPM'
+[PASS] M15 no saved entry moved with it  ['bb', 'db', 'cm'] -> ['bb', 'db', 'cm']
+[FAIL] M16 Stop answers during a performance  
+[PASS] M17 the set ends  
+[PASS] M18 reopening the setlist finds all three entries  3 rows
+[PASS] M19 every saved key survived the performance  ['bb', 'db', 'cm'] -> ['bb', 'db', 'cm']
+[PASS] M20 the sources survived too  ['catalog', 'catalog', 'custom']
+
+======================================================================
+  PASS  M1 app renders
+  PASS  M2 Say is queued in its own key
+  PASS  M3 Just the Two of Us is queued in Db
+  PASS  M4 a Custom progression is the active song
+  PASS  M5 the Custom progression is queued
+  PASS  M6 three entries of mixed material
+  PASS  M7 the Custom row says Custom, from its metadata
+  PASS  M8 the Catalog rows say Catalog
+  PASS  M9 the kinds are painted differently
+  PASS  M10 a Custom title that looks like a standard is still Custom
+  PASS  M11 the mixed set performs
+  PASS  M12 Next moves Now Singing
+  PASS  M13 Previous brings it back
+  FAIL  M14 a temporary key change takes during the performance
+  PASS  M15 no saved entry moved with it
+  FAIL  M16 Stop answers during a performance
+  PASS  M17 the set ends
+  PASS  M18 reopening the setlist finds all three entries
+  PASS  M19 every saved key survived the performance
+  PASS  M20 the sources survived too
+  OBS   picked Say dropdown=True landed=True sidebar_song='SONG\n\nSONG\nSay ? John Mayer\n\n? Songs\n\nSay ? Pop\n\n? Song Original Key: Bb\n\n?? Practice / Co'
+  OBS   picked Just the Two of Us dropdown=True landed=True sidebar_song='SONG\n\nSONG\nJust the Two of Us ? Grover Washington Jr. / Bill Withers\n\n? Songs\n\nJust the Tw'
+
+18/20 gates passed
+stopping the server (pid 186035)
+exit=1

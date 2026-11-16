@@ -1,0 +1,41 @@
+[
+  {
+    "row": 0,
+    "source": "catalog",
+    "chip": "Catalog",
+    "chip_bg": "rgba(220, 38, 38, 0.82)",
+    "chip_fg": "rgb(255, 241, 242)",
+    "marker": "",
+    "label": "1. Say \u00b7 Bb",
+    "classes": "ui-karaoke-pick-wrap is-idle src-catalog",
+    "right": 980,
+    "width": 590,
+    "clipped": false
+  },
+  {
+    "row": 1,
+    "source": "catalog",
+    "chip": "Catalog",
+    "chip_bg": "rgba(220, 38, 38, 0.82)",
+    "chip_fg": "rgb(255, 241, 242)",
+    "marker": "",
+    "label": "2. Just the Two of Us \u00b7 Db",
+    "classes": "ui-karaoke-pick-wrap is-idle src-catalog",
+    "right": 980,
+    "width": 590,
+    "clipped": false
+  },
+  {
+    "row": 2,
+    "source": "catalog",
+    "chip": "Catalog",
+    "chip_bg": "rgba(220, 38, 38, 0.82)",
+    "chip_fg": "rgb(255, 241, 242)",
+    "marker": "Now editing",
+    "label": "3. Perfect \u00b7 Ab",
+    "classes": "ui-karaoke-pick-wrap is-editing src-catalog",
+    "right": 980,
+    "width": 590,
+    "clipped": false
+  }
+]

@@ -1,0 +1,41 @@
+[
+  {
+    "row": 0,
+    "source": "catalog",
+    "chip": "Catalog",
+    "chip_bg": "rgba(220, 38, 38, 0.82)",
+    "chip_fg": "rgb(255, 241, 242)",
+    "marker": "Now Singing",
+    "label": "1. Say \u00b7 Bb",
+    "classes": "ui-karaoke-pick-wrap is-singing src-catalog",
+    "right": 980,
+    "width": 590,
+    "clipped": false
+  },
+  {
+    "row": 1,
+    "source": "catalog",
+    "chip": "Catalog",
+    "chip_bg": "rgba(220, 38, 38, 0.82)",
+    "chip_fg": "rgb(255, 241, 242)",
+    "marker": "",
+    "label": "2. Just the Two of Us \u00b7 Db",
+    "classes": "ui-karaoke-pick-wrap is-idle src-catalog",
+    "right": 980,
+    "width": 590,
+    "clipped": false
+  },
+  {
+    "row": 2,
+    "source": "custom",
+    "chip": "Custom",
+    "chip_bg": "rgba(21, 128, 61, 0.86)",
+    "chip_fg": "rgb(240, 253, 244)",
+    "marker": "Now editing",
+    "label": "3. Blue Bossa \u00b7 Cm",
+    "classes": "ui-karaoke-pick-wrap is-editing src-custom",
+    "right": 980,
+    "width": 590,
+    "clipped": false
+  }
+]

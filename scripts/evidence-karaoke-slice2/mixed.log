@@ -1,0 +1,90 @@
+worktree : /c/tmp/ai-music-slice2
+script   : scripts/_accept_karaoke_mixed_source.py
+port     : 8618
+cleared  : ignored app state under /c/tmp/ai-music-slice2/data (tracked fixtures kept)
+server pid: 185914
+[PASS] M1 app renders  
+picked Say dropdown=True landed=True sidebar_song='SONG\n\nSONG\nSay — John Mayer\n\n🎼 Songs\n\nSay · Pop\n\n📜 Song Original Key: Bb\n\n🗝️ Practice / Co'
+[PASS] M2 a Catalog song is in the set  
+  click cpl_demo_blue_bossa failed: Locator.click: Timeout 8000ms exceeded.
+Call log:
+  - waiting for locator("[class*=\"st-key-cpl_demo_blue_bossa\"] button").first
+    - locator resolved to <button aria-label="" kind="secondary" data-testid="stBaseButton-secondary" class="st-emotion-cache-en1taq ewrlt5x2">?</button>
+  - attempting click action
+    2 ? waiting for element to be visible, enabled and stable
+      - element is not visible
+    - retrying click action
+    - waiting 20ms
+    2 ? waiting for element to be visible, enabled and stable
+      - element is not visible
+    - retrying click action
+      - waiting 100ms
+    15 ? waiting for element to be visible, enabled and stable
+       - element is not visible
+     - retrying click action
+       - waiting 500ms
+
+[FAIL] M3 a Custom progression is the active song  load=False save=True active=True
+[PASS] M4 the Custom progression was added to the set  
+[PASS] M5 the setlist holds both kinds of material  [('catalog', 'Catalog'), ('custom', 'Custom'), ('custom', 'Custom')]
+[FAIL] M6 the Custom row says Custom, from its metadata  [('Custom', '2. My Progression ? C'), ('Custom', '3. My Progression ? C')]
+[PASS] M7 it carries the Custom colour class, not the Catalog one  classes='ui-karaoke-pick-wrap is-editing src-custom'
+[PASS] M8 the Catalog rows are untouched  ['Catalog']
+[PASS] M9 the two kinds are painted differently  {'catalog': 'rgba(220, 38, 38, 0.82)', 'custom': 'rgba(21, 128, 61, 0.86)'}
+[FAIL] M10 a title that looks like a standard is still Custom  label='2. My Progression ? C'
+[PASS] M11 the mixed set performs  (start helper True)
+[FAIL] M12 Next moves Now Singing to another entry  row None -> None (helper False)
+[FAIL] M13 Previous brings it back  row None -> None (helper False)
+Traceback (most recent call last):
+  File "C:\tmp\ai-music-slice2\scripts\_accept_karaoke_mixed_source.py", line 231, in <module>
+  File "C:\tmp\ai-music-slice2\scripts\_accept_karaoke_mixed_source.py", line 177, in main
+    settle(page, 5)
+    ~~~~~~^^^^^^^^^
+  File "C:\tmp\ai-music-slice2\scripts\walk_creative_backing_matrix.py", line 181, in click_nav
+    opens.nth(vis[idx]).click()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\danie\AppData\Local\Programs\Python\Python313\Lib\site-packages\playwright\sync_api\_generated.py", line 17422, in click
+    self._sync(
+    ~~~~~~~~~~^
+        self._impl_obj.click(
+        ^^^^^^^^^^^^^^^^^^^^^
+    ...<10 lines>...
+        )
+        ^
+    )
+    ^
+  File "C:\Users\danie\AppData\Local\Programs\Python\Python313\Lib\site-packages\playwright\_impl\_sync_base.py", line 115, in _sync
+    return task.result()
+           ~~~~~~~~~~~^^
+  File "C:\Users\danie\AppData\Local\Programs\Python\Python313\Lib\site-packages\playwright\_impl\_locator.py", line 163, in click
+    return await self._frame._click(self._selector, strict=True, **params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\danie\AppData\Local\Programs\Python\Python313\Lib\site-packages\playwright\_impl\_frame.py", line 569, in _click
+    await self._channel.send("click", self._timeout, locals_to_params(locals()))
+  File "C:\Users\danie\AppData\Local\Programs\Python\Python313\Lib\site-packages\playwright\_impl\_connection.py", line 69, in send
+    return await self._connection.wrap_api_call(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<3 lines>...
+    )
+    ^
+  File "C:\Users\danie\AppData\Local\Programs\Python\Python313\Lib\site-packages\playwright\_impl\_connection.py", line 559, in wrap_api_call
+    raise rewrite_error(error, f"{parsed_st['apiName']}: {error}") from None
+playwright._impl._errors.TimeoutError: Locator.click: Timeout 30000ms exceeded.
+Call log:
+  - waiting for locator("button").filter(has_text=re.compile(r"^Open$")).nth(4)
+    - locator resolved to <button disabled aria-label="" kind="secondary" data-testid="stBaseButton-secondary" class="st-emotion-cache-en1taq ewrlt5x2">…</button>
+  - attempting click action
+    2 × waiting for element to be visible, enabled and stable
+      - element is not enabled
+    - retrying click action
+    - waiting 20ms
+    2 × waiting for element to be visible, enabled and stable
+      - element is not enabled
+    - retrying click action
+      - waiting 100ms
+    58 × waiting for element to be visible, enabled and stable
+       - element is not enabled
+     - retrying click action
+       - waiting 500ms
+
+stopping the server (pid 185914)

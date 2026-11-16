@@ -1,0 +1,456 @@
+←
+
+→
+
+keyboard_arrow_down
+
+Account & Workspace
+
+Active workspace: Daniel
+
+Shared suite profile (no individual sign-in on this deploy).
+
+Command Center
+
+🏠
+
+Saved Sessions
+
+Your last page, filters, and inputs reload automatically.
+
+Reset to default
+
+Membership
+
+Current access: Open access
+
+View plans
+
+🎼 ACTIVE SONG
+
+CUSTOM PROGRESSION
+Blue Bossa
+
+🎼 Songs
+
+Edit chords in Custom Progression Lab.
+
+📜 Song Original Key: Cm
+
+Practice / Concert Key
+
+🎸 YOUR PRACTICE SETUP
+
+Instrument
+
+📈 Level
+
+🔍 Practice focus
+
+💬 MUSIC COACH
+
+💬 Ask the Music Coach
+
+Get help with practice, theory, navigation, backing tracks, karaoke, or this app.
+
+Question
+
+💬 Ask the Music Coach
+
+⏱️ SESSION
+
+⏱️ Session: 30 min (adjust on the Practice page)
+
+☰ Pages
+
+Deploy
+🎵 Daniel Cohen Music Practice Coach AI
+
+AI-powered practice studio for songs, backing tracks, harmony, improvisation, recording, and instrument-specific coaching.
+
+📖 Tutorial
+
+🏠
+Home
+
+Open
+
+🎯
+Practice
+
+Open
+
+🎼
+Songs
+
+Open
+
+🎧
+Backing
+
+Open
+
+✍️
+Custom
+
+Open
+
+🪶
+Compose
+
+Open
+
+🎨
+Creative
+
+Open
+
+🎙️
+Upload
+
+Open
+
+🎚️
+Multitrack
+
+Open
+
+📓
+Log
+
+Open
+
+✍️
+
+PROGRESSION LAB
+
+Custom
+
+Custom Progression Lab
+
+Build chord progressions for your active song — then open in Backing Track.
+
+🎤
+Vocal practice mode · Breath Control — Breath, resonance, and vowel consistency more than volume. · Edit your custom chord progression.
+
+Blue Bossa is now your active song.
+
+CUSTOM SONG BUILDER
+
+Create Your Own Song
+
+Build a chord chart, set it as your active song, then practice with backing or karaoke.
+
+Song title
+
+Artist (optional)
+
+🥁 Meter
+
+4/4
+
+3/4
+
+6/8
+
+2/4
+
+⏱ BPM
+
+120
+
+50
+
+200
+
+✨ Genre / style
+
+Editing Blue Bossa
+
+Choose the Original Key, then Save to library.
+
+📜 Original Key
+
+💾 Save to library
+
+➕ New song
+
+☑️ Set as Active Song
+
+keyboard_arrow_right
+
+Load saved or demo charts
+
+keyboard_arrow_right
+
+Jazz chart demos
+
+PREVIEW
+
+Blue Bossa
+
+Original key C minor · Practice / Concert Key C minor
+
+⏱
+BPM
+120
+🥁
+METER
+4/4
+✨
+STYLE
+Bossa
+📀
+SOURCE
+Custom Progression
+
+Sections: Verse
+
+ACTIVE SONG
+
+🎧 Open in Backing Studio
+
+🧭 Song-Aware Coaching
+
+Section to edit
+
+1
+Style
+2
+Key
+3
+Chords
+4
+Finish
+5
+Save to Library
+6
+Backing Track
+
+Verse
+
+Original key C minor · Practice key C minor (builder and progression project from Practice Key; preset buttons use Presets key)
+
+keyboard_arrow_right
+
+🎼 Suggested Next Chord: Cm7
+
+1. Pick a chord
+
+Cm
+
+i
+
+Dm
+
+ii
+
+Eb
+
+III
+
+Fm
+
+iv
+
+Gm
+
+v
+
+Ab
+
+VI
+
+Bb
+
+VII
+keyboard_arrow_right
+
+➕ Custom / slash chord
+
+2. Choose duration (adds the chord, or resizes the last one)
+
+Verse Progression
+
+|
+Cm7
+i7
+|
+%
+|
+Fm7
+iv7
+|
+%
+|
+|
+Dm7b5
+iiø7
+|
+G7b9
+V7♭9
+|
+Cm7
+i7
+|
+%
+|
+|
+Ebm7
+iii7
+|
+Ab7
+VI7
+|
+Dbmaj7
+♭IImaj7
+|
+%
+|
+|
+Dm7b5
+iiø7
+|
+G7b9
+V7♭9
+|
+Cm7
+i7
+|
+Dm7b5
+iiø7
+|
+|
+G7b9
+V7♭9
+|
+
+▶ Preview Section
+
+¼ bar
+
+½ bar
+
+1 bar
+
+2 bars
+
+4 bars
+
+keyboard_arrow_right
+
+Split measure — put two chords in one bar
+
+keyboard_arrow_right
+
+Chord builder — root + quality + extension
+
+Presets
+
+Presets key
+
+Preset buttons use C minor. Song Practice Key stays C minor.
+
+Bossa chart demos (C minor)
+
+Blue Bossa (jazz chart)
+
+Bossa presets (C minor) — appends to Verse
+
+Bossa ii–V: Dm7 G7 Cmaj7
+
+Roman numerals: ii7 – V7 – Imaj7
+
+Minor bossa: Am7 G7 Dm7 F7
+
+Roman numerals: vi7 – V7 – ii7 – IV7
+
+Bossa cadence: Cmaj7 G7 Am7 G7
+
+Roman numerals: Imaj7 – V7 – vi7 – V7
+
+I–V–vi–IV: Cmaj7 G7 Am7 Fmaj7
+
+Roman numerals: Imaj7 – V7 – vi7 – IVmaj7
+
+keyboard_arrow_right
+
+✏️ Edit existing chords
+
+↩️ Undo last chord
+
+🧹 Clear section
+
+🏁 Finish Song
+
+📋 Copy section
+
+📌 Paste
+
+Song structure
+
+Blue Bossa
+
+SECTION A
+Verse:
+|
+Cm7
+|
+%
+|
+Fm7
+|
+%
+|
+|
+Dm7b5
+|
+G7b9
+|
+Cm7
+|
+%
+|
+|
+Ebm7
+|
+Ab7
+|
+Dbmaj7
+|
+%
+|
+|
+Dm7b5
+|
+G7b9
+|
+Cm7
+|
+Dm7b5
+|
+|
+G7b9
+|
+
+▶ Preview Entire Song
+
+Plays in default order: Verse. This song has no saved arrangement, so each section that has chords plays once — this is not your song structure.
+
+Launch in the studio
+
+💾 Save to library
+
+☑️ Set as Active Song
+
+🎼 Songs
+
+🎧 Open in Backing Studio
+
+🎯 Practice
+
+keyboard_arrow_right
+
+More options
+
+Open Custom Progression
