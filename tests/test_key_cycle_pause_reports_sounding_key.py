@@ -334,8 +334,12 @@ class PauseButtonModeIgnoresIconText(unittest.TestCase):
         # The fallback routes (no key class after a remount) read the label without the icon too.
         self.assertIn("const lab = kcPauseBtnLabel(btnHit);", js)
         self.assertIn("const label = kcPauseBtnLabel(btn);", js)
-        # The state shown on the button is still written by the one transport sync, from the audio.
-        self.assertIn("const glyph = paused ? 'play_arrow' : 'pause';", js)
+        # The state shown on the button is still written by the one transport sync, from the audio --
+        # label and icon under the same condition; a cycle ended on its completed final key never
+        # shows Resume / play_arrow.
+        self.assertIn("const glyph = (paused && !ended) ? 'play_arrow' : 'pause';", js)
+        self.assertIn("const want = (paused && !ended) ? 'Resume' : 'Pause';", js)
+        self.assertEqual(js.count("const ended = finalTakeCompleted();"), 1)
 
     def test_mode_is_read_from_streamlit_shaped_buttons_in_a_browser(self) -> None:
         try:
@@ -1133,6 +1137,94 @@ class TheFinishedTakeIsNeverReplayedFromTheIdleSlot(unittest.TestCase):
     def test_stop_while_waiting_stays_stopped(self) -> None:
         got = self._scenario(2200, during_wait="window.__kcHardStop();")
         self.assertEqual(got["sequence"], [], got)
+
+
+class TheCompletedFinalTakeIsNeverReplayed(unittest.TestCase):
+    """Browser trace 2026-11-16 (Shape of You, Guitar Shape / capo, the 12-key cycle Bm ... F#m,
+    six-second Mission takes): F#m, the last key, completed and the page ended the cycle, but the
+    server never recorded it (its receiver dropped the page's final_key_stop) and kept saying F#m
+    Running. While the page sat at the end, the take was reloaded to 0 -- its "ended" flag gone --
+    and the console showed an actionable Resume; pressing it played the completed F#m again from
+    the start (kick in __kcResumeAudio). The page now keeps the completed final take by identity."""
+
+    _SEQ = ["Bm", "Em", "Am", "Dm", "Gm", "Cm", "Fm", "Bbm", "Ebm", "G#m", "C#m", "F#m"]
+
+    def _cmd(self, epoch, sounding, nxt="", **extra):
+        return _kc_cmd(epoch, sounding, nxt, sequence=list(self._SEQ), **extra)
+
+    # F#m (the final key) plays and completes; then, as in the app, its element is reloaded to 0. The
+    # app's replay started at 0 (end_press_plays: kick, ct=0), so the reload also drops the seek / follow
+    # times the harness's finish step leaves near the end (with them the replay was only a 0.2 s tail).
+    def _ended_then_reloaded(self) -> list:
+        start = self._cmd(10, "F#m", restart=True, autoplay=True, forcePlay=True)
+        seq = "() => { window.__kcDual.sequence = %s; return true; }" % __import__("json").dumps(self._SEQ)
+        reload = """async () => { const d = window.__kcDual; const a = document.getElementById(d.active === 1 ? 'kc-buf-1' : 'kc-buf-0');
+          a.load(); window.__kcFollowForceTime = 0; window.__kcLastSeekT = 0;
+          await new Promise(r => setTimeout(r, 400));
+          return {ended: a.ended, ct: Number(a.currentTime), paused: a.paused}; }"""
+        return [("cmd", start), ("eval", seq), ("eval", _FINISH_ACTIVE_JS),
+                ("eval", "async () => { await new Promise(r => setTimeout(r, 1200)); return true; }"), ("eval", reload)]
+
+    _CONSOLE_JS = """() => { const b = document.querySelector('[class*="st-key-backing_key_cycle_pause_btn"] button');
+      const p = b && b.querySelector('p'); return {label: p ? p.textContent : '', disabled: !!(b && b.disabled)}; }"""
+    # Every play() after the end is recorded: a replay of the completed take is caught even when it
+    # is short enough to have finished again before a later audibility sample.
+    _PLAY_HOOK_JS = """() => { window.__endPlays = []; const P = HTMLMediaElement.prototype;
+      if (!P.__kcOrigPlay) P.__kcOrigPlay = P.play;
+      P.play = function () { window.__endPlays.push({id: this.id, src: String(this.src).split('/').pop(),
+        ct: Number(this.currentTime)}); return P.__kcOrigPlay.apply(this, arguments); };
+      return true; }"""
+    _PLAYS_JS = "() => (window.__endPlays || []).filter(p => /^kc-/.test(p.id))"
+    _WAIT_EARLY = "async () => { await new Promise(r => setTimeout(r, 150)); return true; }"
+    _WAIT = "async () => { await new Promise(r => setTimeout(r, 2500)); return true; }"
+
+    def _after(self, *ops) -> dict:
+        """The ended-and-reloaded state, then ``ops``; returns each op's snapshot plus what was heard
+        150 ms and 2.65 s later and every play() call made after the end."""
+        base = self._ended_then_reloaded() + [("eval", self._PLAY_HOOK_JS)]
+        snaps = _run_stop_race(self, base + list(ops) + [
+            ("eval", self._WAIT_EARLY), ("eval", _HEARD_JS), ("eval", self._WAIT), ("eval", _HEARD_JS),
+            ("eval", self._PLAYS_JS)])
+        first = 1 + len(base)  # snaps[0] is the mount
+        return {"ops": snaps[first: first + len(ops)], "early": snaps[-4]["eval"], "late": snaps[-2]["eval"],
+                "plays": snaps[-1]["eval"]}
+
+    def _assert_final_take_not_replayed(self, r: dict) -> None:
+        self.assertEqual([p for p in r["plays"] if p["src"] == "fsm.wav"], [], r)
+        for when in ("early", "late"):
+            self.assertEqual((r[when]["heard"], r[when]["running"]), ([], []), (when, r))
+
+    def test_the_reload_clears_the_ended_flag_as_in_the_app(self) -> None:
+        snaps = _run_stop_race(self, self._ended_then_reloaded())
+        self.assertEqual((snaps[-1]["eval"]["ended"], snaps[-1]["eval"]["ct"]), (False, 0), snaps[-1])
+
+    def test_resume_after_the_end_does_not_replay_the_final_take(self) -> None:
+        self._assert_final_take_not_replayed(self._after(("eval", "() => { window.__kcResumeAudio(); return true; }")))
+
+    def test_a_console_press_after_the_end_does_not_replay_the_final_take(self) -> None:
+        self._assert_final_take_not_replayed(self._after(("eval", "() => { window.__kcPauseBtnHandler(); return true; }")))
+
+    def test_late_server_commands_do_not_reactivate_the_final_take(self) -> None:
+        # The server still F#m Running (every republish carries resume), its answer to a press,
+        # and a republish one key behind.
+        self._assert_final_take_not_replayed(self._after(
+            ("cmd", self._cmd(11, "F#m", resume=True, restart=False, autoplay=False)),
+            ("cmd", self._cmd(12, "F#m", resume=True, restart=False, autoplay=True, transportConsumed="tok:15")),
+            ("cmd", self._cmd(13, "C#m", "F#m", resume=True, restart=False, autoplay=True))))
+
+    def test_the_console_shows_the_end_state_not_an_actionable_resume(self) -> None:
+        r = self._after(("eval", self._CONSOLE_JS))
+        self.assertEqual(r["ops"][0]["eval"], {"label": "Pause", "disabled": True}, r)
+
+    def test_a_deliberate_new_start_after_the_end_plays_the_first_key(self) -> None:
+        restart = dict(self._cmd(14, "Bm", "Em", restart=True, autoplay=True, forcePlay=True))
+        r = self._after(("cmd", restart), ("eval", self._CONSOLE_JS))
+        self.assertEqual((r["late"]["key"], r["late"]["heard"]), ("Bm", ["bm.wav"]), r)
+        self.assertFalse(r["ops"][1]["eval"]["disabled"], r)  # the console is pressable again
+        self.assertEqual([p for p in r["plays"] if p["src"] == "fsm.wav"], [], r)  # not F#m first
+
+    def test_stop_after_the_end_stays_silent(self) -> None:
+        self._assert_final_take_not_replayed(self._after("stop", ("eval", "() => { window.__kcResumeAudio(); return true; }")))
 
 
 class FinalKeyEndsOnlyWhenItsTakeCompletes(unittest.TestCase):

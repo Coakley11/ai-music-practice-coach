@@ -253,6 +253,12 @@ def build_cycle_chart_strip_html(
     )
 
 
+# Acks the receiver hands to the pass bridge. ``final_key_stop`` (the page finished the final key's
+# take and ended the cycle) was dropped here, so the server never learned the cycle had ended
+# (browser trace 2026-11-16: F#m completed, the server stayed Running, a Resume replayed it).
+_DELIVERED_ACK_KINDS = ("playing", "play_started", "final_key_stop")
+
+
 def render_handoff_component(
     st: Any,
     session: dict[str, Any],
@@ -320,7 +326,7 @@ def render_handoff_component(
         for item in acks_raw:
             if not isinstance(item, dict):
                 continue
-            if str(item.get("kind") or "") not in ("playing", "play_started"):
+            if str(item.get("kind") or "") not in _DELIVERED_ACK_KINDS:
                 continue
             ack_id = str(item.get("ackId") or "").strip()
             if not ack_id or ack_already_consumed(session, ack_id):
@@ -333,7 +339,7 @@ def render_handoff_component(
                 pending.append(item)
         session["_kc_handoff_pending_acks"] = pending
         return _next_pending_ack(session, expect=str(expect_cycle_id or ""))
-    if kind not in ("playing", "play_started"):
+    if kind not in _DELIVERED_ACK_KINDS:
         return None
     ack_id = str(raw.get("ackId") or "").strip()
     if not ack_id:

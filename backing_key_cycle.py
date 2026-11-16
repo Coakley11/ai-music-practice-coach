@@ -4063,6 +4063,103 @@ def end_key_cycle_on_page_leave(session: dict[str, Any]) -> None:
         session.pop(f"backing_key_spell__{sharp}/{flat}", None)
 
 
+def _seal_cycle_at_final_key(
+    session: dict[str, Any], data: dict[str, Any], *, old_key: str, extra: dict[str, Any] | None = None
+) -> None:
+    """The cycle has played its final key: hold it there, the session is over (one owner of this state).
+
+    The next Play starts again from the first key. ``data`` is the owner's cycle session as read by the
+    caller; its current key is left as it is.
+    """
+    session["_kc_at_final_key"] = True
+    session["_kc_cycle_finished_final"] = True
+    pause_key_cycle(session)
+    # The cycle has played every key: the session is over and the next
+    # Play starts again from the first key.
+    from backing_transport_intent import stop_playback
+
+    stop_playback(session, reason="key_cycle_final_key")
+    # Ensure the bridge publishes a hard stop — JS must not keep a
+    # wrap-neighbor nextUrl armed after the final key ends.
+    session["_kc_hard_stop"] = True
+    session["_kc_pause_audio"] = True
+    _log_cycle_key_write(
+        session,
+        trigger="final_key_stop",
+        old_key=old_key,
+        new_key=str(data.get("current_playback_key") or old_key),
+        cycle_id=str(data.get("cycle_id") or ""),
+        pass_id=data.get("pass_id"),
+        extra=dict(extra or {}),
+    )
+
+
+def seal_final_key_from_ack(session: dict[str, Any], ack: dict[str, Any]) -> bool:
+    """The page finished the final key's take (its ``final_key_stop`` ack): record that the cycle ended.
+
+    Browser trace 2026-11-16 (Shape of You, Guitar Shape, 12 keys): the page completed F#m, the
+    last key, and ended the cycle, but this ack never reached here (the handoff receiver passed on
+    only playing acks), so the server stayed F#m / Running and a later Resume replayed F#m.
+
+    Accepted only for this cycle and only when the ack names the sequence's last key, with the
+    server on that key or one behind it (a natural ack it missed, KC-F1); then the server adopts the
+    last key. Running or Held (a Pause pressed while this confirmation was pending) are both sealed.
+    Returns True when the cycle was sealed by this ack.
+    """
+    owner = resolve_cycle_owner(session)
+    data = get_owner_cycle_session(session, owner)
+    try:
+        from backing_key_cycle_handoff import mark_ack_consumed
+
+        mark_ack_consumed(session, str(ack.get("ackId") or ""))
+    except Exception:
+        pass
+    if not data or not data.get("enabled"):
+        return False
+    if str(data.get("status") or "") not in {STATUS_RUNNING, STATUS_HELD}:
+        return False
+    if session.get("_kc_cycle_finished_final"):
+        return False  # already sealed (a re-sent ack)
+    cur = str(data.get("current_playback_key") or "").strip()
+    seq = list(cycle_key_sequence(session, owner) or [])
+    final = str(seq[-1]).strip() if seq else ""
+    playing = str(ack.get("playingKey") or "").strip()
+    cid = str(ack.get("cycleId") or "").strip()
+    reason = ""
+    if not final:
+        reason = "no_sequence"
+    elif cid and cid != str(data.get("cycle_id") or "").strip():
+        reason = "stale_cycle"
+    elif not _keys_equivalent(playing, final):
+        reason = "not_final_key"
+    elif not (_keys_equivalent(cur, final) or (len(seq) > 1 and _keys_equivalent(cur, str(seq[-2])))):
+        reason = "server_not_at_final"
+    if reason:
+        _log_cycle_key_write(
+            session,
+            trigger="final_key_stop_reject",
+            old_key=cur,
+            new_key=cur,
+            cycle_id=str(data.get("cycle_id") or ""),
+            pass_id=data.get("pass_id"),
+            extra={"reason": reason, "playing": playing, "ack": str(ack.get("ackId") or "")},
+        )
+        return False
+    data = dict(data)
+    if not _keys_equivalent(cur, final):
+        # One behind: the server never saw the page's switch to the last key. Adopt it.
+        n = len(seq)
+        mag = normalize_cycle_interval(data.get("interval"))
+        unit = -mag if str(data.get("direction") or "up") == "down" else mag
+        data["current_playback_key"] = final
+        data["offset_semitones"] = int(n - 1) * int(unit)
+        data["pending_pass_advance"] = False
+        _put_owner_cycle_session(session, owner, data)
+    _seal_cycle_at_final_key(session, data, old_key=cur, extra={"via": "final_key_stop_ack",
+                                                                 "ack": str(ack.get("ackId") or "")})
+    return True
+
+
 def _step_owner_cycle(
     session: dict[str, Any],
     *,
@@ -4123,27 +4220,7 @@ def _step_owner_cycle(
     raw_next = idx + int(steps)
     if not wrap:
         if raw_next >= n:
-            session["_kc_at_final_key"] = True
-            session["_kc_cycle_finished_final"] = True
-            pause_key_cycle(session)
-            # The cycle has played every key: the session is over and the next
-            # Play starts again from the first key.
-            from backing_transport_intent import stop_playback
-
-            stop_playback(session, reason="key_cycle_final_key")
-            # Ensure the bridge publishes a hard stop — JS must not keep a
-            # wrap-neighbor nextUrl armed after the final key ends.
-            session["_kc_hard_stop"] = True
-            session["_kc_pause_audio"] = True
-            _log_cycle_key_write(
-                session,
-                trigger="final_key_stop",
-                old_key=cur,
-                new_key=cur,
-                cycle_id=str(data.get("cycle_id") or ""),
-                pass_id=data.get("pass_id"),
-                extra={"idx": idx, "n": n},
-            )
+            _seal_cycle_at_final_key(session, data, old_key=cur, extra={"idx": idx, "n": n})
             return get_owner_cycle_session(session, owner)
         if raw_next < 0:
             return data
@@ -7879,6 +7956,17 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           return;
         }}
       }} catch (eStaleHold) {{}}
+      // The final key's take completed: the cycle has ended, and nothing here replays that take
+      // (the card's Play starts a new cycle). Its element may have been reloaded to 0 since.
+      if (finalTakeCompleted()) {{
+        try {{
+          parentWin.__kcPlayDiag = parentWin.__kcPlayDiag || [];
+          parentWin.__kcPlayDiag.push({{ t: kcNow(), ev: 'resume_refused_final_completed',
+            key: String((state.finalCompleted || {{}}).key || '') }});
+        }} catch (eRd) {{}}
+        try {{ syncVisibleTransport(); }} catch (eRv) {{}}
+        return;
+      }}
       const t0 = parentWin.__kcClickT0 || kcNow();
       cancelPendingPlays();
       state.userPaused = false;
@@ -8092,7 +8180,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
     // one kept counting presses after its frame was replaced, but the timer it
     // scheduled for the switch never fired, so later presses changed nothing.
     // The parent-realm timer calls the live frame's __kcSwitchPrepared.
-    if (parentWin.__kcNavVersion !== 12) {{
+    if (parentWin.__kcNavVersion !== 13) {{
       try {{
         const navBoot = parentDoc.createElement('script');
         navBoot.textContent = `
@@ -8213,6 +8301,8 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
     var ks = keys();
     var dlt = Number(delta || 0) < 0 ? -1 : 1;
     if (!ks.length) return false;
+    // A manual Previous / Next is a deliberate move on from a completed final key.
+    try {{ if (W.__kcDual) W.__kcDual.finalCompleted = null; }} catch (eFc) {{}}
     var nav = W.__kcNav;
     var base = W.__kcNavPending() ? String(nav.target || '') : '';
     // A press whose switch already landed (acknowledged) is not "in flight":
@@ -8296,7 +8386,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
   W.setInterval(function () {{
     try {{ var lk = liveKey(); if (lk) W.__kcLastLive = {{ key: lk, at: Date.now() }}; }} catch (e) {{}}
   }}, 150);
-  W.__kcNavVersion = 12;
+  W.__kcNavVersion = 13;
 }})();`;
         parentDoc.documentElement.appendChild(navBoot);
         navBoot.remove();
@@ -8304,6 +8394,8 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
     }}
     parentWin.__kcSwitchPrepared = function (delta, navOpts) {{
       const now = kcNow();
+      // A manual Previous / Next is a deliberate move on from the end state.
+      state.finalCompleted = null;
       const navSeq = navOpts && navOpts.navSeq ? Number(navOpts.navSeq) : 0;
       const navTarget = navOpts && navOpts.target ? String(navOpts.target).trim() : '';
       // A newer press superseded this switch while it was loading.
@@ -8895,16 +8987,27 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         }}
       }}
       try {{ parentWin.__kcTransportPaused = !!paused; }} catch (eTP) {{}}
-      const want = paused ? 'Resume' : 'Pause';
+      // The cycle ended on its completed final key: show the end state the server shows once it has
+      // recorded it (Pause, not pressable), never an actionable Resume -- also while that is pending.
+      const ended = finalTakeCompleted();
+      const want = (paused && !ended) ? 'Resume' : 'Pause';
       const btn = parentDoc.querySelector('[class*="st-key-backing_key_cycle_pause_btn"] button');
       if (btn) {{
+        try {{
+          if (ended) {{
+            if (!btn.disabled) {{ btn.disabled = true; btn.setAttribute('data-kc-final-end', '1'); }}
+          }} else if (btn.getAttribute('data-kc-final-end') === '1') {{
+            btn.removeAttribute('data-kc-final-end');
+            btn.disabled = false;  // only a disable this page made; a new start re-renders it
+          }}
+        }} catch (eFd) {{}}
         const labelEl = btn.querySelector('p') || btn;
         const cur = String(labelEl.textContent || '').replace(/\\s+/g, ' ').trim();
         if (cur !== want) labelEl.textContent = want;
         // The icon follows the real playback state too (Key Cycling console).
         try {{
           const ico = btn.querySelector('[data-testid="stIconMaterial"]');
-          const glyph = paused ? 'play_arrow' : 'pause';
+          const glyph = (paused && !ended) ? 'play_arrow' : 'pause';
           if (ico && String(ico.textContent || '').trim() !== glyph) ico.textContent = glyph;
         }} catch (eIco) {{}}
       }}
@@ -9217,6 +9320,12 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         if (now - Number(parentWin.__kcPauseToggleAt || 0) < 500) return;
         parentWin.__kcPauseToggleAt = now;
         parentWin.__kcClickT0 = now;
+        // The cycle ended on its completed final key: there is nothing to pause or resume, and a
+        // Resume here replayed that take (browser trace 2026-11-16). Not reported to the server either.
+        if (finalTakeCompleted()) {{
+          try {{ syncVisibleTransport(); }} catch (eFv) {{}}
+          return;
+        }}
         // Commands built BEFORE Python processes this click still carry the old paused
         // state and the epoch that was current at click time; applying one would undo
         // the user's Pause/Resume for seconds. Python bumps the epoch when it handles the
@@ -10849,9 +10958,32 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         return String(seq[i + 1] || '').trim();
       }} catch (eN) {{ return ''; }}
     }}
+    // The final key's take completed in this cycle (recorded by stopAtFinalKey, which only an
+    // ended take reaches). Kept by identity on the shared state, never read back from the element:
+    // a rerun can reload the take to 0 and clear its "ended" flag, and Resume then played the
+    // completed final take again from the start (browser trace 2026-11-16, F#m of 12). Cleared by
+    // a deliberate restart / Play, a new cycle, cycling off, or a manual Previous / Next -- the only
+    // ways on from the end, so while it holds nothing else may start a take of this cycle.
+    function finalTakeCompleted() {{
+      try {{
+        const f = state.finalCompleted;
+        if (!f || !state.enabled) return false;
+        return String(state.cycleId || '') === String(f.cycleId || '');
+      }} catch (eFc) {{ return false; }}
+    }}
+    parentWin.__kcFinalTakeCompleted = finalTakeCompleted;
     function stopAtFinalKey(reason) {{
       // Final key finished — stay stopped. Manual Next wraps to the first key.
       try {{
+        try {{
+          const actF = activeAudio();
+          state.finalCompleted = {{
+            cycleId: String(state.cycleId || ''),
+            key: String((actF && actF.getAttribute('data-kc-sounding')) || parentWin.__kcLastSounding || '').trim(),
+            url: String((actF && (actF.getAttribute('data-kc-url') || actF.getAttribute('src'))) || state.playingUrl || ''),
+            at: Date.now(),
+          }};
+        }} catch (eFr) {{}}
         state.atFinalKey = true;
         state.ending = false;
         state.swapping = false;
@@ -11657,6 +11789,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       }} catch (eNonce) {{}}
       if (!cmd.enabled) {{
         state.enabled = false;
+        state.finalCompleted = null;
         cancelPendingPlays();
         clearHandoffCookie();
         try {{ parentWin.__kcPendingPlayingAck = null; }} catch (e) {{}}
@@ -11729,6 +11862,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       if (cmd.cycleId) {{
         const neuCycle = String(cmd.cycleId);
         if (state.cycleId && state.cycleId !== neuCycle) {{
+          state.finalCompleted = null;  // a new cycle: the old one's end state is over
           // New Python cycle after Off/On — drop prior-cycle handoff identity so
           // acks are not rejected as stale_cycle while audio keeps advancing.
           state.passId = 0;
@@ -11831,6 +11965,8 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           }}
         }}
       }} catch (eNavG) {{}}
+      // A deliberate restart / Play starts the cycle again: the end state is over.
+      if (cmd.restart || cmd.forcePlay) state.finalCompleted = null;
       // Stop / Pause own the audible buffer. Explicit arrangement Play is
       // handled after needsReplace is known (below) so a sticky arrangement
       // URL cannot clear a later Stop. Resume/restart always win over paused.
@@ -11838,6 +11974,25 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         try {{ noteCmdNeighbors(cmd); }} catch (eNote1) {{}}
         abortTransportPlayback({{ seekZero: false }});
         if (detail) detail.textContent = cmd.hardStop ? 'Stopped' : 'Paused';
+        return;
+      }}
+      // The final key's take completed and the cycle ended on the page. A command of this cycle
+      // that is not a deliberate restart -- the server still saying Running (its end confirmation
+      // pending), a resume answer, a republish one key behind -- never starts a take again.
+      if (finalTakeCompleted()) {{
+        try {{
+          const bagF = parentWin.__kcApplyTrace || (parentWin.__kcApplyTrace = []);
+          bagF.push({{ t: Date.now(), reason: 'final_completed_kept', epoch: cmd.epoch,
+            sounding: String(cmd.sounding || ''), resume: !!cmd.resume, autoplay: !!cmd.autoplay }});
+          if (bagF.length > 40) bagF.shift();
+        }} catch (eTrK) {{}}
+        try {{
+          ['kc-buf-0', 'kc-buf-1'].forEach((id) => {{
+            const el = parentDoc.getElementById(id);
+            if (el && !el.paused) el.pause();
+          }});
+        }} catch (eKp) {{}}
+        try {{ syncVisibleTransport(); }} catch (eKv) {{}}
         return;
       }}
       // The server's answer to a Resume the page already made (the console's or the
@@ -13769,24 +13924,14 @@ def render_backing_key_cycle_pass_bridge(st: Any, session: dict[str, Any]) -> No
             advanced = _apply_manual_nav_ack(session, handoff_ack, data)
             pass_sig = f"manual_nav::{handoff_ack.get('ackId') or 'ack'}::{playing_key or 'key'}"
         elif ack_kind == "final_key_stop":
-            try:
-                from backing_key_cycle_handoff import mark_ack_consumed
-
-                mark_ack_consumed(session, str(handoff_ack.get("ackId") or ""))
-            except Exception:
-                pass
-            # Browser already stopped on the final key — seal Python final flags.
+            # Browser finished the final key's take and ended the cycle: seal it here too.
+            # Not "one more pass": a server one key behind stepped onto the last key and
+            # stayed Running, and a Held cycle was not sealed at all.
             pass_sig = (
                 f"final_key_stop::{handoff_ack.get('ackId') or 'ack'}"
                 f"::{playing_key or 'key'}"
             )
-            advanced = note_backing_pass_finished(
-                session,
-                pass_signature=pass_sig,
-                seamless=False,
-                gap_ms=gap_ms,
-                handoff_ack=None,
-            )
+            advanced = seal_final_key_from_ack(session, handoff_ack)
         elif ack_kind == "late_prep_recover":
             # Dual-buffer never armed next in time — force one advance + CONTINUE_PLAY.
             # Do not use the playing-ack confirm path (that would no-op on the same key).
@@ -14458,6 +14603,11 @@ def _toggle_key_cycle_pause_resume(session: dict[str, Any]) -> None:
     from backing_transport_intent import continue_playback, pause_playback
 
     data = get_owner_cycle_session(session) or {}
+    if session.get("_kc_cycle_finished_final"):
+        # The final key's take completed and the cycle ended: nothing to pause or resume (the
+        # button is disabled; a press that raced the re-render lands here). Resuming would
+        # replay the completed final take. The card's Play starts a new cycle from the first key.
+        return
     held = str(data.get("status") or "") == STATUS_HELD
     user_stopped = bool(session.get("_backing_transport_user_stopped"))
     if held or user_stopped:
