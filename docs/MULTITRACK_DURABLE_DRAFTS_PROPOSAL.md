@@ -30,12 +30,12 @@ therefore not durable for a long take; Save project is.**
 - The project row reaches the cloud library (`suite_saved_items`).
 - After the app server and its disk were replaced, **New Project, then Load** brings the layer back
   with the same fingerprint, decoded to the same 88.09 s; so does another new session after that.
-- **Defect found:** every reopened session - same server, after a restart, another session - shows
+- **Defect found (fixed in 58d09353, see below):** every reopened session - same server, after a restart, another session - shows
   the project as *currently loaded* with **no audio**, no Load button, and the hint "Record or
   upload at least one layer". The workspace restore brings back the active project id, the 2 MiB cap
   dropped the layer, and nothing re-fetches it from the library; a deliberate Load is the only path
   that calls `load_track_audio`. A musician would reasonably conclude the recording is gone.
-- **Defect found:** `persist_track_audio` returns `ok: True` when only the local copy was written
+- **Defect found (fixed in 58d09353):** `persist_track_audio` returned `ok: True` when only the local copy was written
   (`if local_ok or storage_ref`), so a failed upload is reported as a saved project. The save message
   must distinguish "saved to your account" from "kept on this server only".
 - Not established here: synchronized playback of the reopened project. The transport timing check
@@ -128,14 +128,21 @@ The same mechanism with `saved: true` closes the second defect: **Save layer** u
 the layer as its own verified object, so a saved song-length layer survives a restart instead of
 existing only in session.
 
-### Two fixes that do not need stage 2 (separate, smaller)
+### Two fixes that do not need stage 2 - DONE (58d09353, local)
 
-1. **Re-fetch the active project's audio on restore.** When the restored workspace names an active
-   library project and a slot that project records as playable has no audio in the session, fetch
-   it through `load_track_audio` (the path Load already uses) before adoption - or, at minimum,
-   offer Load for the active project instead of hiding it.
-2. **Honest Save project message.** Report success only when every layer's upload is confirmed;
-   otherwise say which layers are kept on this server only, with a retry.
+1. **The active project's audio comes back on restore** (`multitrack_project_audio_restore`): each
+   slot the saved project records as playable and the session lacks is fetched through
+   `load_track_audio`, validated, marked a saved layer, cached for the session and refilled on every
+   rerun; drafts restore first; a deliberately removed layer stays removed. Browser: back without
+   pressing anything in a new session, after a server replacement and in a second session after
+   that; Play decodes the full 90.38 s buffer and starts it.
+2. **Honest Save project message.** An upload counts only once the bucket lists the object at the
+   size sent (`verify_uploaded_object`); "saved to your account" only when every layer is verified,
+   otherwise the message names what is kept on this server only. Browser: verified in a simulated
+   outage.
+
+Still not established: playback in sync with a SAVED backing - the tested project saved no backing
+audio, so only the layer started. Alignment was tested at the default offset only.
 
 ### Quotas, retention, cleanup
 
