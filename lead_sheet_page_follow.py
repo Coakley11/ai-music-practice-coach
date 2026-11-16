@@ -254,6 +254,9 @@ _CONTROLLER_JS = r"""
       // fixed / sticky frame elsewhere would otherwise chase the scroll end and grow the block every tick
       liveProviders().forEach(function (p) {
         try {
+          // a collapsed panel's frame keeps reporting its old box inside the closed <details>: it is not on the
+          // page, so it must not size the room (measured: 2061 / 3632 px of blank after closing the Practice Melody)
+          if (!shown(p)) return;
           var f = p.frame; if (!f || !sc.contains(f)) return;
           var r = f.getBoundingClientRect();
           if (r.height > 0 && r.bottom - origin > end) end = r.bottom - origin;

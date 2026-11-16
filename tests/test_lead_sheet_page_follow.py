@@ -191,6 +191,9 @@ def test_the_last_rows_get_room_to_reach_the_reading_position():
     assert "sc.lastElementChild !== sp" in sp and "sc.appendChild(sp)" in sp
     assert "liveProviders().forEach" in sp and "sc.contains(f)" in sp and "querySelectorAll(\"iframe\")" not in sp
     assert "Math.round(end + C.room - spTop)" in sp
+    # a collapsed surface (closed Practice Melody) still reports its old frame box: measured 2061 / 3632 px of
+    # blank at 1500 / 390 px when it sized the room, so only surfaces on screen count
+    assert sp.index("if (!shown(p)) return;") < sp.index("var r = f.getBoundingClientRect();")
     tick = js[js.index("var timer = top.setInterval"):js.index("C.destroy = function")]
     assert "if (C.room > 0) spacer(scroller());" in tick
     assert "padding-bottom" not in js
