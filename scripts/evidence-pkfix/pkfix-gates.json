@@ -1,0 +1,25 @@
+{
+  "gates": {
+    "H1 app renders": true,
+    "H2 Say's permanent Practice Key is saved as D": true,
+    "H3 the saved Karaoke entry is Bb": true,
+    "H4 the set performs": true,
+    "H5 a take is playing before the retune": false,
+    "H6 the live performance key is Ab": true,
+    "H7 the backing is actually playing after the retune": false,
+    "H8 the PERMANENT Practice Key is still D during the performance": true,
+    "H9 the saved Karaoke entry is still Bb during the performance": true,
+    "H10 Stop really was pressed": true,
+    "H11 after Stop the permanent Practice Key is still D": true,
+    "H12 after Stop the saved Karaoke entry is still Bb": true,
+    "H13 after End Set the permanent Practice Key is still D": true,
+    "H14 after End Set the saved Karaoke entry is still Bb": true,
+    "H15 reopening Say outside Karaoke shows D": true,
+    "H16 an ordinary Practice Key change outside Karaoke still saves": true
+  },
+  "observed": [
+    "picked Say dropdown=True landed=True sidebar_song='SONG\\n\\nSONG\\nSay — John Mayer\\n\\n🎼 Songs\\n\\nSay · Pop\\n\\n📜 Song Original Key: Bb\\n\\n🗝️ Practice / Co'",
+    "stopped with the card's own #btn, which is Stop while a take runs",
+    "picked Say dropdown=True landed=True sidebar_song='SONG\\n\\nSONG\\nSay — John Mayer\\n\\n🎼 Songs\\n\\nSay · Pop\\n\\n📜 Song Original Key: Bb\\n\\n🗝️ Practice / Co'"
+  ]
+}

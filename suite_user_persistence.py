@@ -1120,6 +1120,29 @@ def sync_workspace_protocol(
         )
         return False
 
+    try:
+        if str(app_id or "").strip().lower() == "music" and isinstance(picked.state, dict):
+            from workspace_revision import CLOUD_BASE_REVISION_KEY, workspace_revision_from_blob
+
+            _cloud_rev = int(workspace_revision_from_blob(cloud_state)) if cloud_state else 0
+            if picked.source == "cloud":
+                st.session_state[CLOUD_BASE_REVISION_KEY] = _cloud_rev
+            elif picked.source == "disk" and _cloud_rev > 0:
+                _disk_rev = int(workspace_revision_from_blob(picked.state))
+                _confirmed = int(picked.state.get("cloud_confirmed_revision") or 0)
+                st.session_state[CLOUD_BASE_REVISION_KEY] = _confirmed
+                if _disk_rev > _cloud_rev and _confirmed == _cloud_rev:
+                    # Local copy is AHEAD only by unsaved/refused writes: the cloud has not moved since this
+                    # device last confirmed it, so the device's base is the cloud revision, not the inflated
+                    # local counter (which made every later write a permanent "conflict").
+                    from music_device_applied_revision import set_device_applied_revision_from_authoritative_hydrate
+
+                    set_device_applied_revision_from_authoritative_hydrate(
+                        st.session_state, _cloud_rev, stage="local_ahead_of_unchanged_cloud",
+                        source="confirmed_cloud_base",
+                    )
+    except Exception:
+        pass
     _lock_fingerprint_after_restore(st, app_id, picked.state)
     st.session_state[synced_key] = True
     st.session_state[f"{_SESSION_RESTORED_PREFIX}{app_id}"] = True

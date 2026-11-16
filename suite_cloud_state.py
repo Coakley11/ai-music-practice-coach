@@ -86,6 +86,18 @@ def _record_cloud_save_result(session: dict[str, Any] | None, result: CloudSaveR
     session[CLOUD_SAVE_DIAG_KEY] = result.to_diag()
     session["_suite_last_cloud_save_failure_stage"] = result.failure_stage or None
     session["_suite_last_cloud_save_exception"] = result.exception or None
+    if not result.success:
+        try:  # a refused/failed cloud write must leave a trace in the app logs (codes only, no content or ids)
+            from composition_save_verification import _scrub
+
+            print(
+                f"[music_cloud_save] FAILED stage={_scrub(result.failure_stage, 60) or '-'} "
+                f"exception={_scrub(result.exception, 160) or '-'} stale_blocked={bool(result.stale_write_blocked)} "
+                f"account_resolved={bool(result.account_id_resolved)} cas_attempted={bool(result.conditional_write_attempted)}",
+                flush=True,
+            )
+        except Exception:
+            pass
 
 
 def _cloud_save_account_context() -> dict[str, Any]:
@@ -607,6 +619,140 @@ def load_cloud_full_session(app_id: str, *, force: bool = False) -> tuple[dict[s
         return {}, None
 
 
+WRITER_SESSION_KEY = "writer_session"
+_WRITER_TOKEN_SESSION_KEY = "_music_cloud_writer_token"
+
+
+def _music_writer_token(ss: Any) -> str:
+    """Random per-Streamlit-session id stamped on every music workspace write (not a secret)."""
+    if ss is None:
+        return ""
+    try:
+        token = str(ss.get(_WRITER_TOKEN_SESSION_KEY) or "")
+        if not token:
+            import uuid
+
+            token = uuid.uuid4().hex
+            ss[_WRITER_TOKEN_SESSION_KEY] = token
+        return token
+    except Exception:
+        return ""
+
+
+def _own_write_revision(storage: Any, storage_app_key: str, token: str) -> int:
+    """Stored workspace revision if the cloud row was last written by this session, else 0."""
+    try:
+        loader = getattr(storage, "_load_state_row_metrics", None)
+        if loader is None:
+            from suite_storage_supabase import _load_state_row_metrics as loader
+        metrics = loader(storage_app_key) or {}
+        if str(metrics.get(WRITER_SESSION_KEY) or "") != token:
+            return 0
+        from suite_storage_supabase import metrics_workspace_revision
+
+        return int(metrics_workspace_revision(metrics))
+    except Exception:
+        return 0
+
+
+def plan_own_write_recovery(own_rev: int, expected: int, candidate: int) -> tuple[str, int, int] | None:
+    """Classify a refused write that clashes with THIS session's own earlier write. Returns ``(action, expected,
+    candidate)`` or ``None`` for a real conflict.
+
+    ``own_rev`` is the stored revision when (and only when) the cloud row was last written by this session, else 0.
+    Revisions are reserved in the order runs start, so within one session a higher revision is NEWER content:
+
+    * ``own_rev < candidate``  -> ``"retry"``: the cloud holds an older write of ours (a run that overlapped ours, or an
+      earlier attempt); ours is newer, so write once more on top of it.
+    * ``own_rev == candidate`` -> ``"already_persisted"``: a run interrupted after its write landed leaves the cloud at
+      exactly the revision the next run reserves for the same content; nothing needs writing (the caller verifies the
+      content really matches before relying on this).
+    * ``own_rev  > candidate`` -> ``"superseded"``: the cloud already holds a NEWER write of ours; this run is the older
+      one and must NOT replace it (that would silently destroy the newer edit).
+    """
+    own, exp, cand = int(own_rev or 0), int(expected or 0), int(candidate or 0)
+    if own <= 0 or own == exp:
+        return None
+    if own < cand:
+        return "retry", own, cand
+    if own == cand:
+        return "already_persisted", own, cand
+    return "superseded", own, cand
+
+
+def _recover_local_revision_ahead_of_cloud(
+    ss: Any, storage: Any, storage_app_key: str, prep: dict[str, Any], state: Any
+) -> tuple[dict[str, Any], dict[str, Any]] | None:
+    """Pre-flight refused the write because the candidate revision is not above the 'applied' revision.
+
+    That is a genuine problem only when the cloud really is at (or beyond) the candidate. Overlapping or interrupted runs
+    can also push the session's LOCAL 'applied' revision ahead of what the cloud holds (writes that never landed): the
+    candidate is then not above 'applied', and the session is refused for a conflict that does not exist.
+    When the cloud row was last written by THIS session at a revision BELOW the candidate, the cloud is simply behind our
+    own newer state: write the reserved candidate on top of our own stored revision.
+
+    The write is made AT the reserved candidate, never at a higher number. The caller confirms a save by comparing the
+    revision read back from the cloud with the revision it reserved; a write landed at a different revision could never be
+    confirmed, so every retry would climb the revision again and the save would stay 'not verified' for ever.
+    A row written by another session, or one at or above the candidate, is left refused exactly as before.
+    """
+    try:
+        token = _music_writer_token(ss)
+        if not token or not isinstance(state, dict):
+            return None
+        applied = int(prep.get("device_applied_revision") or 0)
+        candidate = int(prep.get("candidate_revision") or 0)
+        if candidate > applied or applied <= 0 or candidate <= 0:
+            return None
+        own_rev = _own_write_revision(storage, storage_app_key, token)
+        if own_rev <= 0 or own_rev >= candidate:
+            return None
+        try:
+            from music_device_applied_revision import set_device_applied_revision_from_authoritative_hydrate
+
+            set_device_applied_revision_from_authoritative_hydrate(
+                ss, own_rev, stage="own_write_local_ahead_recovery", source="own_write_readback",
+            )
+        except ImportError:
+            pass
+        return (
+            dict(
+                prep,
+                blocked_precheck=False,
+                expected_revision=own_rev,
+                precondition_expected_revision=own_rev,
+                device_applied_revision=own_rev,
+                applied_revision_before_prep=own_rev,
+                own_write_recovered=True,
+                local_revision_ahead_of_cloud=True,
+            ),
+            state,
+        )
+    except Exception:
+        return None
+
+
+def _stored_composition_matches(storage: Any, storage_app_key: str, state: Any) -> bool:
+    """Does the stored Composition content equal what this run is about to write? (Used only to confirm that an
+    equal-revision clash is the same content already persisted.) Unknown or different -> False (treated as conflict)."""
+    try:
+        loader = getattr(storage, "_load_state_row_metrics", None)
+        if loader is None:
+            from suite_storage_supabase import _load_state_row_metrics as loader
+        stored = (loader(storage_app_key) or {}).get(FULL_SESSION_KEY) or {}
+        a = stored.get("composition_workspace_state") if isinstance(stored, dict) else None
+        b = state.get("composition_workspace_state") if isinstance(state, dict) else None
+        if not isinstance(a, dict) and not isinstance(b, dict):
+            return True  # no Composition content involved: the equal reservation is the only evidence available
+        if not (isinstance(a, dict) and isinstance(b, dict)):
+            return False
+        from composition_save_verification import content_fingerprint
+
+        return content_fingerprint(a) == content_fingerprint(b)
+    except Exception:
+        return False
+
+
 def save_cloud_full_session(
     app_id: str,
     state: dict[str, Any],
@@ -748,6 +894,37 @@ def save_cloud_full_session(
             candidate = int(prep.get("candidate_revision") or base.cloud_payload_revision or 0)
             expected = int(prep.get("precondition_expected_revision") or 0)
             if prep.get("blocked_precheck"):
+                bumped = _recover_local_revision_ahead_of_cloud(ss, storage, storage_app_key, prep, state)
+                if bumped is not None:
+                    prep, state = bumped
+                    candidate = int(prep.get("candidate_revision") or candidate)
+                    expected = int(prep.get("precondition_expected_revision") or 0)
+            if prep.get("blocked_precheck"):
+                newer_own = _own_write_revision(storage, storage_app_key, _music_writer_token(ss) or "")
+                if newer_own > 0 and newer_own > int(prep.get("candidate_revision") or 0):
+                    # The pre-flight refused an OLDER run: the cloud already holds a newer write of this same session.
+                    # Not a conflict (no banner, no block); nothing is written and the newest local state stays unsaved
+                    # so the next save carries it.
+                    cas = {
+                        "accepted": False, "rows_affected": 0, "write_mode": "own_write_superseded",
+                        "conditional_write_attempted": False, "unconditional_upsert_attempted": False,
+                        "reason": "superseded_by_newer_own_write",
+                    }
+                    record_conditional_write_result(ss or {}, prep=prep, cas=cas, saved=False)
+                    result = replace(
+                        base,
+                        failure_stage="superseded_by_newer_own_write",
+                        cloud_client_available=True,
+                        cloud_upsert_attempted=False,
+                        cloud_upsert_succeeded=False,
+                        conditional_write_attempted=False,
+                        stale_write_blocked=False,
+                        storage_module=module_name,
+                        storage_app_key=storage_app_key,
+                    )
+                    _record_cloud_save_result(ss, result)
+                    return result
+            if prep.get("blocked_precheck"):
                 cas = {
                     "accepted": False,
                     "rows_affected": 0,
@@ -770,16 +947,90 @@ def save_cloud_full_session(
                 )
                 _record_cloud_save_result(ss, result)
                 return result
+            writer_token = _music_writer_token(ss)
+            cas_metrics = {FULL_SESSION_KEY: copy.deepcopy(state)}
+            if writer_token:
+                cas_metrics[WRITER_SESSION_KEY] = writer_token
             cas = storage.save_current_state_conditional_cas(
                 storage_app_key,
                 page=page or "",
                 summary=summary or "Last session",
-                metrics={FULL_SESSION_KEY: copy.deepcopy(state)},
+                metrics=cas_metrics,
                 expected_workspace_revision=expected,
                 candidate_workspace_revision=candidate,
             )
+            if not cas.get("accepted") and writer_token:
+                own_rev = _own_write_revision(storage, storage_app_key, writer_token)
+                plan = plan_own_write_recovery(own_rev, expected, candidate)
+                if plan is not None and plan[0] == "already_persisted" and not _stored_composition_matches(
+                    storage, storage_app_key, state
+                ):
+                    plan = None  # same number, different content: cannot be ordered, so it stays a refused conflict
+                if plan is not None:
+                    action, new_expected, new_candidate = plan
+                    # The cloud row was last written by THIS session, so the mismatch is our own bookkeeping, not
+                    # another device. A row last written by anyone else is never adopted (own_rev is 0 then), so a
+                    # genuine foreign write is still a refused conflict.
+                    try:
+                        from music_device_applied_revision import (
+                            set_device_applied_revision_from_authoritative_hydrate,
+                        )
+                        from music_workspace_conditional_cloud_write import device_applied_revision
+
+                        if own_rev > int(device_applied_revision(ss) or 0):  # only ever forward
+                            set_device_applied_revision_from_authoritative_hydrate(
+                                ss, own_rev, stage="own_write_conflict_recovery", source="own_write_readback",
+                            )
+                    except ImportError:
+                        pass
+                    if action == "retry":
+                        expected, candidate = new_expected, new_candidate
+                        prep = dict(
+                            prep,
+                            expected_revision=expected,
+                            precondition_expected_revision=expected,
+                            device_applied_revision=expected,
+                            applied_revision_before_prep=expected,
+                            own_write_recovered=True,
+                        )
+                        cas = storage.save_current_state_conditional_cas(
+                            storage_app_key,
+                            page=page or "",
+                            summary=summary or "Last session",
+                            metrics=cas_metrics,
+                            expected_workspace_revision=expected,
+                            candidate_workspace_revision=candidate,
+                        )
+                    elif action == "already_persisted":
+                        cas = {
+                            "accepted": True, "rows_affected": 0, "write_mode": "own_write_already_persisted",
+                            "conditional_write_attempted": False, "unconditional_upsert_attempted": False,
+                            "reason": "own_write_already_persisted", "expected_workspace_revision": own_rev,
+                            "candidate_workspace_revision": candidate,
+                        }
+                    else:  # superseded: nothing is written; keep local state marked unsaved so the newest content is saved
+                        cas = {
+                            "accepted": False, "rows_affected": 0, "write_mode": "own_write_superseded",
+                            "conditional_write_attempted": False, "unconditional_upsert_attempted": False,
+                            "reason": "superseded_by_newer_own_write", "expected_workspace_revision": own_rev,
+                            "candidate_workspace_revision": candidate,
+                        }
             accepted = bool(cas.get("accepted"))
             record_conditional_write_result(ss or {}, prep=prep, cas=cas, saved=accepted)
+            if not accepted and cas.get("write_mode") == "own_write_superseded":
+                result = replace(
+                    base,
+                    failure_stage="superseded_by_newer_own_write",
+                    cloud_client_available=True,
+                    cloud_upsert_attempted=False,
+                    cloud_upsert_succeeded=False,
+                    conditional_write_attempted=False,
+                    stale_write_blocked=False,
+                    storage_module=module_name,
+                    storage_app_key=storage_app_key,
+                )
+                _record_cloud_save_result(ss, result)
+                return result
             if not accepted:
                 result = replace(
                     base,
@@ -941,6 +1192,26 @@ def pick_restore_session(
             disk_state,
             "disk",
             "local unsaved edits",
+            cloud_ts,
+            disk_ts,
+        )
+
+    # Revision order is authoritative over wall-clock timestamps: a disk copy that carries an OLDER
+    # workspace revision than the cloud is a stale cache, however fresh its timestamp looks (clock
+    # skew, an earlier session's disk write). Re-applying it would roll back confirmed cloud saves
+    # and desynchronise the device's applied revision.
+    try:
+        from workspace_revision import workspace_revision_from_blob
+
+        _cloud_rev = int(workspace_revision_from_blob(cloud_state))
+        _disk_rev = int(workspace_revision_from_blob(disk_state))
+    except Exception:
+        _cloud_rev = _disk_rev = 0
+    if disk_state and cloud_state and _cloud_rev > 0 and _disk_rev < _cloud_rev:
+        return RestorePickResult(
+            cloud_state,
+            "cloud",
+            "cloud revision ahead of disk",
             cloud_ts,
             disk_ts,
         )

@@ -4,6 +4,7 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import re
 from typing import Any
 
 RESULT_KEY = "_composition_persistence_result"
@@ -21,12 +22,28 @@ def doc_hashes(blob: dict[str, Any]) -> dict[str, str]:
     return {str(k): doc_hash(v) for k, v in lib.items() if isinstance(v, dict)}
 
 
+# A document's own ``updated_at`` is a bookkeeping stamp that is re-written whenever the document is touched (including
+# by a render or a later run), so it can differ between the copy that was saved and the copy compared against it without
+# a single character of the composition having changed. ``doc_hash`` already ignores it; so must the fingerprint.
+_VOLATILE_DOCUMENT_KEYS = ("updated_at",)
+
+
+def _without_volatile(doc: Any) -> Any:
+    if not isinstance(doc, dict):
+        return doc
+    return {k: v for k, v in doc.items() if k not in _VOLATILE_DOCUMENT_KEYS}
+
+
 def workspace_content(blob: dict[str, Any]) -> dict[str, Any]:
-    """Retain every document field; ignore only workspace checkpoint timestamps."""
-    return {key: copy.deepcopy(blob.get(key)) for key in (
+    """Retain every document field; ignore only checkpoint timestamps (the workspace's and each document's)."""
+    out = {key: copy.deepcopy(blob.get(key)) for key in (
         "active_document", "library", "deleted_document_ids", "library_initialized",
         "needs_seed", "active_section_id", "focus_lane", "workflow_phase",
     )}
+    out["active_document"] = _without_volatile(out.get("active_document"))
+    if isinstance(out.get("library"), dict):
+        out["library"] = {k: _without_volatile(v) for k, v in out["library"].items()}
+    return out
 
 
 def content_fingerprint(blob: dict[str, Any]) -> str:
@@ -95,7 +112,47 @@ def verify_checkpoint(session: Any, expected: dict[str, Any], *, force_ok: bool)
     result["failure_code"] = "" if result["cloud_verified"] else classify_failure(session, result)
     result["retryable"] = bool(result["failure_code"]) and result["failure_code"] != "cloud_not_configured"
     session[RESULT_KEY] = result
+    log_save_outcome(session, result)
     return result
+
+
+_URL_RE = re.compile(r"https?://\S+")
+_HOST_RE = re.compile(r"[A-Za-z0-9.\-]+\.supabase\.(?:co|in|net)")
+_JWT_RE = re.compile(r"eyJ[A-Za-z0-9_\-]*(?:\.[A-Za-z0-9_\-]+)*")
+_LONG_TOKEN_RE = re.compile(r"[A-Za-z0-9_\-]{24,}")
+
+
+def _scrub(text: Any, limit: int = 160) -> str:
+    """One short line, no URLs, no long tokens/ids, no newlines (safe for shared logs)."""
+    out = _LONG_TOKEN_RE.sub("<id>", _JWT_RE.sub("<jwt>", _HOST_RE.sub("<host>", _URL_RE.sub("<url>", str(text or "")))))
+    return out.replace("\n", " ").replace("\r", " ")[:limit]
+
+
+def log_save_outcome(session: Any, result: dict[str, Any]) -> None:
+    """One structured line per Composition checkpoint so an unverified save is diagnosable from the app logs.
+
+    Carries only codes and flags (never titles, lyrics, chords, ids or tokens). This is the line that was missing when a
+    production save reported 'not verified' while the logs showed no cause.
+    """
+    try:
+        def flag(key: str) -> Any:
+            return session.get(key)
+
+        print(
+            "[composition_save] "
+            f"status={result.get('status')} failure_code={result.get('failure_code') or '-'} "
+            f"error={result.get('error') or '-'} disk_verified={result.get('disk_verified')} "
+            f"cloud_verified={result.get('cloud_verified')} cloud_required={result.get('cloud_required')} "
+            f"force_ok={result.get('force_ok')} last_save_disk={flag('_suite_persist_last_save_disk')} "
+            f"last_save_cloud={flag('_suite_persist_last_save_cloud')} "
+            f"blocked_reason={_scrub(flag('_music_force_save_blocked_reason'), 80) or '-'} "
+            f"stale={bool(flag('_music_stale_write_blocked'))} "
+            f"cloud_stage={_scrub(flag('_suite_last_cloud_save_failure_stage'), 60) or '-'} "
+            f"exception={_scrub(flag('_suite_last_cloud_save_exception'), 160) or '-'}",
+            flush=True,
+        )
+    except Exception:  # logging must never break a save
+        pass
 
 
 def classify_failure(session: Any, result: dict[str, Any]) -> str:

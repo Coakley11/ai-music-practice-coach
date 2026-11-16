@@ -9,6 +9,9 @@ LOCAL_REVISION_KEY = "_suite_workspace_revision"
 APPLIED_REVISION_KEY = "_suite_applied_workspace_revision"
 CLOUD_REVISION_KEY = "_suite_cloud_workspace_revision"
 LAST_CONFIRMED_REVISION_KEY = "_music_last_confirmed_cloud_revision"
+# Cloud revision this device is KNOWN to be based on (set only by a confirmed cloud write or a cloud
+# hydrate; never by restoring a local copy). Persisted with the local copy as ``cloud_confirmed_revision``.
+CLOUD_BASE_REVISION_KEY = "_music_cloud_base_revision"
 PENDING_CANONICAL_FP_KEY = "_music_pending_canonical_content_fp"
 RESERVED_WRITE_REVISION_KEY = "_music_reserved_write_revision"
 
@@ -102,6 +105,7 @@ def stamp_workspace_revision_into_state(state: dict[str, Any], revision: int) ->
 
 def note_confirmed_workspace_revision(session: dict[str, Any], state: dict[str, Any]) -> None:
     rev = workspace_revision_from_blob(state)
+    session[CLOUD_BASE_REVISION_KEY] = rev
     session[LAST_CONFIRMED_REVISION_KEY] = rev
     session[LOCAL_REVISION_KEY] = max(int(session.get(LOCAL_REVISION_KEY) or 0), rev)
     session.pop(RESERVED_WRITE_REVISION_KEY, None)

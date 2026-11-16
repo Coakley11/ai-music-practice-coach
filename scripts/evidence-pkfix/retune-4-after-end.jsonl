@@ -1,0 +1,3 @@
+{"t": 1794836708.184, "stage": "called", "requested": "D", "voice_mode": true, "session_active": false, "display_key": "D", "concert_key": "Bb", "instrument": "Voice", "entry_key": ""}
+{"t": 1794836942.289, "stage": "called", "requested": "Ab", "voice_mode": true, "session_active": true, "display_key": "Ab", "concert_key": "Ab", "instrument": "Voice", "entry_key": "Bb"}
+{"t": 1794836942.291, "stage": "retuned", "previous": "Bb", "to": "Ab", "voice_mode": true, "session_active": true, "display_key": "Ab", "concert_key": "Ab", "instrument": "Voice", "entry_key": "Ab"}

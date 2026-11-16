@@ -286,6 +286,34 @@ def music_workspace_save_allowed(session: dict[str, Any], *, reason: str) -> tup
     return True, ""
 
 
+def _log_cloud_confirmation(
+    mode: str, *, readback_rev: int, rev_after: int, fp_matches: bool, revision_advanced: bool, readback_ok: bool,
+    payload: Any, readback: Any,
+) -> None:
+    """One log line saying whether the workspace cloud write was CONFIRMED and, if not, which check failed.
+
+    Flags, numbers and top-level key NAMES only: never values, titles, lyrics, ids or tokens. Without this a save whose
+    write landed but was never confirmed (so the app keeps saying 'not verified') left nothing in the logs.
+    """
+    try:
+        import json
+
+        differing: list[str] = []
+        if not fp_matches and isinstance(payload, dict) and isinstance(readback, dict):
+            for key in sorted(set(payload) | set(readback)):
+                if (json.dumps(payload.get(key), sort_keys=True, default=str)
+                        != json.dumps(readback.get(key), sort_keys=True, default=str)):
+                    differing.append(str(key)[:40])
+        print(
+            f"[music_cloud_confirm] mode={mode} confirmed={readback_ok} readback_rev={readback_rev} reserved_rev={rev_after} "
+            f"rev_matches={readback_rev == rev_after and rev_after > 0} fp_matches={fp_matches} "
+            f"revision_advanced={revision_advanced} differing_top_level_keys={differing[:8] or '-'}",
+            flush=True,
+        )
+    except Exception:  # logging must never break a save
+        pass
+
+
 def force_music_workspace_save(
     st: Any,
     *,
@@ -798,6 +826,14 @@ def force_music_workspace_save(
 
         next_rev = reserve_workspace_revision_for_canonical_fp(ss, state, canonical_fp)
         state = stamp_workspace_revision_into_state(state, next_rev)
+        try:
+            from workspace_revision import CLOUD_BASE_REVISION_KEY
+
+            # lets a later restore of this LOCAL copy tell "cloud unchanged since my last confirmed
+            # write" from "cloud moved on" without trusting inflated local revision counters
+            state["cloud_confirmed_revision"] = int(ss.get(CLOUD_BASE_REVISION_KEY) or 0)
+        except Exception:
+            pass
         record_save_transaction(
             ss,
             envelope_revision_after=next_rev,
@@ -1015,6 +1051,8 @@ def force_music_workspace_save(
                     written_rev = rev_after
                 readback_ok = revision_advanced and written_rev == rev_after and bool(state)
                 authoritative_upsert = True
+                _log_cloud_confirmation("authoritative", readback_rev=written_rev, rev_after=rev_after, fp_matches=True,
+                                        revision_advanced=revision_advanced, readback_ok=readback_ok, payload=state, readback=None)
                 record_save_transaction(
                     ss,
                     cloud_readback_attempted=False,
@@ -1036,6 +1074,8 @@ def force_music_workspace_save(
                 fp_matches = readback_fp == fp
                 rev_matches = readback_rev == rev_after and rev_after > 0
                 readback_ok = bool(readback) and rev_matches and revision_advanced and fp_matches
+                _log_cloud_confirmation("readback", readback_rev=readback_rev, rev_after=rev_after, fp_matches=fp_matches,
+                                        revision_advanced=revision_advanced, readback_ok=readback_ok, payload=state, readback=readback)
                 record_save_transaction(
                     ss,
                     cloud_readback_revision=readback_rev,
@@ -1061,6 +1101,8 @@ def force_music_workspace_save(
                 fp_matches = readback_fp == fp
                 rev_matches = readback_rev == rev_after and rev_after > 0
                 readback_ok = bool(readback) and rev_matches and revision_advanced and fp_matches
+                _log_cloud_confirmation("strict_single_readback", readback_rev=readback_rev, rev_after=rev_after, fp_matches=fp_matches,
+                                        revision_advanced=revision_advanced, readback_ok=readback_ok, payload=state, readback=readback)
                 authoritative_upsert = readback_ok
                 record_save_transaction(
                     ss,

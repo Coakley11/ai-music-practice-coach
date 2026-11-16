@@ -4884,7 +4884,7 @@ def music_active_song_cloud_drift(
         for key in CAPO_PERSIST_KEYS:
             if key not in cloud_meta:
                 continue
-            if ss.get(key) != cloud_meta.get(key):
+            if _capo_value_differs(ss.get(key), cloud_meta.get(key)):
                 return True, f"capo:{key}"
         if CHART_IN_INSTRUMENT_KEY_KEY in cloud_meta and CHART_IN_INSTRUMENT_KEY_KEY in ss:
             if bool(ss[CHART_IN_INSTRUMENT_KEY_KEY]) != bool(cloud_meta[CHART_IN_INSTRUMENT_KEY_KEY]):
@@ -4901,6 +4901,19 @@ def music_active_song_cloud_drift(
             if ss.get(key) != session_blob.get(key):
                 return True, f"session_capo:{key}"
     return False, ""
+
+
+def _capo_value_differs(live: Any, stored: Any) -> bool:
+    """True when a stored capo setting should be re-applied over the live session value.
+
+    A stored value that is unset or empty carries no capo override, so it is never a reason to
+    re-apply the saved workspace: the live session may already have derived a value (for example the
+    song's sounding key). Treating "" as drift made every run re-apply the saved workspace over
+    unsaved local edits once cloud writes worked.
+    """
+    if stored is None or stored == "":
+        return False
+    return live != stored
 
 
 def music_content_cloud_drift(

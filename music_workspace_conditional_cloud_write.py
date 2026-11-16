@@ -90,7 +90,9 @@ def prepare_music_conditional_write(
     state: dict[str, Any],
 ) -> dict[str, Any]:
     """Pre-flight for music CAS cloud write. Does not mutate cloud."""
-    ss = session if isinstance(session, dict) else {}
+    from music_session_mapping import as_session_mapping
+
+    ss = as_session_mapping(session)
     applied_before = device_applied_revision(ss)
     candidate = candidate_revision_from_state(state)
     cloud_rev = authoritative_cloud_revision(ss)
@@ -125,8 +127,19 @@ def prepare_music_conditional_write(
         except ImportError:
             pass
     create_path_selected = expected <= 0 and create_path_allowed and not row_exists
+    metadata_only_row = False
+    try:
+        from suite_storage_supabase import metrics_is_metadata_only
 
-    if row_exists and expected <= 0:
+        metadata_only_row = bool(row_exists and expected <= 0 and metrics_is_metadata_only(stored_metrics))
+    except Exception:
+        metadata_only_row = False
+
+    if metadata_only_row:
+        # The row exists only because lightweight page/state saves ran first (new account). It holds
+        # no workspace, so the first workspace save adopts it (the CAS itself is guarded in storage).
+        create_path_selected = True
+    elif row_exists and expected <= 0:
         # Observing a row revision is not applying its complete workspace. Using
         # that number as our CAS expectation could bless an incomplete/default
         # local payload and overwrite saved projects on an existing workspace.
@@ -137,10 +150,10 @@ def prepare_music_conditional_write(
     elif row_exists and create_path_allowed:
         violations.append(VIOLATION_EXISTING_ROW_CREATE)
 
-    if expected <= 0 and row_exists:
+    if expected <= 0 and row_exists and not metadata_only_row:
         create_path_selected = False
 
-    blocked = bool(row_exists and expected <= 0)
+    blocked = bool(row_exists and expected <= 0 and not metadata_only_row)
     if candidate <= applied:
         violations.append(VIOLATION_REVISION_REUSED)
         blocked = True

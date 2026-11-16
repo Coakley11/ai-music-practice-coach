@@ -74,6 +74,21 @@ _EXPLICIT_STARTUP_SAVE_REASONS: frozenset[str] = frozenset(
 )
 
 
+def _advance_revision_surfaces(session: Any, rev_loaded: int, keys: tuple[str, ...]) -> None:
+    """Raise revision surfaces to the startup-loaded revision, never lower them.
+
+    Releasing startup save suppression used to *assign* the startup revision. When a later confirmed
+    save had already advanced the device (for example 6 -> 8), that rolled the device back to 6 and the
+    next write was refused as a stale conflict against the device's own earlier write.
+    """
+    for key in keys:
+        try:
+            current = int(session.get(key) or 0)
+        except (TypeError, ValueError):
+            current = 0
+        session[key] = max(current, int(rev_loaded or 0))
+
+
 def _canonical_fp(state: dict[str, Any] | None) -> str:
     from music_workspace_canonical_fingerprint import workspace_canonical_content_fingerprint
 
@@ -152,10 +167,10 @@ def _apply_queued_display_key_startup_release(
 
         rev_loaded = int(session.get(STARTUP_REVISION_LOADED_KEY) or 0)
         if rev_loaded:
-            session[LAST_CONFIRMED_REVISION_KEY] = rev_loaded
-            session[CLOUD_REVISION_KEY] = rev_loaded
-            session[APPLIED_REVISION_KEY] = rev_loaded
-            session[LOCAL_REVISION_KEY] = rev_loaded
+            _advance_revision_surfaces(
+                session, rev_loaded,
+                (LAST_CONFIRMED_REVISION_KEY, CLOUD_REVISION_KEY, APPLIED_REVISION_KEY, LOCAL_REVISION_KEY),
+            )
     except ImportError:
         pass
     try:
@@ -552,10 +567,10 @@ def _apply_queued_page_startup_release(
             LOCAL_REVISION_KEY,
         )
 
-        session[LAST_CONFIRMED_REVISION_KEY] = rev_loaded
-        session[CLOUD_REVISION_KEY] = rev_loaded
-        session[APPLIED_REVISION_KEY] = rev_loaded
-        session[LOCAL_REVISION_KEY] = rev_loaded
+        _advance_revision_surfaces(
+            session, rev_loaded,
+            (LAST_CONFIRMED_REVISION_KEY, CLOUD_REVISION_KEY, APPLIED_REVISION_KEY, LOCAL_REVISION_KEY),
+        )
     except ImportError:
         pass
     session.pop("_music_pending_canonical_content_fp", None)
@@ -775,10 +790,10 @@ def _apply_confirmed_startup_alignment(
             LOCAL_REVISION_KEY,
         )
 
-        session[LAST_CONFIRMED_REVISION_KEY] = rev_loaded
-        session[CLOUD_REVISION_KEY] = rev_loaded
-        session[APPLIED_REVISION_KEY] = rev_loaded
-        session[LOCAL_REVISION_KEY] = rev_loaded
+        _advance_revision_surfaces(
+            session, rev_loaded,
+            (LAST_CONFIRMED_REVISION_KEY, CLOUD_REVISION_KEY, APPLIED_REVISION_KEY, LOCAL_REVISION_KEY),
+        )
     except ImportError:
         pass
     session.pop("_music_pending_canonical_content_fp", None)

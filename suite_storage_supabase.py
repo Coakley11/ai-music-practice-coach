@@ -7,7 +7,7 @@ from __future__ import annotations
 import copy
 import json
 from activity_time import normalize_timestamp_iso, utc_now_iso
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from suite_storage_config import SuiteCloudConfig, get_auth_api_key, get_cloud_config, reset_cloud_config_cache
@@ -197,7 +197,9 @@ def _merge_state_metrics(scoped_app_key: str, incoming: dict[str, Any] | None) -
 
 
 def _now_iso() -> str:
-    return datetime.now().isoformat(timespec="seconds")
+    # UTC with an explicit offset. Naive local time was stored in timestamptz columns (read back as UTC),
+    # skewing every cloud timestamp by the server's UTC offset and breaking cloud-vs-disk freshness.
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat(timespec="seconds")
 
 
 def _headers(cfg: SuiteCloudConfig, *, prefer: str = "return=minimal") -> dict[str, str]:
@@ -627,6 +629,12 @@ def _metrics_for_conditional_write(
     return merged
 
 
+def metrics_is_metadata_only(metrics: dict[str, Any] | None) -> bool:
+    """True for a state row that never carried a workspace: no saved workspace blob and no revision."""
+    m = metrics if isinstance(metrics, dict) else {}
+    return bool(m) and _FULL_SESSION_KEY not in m and metrics_workspace_revision(m) <= 0
+
+
 def save_current_state_conditional_cas(
     app: str,
     *,
@@ -688,6 +696,34 @@ def save_current_state_conditional_cas(
 
     if expected <= 0:
         existing = _load_state_row_metrics(app_key)
+        if existing and metrics_is_metadata_only(existing):
+            # A lightweight page/state save (login, navigation) created this row before any
+            # workspace was ever saved. It holds no workspace, so the FIRST workspace save may
+            # adopt it - guarded so it only succeeds while the row still has no workspace blob
+            # (a concurrent first save by another session leaves 0 rows -> a normal conflict).
+            adopt_params: dict[str, str] = {"app": f"eq.{app_key}", f"metrics->{_FULL_SESSION_KEY}": "is.null"}
+            if uid:
+                adopt_params["user_id"] = f"eq.{uid}"
+            rows = _request(
+                "PATCH",
+                _TABLE_STATE,
+                params=adopt_params,
+                json_body={
+                    "page": page or "",
+                    "summary": summary or "",
+                    "metrics": merged_metrics,
+                    "updated_at": _now_iso(),
+                },
+                prefer="return=representation",
+            )
+            count = len(rows) if isinstance(rows, list) else 0
+            return {
+                **base_result,
+                "accepted": count > 0,
+                "rows_affected": count,
+                "write_mode": "adopt_metadata_row" if count else "conflict",
+                "reason": "adopt_metadata_row_ok" if count else "adopt_metadata_row_zero_rows",
+            }
         if existing:
             stored = metrics_workspace_revision(existing)
             return {

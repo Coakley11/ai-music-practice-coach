@@ -165,7 +165,9 @@ def revision_for_authoritative_hydrate(
     payload: dict[str, Any] | None,
 ) -> int:
     """Same logical rule as cloud metrics row when session holds a recent resolve snapshot."""
-    ss = session if isinstance(session, dict) else {}
+    from music_session_mapping import as_session_mapping
+
+    ss = as_session_mapping(session)
     cached = ss.get(SESSION_CLOUD_METRICS_LOGICAL_KEY)
     if isinstance(cached, dict):
         try:

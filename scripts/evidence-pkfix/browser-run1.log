@@ -1,0 +1,52 @@
+worktree : /c/tmp/ai-music-pkfix
+script   : scripts/_accept_pkfix_saved_key.py
+port     : 8630
+cleared  : ignored app state under /c/tmp/ai-music-pkfix/data (tracked fixtures kept)
+server pid: 194577
+  PASS  H1 app renders
+picked Say dropdown=True landed=True sidebar_song='SONG\n\nSONG\nSay — John Mayer\n\n🎼 Songs\n\nSay · Pop\n\n📜 Song Original Key: Bb\n\n🗝️ Practice / Co'
+    Practice Key D: 'Bb' -> 'D' (clicked 'D') -> 'D' after the rerun
+  PASS  H2 Say's permanent Practice Key is saved as D  [persisted store = 'd']
+  PASS  H3 the saved Karaoke entry is Bb  [entry = 'bb']
+  PASS  H4 the set performs
+  FAIL  H5 a take is playing before the retune  [play=True card='stopped' sounding=0]
+    Practice Key Ab: 'D major' -> 'A? major' (clicked 'A? major') -> 'A? major' after the rerun
+  PASS  H6 the live performance key is Ab  ['Backing source: Catalog song · Say · Ab · 82 BPM' (setter True)]
+  FAIL  H7 the backing is actually playing after the retune  [0 sounding, t=[]]
+  PASS  H8 the PERMANENT Practice Key is still D during the performance  [persisted store = 'd' (the sidebar may show Ab by design)]
+  PASS  H9 the saved Karaoke entry is still Bb during the performance  [entry = 'bb']
+  OBS   stopped with the card's own #btn, which is Stop while a take runs
+  PASS  H10 Stop really was pressed  [card now '']
+  PASS  H11 after Stop the permanent Practice Key is still D  [persisted store = 'd']
+  PASS  H12 after Stop the saved Karaoke entry is still Bb  [entry = 'bb']
+  FAIL  H13 after End Set the permanent Practice Key is still D  [persisted store = 'ab' (ended=True)]
+  PASS  H14 after End Set the saved Karaoke entry is still Bb  [entry = 'bb']
+picked Say dropdown=True landed=True sidebar_song='SONG\n\nSONG\nSay — John Mayer\n\n🎼 Songs\n\nSay · Pop\n\n📜 Song Original Key: Bb\n\n🗝️ Practice / Co'
+picked Say dropdown=True landed=True sidebar_song='SONG\n\nSONG\nSay — John Mayer\n\n🎼 Songs\n\nSay · Pop\n\n📜 Song Original Key: Bb\n\n🗝️ Practice / Co'
+  FAIL  H15 reopening Say outside Karaoke shows D  [sidebar shows 'ab']
+    Practice Key F: 'Ab' -> 'F' (clicked 'F') -> 'F' after the rerun
+  PASS  H16 an ordinary Practice Key change outside Karaoke still saves  [persisted store = 'f' (setter True)]
+
+======================================================================
+  PASS  H1 app renders
+  PASS  H2 Say's permanent Practice Key is saved as D
+  PASS  H3 the saved Karaoke entry is Bb
+  PASS  H4 the set performs
+  FAIL  H5 a take is playing before the retune
+  PASS  H6 the live performance key is Ab
+  FAIL  H7 the backing is actually playing after the retune
+  PASS  H8 the PERMANENT Practice Key is still D during the performance
+  PASS  H9 the saved Karaoke entry is still Bb during the performance
+  PASS  H10 Stop really was pressed
+  PASS  H11 after Stop the permanent Practice Key is still D
+  PASS  H12 after Stop the saved Karaoke entry is still Bb
+  FAIL  H13 after End Set the permanent Practice Key is still D
+  PASS  H14 after End Set the saved Karaoke entry is still Bb
+  FAIL  H15 reopening Say outside Karaoke shows D
+  PASS  H16 an ordinary Practice Key change outside Karaoke still saves
+  OBS   picked Say dropdown=True landed=True sidebar_song='SONG\n\nSONG\nSay — John Mayer\n\n🎼 Songs\n\nSay · Pop\n\n📜 Song Original Key: Bb\n\n🗝️ Practice / Co'
+  OBS   stopped with the card's own #btn, which is Stop while a take runs
+  OBS   picked Say dropdown=True landed=True sidebar_song='SONG\n\nSONG\nSay — John Mayer\n\n🎼 Songs\n\nSay · Pop\n\n📜 Song Original Key: Bb\n\n🗝️ Practice / Co'
+
+12/16 gates passed
+stopping the server (pid 194577)
