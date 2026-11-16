@@ -5,10 +5,11 @@ the *page*. Two surfaces want that: the Lead Sheet (the current chord) and the m
 or a Composition's Original Melody, one staff per section (the current measure). Each lives in its own
 components.html iframe, so they cannot share a Python object; instead the first iframe that loads installs a
 single controller on the top window (``window.top.__lsFollow``) and every surface registers with it and asks it
-to follow. Only one surface leads at a time (user, 2026-11-14): a melody staff that is open on screen and has the
-playing measure lit (its measures are aligned to the Backing timeline) leads; otherwise the Lead Sheet; otherwise
-nothing moves the page. Collapsing the melody hands the page back to the Lead Sheet at once, and among several
-section staves the one that lit a measure most recently leads. A melody with no measure alignment (an uploaded
+to follow. Only one surface leads at a time. The order (user, 2026-11-16, replacing "a melody staff first"):
+the Original Melody (a Composition's own melody, one staff per section), then the Practice Melody, then the Lead
+Sheet -- each only while it is open on screen and has the playing measure lit (a staff's measures are aligned to
+the Backing timeline); otherwise nothing moves the page. Closing the leader hands the page to the next one at once,
+and among several section staves the one that lit a measure most recently leads. A melody with no measure alignment (an uploaded
 PDF, a staff without a timeline) never registers, so it never claims the page.
 
 That is the only code that moves the page, and it holds still for six seconds after any
@@ -29,9 +30,44 @@ from __future__ import annotations
 
 HOLD_MS = 6000
 CONTROLLER_VERSION = 2
-# Who leads the page when both are open and playing (higher wins).
+# Who leads the page when several are open and playing (higher wins; user, 2026-11-16).
 LEAD_SHEET_PRIORITY = 10
-MELODY_PRIORITY = 20
+MELODY_PRIORITY = 20                 # the Practice Melody staff
+ORIGINAL_MELODY_PRIORITY = 30        # a Composition's Original Melody (one staff per section)
+FOLLOW_ROLES = {"practice-melody": MELODY_PRIORITY, "original-melody": ORIGINAL_MELODY_PRIORITY}
+
+# Plain JS (not an f-string), inserted into the follow surfaces' templates as a value. Streamlit lays out the next
+# element where a component's element container ends, and that container keeps the height the component was created
+# with -- so a frame that sizes itself to its content (the full-height Lead Sheet, a follow staff) must size the
+# boxes between it and that container too, or the next panel is drawn underneath it (measured on dev 68668ef5: the
+# Lead Sheet's frame 2396 / 4309 px tall in a 720 px container at 1500 / 390 px; the Original Melody panel below
+# started 1644 / 3557 px inside the chart). Re-applied whenever the frame or the container changes size.
+FRAME_HOST_FIT_JS = r"""
+function lsFitFrameHost(fe, h) {
+  try {
+    if (!fe || !(h > 0)) return;
+    var host = fe.closest && fe.closest('[data-testid="stElementContainer"]');
+    if (!host) return;
+    var chain = [], el = fe.parentElement;
+    while (el && chain.length < 6) { chain.push(el); if (el === host) break; el = el.parentElement; }
+    if (chain[chain.length - 1] !== host) return;
+    chain.forEach(function (box) {
+      if (Math.abs(box.getBoundingClientRect().height - h) <= 1) return;
+      // Streamlit's element container is a flex item with a fixed basis (measured: flex 0 0 1130px), which wins
+      // over height in its column: the basis must follow the frame too, or a shorter staff leaves a blank below it.
+      box.style.setProperty("flex-basis", h + "px", "important");
+      box.style.setProperty("height", h + "px", "important");
+      box.style.setProperty("min-height", h + "px", "important");
+    });
+  } catch (e) {}
+}
+function lsWatchFrameHost(fe, fit) {
+  try {
+    var host = fe.closest && fe.closest('[data-testid="stElementContainer"]');
+    if (host && window.ResizeObserver) new ResizeObserver(fit).observe(host);
+  } catch (e) {}
+}
+"""
 
 # Plain string (not an f-string): it is inserted into the components' f-string templates as a value.
 _CONTROLLER_JS = r"""
