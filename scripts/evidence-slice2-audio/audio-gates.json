@@ -1,0 +1,23 @@
+{
+  "gates": {
+    "A1 app renders": true,
+    "A2 a karaoke set is performing": true,
+    "A3 the Lead Sheet is Off": true,
+    "A4 the performance surface mounts with the Lead Sheet OFF": true,
+    "A5 a take is really sounding with the Lead Sheet OFF": true,
+    "A6 that take is audible - unmuted, with volume": true,
+    "A7 the card reports the temporary key": true,
+    "A8 a take is still sounding after the retune": true,
+    "A9 the retune rendered a DIFFERENT take, not the same file relabelled": true,
+    "A10 the AUDIO really moved down two semitones, Bb -> Ab": true,
+    "A11 Pause silences the take": true,
+    "A12 Resume sounds one player again, from where it stopped": true,
+    "A13 with the Lead Sheet ON exactly one player sounds": true,
+    "A14 with the Lead Sheet OFF again exactly one player sounds": true,
+    "A15 two players never sounded at once - no doubled backing, no echo": true,
+    "A16 Stop really stops the player": true
+  },
+  "observed": [
+    "picked Say dropdown=True landed=True sidebar_song='SONG\\n\\nSONG\\nSay \u2014 John Mayer\\n\\n\ud83c\udfbc Songs\\n\\nSay \u00b7 Pop\\n\\n\ud83d\udcdc Song Original Key: Bb\\n\\n\ud83d\udddd\ufe0f Practice / Co'"
+  ]
+}

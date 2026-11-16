@@ -1,0 +1,62 @@
+worktree : /c/tmp/ai-music-slice2
+script   : scripts/_accept_slice2_audio.py
+port     : 8656
+cleared  : ignored app state under /c/tmp/ai-music-slice2/data (tracked fixtures kept)
+server pid: 204322
+  PASS  A1 app renders
+picked Say dropdown=True landed=True sidebar_song='SONG\n\nSONG\nSay — John Mayer\n\n🎼 Songs\n\nSay · Pop\n\n📜 Song Original Key: Bb\n\n🗝️ Practice / Co'
+  PASS  A2 a karaoke set is performing
+  PASS  A3 the Lead Sheet is Off
+  PASS  A4 the performance surface mounts with the Lead Sheet OFF  [play=True]
+    take as mounted: {"has_audio": true, "src": "fc-dc94de3c7b9c/f982831640321997810d.wav", "paused": true, "muted": false, "t": 0, "ready": 4, "button": {"text": "\u25b6 Resume playback", "state": "resume", "hidden": false, "disabled": false}}
+    take once started: {"has_audio": true, "src": "fc-dc94de3c7b9c/f982831640321997810d.wav", "paused": false, "muted": false, "t": 0.33, "ready": 4, "button": {"text": "\u23f8 Pause playback", "state": "stop", "hidden": false, "disabled": false}}
+    playing steadily: {"has_audio": true, "src": "fc-dc94de3c7b9c/f982831640321997810d.wav", "paused": false, "muted": false, "t": 7.55, "ready": 4, "button": {"text": "\u23f8 Pause playback", "state": "stop", "hidden": false, "disabled": false}}
+    entry key, playing: 1 element(s), 1 sounding, 1 audible, t=[7.55]
+  PASS  A5 a take is really sounding with the Lead Sheet OFF  [1 sounding of 1]
+  PASS  A6 that take is audible - unmuted, with volume  [muted=[False]]
+    captured entry-bb: 37261316 bytes from ...a78-97fc-dc94de3c7b9c/f982831640321997810d.wav
+    card says: 'Backing source: Catalog song · Say · Bb · 82 BPM'
+    Practice Key Ab: 'B? major' -> 'A? major' (clicked 'A? major') -> 'A? major' after the rerun
+    pressed Play again after the retune: True
+    a new take appeared after 6s: ...4de3c7b9c/87a209611679825322b9.wav
+    retuned, playing: 1 element(s), 1 sounding, 1 audible, t=[3.89]
+  PASS  A7 the card reports the temporary key  ['Backing source: Catalog song · Say · Ab · 82 BPM' (setter True)]
+  PASS  A8 a take is still sounding after the retune  [1 sounding]
+    captured retuned-ab: 37261316 bytes from ...a78-97fc-dc94de3c7b9c/87a209611679825322b9.wav
+  PASS  A9 the retune rendered a DIFFERENT take, not the same file relabelled  [...b9c/f982831640321997810d.wav -> ...b9c/87a209611679825322b9.wav]
+    chroma match by rotation: [0.6911, 0.6906, 0.6844, 0.8282, 0.6236, 0.8355, 0.6875, 0.7104, 0.6724, 0.6244, 0.9982, 0.632]
+    best rotation: 10 semitone(s), margin 0.1626
+  PASS  A10 the AUDIO really moved down two semitones, Bb -> Ab  [best rotation 10 margin 0.1626 (expected 10, margin >= 0.02); rotation 0 would mean the sound never changed, and a margin under 0.02 would mean this measured nothing]
+    after Pause: 1 element(s), 0 sounding, 0 audible, t=[22.82]
+  PASS  A11 Pause silences the take  [0 sounding]
+    after Resume: 1 element(s), 1 sounding, 1 audible, t=[26.68]
+  PASS  A12 Resume sounds one player again, from where it stopped  [1 sounding, position 22.82 -> 26.76]
+    Lead Sheet ON, playing: 2 element(s), 1 sounding, 1 audible, t=[0, 44.94]
+  PASS  A13 with the Lead Sheet ON exactly one player sounds  [1 sounding of 2]
+    Lead Sheet OFF again, playing: 1 element(s), 1 sounding, 1 audible, t=[56.04]
+  PASS  A14 with the Lead Sheet OFF again exactly one player sounds  [1 sounding of 1]
+  PASS  A15 two players never sounded at once - no doubled backing, no echo  [most sounding at once: 1 (elements seen: [1, 1, 1, 1, 2, 1])]
+    after Stop: 1 element(s), 0 sounding, 0 audible, t=[0]
+  PASS  A16 Stop really stops the player  [clicked=True sounding=0]
+
+======================================================================
+  PASS  A1 app renders
+  PASS  A2 a karaoke set is performing
+  PASS  A3 the Lead Sheet is Off
+  PASS  A4 the performance surface mounts with the Lead Sheet OFF
+  PASS  A5 a take is really sounding with the Lead Sheet OFF
+  PASS  A6 that take is audible - unmuted, with volume
+  PASS  A7 the card reports the temporary key
+  PASS  A8 a take is still sounding after the retune
+  PASS  A9 the retune rendered a DIFFERENT take, not the same file relabelled
+  PASS  A10 the AUDIO really moved down two semitones, Bb -> Ab
+  PASS  A11 Pause silences the take
+  PASS  A12 Resume sounds one player again, from where it stopped
+  PASS  A13 with the Lead Sheet ON exactly one player sounds
+  PASS  A14 with the Lead Sheet OFF again exactly one player sounds
+  PASS  A15 two players never sounded at once - no doubled backing, no echo
+  PASS  A16 Stop really stops the player
+  OBS   picked Say dropdown=True landed=True sidebar_song='SONG\n\nSONG\nSay — John Mayer\n\n🎼 Songs\n\nSay · Pop\n\n📜 Song Original Key: Bb\n\n🗝️ Practice / Co'
+
+16/16 gates passed
+stopping the server (pid 204322)
