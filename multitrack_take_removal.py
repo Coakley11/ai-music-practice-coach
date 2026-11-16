@@ -268,6 +268,12 @@ def remove_take(
 
     report["deliberately_empty"] = mark_layers_deliberately_empty(session_state, slots)
     report["reset_token"] = request_position_reset(session_state)
+    try:
+        from multitrack_project_audio_restore import note_slot_removed
+
+        note_slot_removed(session_state, slot)
+    except Exception:
+        pass
     return report
 
 

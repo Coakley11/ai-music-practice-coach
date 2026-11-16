@@ -210,6 +210,24 @@ class Handler(BaseHTTPRequestHandler):
         length = int(self.headers.get("Content-Length") or 0)
         raw_body = self.rfile.read(length) if length else b""
         params = parse_qsl(parts.query, keep_blank_values=True)
+        if parts.path.startswith("/storage/v1/object/list/"):
+            bucket = parts.path[len("/storage/v1/object/list/"):].strip("/")
+            req = json.loads(raw_body.decode("utf-8") or "{}") if raw_body else {}
+            folder = STORE_DIR / bucket / str(req.get("prefix") or "")
+            search = str(req.get("search") or "")
+            items = []
+            if folder.is_dir() and not (FAIL_FLAG is not None and FAIL_FLAG.exists()):
+                for f in sorted(folder.iterdir()):
+                    if f.is_file() and (not search or search in f.name):
+                        items.append({"name": f.name, "id": f.name, "metadata": {"size": f.stat().st_size}})
+            n = self._send(200, items)
+            self._log(200, "storage-list:" + bucket, params, len(raw_body), n, f"{len(items)} item(s)")
+            return
+        if (parts.path.startswith("/storage/v1/object/") and FAIL_FLAG is not None and FAIL_FLAG.exists()
+                and self.command != "GET"):
+            n = self._send(503, {"message": "simulated outage"})
+            self._log(503, "storage", params, len(raw_body), n, "simulated outage")
+            return
         if parts.path.startswith("/storage/v1/object/"):
             self._storage(parts.path, raw_body, params)
             return

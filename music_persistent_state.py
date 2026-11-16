@@ -698,6 +698,8 @@ _PERSIST_KEYS: tuple[str, ...] = (
     # written to disk and found nowhere after a refresh. It is kept "until the working session is
     # deliberately reset" (working_project_token), and a refresh is not a deliberate reset.
     "_mt_working_project_token",
+    # Layers deliberately removed from a saved project, so a new session does not bring them back.
+    "_mt_removed_project_slots",
     "composer_saved_compositions",
     "composer_active_document",
     "composition_recent_active_ids",

@@ -1,0 +1,37 @@
+  PASS  P1 Multitrack opens
+  PASS  P2 a full-length take is recorded  [88s]
+  PASS  P3 the take is in the live session  [fp=528ef725 8676652 bytes (8.27 MiB)]
+    the recorder stopped at 90.38 s of the 88 s asked for
+  PASS  P4 the recorded take decodes  [{'decodes': True, 'seconds': 90.38, 'rate': 48000, 'channels': 1}]
+  PASS  P5 Save layer pressed  [clicked]
+  PASS  P6 Save project pressed  [name=True save=True]
+    project save message: saved new project - 1 layer saved to your account.
+  PASS  P7 the save message says the layer is in the account  [saved new project - 1 layer saved to your account.]
+    objects in the stand-in bucket: [["music-media\\de96b41d-cc6b-4620-854f-a8c3066db38d\\daniel\\multitrack\\2f186316-7869-4fb6-9fd5-42f76bc4b292\\f533e1dd-8a7e-47e1-aef3-af26c01aa1b9.wav", 8676652]]
+  PASS  C1 the take's exact bytes are in cloud storage  [music-media\de96b41d-cc6b-4620-854f-a8c3066db38d\daniel\multitrack\2f186316-7869-4fb6-9fd5-42f76bc4b292\f533e1dd-8a7e-47e1-aef3-af26c01aa1b9.wav]
+  PASS  C2 the cloud copy decodes, same length as recorded  [{'decodes': True, 'seconds': 90.38, 'rate': 48000, 'channels': 1}]
+  PASS  C3 the project is in the cloud library  [2 saved item(s)]
+    workspace row carries the take inline: False (the 2 MiB cap drops it - expected False)
+  PASS  N1 new session, same server: the saved project is listed
+  PASS  N1 new session, same server: the recording is back WITHOUT pressing anything  [fp=528ef725 want=528ef725 bytes=8676652]
+  PASS  N1 new session, same server: the page does not ask for a new recording
+  PASS  N1 new session, same server: the layer says it is a saved layer
+    outage save message(s): ['saved changes to project, but guitar did not reach your account storage: kept on this server only, which a restart of the app can lose. press save changes to try again.']
+  PASS  O1 a save during a cloud outage is NOT reported as saved to the account  [clicked=True]
+  PASS  R1 after the server was replaced: the saved project is listed
+    R1 after the server was replaced: restore said done 2f186316-7869-4fb6-9fd5-42f76bc4b292 {'Guitar': {'ok': True, 'bytes': 8676652, 'seconds': 90.38133333333333}} 
+  PASS  R1 after the server was replaced: the recording is back WITHOUT pressing anything  [fp=528ef725 want=528ef725 bytes=8676652]
+  PASS  R1 after the server was replaced: the page does not ask for a new recording
+  PASS  R1 after the server was replaced: the layer says it is a saved layer
+    R1 after the server was replaced: playback: {'sources': 1, 'layer_started': True, 'label': 'Counting you in — everything starts together on beat 1.', 'layer_dur': 90.38133333333333, 'backing_started': False}
+  PASS  R1 after the server was replaced: Play decodes the full 90.38 s recording and starts it  [{'sources': 1, 'layer_started': True, 'label': 'Counting you in — everything starts together on beat 1.', 'layer_dur': 90.38133333333333, 'backing_started': False}]
+    R1 after the server was replaced: no backing started with the recording (the project saved no backing audio)
+    restored copies on the new server's disk with the take's SHA-256: 1
+  PASS  R2 the restored audio decodes, same length as recorded  [{'decodes': True, 'seconds': 90.38, 'rate': 48000, 'channels': 1}]
+  PASS  N2 another new session after the restart: the saved project is listed
+    N2 another new session after the restart: restore said refilled_from_session_cache 2f186316-7869-4fb6-9fd5-42f76bc4b292  
+  PASS  N2 another new session after the restart: the recording is back WITHOUT pressing anything  [fp=528ef725 want=528ef725 bytes=8676652]
+  PASS  N2 another new session after the restart: the page does not ask for a new recording
+  PASS  N2 another new session after the restart: the layer says it is a saved layer
+
+25/25 gates passed

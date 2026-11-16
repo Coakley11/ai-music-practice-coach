@@ -54,6 +54,27 @@ STORE = EVID / "cloud-storage"
 FAKE_KEY = "eyJhbGciOiJIUzI1NiJ9.eyJyb2xlIjoic2VydmljZV9yb2xlIn0.isolated-test-not-a-secret"
 TEST_USER = "mt_isolated_test"
 PROJECT = "Durability 86s"
+FAIL_FLAG = EVID / "cloud-fail.flag"
+#: Records every Web Audio source start, in every frame, into the top window - so a test can say a
+#: restored layer was decoded (buffer duration) and actually started, and when, beside the backing.
+AUDIO_PROBE = r"""
+(() => {
+  try {
+    const top = window.top;
+    const orig = AudioBufferSourceNode.prototype.start;
+    AudioBufferSourceNode.prototype.start = function (when, offset, dur) {
+      try {
+        (top.__mtStarts = top.__mtStarts || []).push({
+          when: Number(when || 0), now: this.context.currentTime,
+          dur: this.buffer ? this.buffer.duration : null,
+          ch: this.buffer ? this.buffer.numberOfChannels : null,
+          sr: this.buffer ? this.buffer.sampleRate : null, offset: Number(offset || 0)});
+      } catch (e) {}
+      return orig.apply(this, arguments);
+    };
+  } catch (e) {}
+})();
+"""
 
 RESULTS: list[tuple[str, bool, str]] = []
 TAKE_SECONDS = [0.0]
@@ -93,7 +114,7 @@ def start_cloud() -> None:
         raise SystemExit(f"REFUSING: {CLOUD_PORT} is in use")
     PROCS["cloud"] = subprocess.Popen(
         [sys.executable, "-X", "utf8", str(SCRIPTS / "_fake_supabase.py"), str(CLOUD_PORT), str(CLOUD_DB),
-         str(EVID / "cloud-requests.jsonl")], stdout=subprocess.DEVNULL, stderr=open(EVID / "cloud-server.log", "a"))
+         str(EVID / "cloud-requests.jsonl"), str(FAIL_FLAG)], stdout=subprocess.DEVNULL, stderr=open(EVID / "cloud-server.log", "a"))
     for _ in range(30):
         if listening(CLOUD_PORT):
             return
@@ -210,6 +231,7 @@ def open_expanders(page: Page, words: tuple[str, ...]) -> None:
 
 def new_context(browser):
     ctx = browser.new_context(viewport={"width": 1400, "height": 950}, permissions=["microphone"])
+    ctx.add_init_script(AUDIO_PROBE)
     page = ctx.new_page()
     page.set_default_timeout(45000)
     page.goto(URL, wait_until="domcontentloaded")
@@ -218,40 +240,87 @@ def new_context(browser):
     return ctx, page
 
 
-def reopen_and_check(browser, data: Path, want_fp: str, label: str) -> dict:
+def play_and_listen(page: Page, take_seconds: float) -> dict:
+    """Press the Multitrack Play in the real page; report what the audio engine started."""
+    frame = None
+    for f in page.frames:
+        try:
+            if f.locator("#mt-play").count():
+                frame = f
+                break
+        except Exception:
+            continue
+    if frame is None:
+        return {"error": "no Multitrack player on the page"}
+    frame.locator("#mt-play").scroll_into_view_if_needed()
+    page.evaluate("() => { window.__mtStarts = []; }")
+    frame.locator("#mt-play").click()
+    starts: list = []
+    for _ in range(60):
+        page.wait_for_timeout(1000)
+        starts = page.evaluate("() => (window.__mtStarts || []).slice()") or []
+        if any(abs(float(x.get("dur") or 0) - take_seconds) < 0.5 for x in starts):
+            page.wait_for_timeout(1500)
+            starts = page.evaluate("() => (window.__mtStarts || []).slice()") or []
+            break
+    label = ""
+    try:
+        label = (frame.locator("#mt-playback-label").inner_text(timeout=2000) or "").strip()
+    except Exception:
+        pass
+    try:
+        frame.locator("#mt-stop").click(timeout=3000)
+    except Exception:
+        pass
+    layer = [x for x in starts if abs(float(x.get("dur") or 0) - take_seconds) < 0.5]
+    others = [x for x in starts if x not in layer and float(x.get("dur") or 0) > 5]
+    out = {"sources": len(starts), "layer_started": bool(layer), "label": label[:80],
+           "layer_dur": layer[0]["dur"] if layer else None, "backing_started": bool(others)}
+    if layer and others:
+        out["start_spread_ms"] = round(abs(float(layer[0]["when"]) - float(others[0]["when"])) * 1000, 3)
+    return out
+
+
+def reopen_and_check(browser, data: Path, want_fp: str, label: str, *, play: bool = False) -> dict:
     ctx, page = new_context(browser)
     before = len(trace_rows(data))
     try:
         H.goto_multitrack(page)
-        H.settle(page, 6)
+        H.settle(page, 10)
         open_expanders(page, ("project", "library", "saved"))
         H.settle(page, 2)
         txt = H.low(H.main_body(page))
-        listed = PROJECT.lower() in txt
-        mark(f"{label}: the saved project is listed", listed)
-        loaded = click_key(page, "mt_hist_load_")
-        H.settle(page, 10)
-        note(f"{label}: a Load button was offered: {loaded}")
+        mark(f"{label}: the saved project is listed", PROJECT.lower() in txt)
+        for r in trace_rows(data)[before:]:
+            if r.get("stage") == "project_audio_restore":
+                note(f"{label}: restore said {r.get('reason')} {r.get('project', '')} {r.get('report', '')} {r.get('removed', '')}")
         fp, size = live_fp(data, before)
-        mark(f"{label}: the layer is back WITHOUT pressing anything", fp == want_fp, f"fp={fp} want={want_fp} bytes={size}")
-        if fp != want_fp:
-            # What a user could do: New Project clears only the working session (the saved library
-            # row is untouched), then Load the saved project from the library.
-            txt2 = H.low(H.main_body(page))
-            note(f"{label}: shown as currently loaded: {'loaded project' in txt2}; "
-                 f"'record or upload at least one layer' shown: {'record or upload at least one layer' in txt2}")
-            before2 = len(trace_rows(data))
-            cleared = click_key(page, "mt_new_project_btn")
-            H.settle(page, 8)
-            open_expanders(page, ("project", "library", "saved", "all projects"))
-            H.settle(page, 2)
-            loaded2 = click_key(page, "mt_hist_load_")
-            H.settle(page, 15)
-            fp, size = live_fp(data, before2)
-            mark(f"{label}: after New Project + Load, the layer comes back with the SAME audio", fp == want_fp,
-                 f"new={cleared} load={loaded2} fp={fp} want={want_fp} bytes={size}")
+        mark(f"{label}: the recording is back WITHOUT pressing anything", fp == want_fp,
+             f"fp={fp} want={want_fp} bytes={size}")
+        try:
+            if not H.layer_is_open(page, SLOT):
+                H.toggle_layer_by_pointer(page, SLOT, True)
+                H.settle(page, 3)
+        except Exception:
+            pass
+        txt = H.low(H.main_body(page))
+        mark(f"{label}: the page does not ask for a new recording",
+             "record or upload at least one layer" not in txt)
+        mark(f"{label}: the layer says it is a saved layer", "saved layer" in txt)
         H.shot(page, f"reopen-{label.split()[0].lower()}")
-        return {"fp": fp, "bytes": size}
+        res = {"fp": fp, "bytes": size}
+        if play and fp == want_fp:
+            heard = play_and_listen(page, TAKE_SECONDS[0])
+            note(f"{label}: playback: {heard}")
+            mark(f"{label}: Play decodes the full {TAKE_SECONDS[0]:.2f} s recording and starts it",
+                 bool(heard.get("layer_started")), f"{heard}")
+            if heard.get("backing_started"):
+                mark(f"{label}: the recording and the backing start together",
+                     float(heard.get("start_spread_ms", 999)) <= 5.0, f"spread={heard.get('start_spread_ms')} ms")
+            else:
+                note(f"{label}: no backing started with the recording (the project saved no backing audio)")
+            res["playback"] = heard
+        return res
     finally:
         ctx.close()
 
@@ -279,7 +348,7 @@ def main() -> int:
                 info = wav_info(raw)
                 TAKE_SECONDS[0] = float(info.get("seconds") or 0)
                 note(f"the recorder stopped at {TAKE_SECONDS[0]:.2f} s of the {SECONDS:.0f} s asked for")
-                mark("P4 the recorded take decodes", bool(info.get("decodes")) and TAKE_SECONDS[0] > 60, f"{info}")
+                mark("P4 the recorded take decodes", bool(info.get("decodes")) and TAKE_SECONDS[0] >= SECONDS - 1, f"{info}")
             clicked = H.click_page_button(page, "Save layer", SLOT)
             H.settle(page, 8)
             mark("P5 Save layer pressed", str(clicked).startswith("click"), str(clicked))
@@ -294,7 +363,11 @@ def main() -> int:
             H.settle(page, 15)
             mark("P6 Save project pressed", filled and saved, f"name={filled} save={saved}")
             body = H.low(H.main_body(page))
-            note("project save message: " + next((ln for ln in body.splitlines() if "project" in ln and "sav" in ln), "(none found)")[:160])
+            open_expanders(page, ("project library",))
+            body = H.low(H.main_body(page))
+            msg = next((ln for ln in body.splitlines() if "saved new project" in ln or "saved as new project" in ln), "")
+            note("project save message: " + (msg[:200] or "(none found)"))
+            mark("P7 the save message says the layer is in the account", "saved to your account" in msg, msg[:120])
             H.shot(page, "after-save-project")
             ctx.close()
 
@@ -319,36 +392,42 @@ def main() -> int:
             if take_sha:
                 reopen_and_check(browser, DATA1, take_sha[:8], "N1 new session, same server")
 
+            # An outage while saving: the message must not claim the account has it.
+            if take_sha:
+                octx, opage = new_context(browser)
+                try:
+                    H.goto_multitrack(opage)
+                    H.settle(opage, 10)
+                    FAIL_FLAG.write_text("1", encoding="utf-8")
+                    open_expanders(opage, ("project", "library", "save"))
+                    clicked = (click_key(opage, "mt_history_save_changes_btn")
+                               or click_key(opage, "mt_history_save_as_new_btn")
+                               or click_key(opage, "mt_history_save_new_btn"))
+                    H.settle(opage, 15)
+                    open_expanders(opage, ("project library",))
+                    t = H.low(H.main_body(opage))
+                    lines = [ln for ln in t.splitlines() if any(w in ln for w in (
+                        "did not reach your account", "could not", "failed", "not saved", "saved to your account"))]
+                    note(f"outage save message(s): {lines[:3]}")
+                    honest = any(("did not reach your account" in ln or "could not" in ln or "failed" in ln
+                                  or "not saved" in ln) for ln in lines)
+                    mark("O1 a save during a cloud outage is NOT reported as saved to the account",
+                         clicked and honest and not any("saved to your account" in ln for ln in lines),
+                         f"clicked={clicked}")
+                finally:
+                    FAIL_FLAG.unlink(missing_ok=True)
+                    octx.close()
+
             # A Streamlit Cloud restart or redeploy: new server, empty disk, the cloud stays.
             stop_app()
             start_app(DATA2, "server2")
-            got = reopen_and_check(browser, DATA2, (take_sha or "")[:8], "R1 after the server was replaced") if take_sha else {}
+            got = reopen_and_check(browser, DATA2, (take_sha or "")[:8], "R1 after the server was replaced",
+                                   play=True) if take_sha else {}
             restored = [p for p in DATA2.rglob("*.wav") if take_sha and hashlib.sha256(p.read_bytes()).hexdigest() == take_sha]
             note(f"restored copies on the new server's disk with the take's SHA-256: {len(restored)}")
             if restored:
                 mark("R2 the restored audio decodes, same length as recorded", wav_info(restored[0].read_bytes()).get("seconds") == TAKE_SECONDS[0],
                      f"{wav_info(restored[0].read_bytes())}")
-                # Synchronized playback: the restored layer and the project's stored backing through
-                # the real transport component, timed like slice 78A.
-                try:
-                    import _accept_issue78a_transport as T
-                    from multitrack_align_contract import transport_payload
-
-                    backing = max((v for k, v in objs if hashlib.sha256(v).hexdigest() != take_sha), key=len, default=None)
-                    layer = restored[0].read_bytes()
-                    tracks = [{"id": "t0", "name": SLOT, "b64": "data:audio/wav;base64," + T.b64(layer), "volume": 1.0,
-                               "mute": False, "solo": False, "delay": 0.0, **transport_payload(0.0)}]
-                    T.WORK.mkdir(parents=True, exist_ok=True)
-                    sctx = browser.new_context(viewport={"width": 1200, "height": 800})
-                    res = T.run_case(sctx, "restored-project-playback", tracks=tracks, backing=backing, bpm=96,
-                                     count_in_bars=0)
-                    sctx.close()
-                    spread = float(res.get("actual_start_spread_sec") or 0.0)
-                    mark("S1 restored layer + project backing start together",
-                         res.get("sources", 0) >= (2 if backing else 1) and spread <= 0.005 and not res.get("js_errors"),
-                         f"sources={res.get('sources')} spread={spread * 1000:.2f} ms backing={'project' if backing else 'none stored'} errors={res.get('js_errors')}")
-                except Exception as exc:
-                    mark("S1 restored layer + project backing start together", False, f"{type(exc).__name__}: {exc}")
             if take_sha:
                 reopen_and_check(browser, DATA2, take_sha[:8], "N2 another new session after the restart")
             browser.close()
@@ -356,8 +435,11 @@ def main() -> int:
         stop_app()
         kill(PROCS.pop("cloud", None))
         (EVID / "results.json").write_text(json.dumps(RESULTS, indent=1), encoding="utf-8")
-        shutil.rmtree(DATA1, ignore_errors=True)
-        shutil.rmtree(DATA2, ignore_errors=True)
+        if os.environ.get("MT_KEEP_DATA"):
+            print(f"kept data dirs: {DATA1} {DATA2}")
+        else:
+            shutil.rmtree(DATA1, ignore_errors=True)
+            shutil.rmtree(DATA2, ignore_errors=True)
     failed = [g for g, ok, _ in RESULTS if not ok]
     print(f"\n{len(RESULTS) - len(failed)}/{len(RESULTS)} gates passed")
     return 1 if failed else 0

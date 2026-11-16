@@ -28613,6 +28613,30 @@ elif _studio_page == "multitrack":
         restore_drafts(st.session_state, MT_SLOTS, st=st)
     except Exception:
         pass
+    # A reopened saved project brings back its saved layers. Drafts first: a newer unsaved take
+    # of this project wins its slot; the project fills only the slots still empty. Without this a
+    # reopened project said "loaded" with no audio, hid Load and asked for a new recording.
+    try:
+        from multitrack_project_audio_restore import (
+            failed_slots as _mt_restore_failed,
+            request_retry as _mt_restore_retry,
+            restore_active_project_audio,
+        )
+
+        _mt_restore_report = restore_active_project_audio(st.session_state, MT_SLOTS, st=st)
+        _mt_restore_bad = _mt_restore_failed(_mt_restore_report)
+        if _mt_restore_bad:
+            st.warning(
+                "This project's saved audio for "
+                + ", ".join(_mt_restore_bad)
+                + " could not be brought back just now. Your saved project still has it - "
+                "press **Restore saved audio** to try again."
+            )
+            if st.button("Restore saved audio", key="mt_restore_saved_audio_retry"):
+                _mt_restore_retry(st.session_state)
+                st.rerun()
+    except Exception:
+        pass
     try:
         from multitrack_takes import adopt_restored_layers_as_saved
 

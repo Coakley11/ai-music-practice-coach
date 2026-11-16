@@ -134,7 +134,9 @@ def discard_button_label(session_state: MutableMapping[str, Any], slot: str) -> 
 #: restart replaces. Nothing here may say "saved for good" or "on this device" about that.
 LONG_TAKE_NOTICE = (
     "Long recordings are kept as a temporary file on the app's server: they come back after a "
-    "refresh or a dropped connection, but **a restart of the app can lose them, saved or not.**"
+    "refresh or a dropped connection, but **a restart of the app can lose them, saved or not.** "
+    "**Save layer** alone does not keep a long recording permanently - to keep it, save the project "
+    "in **Project Library**."
 )
 
 
