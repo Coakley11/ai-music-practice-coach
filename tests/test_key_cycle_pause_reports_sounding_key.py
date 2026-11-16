@@ -1283,6 +1283,18 @@ class ANewStartAfterTheEndIsANewCycle(unittest.TestCase):
         got = snaps[-1]["eval"]
         self.assertEqual((got["disabled"], got["marker"], got["ended"]), (False, None, False), got)
 
+    def test_the_completed_take_is_untagged_when_it_plays_again_after_a_rerun(self) -> None:
+        # The tag's listener must outlive the frame that registered it: after a rerun, the same
+        # element playing again (same URL, so only the listener can tell) is no longer the leftover.
+        play_again = """async () => { const d = window.__kcDual; const a = document.getElementById(d.active === 1 ? 'kc-buf-1' : 'kc-buf-0');
+          const before = a.__kcCompletedFinal || ''; a.currentTime = 0; try { await a.play(); } catch (e) {}
+          for (let i = 0; i < 30 && a.__kcCompletedFinal; i++) await new Promise(r => setTimeout(r, 50));
+          const after = a.__kcCompletedFinal || ''; a.pause();
+          return {before: before.split('/').pop(), after}; }"""
+        snaps = _run_stop_race(self, self._ended_and_sealed() + [("eval", play_again)])
+        got = snaps[-1]["eval"]
+        self.assertEqual(got, {"before": "fsm.wav", "after": ""}, got)
+
     def test_the_new_cycle_moves_on_from_its_first_key(self) -> None:
         for with_restart in (True, False):
             with self.subTest(with_restart=with_restart):
@@ -1293,6 +1305,40 @@ class ANewStartAfterTheEndIsANewCycle(unittest.TestCase):
                 since, heard = snaps[-2]["eval"], snaps[-1]["eval"]
                 self.assertEqual(since["finalStops"], [], since)
                 self.assertEqual((heard["key"], heard["heard"]), ("Em", ["em.wav"]), heard)
+
+
+class AFreshPlayAfterStopShowsPause(unittest.TestCase):
+    """Compact-bar probe 2026-11-16 (I'll Remember April, Key Cycling on, Stop then a fresh card Play):
+    the music played but the always-mounted Key Cycling console read "Resume" in every sample (dev:
+    "Pause"). The page's transport sync last ran while it was silent after the Stop and wrote Resume;
+    the server's label stayed "Pause", so Streamlit never replaced the text, and nothing re-ran the
+    sync when the new take started. A press on that label is treated as a Resume."""
+
+    _CONSOLE_JS = """() => { const b = document.querySelector('[class*="st-key-backing_key_cycle_pause_btn"] button');
+      const p = b && b.querySelector('p'); const ic = b && b.querySelector('[data-testid="stIconMaterial"]');
+      return {label: p ? p.textContent : '', icon: ic ? ic.textContent : null}; }"""
+
+    def _remount(self, cmd: dict, ms: int) -> tuple:
+        return ANewStartAfterTheEndIsANewCycle._remount(self, cmd, ms)
+
+    _REMOUNT_JS = ANewStartAfterTheEndIsANewCycle._REMOUNT_JS
+
+    def test_the_console_reads_pause_while_a_fresh_play_after_stop_plays(self) -> None:
+        start = _kc_cmd(10, "Gm", "Cm", restart=True, autoplay=True, forcePlay=True)
+        snaps = _run_stop_race(self, [
+            ("cmd", start), ("eval", "async () => { await new Promise(r => setTimeout(r, 1500)); return true; }"),
+            "stop",
+            # The server's Stop run (cycling stays on, the transport stopped), through a rerun's new frame.
+            self._remount(_kc_cmd(11, "Gm", paused=True, hardStop=True, autoplay=False), 2500),
+            ("eval", self._CONSOLE_JS),
+            # The card's Play: a new session from the cycle's first key, through a rerun's new frame.
+            self._remount(_kc_cmd(12, "Gm", "Cm", restart=True, autoplay=True), 3000),
+            ("eval", _HEARD_JS), ("eval", self._CONSOLE_JS)])
+        heard, console = snaps[-2]["eval"], snaps[-1]["eval"]
+        self.assertEqual(heard["heard"], ["gm.wav"], heard)
+        self.assertEqual(console["label"], "Pause", {"after_stop": snaps[-4]["eval"], "playing": console})
+        if console["icon"] is not None:
+            self.assertEqual(console["icon"], "pause", console)
 
 
 class FinalKeyEndsOnlyWhenItsTakeCompletes(unittest.TestCase):
