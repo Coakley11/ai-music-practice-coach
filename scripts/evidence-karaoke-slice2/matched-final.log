@@ -1,0 +1,13 @@
+[slice2-final] 170 test files, sequential
+  baseline  53 failed, 4168 passed, 16 skipped, 42 warnings, 4 errors, 789 subtests passed in 699.24s (0:11:39)
+  candidate 55 failed, 4166 passed, 16 skipped, 42 warnings, 4 errors, 789 subtests passed in 857.50s (0:14:17)
+  test ids: baseline=3967 candidate=3967
+  only in baseline (disappeared): 0
+  only in candidate (new): 0
+  outcome changed: 2
+     ~ tests/test_lead_sheet_handoff_kc_capo.py::PagePlayerAutoplayTests::test_page_player_mount_uses_the_stable_prop: PASSED -> FAILED
+     ~ tests/test_lead_sheet_page_follow.py::test_no_other_page_scroller_was_added: PASSED -> FAILED
+  REGRESSIONS (passed -> not passed): 2
+     ! tests/test_lead_sheet_handoff_kc_capo.py::PagePlayerAutoplayTests::test_page_player_mount_uses_the_stable_prop
+     ! tests/test_lead_sheet_page_follow.py::test_no_other_page_scroller_was_added
+VERDICT: INVESTIGATE

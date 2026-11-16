@@ -1,0 +1,26 @@
+{
+  "gates": {
+    "P1 app renders": true,
+    "P2 a karaoke set is performing": true,
+    "P3 the performance surface mounts with the Lead Sheet OFF": true,
+    "P4 the surface mounts a take of its own": true,
+    "P5 the take plays from the surface's own control": true,
+    "P6 exactly one element is sounding while the take runs": true,
+    "P7 that player is actually audible - not muted, not silent": true,
+    "P8 Pause on the surface's own control silences the take": true,
+    "P9 Pause created no second player": true,
+    "P10 Resume sounds exactly one player, not two": true,
+    "P11 Resume carried on instead of restarting": true,
+    "P12 a rerun while playing leaves exactly one player sounding": true,
+    "P13 turning the Lead Sheet ON keeps exactly one player sounding": true,
+    "P14 turning it back OFF keeps exactly one player sounding": true,
+    "P15 two players never sounded at the same time, at any point in this run": true,
+    "P16 the karaoke frame is registered with the one page controller": true,
+    "P17 one provider per frame - the lyrics cannot lose the page to the chart": true
+  },
+  "observed": [
+    "picked Say dropdown=True landed=True sidebar_song='SONG\\n\\nSONG\\nSay \u2014 John Mayer\\n\\n\ud83c\udfbc Songs\\n\\nSay \u00b7 Pop\\n\\n\ud83d\udcdc Song Original Key: Bb\\n\\n\ud83d\udddd\ufe0f Practice / Co'",
+    "the Backing card's transport reads 'playing' during a karaoke performance - correct: the surface owns the audio, so the card offers no Pause of its own",
+    "no Original Melody staff renders on this surface during a karaoke performance, so the melody-vs-lyrics priority case cannot be exercised here - priorities stay pinned by unit test (MELODY_PRIORITY 20 > LEAD_SHEET_PRIORITY 10)"
+  ]
+}

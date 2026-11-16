@@ -1,0 +1,62 @@
+worktree : /c/tmp/ai-music-slice2
+script   : scripts/_accept_karaoke_slice2b.py
+port     : 8618
+cleared  : ignored app state under /c/tmp/ai-music-slice2/data (tracked fixtures kept)
+server pid: 189470
+  PASS  P1 app renders
+picked Say dropdown=True landed=True sidebar_song='SONG\n\nSONG\nSay — John Mayer\n\n🎼 Songs\n\nSay · Pop\n\n📜 Song Original Key: Bb\n\n🗝️ Practice / Co'
+  PASS  P2 a karaoke set is performing  [queued=True start=True]
+  PASS  P3 the performance surface mounts with the Lead Sheet OFF  [play=True]
+    take: {"has_audio": true, "src": "83-00e3b6bcfd39/f982831640321997810d.wav", "paused": true, "muted": false, "t": 0, "ready": 4, "button": {"text": "\u25b6 Resume playback", "state": "resume", "hidden": false, "disabled": false}}
+  FAIL  P4 the surface's own take is playing  [{"has_audio": true, "src": "83-00e3b6bcfd39/f982831640321997810d.wav", "paused": true, "muted": false, "t": 0, "ready": 4, "button": {"text": "\u25b6 Resume playback", "state": "resume", "hidden": fal]
+  PASS  P5 the surface offers its own Pause control  [button={"text": "\u25b6 Resume playback", "state": "resume", "hidden": false, "disabled": false}]
+    playing: 1 element(s), 0 sounding, 0 audible, t=[0], card='stopped'
+        surface: {"has_audio": true, "src": "83-00e3b6bcfd39/f982831640321997810d.wav", "paused": true, "muted": false, "t": 0, "ready": 4, "button": {"text": "\u25b6 Resume playback", "state": "resume", "hidden": false, "disabled": false}}
+  FAIL  P6 exactly one element is sounding while the take runs  [0 sounding of 1]
+  FAIL  P7 that player is actually audible - not muted, not silent  [0 audible, muted=[False]]
+  OBS   the Backing card's transport reads 'stopped' during a karaoke performance - correct: the surface owns the audio, so the card offers no Pause of its own
+    after Pause: 1 element(s), 0 sounding, 0 audible, t=[0], card='starting'
+        surface: {"has_audio": true, "src": "83-00e3b6bcfd39/f982831640321997810d.wav", "paused": true, "muted": false, "t": 0, "ready": 0, "button": {"text": "\u25b6 Resume playback", "state": "resume", "hidden": false, "disabled": false}}
+  PASS  P8 Pause on the surface's own control silences the take  [click=True sounding=0]
+  PASS  P9 Pause created no second player  [1 -> 1 element(s)]
+    after Resume: 1 element(s), 0 sounding, 0 audible, t=[7.11], card='paused'
+        surface: {"has_audio": true, "src": "83-00e3b6bcfd39/f982831640321997810d.wav", "paused": true, "muted": false, "t": 7.11, "ready": 4, "button": {"text": "\u25b6 Resume playback", "state": "resume", "hidden": false, "disabled": false}}
+  FAIL  P10 Resume sounds exactly one player, not two  [click=True sounding=0]
+  PASS  P11 Resume carried on instead of restarting  [position 0.0 -> 7.11, 1 element(s)]
+    after a neutral rerun: 1 element(s), 0 sounding, 0 audible, t=[7.11], card='paused'
+        surface: {"has_audio": true, "src": "83-00e3b6bcfd39/f982831640321997810d.wav", "paused": true, "muted": false, "t": 7.11, "ready": 4, "button": {"text": "\u25b6 Resume playback", "state": "resume", "hidden": false, "disabled": false}}
+  FAIL  P12 a rerun while playing leaves exactly one player sounding  [0 sounding of 1]
+    after the Lead Sheet switch ON: 2 element(s), 0 sounding, 0 audible, t=[0, 0], card='paused'
+        surface: {"has_audio": true, "src": "83-00e3b6bcfd39/f982831640321997810d.wav", "paused": true, "muted": false, "t": 0, "ready": 4, "button": {"text": "\u25b6 Resume playback", "state": "resume", "hidden": false, "disabled": false}}
+  FAIL  P13 turning the Lead Sheet ON keeps exactly one player sounding  [0 sounding of 2]
+    after the Lead Sheet switch OFF again: 1 element(s), 0 sounding, 0 audible, t=[0], card='paused'
+        surface: {"has_audio": true, "src": "83-00e3b6bcfd39/f982831640321997810d.wav", "paused": true, "muted": false, "t": 0, "ready": 4, "button": {"text": "\u25b6 Resume playback", "state": "resume", "hidden": false, "disabled": false}}
+  FAIL  P14 turning it back OFF keeps exactly one player sounding  [0 sounding of 1]
+    controller: {"reachable": true, "leader": "lead-sheet#1794801041566.005", "suspended": false, "providers": [{"id": "lead-sheet", "priority": 10, "from_this_frame": true, "has_current": true}]}
+  PASS  P15 the karaoke frame is registered with the one page controller  [1 provider(s) from this frame of 1]
+  PASS  P16 one provider per frame - the lyrics cannot lose the page to the chart  [['lead-sheet']]
+  OBS   no Original Melody staff renders on this surface during a karaoke performance, so the melody-vs-lyrics priority case cannot be exercised here - priorities stay pinned by unit test (MELODY_PRIORITY 20 > LEAD_SHEET_PRIORITY 10)
+
+======================================================================
+  PASS  P1 app renders
+  PASS  P2 a karaoke set is performing
+  PASS  P3 the performance surface mounts with the Lead Sheet OFF
+  FAIL  P4 the surface's own take is playing
+  PASS  P5 the surface offers its own Pause control
+  FAIL  P6 exactly one element is sounding while the take runs
+  FAIL  P7 that player is actually audible - not muted, not silent
+  PASS  P8 Pause on the surface's own control silences the take
+  PASS  P9 Pause created no second player
+  FAIL  P10 Resume sounds exactly one player, not two
+  PASS  P11 Resume carried on instead of restarting
+  FAIL  P12 a rerun while playing leaves exactly one player sounding
+  FAIL  P13 turning the Lead Sheet ON keeps exactly one player sounding
+  FAIL  P14 turning it back OFF keeps exactly one player sounding
+  PASS  P15 the karaoke frame is registered with the one page controller
+  PASS  P16 one provider per frame - the lyrics cannot lose the page to the chart
+  OBS   picked Say dropdown=True landed=True sidebar_song='SONG\n\nSONG\nSay — John Mayer\n\n🎼 Songs\n\nSay · Pop\n\n📜 Song Original Key: Bb\n\n🗝️ Practice / Co'
+  OBS   the Backing card's transport reads 'stopped' during a karaoke performance - correct: the surface owns the audio, so the card offers no Pause of its own
+  OBS   no Original Melody staff renders on this surface during a karaoke performance, so the melody-vs-lyrics priority case cannot be exercised here - priorities stay pinned by unit test (MELODY_PRIORITY 20 > LEAD_SHEET_PRIORITY 10)
+
+9/16 gates passed
+stopping the server (pid 189470)

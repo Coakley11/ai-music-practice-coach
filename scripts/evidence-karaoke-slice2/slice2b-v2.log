@@ -1,0 +1,133 @@
+worktree : /c/tmp/ai-music-slice2
+script   : scripts/_accept_karaoke_slice2b.py
+port     : 8617
+cleared  : ignored app state under /c/tmp/ai-music-slice2/data (tracked fixtures kept)
+server pid: 188958
+  PASS  P1 app renders
+picked Say dropdown=True landed=True sidebar_song='SONG\n\nSONG\nSay — John Mayer\n\n🎼 Songs\n\nSay · Pop\n\n📜 Song Original Key: Bb\n\n🗝️ Practice / Co'
+  PASS  P2 a karaoke set is performing  [queued=True start=True]
+  PASS  P3 the transport component is reachable
+  FAIL  P4 the transport reports a playing take  [btn state='stopped']
+  PASS  P5 the performance surface mounts with the Lead Sheet OFF
+    playing: 1 element(s), 0 sounding, 0 audible, t=[0]
+        btn={"text": "\u25b6 Play\u00a0Backing Track", "state": "stopped", "mode": "", "disabled": false, "hidden": false} pz={"text": "\u23f8 Pause", "state": "", "mode": "pause", "disabled": false, "hidden": true}
+  FAIL  P6 exactly one element is sounding while the take runs  [0 sounding of 1]
+  FAIL  P7 that player is actually audible - not muted, not silent  [0 audible, muted=[False]]
+  FAIL  P8 the transport offers its own Pause while playing  [pz={"text": "\u23f8 Pause", "state": "", "mode": "pause", "disabled": false, "hidden": true}]
+  OBS   the transport's Pause refused a real click: Locator.click: Timeout 15000ms exceeded.
+Call log:
+  - waiting for locator("iframe").nth(1).content_frame.locator("#pz")
+    - locator resolved to <button id="pz" hidden="" type="button" data-mode="pause" data-label="⏸ Pause" aria-label="⏸ Pause">…</button>
+  - attempting click action
+    2 × waiting for element to be visible, enabled and stable
+      - element is not visible
+    - retrying click action
+    - waiting 20ms
+    2 × waiting for element to be visible, enabled and stable
+      - element is not visible
+    - retrying click action
+      - waiting 100ms
+    28 × waiting for element to be visible, enabled and stable
+       - element is not visible
+     - retrying click action
+       - waiting 500ms
+
+    after transport Pause: 1 element(s), 0 sounding, 0 audible, t=[0]
+        btn={"text": "\u25b6 Play\u00a0Backing Track", "state": "stopped", "mode": "", "disabled": false, "hidden": false} pz={"text": "\u23f8 Pause", "state": "", "mode": "pause", "disabled": false, "hidden": true}
+  FAIL  P9 Pause from the transport's own control silences the take  [click=False sounding=0]
+  PASS  P10 Pause created no second player  [1 -> 1 element(s)]
+  OBS   the transport's Resume refused a real click: Locator.click: Timeout 15000ms exceeded.
+Call log:
+  - waiting for locator("iframe").nth(1).content_frame.locator("#pz")
+    - locator resolved to <button id="pz" hidden="" type="button" data-mode="pause" data-label="⏸ Pause" aria-label="⏸ Pause">…</button>
+  - attempting click action
+    2 × waiting for element to be visible, enabled and stable
+      - element is not visible
+    - retrying click action
+    - waiting 20ms
+    2 × waiting for element to be visible, enabled and stable
+      - element is not visible
+    - retrying click action
+      - waiting 100ms
+    28 × waiting for element to be visible, enabled and stable
+       - element is not visible
+     - retrying click action
+       - waiting 500ms
+
+    after transport Resume: 1 element(s), 0 sounding, 0 audible, t=[0]
+        btn={"text": "\u25b6 Play\u00a0Backing Track", "state": "stopped", "mode": "", "disabled": false, "hidden": false} pz={"text": "\u23f8 Pause", "state": "", "mode": "pause", "disabled": false, "hidden": true}
+  FAIL  P11 Resume sounds exactly one player, not two  [click=False sounding=0]
+  PASS  P12 Resume carried on instead of restarting  [position 0 -> 0, 1 element(s)]
+    after a neutral rerun: 1 element(s), 0 sounding, 0 audible, t=[0]
+        btn={"text": "\u25b6 Play\u00a0Backing Track", "state": "stopped", "mode": "", "disabled": false, "hidden": false} pz={"text": "\u23f8 Pause", "state": "", "mode": "pause", "disabled": false, "hidden": true}
+  FAIL  P13 a rerun while playing leaves exactly one player sounding  [0 sounding of 1]
+    after the Lead Sheet switch ON: 1 element(s), 0 sounding, 0 audible, t=[0]
+        btn={"text": "\u25b6 Play\u00a0Backing Track", "state": "stopped", "mode": "", "disabled": false, "hidden": false} pz={"text": "\u23f8 Pause", "state": "", "mode": "pause", "disabled": false, "hidden": true}
+  FAIL  P14 turning the Lead Sheet ON keeps exactly one player sounding  [0 sounding of 1]
+    after the Lead Sheet switch OFF again: 1 element(s), 0 sounding, 0 audible, t=[0]
+        btn={"text": "\u25b6 Play\u00a0Backing Track", "state": "stopped", "mode": "", "disabled": false, "hidden": false} pz={"text": "\u23f8 Pause", "state": "", "mode": "pause", "disabled": false, "hidden": true}
+  FAIL  P15 turning it back OFF keeps exactly one player sounding  [0 sounding of 1]
+    controller: {"reachable": true, "leader": "lead-sheet#1794800455782.004", "suspended": false, "providers": [{"id": "lead-sheet", "priority": 10, "from_this_frame": true, "has_current": true}]}
+  PASS  P16 the karaoke frame is registered with the one page controller  [1 provider(s) from this frame of 1]
+  PASS  P17 one provider per frame - the lyrics cannot lose the page to the chart  [['lead-sheet']]
+  OBS   no Original Melody staff renders on this surface during a karaoke performance, so the melody-vs-lyrics priority case cannot be exercised here - priorities stay pinned by unit test (MELODY_PRIORITY 20 > LEAD_SHEET_PRIORITY 10)
+
+======================================================================
+  PASS  P1 app renders
+  PASS  P2 a karaoke set is performing
+  PASS  P3 the transport component is reachable
+  FAIL  P4 the transport reports a playing take
+  PASS  P5 the performance surface mounts with the Lead Sheet OFF
+  FAIL  P6 exactly one element is sounding while the take runs
+  FAIL  P7 that player is actually audible - not muted, not silent
+  FAIL  P8 the transport offers its own Pause while playing
+  FAIL  P9 Pause from the transport's own control silences the take
+  PASS  P10 Pause created no second player
+  FAIL  P11 Resume sounds exactly one player, not two
+  PASS  P12 Resume carried on instead of restarting
+  FAIL  P13 a rerun while playing leaves exactly one player sounding
+  FAIL  P14 turning the Lead Sheet ON keeps exactly one player sounding
+  FAIL  P15 turning it back OFF keeps exactly one player sounding
+  PASS  P16 the karaoke frame is registered with the one page controller
+  PASS  P17 one provider per frame - the lyrics cannot lose the page to the chart
+  OBS   picked Say dropdown=True landed=True sidebar_song='SONG\n\nSONG\nSay — John Mayer\n\n🎼 Songs\n\nSay · Pop\n\n📜 Song Original Key: Bb\n\n🗝️ Practice / Co'
+  OBS   the transport's Pause refused a real click: Locator.click: Timeout 15000ms exceeded.
+Call log:
+  - waiting for locator("iframe").nth(1).content_frame.locator("#pz")
+    - locator resolved to <button id="pz" hidden="" type="button" data-mode="pause" data-label="⏸ Pause" aria-label="⏸ Pause">…</button>
+  - attempting click action
+    2 × waiting for element to be visible, enabled and stable
+      - element is not visible
+    - retrying click action
+    - waiting 20ms
+    2 × waiting for element to be visible, enabled and stable
+      - element is not visible
+    - retrying click action
+      - waiting 100ms
+    28 × waiting for element to be visible, enabled and stable
+       - element is not visible
+     - retrying click action
+       - waiting 500ms
+
+  OBS   the transport's Resume refused a real click: Locator.click: Timeout 15000ms exceeded.
+Call log:
+  - waiting for locator("iframe").nth(1).content_frame.locator("#pz")
+    - locator resolved to <button id="pz" hidden="" type="button" data-mode="pause" data-label="⏸ Pause" aria-label="⏸ Pause">…</button>
+  - attempting click action
+    2 × waiting for element to be visible, enabled and stable
+      - element is not visible
+    - retrying click action
+    - waiting 20ms
+    2 × waiting for element to be visible, enabled and stable
+      - element is not visible
+    - retrying click action
+      - waiting 100ms
+    28 × waiting for element to be visible, enabled and stable
+       - element is not visible
+     - retrying click action
+       - waiting 500ms
+
+  OBS   no Original Melody staff renders on this surface during a karaoke performance, so the melody-vs-lyrics priority case cannot be exercised here - priorities stay pinned by unit test (MELODY_PRIORITY 20 > LEAD_SHEET_PRIORITY 10)
+
+8/17 gates passed
+stopping the server (pid 188958)
