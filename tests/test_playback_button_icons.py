@@ -57,10 +57,13 @@ def test_key_cycling_console_icons_beside_unchanged_labels() -> None:
 
 
 def test_the_browser_swaps_the_pause_icon_with_the_label() -> None:
-    i = KC.index("const want = paused ? 'Resume' : 'Pause';")
-    block = KC[i: i + 900]
+    i = KC.index("const want = (paused && !ended) ? 'Resume' : 'Pause';")
+    block = KC[i: i + 1300]
     assert "if (cur !== want) labelEl.textContent = want;" in block
-    assert "stIconMaterial" in block and "paused ? 'play_arrow' : 'pause'" in block
+    assert "stIconMaterial" in block and "(paused && !ended) ? 'play_arrow' : 'pause'" in block
+    # A cycle that ended on its completed final key never offers an actionable Resume.
+    assert KC[i - 200: i].rstrip().endswith("const ended = finalTakeCompleted();")
+    assert "if (!btn.disabled) {{ btn.disabled = true; btn.setAttribute('data-kc-final-end', '1'); }}" in block
     # The label is still written to the label element only, never over the icon.
     assert re.search(r"const labelEl = btn\.querySelector\('p'\) \|\| btn;", block)
 
