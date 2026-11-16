@@ -36,8 +36,39 @@ def enabled() -> bool:
         "1", "true", "yes", "on")
 
 
+def _as_bytes(data: Any) -> Any:
+    """Audio, however this store happens to hold it.
+
+    A page snapshot encodes bytes as a base64 WRAPPER dict ({"__b64__": "..."}), so reading the
+    slot straight as bytes answered "not_bytes: dict" and the fingerprint printed as "-" - which
+    reads exactly like "the snapshot does not hold this layer" and is not the same claim. That
+    mistake made a gate fail for the wrong reason.
+    """
+    if isinstance(data, dict):
+        for marker in ("__suite_b64__", "__b64__", "b64"):
+            if marker in data and isinstance(data.get(marker), str):
+                import base64
+
+                try:
+                    return base64.b64decode(data[marker].encode("ascii"))
+                except Exception:
+                    return None
+        if len(data) == 1:
+            only = next(iter(data.values()))
+            if isinstance(only, str):
+                import base64
+
+                try:
+                    return base64.b64decode(only.encode("ascii"))
+                except Exception:
+                    return None
+        return None
+    return data
+
+
 def _fp(data: Any) -> dict[str, Any]:
     """Size and a short fingerprint. Never the content."""
+    data = _as_bytes(data)
     if data is None:
         return {"present": False}
     try:

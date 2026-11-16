@@ -29030,13 +29030,19 @@ elif _studio_page == "multitrack":
                             _mt_landed_bytes = None
                             _mt_landed_name = ""
                             _mt_landed_source = ""
-                        # Issue 77A: an UPLOAD is decoded before it becomes a layer. The uploader
-                        # accepts a file on its extension and the size guard above accepts anything
-                        # over 512 bytes, so a file no decoder can read used to become a take - and
-                        # then disabled Record on every OTHER layer, because each of those has to
-                        # decode it to play along with it. Takes captured here are not re-checked:
-                        # this app wrote those bytes itself.
-                        if _mt_landed_bytes is not None and _mt_landed_source == "upload":
+                        # Issue 77A: a take is DECODED before it becomes a layer. The size guard
+                        # above accepts anything over 512 bytes, so a file no decoder can read used
+                        # to become a take - and then disabled Record on every OTHER layer, because
+                        # each of those has to decode it to play along with it.
+                        #
+                        # This used to apply to uploads only, on the grounds that "this app wrote
+                        # those bytes itself". It did not, quite: a recorded take is encoded by the
+                        # recorder's JavaScript in the browser and carried back to Python, so a
+                        # capture glitch or a truncated transfer can leave more than 512 bytes that
+                        # no decoder reads - and that is exactly "its audio could not be played by
+                        # this browser" on the NEXT layer. Size is not proof of audio, whoever
+                        # produced the bytes, so every landed take is decoded the same way.
+                        if _mt_landed_bytes is not None and _mt_landed_source:
                             try:
                                 from multitrack_audio_validation import (
                                     check_audio_bytes,
@@ -29063,10 +29069,11 @@ elif _studio_page == "multitrack":
                                             layer_name=str(
                                                 st.session_state.get(f"mt_name_{slot}") or slot
                                             ),
+                                            source=_mt_landed_source,
                                         )
                                     )
                                     # Nothing is deleted or replaced: the layer keeps whatever it
-                                    # already held, and the uploaded file is simply not adopted.
+                                    # already held, and the rejected take is simply not adopted.
                                     _mt_landed_bytes = None
                                     _mt_landed_name = ""
                                     _mt_landed_source = ""
