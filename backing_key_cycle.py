@@ -23,6 +23,9 @@ from music_theory import (
 # --- Session / widget keys (stable, never a nonce) ---
 
 BACKING_KEY_CYCLE_SESSIONS_KEY = "_backing_key_cycle_sessions"
+# Key Cycling bar Pause / Resume icons (Material, like the Backing card's buttons).
+KC_PAUSE_ICON = ":material/pause:"
+KC_RESUME_ICON = ":material/play_arrow:"
 BACKING_KEY_CYCLE_STEP_KEY = "backing_key_cycle_step"
 BACKING_KEY_CYCLE_DIRECTION_KEY = "backing_key_cycle_direction"
 BACKING_KEY_SPELLING_PREFS_KEY = "backing_key_spelling_prefs"
@@ -4964,6 +4967,27 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
   const WANT = '{label}';
   const parentWin = window.parent;
   const parentDoc = parentWin.document;
+  // The Key Cycling Pause button's action, independent of how it is decorated: its innerText also holds
+  // the Material icon's ligature text ("pause" / "play_arrow"), so never compare that text exactly.
+  function kcPauseBtnLabel(b) {{
+    if (!b) return '';
+    let el = b.querySelector('[data-testid="stMarkdownContainer"] p') || b.querySelector('p');
+    let t = '';
+    if (el) t = String(el.textContent || '');
+    else {{
+      t = String(b.textContent || '');
+      b.querySelectorAll('[data-testid="stIconMaterial"]').forEach((ic) => {{
+        t = t.replace(String(ic.textContent || ''), ' ');
+      }});
+    }}
+    return t.replace(/\\s+/g, ' ').trim();
+  }}
+  function kcPauseBtnMode(b) {{
+    const t = kcPauseBtnLabel(b).toLowerCase();
+    if (/\\bresume\\b/.test(t)) return 'resume';
+    if (/\\bpause\\b/.test(t)) return 'pause';
+    return '';
+  }}
   const KC_HOLDER_HIDDEN_CSS = '{KC_HOLDER_HIDDEN_CSS}';
 
   function ensurePlayer() {{
@@ -7075,9 +7099,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           '[class*="st-key-backing_key_cycle_pause_btn"] button'
         );
         if (!b) return;
-        const lab = String((b.innerText || b.textContent || ''))
-          .replace(/\\s+/g, ' ').trim();
-        if (!/^Resume$/i.test(lab)) return;
+        if (kcPauseBtnMode(b) !== 'resume') return;
         parentWin.__kcSkipPauseHandler = true;
         try {{ b.click(); }} catch (eClk) {{}}
         window.setTimeout(() => {{
@@ -7097,9 +7119,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           '[class*="st-key-backing_key_cycle_pause_btn"] button'
         );
         if (b0) {{
-          const lab0 = String((b0.innerText || b0.textContent || ''))
-            .replace(/\\s+/g, ' ').trim();
-          if (/^Resume$/i.test(lab0)) needStreamlitResume = true;
+          if (kcPauseBtnMode(b0) === 'resume') needStreamlitResume = true;
         }}
       }} catch (eLab0) {{}}
       try {{
@@ -7279,9 +7299,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           '[class*="st-key-backing_key_cycle_pause_btn"] button'
         );
         if (b0) {{
-          const lab0 = String((b0.innerText || b0.textContent || ''))
-            .replace(/\\s+/g, ' ').trim();
-          if (/^Resume$/i.test(lab0)) needStreamlitResume = true;
+          if (kcPauseBtnMode(b0) === 'resume') needStreamlitResume = true;
         }}
       }} catch (eLab) {{}}
       try {{
@@ -7364,9 +7382,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           '[class*="st-key-backing_key_cycle_pause_btn"] button'
         );
         if (!b) return;
-        const lab = String((b.innerText || b.textContent || ''))
-          .replace(/\\s+/g, ' ').trim();
-        if (!/^Pause$/i.test(lab)) return;
+        if (kcPauseBtnMode(b) !== 'pause') return;
         parentWin.__kcProgrammaticPauseClick = true;
         try {{ b.click(); }} catch (eClk) {{}}
         window.setTimeout(() => {{
@@ -8315,6 +8331,10 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         const labelEl = btn.querySelector('p') || btn;
         const cur = String(labelEl.textContent || '').replace(/\\s+/g, ' ').trim();
         if (cur !== want) labelEl.textContent = want;
+        // The Material icon beside the label follows it: play on Resume, pause on Pause.
+        const iconEl = btn.querySelector('[data-testid="stIconMaterial"]');
+        const wantIcon = paused ? 'play_arrow' : 'pause';
+        if (iconEl && String(iconEl.textContent || '').trim() !== wantIcon) iconEl.textContent = wantIcon;
       }}
       // Live Follow-Along: Stop while playing, Resume when held (not Pause).
       try {{
@@ -8583,8 +8603,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
             const b = parentDoc.querySelector(
               '[class*="st-key-backing_key_cycle_pause_btn"] button'
             );
-            label = String((b && (b.innerText || b.textContent)) || '')
-              .replace(/\\s+/g, ' ').trim();
+            label = kcPauseBtnLabel(b);
           }} catch (eL) {{}}
           try {{ parentWin.__kcLastPauseLabel = label; }} catch (eLb) {{}}
           // Programmatic live-Resume must never flip to Pause mid-gesture.
@@ -13710,10 +13729,13 @@ def render_backing_key_cycle_playback_bar(st: Any, session: dict[str, Any]) -> N
         unsafe_allow_html=True,
     )
     b1, b2, b3, b4 = st.columns(4)
+    # Icons beside unchanged labels (the labels are what the bridge and the tests read). Material icons, as the
+    # Backing card's own buttons use; the browser swaps play / pause with the label (see the 'Resume' writer).
     with b1:
         st.button(
             pause_label,
             key="backing_key_cycle_pause_btn",
+            icon=KC_PAUSE_ICON if pause_label != "Resume" else KC_RESUME_ICON,
             use_container_width=True,
             on_click=_toggle_key_cycle_pause_resume,
             args=(session,),
@@ -13727,6 +13749,7 @@ def render_backing_key_cycle_playback_bar(st: Any, session: dict[str, Any]) -> N
         st.button(
             "Previous key",
             key="backing_key_cycle_prev_btn",
+            icon=":material/skip_previous:",
             use_container_width=True,
             disabled=transport_stopped,
             on_click=_step_key_cycle_from_button,
@@ -13736,6 +13759,7 @@ def render_backing_key_cycle_playback_bar(st: Any, session: dict[str, Any]) -> N
         st.button(
             "Next key",
             key="backing_key_cycle_advance_btn",
+            icon=":material/skip_next:",
             use_container_width=True,
             disabled=transport_stopped,
             on_click=_step_key_cycle_from_button,
@@ -13745,6 +13769,7 @@ def render_backing_key_cycle_playback_bar(st: Any, session: dict[str, Any]) -> N
         if st.button(
             "Turn off cycling",
             key="backing_key_cycle_stop_btn",
+            icon=":material/sync_disabled:",  # the 🔄 of "Key Cycling", crossed out
             use_container_width=True,
         ):
             stop_key_cycle(session)
