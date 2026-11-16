@@ -52,7 +52,12 @@ def test_commands_from_before_the_stop_are_dropped_first() -> None:
     block = apply[guard:apply.index("// A command built before Python learned")]
     assert "Number(cmd.epoch) > Number(state.stoppedEpoch)" in block
     assert "state.stoppedEpoch = null;" in block
-    assert "cmd.enabled && state.userPaused && !cmd.hardStop" in block
+    # Dropped while the Stop holds, not only while the page is user-paused (a Stop with no pause
+    # flag set was undone by a Resume's late command): every running command of the stopped cycle,
+    # until the server's own off or a hard stop -- bounded, so a lost Stop cannot silence for good.
+    assert "} else if (cmd.enabled && !cmd.hardStop) {" in block
+    assert "const afterStop = !cmd.enabled || !!cmd.hardStop" in block
+    assert "Date.now() - Number(state.stoppedAt || 0) < 20000" in block
     assert "cancelPendingPlays();" in block and "return;" in block
 
 

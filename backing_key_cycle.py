@@ -10978,6 +10978,19 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       }} catch (eFc) {{ return false; }}
     }}
     parentWin.__kcFinalTakeCompleted = finalTakeCompleted;
+    // Listeners that must outlive this frame are registered BY the parent realm: Chromium skips a
+    // listener whose registering context is gone, and this frame is replaced on every rerun (a
+    // parent-realm function registered from here never ran after the next rerun).
+    function listenFromParent(el, type, fn) {{
+      try {{
+        if (!parentWin.__kcListenFromParent) {{
+          parentWin.__kcListenFromParent = parentWin.Function(
+            'return function(el, type, fn){{ try {{ el.addEventListener(type, fn); }} catch (e) {{}} }};'
+          )();
+        }}
+        parentWin.__kcListenFromParent(el, type, fn);
+      }} catch (eLp) {{}}
+    }}
     // Leaving the end state. The console's disable is undone here, not left to the next transport
     // sync: that sync runs on playback events only, and a new start after the end kept Pause
     // disabled for 11 s (browser trace 2026-11-16). Only a disable this page made is undone.
@@ -11031,8 +11044,8 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         // for this one that re-ran the final-key stop, also on the cycle a new start had just begun
         // (browser trace 2026-11-16: a final_key_stop for Bm 6 s after the card Play). The tag names
         // the take's URL and goes when the element plays again or loads another source. Its handler
-        // lives in the parent realm: this frame is replaced on every rerun, and a listener from a
-        // replaced frame never runs (the tag then outlived the take and Bm's own end was ignored).
+        // and its registration belong to the parent realm (listenFromParent): this frame is replaced
+        // on every rerun, and a listener tied to it never runs (the tag then outlived the take).
         try {{
           const actT = activeAudio();
           if (actT) {{
@@ -11043,8 +11056,8 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
               )();
             }}
             const untag = parentWin.__kcUntagCompletedFinal;
-            actT.addEventListener('play', untag);  // the same function: added once per element
-            actT.addEventListener('emptied', untag);
+            listenFromParent(actT, 'play', untag);  // the same function: added once per element
+            listenFromParent(actT, 'emptied', untag);
           }}
         }} catch (eTag) {{}}
         try {{
@@ -11519,6 +11532,30 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       }}
       try {{ a.onended = null; }} catch (e) {{}}
       a.__kcEndedHook = true;
+      // The console follows real playback: whenever a take actually starts playing, the one
+      // transport sync re-reads the audio. Otherwise a label the page wrote while silent stays:
+      // after Stop and a fresh Play the always-mounted console read "Resume" while the music
+      // played (browser trace 2026-11-16; the server's label, "Pause", never changed, so
+      // Streamlit left the page's text alone). A cold start begins muted and is unmuted when its
+      // play() resolves, and the sync ignores muted buffers (warm preloads), so it re-reads the
+      // audio again shortly after -- only while a take is really playing: in silence the sync's
+      // latch reads a pause that nobody pressed (a deferred sync after a fast end stalled the cycle
+      // in tests), so it is never called from here then. The handler, its timers and its
+      // registration belong to the parent realm (listenFromParent): this frame is replaced on
+      // every rerun.
+      try {{
+        if (!parentWin.__kcSyncOnPlaying) {{
+          parentWin.__kcSyncOnPlaying = parentWin.Function(
+            'return function(){{ var f = function(){{ try {{ var W = window;'
+            + ' if (typeof W.__kcSyncVisibleTransport !== "function") return;'
+            + ' var on = (typeof W.__kcAnyAudibleBuffer === "function" && W.__kcAnyAudibleBuffer())'
+            + ' || (typeof W.__kcAnyBufferRunning === "function" && W.__kcAnyBufferRunning());'
+            + ' if (on) W.__kcSyncVisibleTransport(); }} catch (e) {{}} }};'
+            + ' f(); window.setTimeout(f, 300); window.setTimeout(f, 1200); }};'
+          )();
+        }}
+        listenFromParent(a, 'playing', parentWin.__kcSyncOnPlaying);  // the same function: once per element
+      }} catch (ePl) {{}}
       // Bridge rerun after a missed ended event — recover once if active is ended.
       try {{
         if (
