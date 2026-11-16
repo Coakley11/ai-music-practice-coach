@@ -33,6 +33,12 @@ SLOT = os.environ.get("MT_SLOT", "Guitar")
 SECONDS = float(os.environ.get("MT_SECONDS", "3"))
 #: Press Save layer before the refresh, to measure whether SAVING makes a long take durable.
 SAVE_FIRST = os.environ.get("MT_SAVE_BEFORE_REFRESH", "") == "1"
+#: Discard before the refresh: the take must NOT come back.
+DISCARD_FIRST = os.environ.get("MT_DISCARD_BEFORE_REFRESH", "") == "1"
+#: What a Streamlit Cloud restart does to the server's disk: the draft files are gone. The take must
+#: NOT come back, and nothing may claim it was saved. Tests the temporary-disk limitation on its own.
+WIPE_DRAFTS = os.environ.get("MT_WIPE_DRAFTS_BEFORE_REFRESH", "") == "1"
+EXPECT_SURVIVES = not (DISCARD_FIRST or WIPE_DRAFTS)
 
 import _accept_issue78c_visibility as H  # noqa: E402
 
@@ -125,6 +131,25 @@ def main() -> int:
                 else:
                     blob = None
             log(f"    durable copy (persist blob) before the refresh: {blob or 'NONE'}")
+            drafts = list(DATA_DIR.rglob("media/multitrack/drafts/*/*.wav"))
+            log(f"    draft files on the server before the refresh: {len(drafts)} "
+                f"({sum(p.stat().st_size for p in drafts)} bytes)")
+            mark("R4c the take was kept as its own file", len(drafts) >= 1,
+                 f"{len(drafts)} draft file(s)")
+            if DISCARD_FIRST:
+                clicked = H.click_page_button(page, "Discard take", SLOT)
+                H.settle(page, 8)
+                log(f"    pressed Discard take: {clicked!r}")
+                mark("R4d Discard take was pressed", str(clicked).startswith("click"), str(clicked))
+                left = list(DATA_DIR.rglob("media/multitrack/drafts/*/*.wav"))
+                tombs = list(DATA_DIR.rglob("media/multitrack/drafts/*/*.tombstone"))
+                mark("R4e discarding removed the file and left a tombstone",
+                     not left and bool(tombs), f"{len(left)} file(s), {len(tombs)} tombstone(s)")
+            if WIPE_DRAFTS:
+                import shutil
+                for d in DATA_DIR.rglob("media/multitrack/drafts"):
+                    shutil.rmtree(d, ignore_errors=True)
+                log("    wiped the server's draft directory, as a Cloud restart would")
             before = len(rows())
 
             # A refresh: the browser keeps nothing, the server starts a new session.
@@ -146,10 +171,35 @@ def main() -> int:
                         break
                 if found:
                     break
-            mark("R5 THE " + ("SAVED LAYER" if SAVE_FIRST else "UNSAVED TAKE") + " SURVIVED A REFRESH", found == taken and bool(taken),
-                 f"found={found} in {where_found or 'nowhere'} (recorded {taken})")
+            what = "SAVED LAYER" if SAVE_FIRST else "UNSAVED TAKE"
+            if EXPECT_SURVIVES:
+                mark(f"R5 THE {what} SURVIVED A REFRESH", found == taken and bool(taken),
+                     f"found={found} in {where_found or 'nowhere'} (recorded {taken})")
+            else:
+                why = "DISCARDED" if DISCARD_FIRST else "LOST WITH THE SERVER'S DISK"
+                mark(f"R5 A TAKE {why} DID NOT COME BACK", found is None,
+                     f"found={found} in {where_found or 'nowhere'}")
             audio = int(page.evaluate("() => document.querySelectorAll('audio').length") or 0)
             log(f"    audio elements on the page after the refresh: {audio}")
+            # The status line lives inside the layer's panel, and a closed panel's text is not in
+            # innerText - so an earlier version of this failed on a panel nobody had opened.
+            try:
+                if not H.layer_is_open(page, SLOT):
+                    H.toggle_layer_by_pointer(page, SLOT, True)
+                    H.settle(page, 3)
+            except Exception:
+                pass
+            text = H.low(H.main_body(page))
+            if EXPECT_SURVIVES and found:
+                want = "saved layer" if SAVE_FIRST else "unsaved draft"
+                mark("R6 the page says what it is", want in text,
+                     f"looked for {want!r}")
+                if SECONDS > 12:
+                    mark("R7 a long take states the temporary-storage limit",
+                         "restart of the app can lose" in text)
+            if not EXPECT_SURVIVES:
+                mark("R6 nothing claims a lost take was saved",
+                     "saved layer" not in text or audio == 0, f"{audio} audio element(s)")
 
             (OUT / "reload.json").write_text(
                 json.dumps({"gates": GATES, "taken": taken, "durable_before": blob,
