@@ -468,6 +468,7 @@ from karaoke_ui import (
     render_karaoke_missing_lyrics_cta,
     render_karaoke_setlist_missing_lyrics_cta,
     render_karaoke_now_singing_banner,
+    render_karaoke_performance_chord_controls,
     render_karaoke_queue_preview,
     render_karaoke_setlist_panel,
     render_karaoke_skip_controls,
@@ -23178,6 +23179,9 @@ elif _studio_page == "backing":
             record_for_pick_key=_record_for_pick_key,
             all_records=ALL_SONG_RECORDS,
         )
+        # Part 1: the chord-hint setting, beside the transport, so it can be changed without
+        # leaving the performance. Same preference as the Songs-page toggle, not a second one.
+        render_karaoke_performance_chord_controls(st)
 
         def _on_karaoke_continue() -> None:
             # Continue after a song ended is the natural progression (repeats
@@ -25933,6 +25937,14 @@ elif _studio_page == "backing":
         # panel's chord lists, otherwise the grid remains as a chord overlay.
         # Computed here, above the trace, because the trace reports the real
         # visibility state and previously referenced it before assignment.
+        #
+        # The Lead Sheet switch does NOT reach this in Slice 1. Making the fold follow the
+        # switch only means something once the performance surface mounts with the switch Off,
+        # which it does not yet: the whole component is gated on an open Lead Sheet (see
+        # docs/KARAOKE_LYRICS_MOUNT_PROPOSAL.md). Inside that gate ``_leadsheet_open`` is
+        # necessarily True, so the term would make this always False and the chart would stop
+        # being folded behind the lyrics - a regression, for no gain. The term ships with the
+        # mount correction, not before it.
         _karaoke_hide_chart = bool(
             _karaoke_voice and (_karaoke_lyric_panel or not _karaoke_show_chords)
         )

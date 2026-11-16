@@ -821,6 +821,44 @@ def karaoke_transition_dest_marker(direction: str, entry: Mapping[str, Any]) -> 
     return f'<span class="ui-karaoke-transition-dest" hidden {body}></span>'
 
 
+def render_karaoke_performance_chord_controls(st: Any) -> bool:
+    """Offer "Show chords while singing" where the singing happens.
+
+    The preference itself is not new and neither is its consumer: the performance renderer reads
+    :func:`karaoke_mode.show_chords_enabled` and fills the lyric panel's chord lists from it. What
+    was new to nobody is that the only way to reach it was the setlist panel on the Songs page -
+    so during a performance there was no way to turn chord hints on or off without leaving the
+    performance.
+
+    This writes the same ``KARAOKE_SHOW_CHORDS_KEY`` the Songs-page toggle writes, so there is one
+    preference with two places to reach it rather than two settings that can disagree. Streamlit
+    will not allow two widgets to share a widget key, so this one has its own and assigns the
+    shared state key explicitly - exactly as the Songs-page toggle already does.
+
+    Returns the setting as it now stands.
+
+    It is deliberately NOT the Lead Sheet switch. Three separate things are on this page: the
+    lyrics (always open while singing), the chord hints under them (this), and the optional full
+    chord chart (the card's Lead Sheet). A singer must be able to have hints without opening the
+    whole chart.
+    """
+    current = km.show_chords_enabled(st.session_state)
+    with st.container(key="karaoke_performance_chord_controls"):
+        new_show = st.toggle(
+            "Show chords while singing",
+            value=current,
+            key="karaoke_show_chords_performance_toggle",
+            help=(
+                "Chord hints under the lyrics, highlighting in time with the backing track. "
+                "The optional full chord chart is the Lead sheet button on the card."
+            ),
+        )
+    if bool(new_show) != bool(current):
+        st.session_state[km.KARAOKE_SHOW_CHORDS_KEY] = bool(new_show)
+        return bool(new_show)
+    return bool(current)
+
+
 def render_karaoke_skip_controls(
     st: Any,
     *,
