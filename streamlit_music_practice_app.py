@@ -5697,8 +5697,11 @@ def live_follow_along_component_html(
     # JS keeps working - opening the details reveals the live-
     # following chart highlights.
     if karaoke_hide_chart:
+        # The SAME markup whatever the Lead Sheet switch says: the switch is read by the
+        # component from a marker on the page (``.ks-ls-state``), so turning it on or off changes
+        # nothing in this HTML and Streamlit keeps the iframe - and the music in it - running.
         chart_root_html = (
-            '<details class="live-chart-hidden-wrap">'
+            '<details class="live-chart-hidden-wrap" id="live-chart-wrap">'
             "<summary><span class=\"live-chart-hidden-icon\">\U0001F3BC</span> "
             "Show chord chart (optional)</summary>"
             f'<div id="live-chart-root">{chart_html}</div>'
@@ -6443,14 +6446,39 @@ def live_follow_along_component_html(
         return !!(ctl && ctl.suspended && ctl.suspended());
       }} catch (eH) {{ return false; }}
     }}
-    // During a karaoke performance the singer reads the lyrics, so they are the follow target;
-    // otherwise it is the chord the chart is playing. One resolution, so turning the Lead Sheet
-    // on cannot take the follow away from the lyrics - and the chart highlights either way,
-    // because following only ever scrolls.
+    // The Lead Sheet switch, read from the page rather than baked into this HTML: a marker the
+    // app renders beside this component (``.ks-ls-state``). Reading it here is what lets the
+    // switch change without Streamlit replacing the iframe and restarting the music.
+    function leadSheetOpenOnPage() {{
+      try {{
+        const el = window.parent.document.querySelector(".ks-ls-state");
+        return !!(el && el.getAttribute("data-ls-open") === "1");
+      }} catch (eLs) {{ return false; }}
+    }}
+    // Asked each time, not once at load: the lyric lines can be drawn after this script runs.
+    function chartIsPrimary() {{ return !document.querySelector(".karaoke-lp-lyric-line"); }}
+    // Follows the switch when it CHANGES, so a singer who opens the chart by hand while the Lead
+    // Sheet is off is not overruled on the next tick.
+    let lastLeadSheetOpen = null;
+    function syncChartFold() {{
+      const wrap = document.getElementById("live-chart-wrap");
+      if (!wrap) return;
+      const ls = leadSheetOpenOnPage();
+      if (ls === lastLeadSheetOpen) return;
+      lastLeadSheetOpen = ls;
+      const want = chartIsPrimary() || ls;
+      if (wrap.open !== want) wrap.open = want;
+    }}
+    // During a Karaoke Set the follow target is the Lead Sheet's current chord while the sheet is
+    // open, and the current lyric line while it is closed. With no lyrics the chords ARE the
+    // performance display, so they are followed. The view not followed keeps its highlighting
+    // but never drives the scroll.
     function karaokeFollowTarget() {{
+      const chord = document.querySelector(".live-chart-cell.current-chord, .chord-cell.current-chord");
+      if (chartIsPrimary() || leadSheetOpenOnPage()) return chord;
       const line = document.querySelector(".karaoke-lp-lyric-line.active");
       if (line && line.isConnected) return line;
-      return document.querySelector(".live-chart-cell.current-chord, .chord-cell.current-chord");
+      return chord;
     }}
     let lastBoxTarget = null;
     // Karaoke's box is this IFRAME: the component is mounted at a fixed height with
@@ -6502,7 +6530,7 @@ def live_follow_along_component_html(
         const ctl = window.top.__lsFollow, fe = window.frameElement;
         if (!ctl || !ctl.register || !fe) return false;
         ctl.register({{
-          id: "lead-sheet", priority: 10, frame: fe, transport: false,
+          id: "karaoke-lyrics", priority: 5, frame: fe, transport: false,
           playing: () => {{ try {{ return sheetIsPlaying(); }} catch (e) {{ return false; }} }},
           current: karaokeFollowTarget,
           hasCurrent: () => !!karaokeFollowTarget(),
@@ -7438,6 +7466,8 @@ def live_follow_along_component_html(
     // it for the lyrics, which is what brings the page back after the singer's six seconds.
     if (KARAOKE_HOLD) {{
       if (!registerKaraokeFollow()) window.setTimeout(registerKaraokeFollow, 400);
+      syncChartFold();
+      window.setInterval(syncChartFold, 300);
     }}
     window.setInterval(() => {{
       const playing = sheetIsPlaying();
@@ -25687,7 +25717,9 @@ elif _studio_page == "backing":
     # from its live position and pauses it. Dropping it in this run silenced
     # the music from the end of the rerun until the sheet's audio had loaded.
     _sheet_taking_over = bool(
-        _leadsheet_open and st.session_state.get("_backing_sheet_open_handoff")
+        _leadsheet_open
+        and st.session_state.get("_backing_sheet_open_handoff")
+        and not _karaoke_needs_surface
     )
     # The page player lives in one always-present container. Shown or not, it counts as
     # one element, so the Lead Sheet below keeps its position from run to run. When the
@@ -25928,7 +25960,11 @@ elif _studio_page == "backing":
         else "",
     )
     chart_html = ""
-    if _leadsheet_open:
+    # During an active Karaoke Set the chart is built whatever the Lead Sheet switch says: the
+    # performance component folds or shows it itself (from the page marker), so the switch changes
+    # nothing in the component's HTML and the playing take is never replaced. Outside a set the
+    # chart is built only when the sheet is open, as before.
+    if _leadsheet_open or _karaoke_needs_surface:
         # Caption/chart meta must follow the session Tempo/Feel that Play just
         # applied (or that is still selected) — not a stale local bpm from an
         # earlier widget remount in this run.
@@ -26210,7 +26246,17 @@ elif _studio_page == "backing":
         # Opened over a live take: the follow-along player mounts with native
         # autoplay and starts at the playhead the card transport handed over
         # (its own JS pauses it again when nothing was playing at the click).
-        if open_ and not st.session_state.get("_backing_transport_user_stopped"):
+        # Not during a Karaoke Set: the performance surface already owns the take and shows the
+        # sheet by folding its own chart, so a handoff would mount a second player and replace
+        # the surface - which restarted the music.
+        _in_karaoke_set = False
+        try:
+            _in_karaoke_set = bool(
+                km.is_voice_mode(st.session_state) and km.is_karaoke_session_active(st.session_state)
+            )
+        except Exception:
+            _in_karaoke_set = False
+        if open_ and not _in_karaoke_set and not st.session_state.get("_backing_transport_user_stopped"):
             st.session_state["_backing_sheet_open_handoff"] = True
 
     # The album-cover card carries Lead sheet On / Off (the same choice as the Open / Close control below)
@@ -26350,9 +26396,11 @@ elif _studio_page == "backing":
         # corrected the component is here whatever the switch says, so this term finally decides
         # something: Off folds the chart behind the lyrics, On shows it. The lyrics are untouched
         # either way, and the fold keeps the chart's DOM mounted so its highlighting runs on.
+        # Only during an active Karaoke Set (Voice alone is a normal instrument), and never from
+        # the Lead Sheet switch: the component reads the switch from the page marker rendered
+        # beside it, so switching changes no HTML and the music keeps playing.
         _karaoke_hide_chart = bool(
-            _karaoke_voice
-            and not _leadsheet_open
+            _karaoke_needs_surface
             and (_karaoke_lyric_panel or not _karaoke_show_chords)
         )
         _karaoke_display_labels = (
@@ -26668,6 +26716,15 @@ elif _studio_page == "backing":
         # a title, so this is exactly where element reuse is most likely.
         # Keying the wrapper by entry id + saved key + position forces a fresh
         # element, and therefore a fresh iframe, on every transition.
+        # The Lead Sheet switch, published beside the component instead of inside it: rendered in
+        # BOTH states (only the attribute changes), so the component keeps its place and its HTML,
+        # Streamlit keeps its iframe, and switching the sheet never restarts the music. The
+        # component reads this marker to fold the chart and to choose what it follows.
+        st.markdown(
+            f'<span class="ks-ls-state" data-ls-open="{"1" if _leadsheet_open else "0"}" '
+            'hidden aria-hidden="true"></span>',
+            unsafe_allow_html=True,
+        )
         _kr_perf_container = None
         if _karaoke_engaged:
             try:
