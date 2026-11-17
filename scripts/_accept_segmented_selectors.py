@@ -38,6 +38,9 @@ GROUP_JS = """(key) => {
   const btns = group ? [...group.querySelectorAll('button')] : [];
   return {
     found: true, group: !!group, radios,
+    // On a build where the bar is still radio buttons, report the checked radio as the "active" button.
+    radio_checked: [...box.querySelectorAll('label')].filter(l => { const i = l.querySelector('input[type="radio"]');
+                    return i && i.checked; }).map(l => (l.innerText || '').trim()),
     buttons: btns.map(b => {
       const r = b.getBoundingClientRect();
       return {text: (b.innerText || '').trim(), active: /Active/.test(b.getAttribute('data-testid') || '') ||
@@ -61,7 +64,8 @@ def group(page: Page, key: str) -> dict:
 
 
 def active(g: dict) -> list[str]:
-    return [b["text"] for b in g.get("buttons", []) if b.get("active")]
+    got = [b["text"] for b in g.get("buttons", []) if b.get("active")]
+    return got or list(g.get("radio_checked") or [])
 
 
 def click_option(page: Page, key: str, needle: str) -> bool:
@@ -86,8 +90,9 @@ def check_bar(page: Page, key: str, name: str, want_labels: list[str], pick: str
     mark(f"{name}: the app's own labels (and icons) are kept",
          all(any(w.lower() in t.lower() for t in texts) for w in want_labels), f"{texts}")
     mark(f"{name}: exactly one option is selected", len(active(g)) == 1, f"active={active(g)}")
-    fits = all(b["left"] >= -1 and b["right"] <= g["vw"] + 1 and b["h"] >= 32 for b in g.get("buttons", []))
-    mark(f"{name}: every button is on screen and tappable (>= 32 px tall)", fits and bool(texts),
+    min_h = 44 if WIDTH <= 640 else 32
+    fits = all(b["left"] >= -1 and b["right"] <= g["vw"] + 1 and b["h"] >= min_h for b in g.get("buttons", []))
+    mark(f"{name}: every button is on screen and tappable (>= {min_h} px tall)", fits and bool(texts),
          f"{[(b['text'][:14], b['left'], b['right'], b['h']) for b in g.get('buttons', [])]}")
     mark(f"{name}: no sideways page scroll", not g.get("overflow"))
     clicked = click_option(page, key, pick)
@@ -100,6 +105,25 @@ def check_bar(page: Page, key: str, name: str, want_labels: list[str], pick: str
     g3 = group(page, key)
     mark(f"{name}: clicking the selected button does not deselect it",
          len(active(g3)) == 1 and pick.lower() in active(g3)[0].lower(), f"active={active(g3)}")
+
+
+def selected_sections_options(page: Page) -> list[str]:
+    """Open Backing's Selected sections picker and list the sections it offers."""
+    box = page.locator('.st-key-backing_track_multi_sections').first
+    if not box.count():
+        return []
+    box.scroll_into_view_if_needed()
+    try:
+        box.locator('input').first.click()
+        page.wait_for_timeout(800)
+        opts = [o.strip() for o in page.locator('[role="option"]').all_inner_texts()]
+        page.keyboard.press("Escape")
+        return opts
+    except Exception:
+        return []
+
+
+CHOSEN: dict = {}
 
 
 def main() -> int:
@@ -168,7 +192,32 @@ def main() -> int:
                     page.screenshot(path=str(OUT / f"missing-{key}-{WIDTH}.png"), full_page=True)
                     continue
                 check_bar(page, key, name, labels, pick)
+                CHOSEN[key] = (nav, proof, pick)
+                if key == "backing_track_scope":
+                    settle(page, 3)
+                    opts = selected_sections_options(page)
+                    NOTES.append(f"Selected sections offers: {opts}")
+                    mark("Backing Selected sections: the individual sections are offered",
+                         any("verse" in o.lower() for o in opts) and any("chorus" in o.lower() for o in opts),
+                         f"{opts}")
                 page.screenshot(path=str(OUT / f"{key}-{WIDTH}.png"), full_page=False)
+            # Persistence: a browser refresh keeps every choice made above.
+            page.reload(wait_until="domcontentloaded")
+            settle(page, 8)
+            for key, (nav, proof, pick) in CHOSEN.items():
+                page.set_viewport_size({"width": 1280, "height": 900})
+                settle(page, 2)
+                H.open_studio_page(page, nav, proof, tries=6)
+                settle(page, 6)
+                if key == "improv_entry_mode" and not page.locator(f".st-key-{key}").count():
+                    from walk_creative_backing_matrix import set_baseweb_select
+                    set_baseweb_select(page, "Analysis mode", "Improvisation Intelligence")
+                    settle(page, 8)
+                    click_option(page, "improv_intelligence_tab", "Entry")
+                    settle(page, 6)
+                g = group(page, key)
+                mark(f"after a refresh, {key} still shows '{pick}'",
+                     any(pick.lower() in a.lower() for a in active(g)), f"active={active(g)}")
         finally:
             (OUT / f"results-{WIDTH}.json").write_text(json.dumps({"results": RESULTS, "notes": NOTES}, indent=1), encoding="utf-8")
             browser.close()
