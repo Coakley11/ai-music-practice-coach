@@ -15023,7 +15023,7 @@ def render_backing_key_cycle_playback_bar(st: Any, session: dict[str, Any]) -> N
                     return bool(st.button(label, key=key, use_container_width=True, **kw))
 
             _btn(
-                "Previous",
+                "Previous Key",
                 "backing_key_cycle_prev_btn",
                 icon=":material/skip_previous:",
                 disabled=transport_stopped,
@@ -15041,7 +15041,7 @@ def render_backing_key_cycle_playback_bar(st: Any, session: dict[str, Any]) -> N
                 disabled=transport_stopped,
             )
             _btn(
-                "Next",
+                "Next Key",
                 "backing_key_cycle_advance_btn",
                 icon=":material/skip_next:",
                 disabled=transport_stopped,
@@ -15051,8 +15051,10 @@ def render_backing_key_cycle_playback_bar(st: Any, session: dict[str, Any]) -> N
             # A callback, like Previous / Next / Pause: a button's True value
             # lives for one run only, and an earlier st.rerun() in that run (the
             # pass bridge after an ack) used to swallow the Stop press.
+            # Not "Stop": this one ends Key Cycling (cycling off, the Practice Key context back),
+            # unlike the card's "Stop Backing Track", which stops the audio and keeps cycling on.
             _btn(
-                "Stop",
+                "Stop Key Cycling",
                 "backing_key_cycle_stop_btn",
                 icon=":material/stop:",
                 on_click=_stop_key_cycle_from_button,
