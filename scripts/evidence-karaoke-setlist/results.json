@@ -1,0 +1,225 @@
+{
+ "results": [
+  [
+   "B1 three songs were added",
+   true,
+   "[True, True, True]"
+  ],
+  [
+   "B2 after building - in the cloud, in order",
+   true,
+   "cloud=['Shape of You', 'Perfect', 'Let It Be']"
+  ],
+  [
+   "B2 after building - on the page, in order",
+   true,
+   "3 row(s)"
+  ],
+  [
+   "B3 each song kept its own key",
+   true,
+   "['Bm', 'Ab', 'C']"
+  ],
+  [
+   "B4 after a refresh - in the cloud, in order",
+   true,
+   "cloud=['Shape of You', 'Perfect', 'Let It Be']"
+  ],
+  [
+   "B4 after a refresh - on the page, in order",
+   true,
+   "3 row(s)"
+  ],
+  [
+   "S1 after the stale tab navigates - in the cloud, in order",
+   true,
+   "cloud=['Shape of You', 'Perfect', 'Let It Be']"
+  ],
+  [
+   "S2 the stale tab did not empty the server disk",
+   true,
+   "disk=['Shape of You', 'Perfect', 'Let It Be']"
+  ],
+  [
+   "S3 a new session opened after the stale tab's save - in the cloud, in order",
+   true,
+   "cloud=['Shape of You', 'Perfect', 'Let It Be']"
+  ],
+  [
+   "S3 a new session opened after the stale tab's save - on the page, in order",
+   true,
+   "3 row(s)"
+  ],
+  [
+   "S4 after that new session navigates - in the cloud, in order",
+   true,
+   "cloud=['Shape of You', 'Perfect', 'Let It Be']"
+  ],
+  [
+   "S4 after that new session navigates - on the page, in order",
+   true,
+   "3 row(s)"
+  ],
+  [
+   "E1 a set was started and ended",
+   true,
+   "start=True end=True"
+  ],
+  [
+   "E2 after End Set - in the cloud, in order",
+   true,
+   "cloud=['Shape of You', 'Perfect', 'Let It Be']"
+  ],
+  [
+   "E2 after End Set - on the page, in order",
+   true,
+   "3 row(s)"
+  ],
+  [
+   "E3 after End Set and a refresh - in the cloud, in order",
+   true,
+   "cloud=['Shape of You', 'Perfect', 'Let It Be']"
+  ],
+  [
+   "E3 after End Set and a refresh - on the page, in order",
+   true,
+   "3 row(s)"
+  ],
+  [
+   "R1 after the server was replaced (new session, empty disk) - in the cloud, in order",
+   true,
+   "cloud=['Shape of You', 'Perfect', 'Let It Be']"
+  ],
+  [
+   "R1 after the server was replaced (new session, empty disk) - on the page, in order",
+   true,
+   "3 row(s)"
+  ],
+  [
+   "R2 and it stays after the new session navigates - in the cloud, in order",
+   true,
+   "cloud=['Shape of You', 'Perfect', 'Let It Be']"
+  ],
+  [
+   "R2 and it stays after the new session navigates - on the page, in order",
+   true,
+   "3 row(s)"
+  ],
+  [
+   "D1 a single song can be removed deliberately",
+   true,
+   ""
+  ],
+  [
+   "D2 after removing Perfect - in the cloud, in order",
+   true,
+   "cloud=['Shape of You', 'Let It Be']"
+  ],
+  [
+   "D2 after removing Perfect - on the page, in order",
+   true,
+   "2 row(s)"
+  ],
+  [
+   "D3 the page says the setlist was saved to the account",
+   true,
+   "\u2713 Setlist saved to your account (2 songs)."
+  ],
+  [
+   "F1 a save the cloud refused is reported as NOT saved",
+   true,
+   "Your setlist was NOT saved to your account: the save did not complete (save_cloud_full_ses"
+  ],
+  [
+   "F2 the cloud still holds the last saved setlist",
+   true,
+   "['Shape of You', 'Let It Be']"
+  ],
+  [
+   "F3 Retry saves it, and says so",
+   true,
+   "\u2713 Setlist saved to your account (3 songs)."
+  ],
+  [
+   "F4 after the retry - in the cloud, in order",
+   true,
+   "cloud=['Shape of You', 'Let It Be', 'Love Story']"
+  ],
+  [
+   "F4 after the retry - on the page, in order",
+   true,
+   "3 row(s)"
+  ],
+  [
+   "C1 Clear Setlist asks before erasing",
+   true,
+   ""
+  ],
+  [
+   "C2 while it asks, nothing is erased - in the cloud, in order",
+   true,
+   "cloud=['Shape of You', 'Let It Be', 'Love Story']"
+  ],
+  [
+   "C2 while it asks, nothing is erased - on the page, in order",
+   true,
+   "3 row(s)"
+  ],
+  [
+   "C3 Keep the setlist keeps it - in the cloud, in order",
+   true,
+   "cloud=['Shape of You', 'Let It Be', 'Love Story']"
+  ],
+  [
+   "C3 Keep the setlist keeps it - on the page, in order",
+   true,
+   "3 row(s)"
+  ],
+  [
+   "C4 Yes erases it deliberately, in the cloud too",
+   true,
+   "cloud=[]"
+  ],
+  [
+   "C5 and a deliberate clear stays cleared after a refresh",
+   true,
+   ""
+  ]
+ ],
+ "notes": [
+  "stale tab opened; it sees 0 setlist row(s)",
+  "picked Shape of You dropdown=True landed=True sidebar_song='SONG\\n\\nSONG\\nShape of You \u2014 Ed Sheeran\\n\\n\ud83c\udfbc Songs\\n\\nShape of You \u00b7 Pop\\n\\n\ud83d\udcdc Song Original Key: Bm'",
+  "picked Perfect dropdown=True landed=True sidebar_song='SONG\\n\\nSONG\\nPerfect \u2014 Ed Sheeran\\n\\n\ud83c\udfbc Songs\\n\\nPerfect \u00b7 Pop\\n\\n\ud83d\udcdc Song Original Key: Ab\\n\\n\ud83d\udddd\ufe0f Pract'",
+  "picked Let It Be dropdown=True landed=True sidebar_song='SONG\\n\\nSONG\\nLet It Be \u2014 The Beatles\\n\\n\ud83c\udfbc Songs\\n\\nLet It Be \u00b7 Rock\\n\\n\ud83d\udcdc Song Original Key: C\\n\\n\ud83d\udddd\ufe0f '",
+  "save message on the page: 'saved' wording present",
+  "B2 after building: cloud=['Shape of You', 'Perfect', 'Let It Be'] keys=['Bm', 'Ab', 'C'] disk=['Shape of You', 'Perfect', 'Let It Be'] page=['1. Shape of You \u00b7 Bm', '2. Perfect \u00b7 Ab', '3. Let It Be \u00b7 C']",
+  "    disk files (setlist length per file): {'workspaces\\\\daniel\\\\music_user_state.json': 3}",
+  "B4 after a refresh: cloud=['Shape of You', 'Perfect', 'Let It Be'] keys=['Bm', 'Ab', 'C'] disk=['Shape of You', 'Perfect', 'Let It Be'] page=['1. Shape of You \u00b7 Bm', '2. Perfect \u00b7 Ab', '3. Let It Be \u00b7 C']",
+  "    disk files (setlist length per file): {'workspaces\\\\daniel\\\\music_user_state.json': 3}",
+  "S1 after the stale tab navigates: cloud=['Shape of You', 'Perfect', 'Let It Be'] keys=['Bm', 'Ab', 'C'] disk=['Shape of You', 'Perfect', 'Let It Be'] page=None",
+  "    disk files (setlist length per file): {'workspaces\\\\daniel\\\\music_user_state.json': 3}",
+  "S3 a new session opened after the stale tab's save: cloud=['Shape of You', 'Perfect', 'Let It Be'] keys=['Bm', 'Ab', 'C'] disk=['Shape of You', 'Perfect', 'Let It Be'] page=['1. Shape of You \u00b7 Bm', '2. Perfect \u00b7 Ab', '3. Let It Be \u00b7 C']",
+  "    disk files (setlist length per file): {'workspaces\\\\daniel\\\\music_user_state.json': 3}",
+  "S4 after that new session navigates: cloud=['Shape of You', 'Perfect', 'Let It Be'] keys=['Bm', 'Ab', 'C'] disk=['Shape of You', 'Perfect', 'Let It Be'] page=['1. Shape of You \u00b7 Bm', '2. Perfect \u00b7 Ab', '3. Let It Be \u00b7 C']",
+  "    disk files (setlist length per file): {'workspaces\\\\daniel\\\\music_user_state.json': 3}",
+  "performing page offers End karaoke set: True",
+  "E2 after End Set: cloud=['Shape of You', 'Perfect', 'Let It Be'] keys=['Bm', 'Ab', 'C'] disk=['Shape of You', 'Perfect', 'Let It Be'] page=['1. Shape of You \u00b7 Bm', '2. Perfect \u00b7 Ab', '3. Let It Be \u00b7 C']",
+  "    disk files (setlist length per file): {'workspaces\\\\daniel\\\\music_user_state.json': 3}",
+  "E3 after End Set and a refresh: cloud=['Shape of You', 'Perfect', 'Let It Be'] keys=['Bm', 'Ab', 'C'] disk=['Shape of You', 'Perfect', 'Let It Be'] page=['1. Shape of You \u00b7 Bm', '2. Perfect \u00b7 Ab', '3. Let It Be \u00b7 C']",
+  "    disk files (setlist length per file): {'workspaces\\\\daniel\\\\music_user_state.json': 3}",
+  "R1 after the server was replaced (new session, empty disk): cloud=['Shape of You', 'Perfect', 'Let It Be'] keys=['Bm', 'Ab', 'C'] disk=['Shape of You', 'Perfect', 'Let It Be'] page=['1. Shape of You \u00b7 Bm', '2. Perfect \u00b7 Ab', '3. Let It Be \u00b7 C']",
+  "    disk files (setlist length per file): {'workspaces\\\\daniel\\\\music_user_state.json': 3}",
+  "R2 and it stays after the new session navigates: cloud=['Shape of You', 'Perfect', 'Let It Be'] keys=['Bm', 'Ab', 'C'] disk=['Shape of You', 'Perfect', 'Let It Be'] page=['1. Shape of You \u00b7 Bm', '2. Perfect \u00b7 Ab', '3. Let It Be \u00b7 C']",
+  "    disk files (setlist length per file): {'workspaces\\\\daniel\\\\music_user_state.json': 3}",
+  "D2 after removing Perfect: cloud=['Shape of You', 'Let It Be'] keys=['Bm', 'C'] disk=['Shape of You', 'Let It Be'] page=['1. Shape of You \u00b7 Bm', '2. Let It Be \u00b7 C']",
+  "    disk files (setlist length per file): {'workspaces\\\\daniel\\\\music_user_state.json': 2}",
+  "picked Love Story dropdown=True landed=True sidebar_song='SONG\\n\\nSONG\\nLove Story \u2014 Taylor Swift\\n\\n\ud83c\udfbc Songs\\n\\nLove Story \u00b7 Country\\n\\n\ud83d\udcdc Song Original Key: '",
+  "status during the outage: 'Your setlist was NOT saved to your account: the save did not complete (save_cloud_full_session:supabase_http_error:Supabase PATCH suite_app_current_state failed'",
+  "F4 after the retry: cloud=['Shape of You', 'Let It Be', 'Love Story'] keys=['Bm', 'C', 'C'] disk=['Shape of You', 'Let It Be', 'Love Story'] page=['1. Shape of You \u00b7 Bm', '2. Let It Be \u00b7 C', '3. Love Story \u00b7 C']",
+  "    disk files (setlist length per file): {'workspaces\\\\daniel\\\\music_user_state.json': 3}",
+  "C2 while it asks, nothing is erased: cloud=['Shape of You', 'Let It Be', 'Love Story'] keys=['Bm', 'C', 'C'] disk=['Shape of You', 'Let It Be', 'Love Story'] page=['1. Shape of You \u00b7 Bm', '2. Let It Be \u00b7 C', '3. Love Story \u00b7 C']",
+  "    disk files (setlist length per file): {'workspaces\\\\daniel\\\\music_user_state.json': 3}",
+  "C3 Keep the setlist keeps it: cloud=['Shape of You', 'Let It Be', 'Love Story'] keys=['Bm', 'C', 'C'] disk=['Shape of You', 'Let It Be', 'Love Story'] page=['1. Shape of You \u00b7 Bm', '2. Let It Be \u00b7 C', '3. Love Story \u00b7 C']",
+  "    disk files (setlist length per file): {'workspaces\\\\daniel\\\\music_user_state.json': 3}"
+ ]
+}

@@ -191,7 +191,7 @@ def _merge_state_metrics(scoped_app_key: str, incoming: dict[str, Any] | None) -
         merged.update(new_metrics)
         if _FULL_SESSION_KEY not in new_metrics and _FULL_SESSION_KEY in prior:
             merged[_FULL_SESSION_KEY] = prior[_FULL_SESSION_KEY]
-        return merged
+        return _keep_saved_karaoke_setlist(scoped_app_key, merged, prior)
     except Exception:
         return new_metrics
 
@@ -606,6 +606,39 @@ def describe_cas_patch_filter(
     return _describe(stored_metrics, expected_workspace_revision)
 
 
+def _keep_saved_karaoke_setlist(scoped_app_key: str, merged: dict[str, Any], prior: dict[str, Any]) -> dict[str, Any]:
+    """A music save replaces the stored full session; it may not take the saved setlist with it.
+
+    The incoming session can come from a tab that never held the setlist, or from one restored
+    off a server disk that had lost it. Only a newer deliberate setlist edit replaces the stored
+    one (karaoke_setlist_durability).
+    """
+    try:
+        from suite_workspace import logical_storage_app_key
+
+        if logical_storage_app_key(scoped_app_key) != "music":
+            return merged
+        from karaoke_setlist_durability import merge_cloud_full_session
+    except ImportError:
+        return merged
+    try:
+        incoming_fs = merged.get(_FULL_SESSION_KEY)
+        prior_fs = (prior or {}).get(_FULL_SESSION_KEY)
+        if isinstance(incoming_fs, dict) and isinstance(prior_fs, dict):
+            session = None
+            try:
+                import streamlit as _st
+
+                session = _st.session_state
+            except Exception:
+                session = None
+            merged = dict(merged)
+            merged[_FULL_SESSION_KEY] = merge_cloud_full_session(incoming_fs, prior_fs, session=session)
+    except Exception:
+        pass
+    return merged
+
+
 def _metrics_for_conditional_write(
     scoped_app_key: str,
     incoming: dict[str, Any] | None,
@@ -620,6 +653,7 @@ def _metrics_for_conditional_write(
     for key, val in incoming_metrics.items():
         if key != _FULL_SESSION_KEY:
             merged[key] = val
+    merged = _keep_saved_karaoke_setlist(scoped_app_key, merged, prior)
     try:
         from music_metrics_logical_revision import sync_metrics_revision_surfaces
 

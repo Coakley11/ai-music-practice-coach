@@ -2679,7 +2679,7 @@ def _pm_measures_per_line_for_density(abc_text: str, bar_count: int) -> int:
     return _PM_MEASURES_PER_LINE
 
 
-def render_abc(abc_text, *, measure_sync=None):
+def render_abc(abc_text, *, measure_sync=None, follow_role="practice-melody"):
     """Render ABC notation via abcjs. ``measure_sync`` (Slice F2, optional)
     is a JSON-serializable list of ``{start, end, note_start, note_end,
     key}`` windows (see practice_melody_sync.py) that, when given, adds
@@ -2707,6 +2707,10 @@ def render_abc(abc_text, *, measure_sync=None):
     still Backing's own, just transported more reliably. Omitting
     ``measure_sync`` (the default) renders byte-identical plain notation,
     unchanged from every other existing call site.
+
+    ``follow_role`` names the staff to the one page-follow controller: ``"practice-melody"`` (default) or
+    ``"original-melody"`` (a Composition's own melody, which leads the page ahead of the Practice Melody and the
+    Lead Sheet -- user, 2026-11-16).
     """
 
     escaped = (
@@ -2723,10 +2727,14 @@ def render_abc(abc_text, *, measure_sync=None):
 
         sync_json = _json.dumps(measure_sync)
         _pm_debug = "true" if _os.environ.get("PM_SYNC_DEBUG") else "false"
-        from lead_sheet_page_follow import MELODY_PRIORITY as _pm_follow_priority
+        from lead_sheet_page_follow import FOLLOW_ROLES as _pm_follow_roles
+
+        _pm_follow_id = follow_role if follow_role in _pm_follow_roles else "practice-melody"
+        _pm_follow_priority = _pm_follow_roles[_pm_follow_id]
         from lead_sheet_page_follow import page_follow_controller_js as _pm_follow_ctl
 
         _pm_follow_js = _pm_follow_ctl()
+        from lead_sheet_page_follow import FRAME_HOST_FIT_JS as _pm_frame_host_fit_js
         sync_script = f"""
     <style>
       .pm-current-measure .abcjs-notehead {{ fill: #e11d48; }}
@@ -2745,6 +2753,38 @@ def render_abc(abc_text, *, measure_sync=None):
       #pm-debug-readout {{ font: 11px monospace; background: #111; color: #0f0; padding: 4px; white-space: pre-wrap; }}
     </style>
     <script>{_pm_follow_js}</script>
+    <script>
+    // A follow staff is drawn at its own height on the page (no inner scroll box), like the full-height Lead
+    // Sheet: the one page controller then reaches every measure, and the panel below starts where it ends.
+    {_pm_frame_host_fit_js}
+    (function pmFullHeight() {{
+      const fe = window.frameElement;
+      if (!fe) return;
+      fe.setAttribute('scrolling', 'no');
+      document.documentElement.style.overflow = 'hidden';
+      document.body.style.overflow = 'hidden';
+      const fit = () => {{
+        try {{
+          let bottom = 0;
+          [...document.body.children].forEach((el) => {{
+            if (el.tagName === 'SCRIPT' || el.tagName === 'STYLE') return;
+            const r = el.getBoundingClientRect(); if (r.height > 0) bottom = Math.max(bottom, r.bottom);
+          }});
+          const h = Math.ceil(bottom + (window.scrollY || 0) + 12);
+          if (h > 60 && Math.abs((parseFloat(fe.style.height) || fe.getBoundingClientRect().height) - h) > 2) {{
+            fe.style.height = h + 'px';
+            fe.setAttribute('height', String(h));
+          }}
+          if (h > 60) lsFitFrameHost(fe, Math.round(parseFloat(fe.style.height) || h));
+        }} catch (eFit) {{}}
+      }};
+      fit();
+      try {{ new ResizeObserver(fit).observe(document.getElementById('paper')); }} catch (eRo) {{}}
+      lsWatchFrameHost(fe, fit);
+      window.addEventListener('load', fit);
+      window.setInterval(fit, 1000);
+    }})();
+    </script>
     <script>
     (function() {{
       const DEBUG = {_pm_debug};
@@ -2908,7 +2948,7 @@ def render_abc(abc_text, *, measure_sync=None):
             }}
           }} catch (eIn) {{}}
           try {{
-            if (window.top.__lsFollow) window.top.__lsFollow.request('practice-melody', pmFollowTarget() || firstCurrent, {{why: 'measure'}});
+            if (window.top.__lsFollow) window.top.__lsFollow.request('{_pm_follow_id}', pmFollowTarget() || firstCurrent, {{why: 'measure'}});
           }} catch (ePf) {{}}
         }}
         return 'NEW-HIGHLIGHT key=' + match.key + ' notes=' + (match.note_end - match.note_start);
@@ -3019,7 +3059,7 @@ def render_abc(abc_text, *, measure_sync=None):
           const ctl = window.top.__lsFollow, fe = window.frameElement;
           if (ctl && fe && ctl.register) {{
             ctl.register({{
-              id: 'practice-melody', priority: {_pm_follow_priority}, frame: fe, transport: false,
+              id: '{_pm_follow_id}', priority: {_pm_follow_priority}, frame: fe, transport: false,
               playing: () => pmPlaying,
               hasCurrent: () => pmMatched && !!document.querySelector('.pm-current-measure'),
               current: () => (pmMatched ? (pmFollowTarget() || document.querySelector('.pm-current-measure')) : null),
@@ -5537,11 +5577,12 @@ def live_follow_along_component_html(
     audio_b64 = audio_b64 or base64.b64encode(wav_bytes).decode("ascii")
     # M4: the sheet at its full height on the page, the page following the music (lead_sheet_page_follow).
     if page_follow:
-        from lead_sheet_page_follow import page_follow_controller_js
+        from lead_sheet_page_follow import FRAME_HOST_FIT_JS as frame_host_fit_js, page_follow_controller_js
 
         page_follow_js = page_follow_controller_js()
     else:
         page_follow_js = ""
+        frame_host_fit_js = ""
     page_follow_flag_js = "true" if page_follow else "false"
     # Opened over a live take: start the native autoplay at the handed-over playhead.
     sheet_open_handoff_js = "true" if sheet_open_handoff else "false"
@@ -6513,7 +6554,16 @@ def live_follow_along_component_html(
       if (!clock) return true;
       try {{
         if (cycleOwnsAudio()) {{
-          // Single authority: parent buffer probe (same as cycle Pause/Resume).
+          // One authority with the Key Cycling console: would its Pause button Pause
+          // now? Judged from this frame's own buffer probe, a press during a pause
+          // whose hold flag had been cleared at a take's end became a second Pause,
+          // so Resume never reached the server.
+          try {{
+            if (typeof window.parent.__kcCyclePressPauses === "function") {{
+              return !window.parent.__kcCyclePressPauses();
+            }}
+          }} catch (eAuth) {{}}
+          // Fallback: parent buffer probe (same as cycle Pause/Resume).
           try {{
             if (typeof window.parent.__kcAnyAudibleBuffer === "function"
                 && window.parent.__kcAnyAudibleBuffer()) {{
@@ -7245,6 +7295,7 @@ def live_follow_along_component_html(
           document.documentElement.style.overflow = "hidden";
           document.body.style.overflow = "hidden";
           fe.setAttribute("scrolling", "no");
+          {frame_host_fit_js}
           const fit = () => {{
             try {{
               const h = Math.ceil(shellEl.getBoundingClientRect().bottom + (window.scrollY || 0) + 18);
@@ -7252,10 +7303,13 @@ def live_follow_along_component_html(
                 fe.style.height = h + "px";
                 fe.setAttribute("height", String(h));
               }}
+              // and the space Streamlit keeps for it, so the panels below start after the chart, not inside it
+              if (h > 100) lsFitFrameHost(fe, Math.round(parseFloat(fe.style.height) || h));
             }} catch (eFit) {{}}
           }};
           fit();
           try {{ new ResizeObserver(fit).observe(shellEl); }} catch (eRo) {{}}
+          lsWatchFrameHost(fe, fit);
           window.setInterval(fit, 1000);
           window.addEventListener("load", fit);
         }}
@@ -17939,7 +17993,7 @@ def _on_backing_filter_change() -> None:
         if km.is_voice_mode(st.session_state) and km.is_karaoke_session_active(st.session_state):
             _ov_groove = str(st.session_state.get("backing_groove_style") or "").strip()
             _ov_meter = str(st.session_state.get("backing_time_signature") or "").strip()
-            km.record_entry_feel_override(
+            if km.record_entry_feel_override(
                 st.session_state,
                 groove=_ov_groove
                 if _ov_groove and _ov_groove != km.resolve_karaoke_entry_groove(st.session_state)
@@ -17947,7 +18001,13 @@ def _on_backing_filter_change() -> None:
                 meter=_ov_meter
                 if _ov_meter and _ov_meter != km.resolve_karaoke_entry_meter(st.session_state)
                 else "",
-            )
+            ):
+                # A saved setting of a setlist entry, so a deliberate setlist edit: saved to the
+                # account like every other one, not left to an autosave the strict policy keeps
+                # off the cloud.
+                from karaoke_ui import persist_karaoke_setlist
+
+                persist_karaoke_setlist(st)
     except Exception:
         pass
     # Flush widget → canonical before play-session capture so Feel Pop after
@@ -20758,7 +20818,7 @@ elif _studio_page == "practice":
                                             _cm_msync = resolve_melody_measure_timing(_cm_msync_data, _cm_ftl)
                                 except Exception:
                                     _cm_msync = None
-                                render_abc(_cm_model["abc"], measure_sync=_cm_msync)
+                                render_abc(_cm_model["abc"], measure_sync=_cm_msync, follow_role="original-melody")
                                 _cm_play_key = f"practice_melody_play_{_cm_sec_name}"
                                 _cm_play_state = f"_practice_melody_playing_{_cm_sec_name}"
                                 _cm_p1, _cm_p2 = st.columns([3, 1])
@@ -22003,7 +22063,7 @@ elif _studio_page == "backing":
             except Exception:
                 pass
         _backing_written_key = (
-            _backing_musical.chart_badge_value if _backing_musical.show_chart_badge else ""
+            _backing_musical.card_chart_badge_value if _backing_musical.card_show_chart_badge else ""
         )
         if _developer_mode_enabled():
             render_backing_key_state_diagnostics(st, st.session_state, _backing_musical)
@@ -22097,7 +22157,7 @@ elif _studio_page == "backing":
                     )
                     _backing_practice_key = _backing_musical.practice_concert_key
                     _backing_written_key = (
-                        _backing_musical.chart_badge_value if _backing_musical.show_chart_badge else ""
+                        _backing_musical.card_chart_badge_value if _backing_musical.card_show_chart_badge else ""
                     )
                 except Exception:
                     pass
@@ -22111,7 +22171,7 @@ elif _studio_page == "backing":
                 )
                 _backing_practice_key = _backing_musical.practice_concert_key
                 _backing_written_key = (
-                    _backing_musical.chart_badge_value if _backing_musical.show_chart_badge else ""
+                    _backing_musical.card_chart_badge_value if _backing_musical.card_show_chart_badge else ""
                 )
             try:
                 from h3_live_key_trace import emit
@@ -23814,7 +23874,22 @@ elif _studio_page == "backing":
     # Do not clear settings_pending on a bare Play click — only when the
     # installed arrangement matches the selection (after generate / ready).
     # Explicit Play must leave Held/Pause and start the new (or ready) arrangement.
-    if _play_clicked or _play_needs_generate:
+    _kc_paused_build = False
+    try:
+        from backing_key_cycle import STATUS_HELD as _KC_HELD, get_owner_cycle_session as _kc_bag
+
+        # A Key Cycling take finished building (Next / Previous to a cold key)
+        # after the musician pressed Pause: install it, stay paused. Arming it as
+        # an explicit Play resumed the cycle behind the Pause.
+        _kc_paused_build = bool(
+            not _play_clicked
+            and _async_wav_ready
+            and str((_kc_bag(st.session_state) or {}).get("status") or "") == _KC_HELD
+            and (_kc_bag(st.session_state) or {}).get("enabled")
+        )
+    except Exception:
+        _kc_paused_build = False
+    if (_play_clicked or _play_needs_generate) and not _kc_paused_build:
         try:
             from backing_key_cycle import arm_key_cycle_for_explicit_play
 
@@ -23826,6 +23901,15 @@ elif _studio_page == "backing":
             st.session_state.pop("_kc_refresh_resume_from_start", None)
             st.session_state["_kc_restart_play"] = True
             st.session_state["_backing_autoplay"] = True
+    if _play_needs_generate and not _kc_paused_build:
+        # This run generates the take: a "needs regenerate" set while arming the
+        # cycle for it (no published take yet) is already being satisfied.
+        try:
+            from songs.key_state import clear_backing_needs_regen
+
+            clear_backing_needs_regen(st.session_state)
+        except Exception:
+            st.session_state[BACKING_NEEDS_REGEN] = False
     _cycle_prefetch_hit = bool(
         _cycle_continue_play
         and _backing_audio_ready
@@ -26711,7 +26795,7 @@ elif _studio_page == "backing":
                                     _bk_msync = _bk_resolve(_bk_msync_data, _follow_timeline)
                         except Exception:
                             _bk_msync = None
-                        render_abc(_bk_model["abc"], measure_sync=_bk_msync)
+                        render_abc(_bk_model["abc"], measure_sync=_bk_msync, follow_role="original-melody")
 
     try:
         from backing_track_state import enable_backing_user_edits

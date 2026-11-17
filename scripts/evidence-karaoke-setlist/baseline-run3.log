@@ -1,0 +1,46 @@
+    stale tab opened; it sees 0 setlist row(s)
+picked Shape of You dropdown=True landed=True sidebar_song='SONG\n\nSONG\nShape of You — Ed Sheeran\n\n🎼 Songs\n\nShape of You · Pop\n\n📜 Song Original Key: Bm'
+picked Perfect dropdown=True landed=True sidebar_song='SONG\n\nSONG\nPerfect — Ed Sheeran\n\n🎼 Songs\n\nPerfect · Pop\n\n📜 Song Original Key: Ab\n\n🗝️ Pract'
+picked Let It Be dropdown=True landed=True sidebar_song='SONG\n\nSONG\nLet It Be — The Beatles\n\n🎼 Songs\n\nLet It Be · Rock\n\n📜 Song Original Key: C\n\n🗝️ '
+  PASS  B1 three songs were added  [[True, True, True]]
+    save message on the page: 'saved' wording present
+    B2 after building: cloud=['Shape of You', 'Perfect', 'Let It Be'] keys=['Bm', 'Ab', 'C'] disk=['Shape of You', 'Perfect', 'Let It Be'] page=['1. Shape of You · Bm', '2. Perfect · Ab', '3. Let It Be · C']
+        disk files (setlist length per file): {'workspaces\\daniel\\music_user_state.json': 3}
+  PASS  B2 after building - in the cloud, in order  [cloud=['Shape of You', 'Perfect', 'Let It Be']]
+  PASS  B2 after building - on the page, in order  [3 row(s)]
+  PASS  B3 each song kept its own key  [['Bm', 'Ab', 'C']]
+    B4 after a refresh: cloud=['Shape of You', 'Perfect', 'Let It Be'] keys=['Bm', 'Ab', 'C'] disk=['Shape of You', 'Perfect', 'Let It Be'] page=['1. Shape of You · Bm', '2. Perfect · Ab', '3. Let It Be · C']
+        disk files (setlist length per file): {'workspaces\\daniel\\music_user_state.json': 3}
+  PASS  B4 after a refresh - in the cloud, in order  [cloud=['Shape of You', 'Perfect', 'Let It Be']]
+  PASS  B4 after a refresh - on the page, in order  [3 row(s)]
+    S1 after the stale tab navigates: cloud=['Shape of You', 'Perfect', 'Let It Be'] keys=['Bm', 'Ab', 'C'] disk=None page=None
+        disk files (setlist length per file): {'workspaces\\daniel\\music_user_state.json': None}
+  PASS  S1 after the stale tab navigates - in the cloud, in order  [cloud=['Shape of You', 'Perfect', 'Let It Be']]
+  FAIL  S2 the stale tab did not empty the server disk  [disk=None]
+    S3 a new session opened after the stale tab's save: cloud=['Shape of You', 'Perfect', 'Let It Be'] keys=['Bm', 'Ab', 'C'] disk=None page=[]
+        disk files (setlist length per file): {'workspaces\\daniel\\music_user_state.json': None}
+  PASS  S3 a new session opened after the stale tab's save - in the cloud, in order  [cloud=['Shape of You', 'Perfect', 'Let It Be']]
+  FAIL  S3 a new session opened after the stale tab's save - on the page, in order  [0 row(s)]
+    S4 after that new session navigates: cloud=None keys=[] disk=None page=[]
+        disk files (setlist length per file): {'workspaces\\daniel\\music_user_state.json': None}
+  FAIL  S4 after that new session navigates - in the cloud, in order  [cloud=no setlist key]
+  FAIL  S4 after that new session navigates - on the page, in order  [0 row(s)]
+  FAIL  E1 a set was started and ended  [start=True end=False]
+    E2 after End Set: cloud=None keys=[] disk=['Shape of You', 'Perfect', 'Let It Be'] page=['1. Shape of You · Bm', '2. Perfect · Ab', '3. Let It Be · C']
+        disk files (setlist length per file): {'workspaces\\daniel\\music_user_state.json': 3}
+  FAIL  E2 after End Set - in the cloud, in order  [cloud=no setlist key]
+  PASS  E2 after End Set - on the page, in order  [3 row(s)]
+    E3 after End Set and a refresh: cloud=None keys=[] disk=['Shape of You', 'Perfect', 'Let It Be'] page=['1. Shape of You · Bm', '2. Perfect · Ab', '3. Let It Be · C']
+        disk files (setlist length per file): {'workspaces\\daniel\\music_user_state.json': 3}
+  FAIL  E3 after End Set and a refresh - in the cloud, in order  [cloud=no setlist key]
+  PASS  E3 after End Set and a refresh - on the page, in order  [3 row(s)]
+    R1 after the server was replaced (new session, empty disk): cloud=None keys=[] disk=None page=[]
+        disk files (setlist length per file): {'workspaces\\daniel\\music_user_state.json': None}
+  FAIL  R1 after the server was replaced (new session, empty disk) - in the cloud, in order  [cloud=no setlist key]
+  FAIL  R1 after the server was replaced (new session, empty disk) - on the page, in order  [0 row(s)]
+    R2 and it stays after the new session navigates: cloud=None keys=[] disk=None page=[]
+        disk files (setlist length per file): {'workspaces\\daniel\\music_user_state.json': None}
+  FAIL  R2 and it stays after the new session navigates - in the cloud, in order  [cloud=no setlist key]
+  FAIL  R2 and it stays after the new session navigates - on the page, in order  [0 row(s)]
+
+10/21 gates passed
