@@ -12,11 +12,11 @@ the Backing timeline); otherwise nothing moves the page. Closing the leader hand
 and among several section staves the one that lit a measure most recently leads. A melody with no measure alignment (an uploaded
 PDF, a staff without a timeline) never registers, so it never claims the page.
 
-That is the only code that moves the page, and it holds still for six seconds after any
-manual scroll, touch, key or click (each new one restarts the six seconds) -- except a click / tap that opens or
-closes a panel, which hands over to the notation that now leads at once -- never moves while a pointer is down,
-and never moves while the music is paused or stopped. When the six seconds run out during playback it returns
-smoothly to the current measure.
+That is the only code that moves the page, and it holds still for three seconds after any
+manual scroll, touch, key or click (each new one restarts the three seconds; user, 2026-11-16: six was too long) --
+except a click / tap that opens or closes a panel, which hands over to the notation that now leads at once --
+never moves while a pointer is down, and never moves while the music is paused or stopped. When the three seconds
+run out during playback it returns smoothly to the current measure.
 
 It only ever reads ``getBoundingClientRect`` and writes the page scroller's ``scrollTop``: it never touches an
 audio element, the follow timeline or the highlight, so it cannot change what is heard or which chord is lit.
@@ -29,8 +29,10 @@ to the Lead Sheet whichever staff the page is following.
 
 from __future__ import annotations
 
-HOLD_MS = 6000
-CONTROLLER_VERSION = 2
+HOLD_MS = 3000
+# Bumped whenever the controller's behaviour changes: an open page keeps the copy it installed (one per top
+# window) and only a newer version replaces it -- v2 pages kept the 6 s hold and the old spacer after a deploy.
+CONTROLLER_VERSION = 3
 # Who leads the page when several are open and playing (higher wins; user, 2026-11-16).
 LEAD_SHEET_PRIORITY = 10
 MELODY_PRIORITY = 20                 # the Practice Melody staff
@@ -151,7 +153,7 @@ _CONTROLLER_JS = r"""
   }
   var KINDS = ["wheel", "touchstart", "touchmove", "keydown"];
   // Opening or closing a panel (a click / tap on an expander's header) is not scrolling: the page hands over to
-  // the notation that now leads at once instead of holding 6 s (measured: 6.4 s after closing the Practice Melody).
+  // the notation that now leads at once instead of holding (measured: 6.4 s after closing the Practice Melody).
   // A drag or wheel that starts on a header still holds -- touchmove and wheel always count.
   function panelToggle(ev) {
     try { var t = ev && ev.target; return !!(t && t.closest && t.closest("summary")); } catch (e) { return false; }
@@ -440,7 +442,7 @@ _CONTROLLER_JS = r"""
           var el = p.current();
           if (el) C.follow(el, { why: "return" });
         }
-        // Paused / stopped: stay put; the next measure change after Resume follows (no 6 s debt).
+        // Paused / stopped: stay put; the next measure change after Resume follows (no hold debt).
         else if (p) C.wasSuspended = false;
       }
       if (C.room > 0) spacer(scroller());   // keep the room below at C.room as the chart / page changes size

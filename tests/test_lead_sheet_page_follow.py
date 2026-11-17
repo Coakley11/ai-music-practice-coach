@@ -1,5 +1,5 @@
 """M4: the Backing Lead Sheet at full height, the page following the music through ONE controller that holds
-still for six seconds after any manual scroll / touch / control interaction, and a compact transport.
+still for three seconds after any manual scroll / touch / control interaction, and a compact transport.
 
 Browser behaviour is proven in the real app (scratchpad probe_m4.py); these pin the wiring so it cannot drift:
 one controller, used by both follow surfaces, never touching audio, off for Karaoke.
@@ -23,9 +23,11 @@ def _app():
     return app
 
 
-def test_hold_is_six_seconds_and_counts_from_the_last_interaction():
+def test_hold_is_three_seconds_and_counts_from_the_last_interaction():
+    """User, 2026-11-16: three seconds after the most recent genuine manual scroll (six was too long)."""
     js = lpf._CONTROLLER_JS
-    assert lpf.HOLD_MS == 6000
+    assert lpf.HOLD_MS == 3000
+    assert lpf.CONTROLLER_VERSION >= 3                    # an open v2 page (6 s hold) is replaced
     assert "now() - C.lastInteraction < HOLD_MS" in js          # measured from the LAST interaction
     assert "C.lastInteraction = now()" in js                    # every interaction restarts it
     for kind in ("wheel", "touchstart", "touchmove", "keydown", "pointerdown"):
