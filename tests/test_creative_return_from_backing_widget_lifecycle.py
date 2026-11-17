@@ -30,7 +30,7 @@ class TestCreativeReturnFromBackingWidgetLifecycle(unittest.TestCase):
 
         at = AppTest.from_file(LIFECYCLE_HARNESS, default_timeout=180)
         at.run(timeout=240)
-        at.radio(key="improv_entry_mode").set_value("Style Jam Mode").run()
+        at.segmented_control(key="improv_entry_mode").set_value("Style Jam Mode").run()
         at.run(timeout=120)
         if "improv_style_key" in at.session_state:
             at.selectbox(key="improv_style_key").set_value("E")

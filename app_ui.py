@@ -12187,13 +12187,15 @@ def render_section_jump_bar(
         '<div class="ui-section-jump"><p class="ui-bar-label">Section focus</p>',
         unsafe_allow_html=True,
     )
-    picked = st.radio(
-        "Section focus",
-        options,
-        horizontal=True,
+    from segmented_selector import render_segmented_selector
+
+    picked = render_segmented_selector(
+        st,
+        session_state,
+        label="Section focus",
+        options=options,
         key=state_key,
         format_func=_label,
-        label_visibility="collapsed",
         on_change=on_change,
     )
     st.markdown("</div>", unsafe_allow_html=True)

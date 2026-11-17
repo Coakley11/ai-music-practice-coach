@@ -15060,12 +15060,14 @@ def _render_backing_scope_controls(
             "Playback scope",
             "Full song or a custom group of sections in song order.",
         )
-        playback_scope = st.radio(
-            "Playback scope",
-            _scope_choices,
-            horizontal=True,
+        from segmented_selector import render_segmented_selector
+
+        playback_scope = render_segmented_selector(
+            st,
+            st.session_state,
+            label="Playback scope",
+            options=_scope_choices,
             key="backing_track_scope",
-            label_visibility="collapsed",
             on_change=_on_backing_filter_change,
         )
         st.markdown("</div>", unsafe_allow_html=True)

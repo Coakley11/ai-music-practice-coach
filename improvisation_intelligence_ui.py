@@ -1398,13 +1398,17 @@ def _tab_entry_modes(
         )
     except ImportError:
         pass
-    entry = st.radio(
-        "Improvisation entry mode",
-        list(IMPROV_ENTRY_MODES),
-        horizontal=True,
+    # Selectable buttons like Entry & Jam / Phrase-Motif / Missions; same key, labels, icons
+    # (three purple notes, saxophone, dice) and on_change as the radio it replaces.
+    from segmented_selector import render_segmented_selector
+
+    entry = render_segmented_selector(
+        st,
+        session_state,
+        label="Improvisation entry mode",
+        options=list(IMPROV_ENTRY_MODES),
         key="improv_entry_mode",
         format_func=creative_tool_display_label,
-        label_visibility="collapsed",
         on_change=_on_entry_mode_change,
     )
     try:

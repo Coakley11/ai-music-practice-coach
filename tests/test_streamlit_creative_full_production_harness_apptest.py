@@ -84,14 +84,14 @@ class TestCreativeFullProductionHarness(unittest.TestCase):
 
     def test_entry_mode_switch_does_not_queue_unarmed_backing(self) -> None:
         at = self._run()
-        at.radio(key="improv_entry_mode").set_value("Jam Session Generator").run()
+        at.segmented_control(key="improv_entry_mode").set_value("Jam Session Generator").run()
         session = _adapt(at)
         self.assertEqual(
             str(session.get("improv_entry_mode") or ""),
             "Jam Session Generator",
         )
         self.assertEqual(_mission_trace_queued(session), [])
-        at.radio(key="improv_entry_mode").set_value("Style Jam Mode").run()
+        at.segmented_control(key="improv_entry_mode").set_value("Style Jam Mode").run()
         self.assertEqual(_mission_trace_queued(_adapt(at)), [])
         queued_seqs = [q.get("request_seq") for q in _mission_trace_queued(_adapt(at))]
         self.assertEqual(queued_seqs, [])
@@ -114,7 +114,7 @@ class TestCreativeFullProductionHarness(unittest.TestCase):
         from music_workflow_state_store import get_workflow_blob
 
         at = self._run()
-        at.radio(key="improv_entry_mode").set_value("Jam Session Generator").run()
+        at.segmented_control(key="improv_entry_mode").set_value("Jam Session Generator").run()
         at.selectbox(key="improv_jam_key").set_value("A").run()
         at.run(timeout=180)
         blob = get_workflow_blob(_adapt(at), "jam_session_generator", _gen_session_id(_adapt(at)))
@@ -125,7 +125,7 @@ class TestCreativeFullProductionHarness(unittest.TestCase):
         from music_workflow_state_store import get_workflow_blob
 
         at = self._run()
-        at.radio(key="improv_entry_mode").set_value("Jam Session Generator").run()
+        at.segmented_control(key="improv_entry_mode").set_value("Jam Session Generator").run()
         at.selectbox(key="improv_jam_key").set_value("A").run()
         at.run(timeout=180)
         session = _adapt(at)
@@ -133,7 +133,7 @@ class TestCreativeFullProductionHarness(unittest.TestCase):
         self.assertIsNotNone(gb)
         self.assertEqual(gb.keys.practice_tonic, "A")
 
-        at.radio(key="improv_entry_mode").set_value("Style Jam Mode").run()
+        at.segmented_control(key="improv_entry_mode").set_value("Style Jam Mode").run()
         at.run(timeout=180)
         at.selectbox(key="improv_style_key").set_value("D").run()
         at.run(timeout=180)
@@ -149,7 +149,7 @@ class TestCreativeFullProductionHarness(unittest.TestCase):
         from sidebar_key_identity import resolve_sidebar_key_identity
 
         at = self._run()
-        at.radio(key="improv_entry_mode").set_value("Jam Session Generator").run()
+        at.segmented_control(key="improv_entry_mode").set_value("Jam Session Generator").run()
         at.selectbox(key="improv_jam_key").set_value("A").run()
         at.run(timeout=180)
         base = _adapt(at)
