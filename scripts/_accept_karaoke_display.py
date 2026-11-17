@@ -132,16 +132,42 @@ def check_song(page: Page, frame: Frame, song: str, has_lyrics: bool) -> Frame:
          (st_on.get("lyric_lines", 0) > 0) if has_lyrics else st_on.get("chart_cells", 0) > 0,
          f"lyrics={st_on.get('lyric_lines')} chart={st_on.get('chart_wrap')}")
     frame = switch_and_check(page, frame, False, song, "lyric" if has_lyrics else "chord")
-    # Manual scroll: the shared hold, then following returns.
-    page.mouse.move(WIDTH // 2, 300)
-    page.mouse.wheel(0, -600)
-    page.wait_for_timeout(300)
-    held = state(frame).get("held")
-    hold_ms = page.evaluate("() => { try { return window.top.__lsFollow.holdMs } catch (e) { return null } }")
-    page.wait_for_timeout(int((hold_ms or 6000) + 1500))
-    back = state(frame).get("held")
-    mark(f"{song}: a manual scroll suspends following, which returns after the shared hold",
-         held is True and back is False, f"held={held} then={back} hold_ms={hold_ms}")
+    # Manual scroll: every scroll holds following; a NEW scroll restarts the hold; following returns
+    # one hold after the LAST scroll and brings the followed content back into view; playback never
+    # stops; Karaoke keeps the lead (no melody takes over during a set).
+    for ls_on in (False, True):
+        set_lead_sheet(page, ls_on)
+        settle(page, 5)
+        frame = get_frame(page) or frame
+        tag = f"{song}, Lead Sheet {'ON' if ls_on else 'OFF'}"
+        hold_ms = page.evaluate("() => { try { return window.top.__lsFollow.holdMs } catch (e) { return null } }") or 0
+        t_start = state(frame).get("t") or 0.0
+        page.mouse.move(WIDTH // 2, 300)
+        page.mouse.wheel(0, -700)
+        page.wait_for_timeout(int(hold_ms * 0.66))
+        page.mouse.wheel(0, -300)                       # a new scroll before the hold ran out
+        page.wait_for_timeout(int(hold_ms * 0.66))     # past the FIRST scroll's hold, not the second's
+        still = state(frame).get("held")
+        page.wait_for_timeout(int(hold_ms * 0.34) + 900)
+        released = state(frame).get("held")
+        page.wait_for_timeout(1800)                     # let following bring the content back
+        seen = frame.evaluate("""() => {
+          const t = window.__karaokeFollowTarget ? window.__karaokeFollowTarget() : null;
+          if (!t) return null;
+          const fe = window.frameElement, fr = fe.getBoundingClientRect(), r = t.getBoundingClientRect();
+          const top = fr.top + r.top, h = window.top.innerHeight;
+          return {top: Math.round(top), h: h, inView: top >= -4 && top <= h - 10};
+        }""")
+        st_end = state(frame)
+        mark(f"{tag}: the hold is the shared controller's 3 s", int(hold_ms) == 3000, f"hold_ms={hold_ms}")
+        mark(f"{tag}: a new manual scroll restarts the hold", still is True, f"held at {int(hold_ms * 1.32)} ms after the first scroll = {still}")
+        mark(f"{tag}: following resumes after the hold since the LAST scroll", released is False, f"held={released}")
+        mark(f"{tag}: following brings the {'chord' if (ls_on or not has_lyrics) else 'lyric'} back into view",
+             bool(seen and seen.get("inView")), f"{seen}")
+        mark(f"{tag}: playback continued throughout", bool(st_end.get("t") and st_end["t"] > t_start + 2 and not st_end.get("paused")),
+             f"t {t_start} -> {st_end.get('t')}")
+        mark(f"{tag}: Karaoke keeps the lead - no melody takes over", st_end.get("leading") == "karaoke-lyrics",
+             f"leading={st_end.get('leading')}")
     return frame
 
 
