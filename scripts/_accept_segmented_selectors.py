@@ -21,7 +21,7 @@ URL = next((a for a in sys.argv[1:] if a.startswith("http")), "http://127.0.0.1:
 WIDTH = int(sys.argv[sys.argv.index("--width") + 1]) if "--width" in sys.argv else 1280
 
 from _accept_issue69_karaoke_transposition import settle, wait_for_app  # noqa: E402
-from walk_creative_backing_matrix import click_nav  # noqa: E402
+import _accept_issue78c_visibility as H  # noqa: E402
 from walk_guitar_shape_key import pick_song  # noqa: E402
 
 OUT = SCRIPTS / "evidence-segmented-selectors"
@@ -33,7 +33,8 @@ GROUP_JS = """(key) => {
   const box = document.querySelector('.st-key-' + key);
   if (!box) return {found: false};
   const group = box.querySelector('[data-testid="stButtonGroup"]');
-  const radios = box.querySelectorAll('[role="radiogroup"], input[type="radio"]').length;
+  // Real radio widgets only: a segmented control itself declares role="radiogroup" for accessibility.
+  const radios = box.querySelectorAll('[data-testid="stRadio"], input[type="radio"]').length;
   const btns = group ? [...group.querySelectorAll('button')] : [];
   return {
     found: true, group: !!group, radios,
@@ -113,21 +114,57 @@ def main() -> int:
             wait_for_app(page, 300)
             pick_song(page, NOTES, "Say", "pop")
             settle(page, 4)
-            for nav, key, name, labels, pick in (
-                ("Practice", "practice_focus_section", "Practice Section Focus", ["Full Song", "Verse", "Chorus"], "Chorus"),
-                ("Backing", "backing_track_scope", "Backing Playback scope", ["Full"], "ection"),
-                ("Creative", "improv_entry_mode", "Creative modes",
+            H.URL = URL
+            for nav, proof, key, name, labels, pick in (
+                ("Practice", "section focus", "practice_focus_section", "Practice Section Focus",
+                 ["Full Song", "Verse", "Chorus"], "Chorus"),
+                ("Backing", "playback scope", "backing_track_scope", "Backing Playback scope", ["Full"], "ection"),
+                ("Creative Lab", "analysis mode", "improv_entry_mode", "Creative modes",
                  ["Song-Based Improvisation", "Style Jam", "Jam Session Generator"], "Style Jam"),
             ):
                 page.set_viewport_size({"width": 1280, "height": 900})
                 settle(page, 2)
-                click_nav(page, nav)
+                arrived = H.open_studio_page(page, nav, proof, tries=6)
+                if not arrived and nav == "Creative Lab":
+                    # The in-page studio grid ("Creative"), which the Creative harnesses use.
+                    from walk_practice_loop_backing import goto_studio
+                    goto_studio(page, "Creative")
+                    settle(page, 8)
+                    arrived = proof in H.low(H.main_body(page))
+                if not arrived:  # a heavy page can still be drawing: wait for it rather than re-click
+                    for _ in range(20):
+                        settle(page, 3)
+                        if proof in H.low(H.main_body(page)):
+                            arrived = True
+                            break
+                NOTES.append(f"opened {nav}: {arrived}")
                 settle(page, 6)
                 if WIDTH != 1280:
                     page.set_viewport_size({"width": WIDTH, "height": 800})
                     settle(page, 4)
+                if key == "improv_entry_mode":
+                    # Creative Lab opens in its Deep Harmony analysis mode; the entry modes live under
+                    # Analysis mode -> Improvisation Intelligence -> Entry & Jam.
+                    from walk_creative_backing_matrix import set_baseweb_select
+                    page.set_viewport_size({"width": 1280, "height": 900})
+                    settle(page, 2)
+                    picked = set_baseweb_select(page, "Analysis mode", "Improvisation Intelligence")
+                    NOTES.append(f"analysis mode -> Improvisation Intelligence: {picked}")
+                    settle(page, 8)
+                    clicked_tab = click_option(page, "improv_intelligence_tab", "Entry")
+                    if WIDTH != 1280:
+                        page.set_viewport_size({"width": WIDTH, "height": 800})
+                        settle(page, 4)
+                    NOTES.append(f"opened Entry & Jam: {clicked_tab}")
+                    settle(page, 6)
                 if not page.locator(f".st-key-{key}").count():
                     mark(f"{name}: the bar is on the {nav} page", False)
+                    try:
+                        (OUT / f"missing-{key}-{WIDTH}.txt").write_text(page.inner_text("body") or "", encoding="utf-8")
+                        keys = page.evaluate("() => [...document.querySelectorAll('[class*=\"st-key-\"]')].map(e => [...e.classList].find(c => c.startsWith('st-key-'))).filter(k => /improv|creative|entry|jam/i.test(k)).slice(0, 40)")
+                        NOTES.append(f"creative-ish keys on the page: {keys}")
+                    except Exception as exc:
+                        NOTES.append(f"dump failed: {exc}")
                     page.screenshot(path=str(OUT / f"missing-{key}-{WIDTH}.png"), full_page=True)
                     continue
                 check_bar(page, key, name, labels, pick)

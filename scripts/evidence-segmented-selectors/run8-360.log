@@ -1,0 +1,30 @@
+worktree : /c/tmp/ai-music-selectors
+script   : scripts/_accept_segmented_selectors.py
+port     : 8651
+cleared  : ignored app state under /c/tmp/ai-music-selectors/data (tracked fixtures kept)
+server pid: 241916
+picked Say dropdown=True landed=True sidebar_song='SONG\n\nSONG\nSay — John Mayer\n\n🎼 Songs\n\nSay · Pop\n\n📜 Song Original Key: Bb\n\n🗝️ Practice / Co'
+  PASS  [360px] Practice Section Focus: drawn as selectable buttons, not radio dots  [group=True radios=0]
+  PASS  [360px] Practice Section Focus: the app's own labels (and icons) are kept  [['Full Song', 'Intro', 'Verse', 'Chorus', 'Bridge', 'Chorus']]
+  PASS  [360px] Practice Section Focus: exactly one option is selected  [active=['Full Song']]
+  PASS  [360px] Practice Section Focus: every button is on screen and tappable (>= 32 px tall)  [[('Full Song', 32, 120, 40), ('Intro', 119, 182, 40), ('Verse', 181, 246, 40), ('Chorus', 245, 321, 40), ('Bridge', 32, 105, 40), ('Chorus', 104, 179, 40)]]
+  PASS  [360px] Practice Section Focus: no sideways page scroll
+  PASS  [360px] Practice Section Focus: a click selects 'Chorus'  [active=['Chorus']]
+  PASS  [360px] Practice Section Focus: clicking the selected button does not deselect it  [active=['Chorus']]
+  PASS  [360px] Backing Playback scope: drawn as selectable buttons, not radio dots  [group=True radios=0]
+  PASS  [360px] Backing Playback scope: the app's own labels (and icons) are kept  [['Full song', 'Selected sections']]
+  PASS  [360px] Backing Playback scope: exactly one option is selected  [active=['Full song']]
+  PASS  [360px] Backing Playback scope: every button is on screen and tappable (>= 32 px tall)  [[('Full song', 32, 118, 40), ('Selected secti', 117, 253, 40)]]
+  PASS  [360px] Backing Playback scope: no sideways page scroll
+  PASS  [360px] Backing Playback scope: a click selects 'ection'  [active=['Selected sections']]
+  PASS  [360px] Backing Playback scope: clicking the selected button does not deselect it  [active=['Selected sections']]
+  PASS  [360px] Creative modes: drawn as selectable buttons, not radio dots  [group=True radios=0]
+  PASS  [360px] Creative modes: the app's own labels (and icons) are kept  [['🎶\n\nPlay Song-Based Improvisation', '🎷\n\nStyle Jam Mode', '🎲\n\nJam Session Generator']]
+  PASS  [360px] Creative modes: exactly one option is selected  [active=['🎶\n\nPlay Song-Based Improvisation']]
+  PASS  [360px] Creative modes: every button is on screen and tappable (>= 32 px tall)  [[('🎶\n\nPlay Song-B', 32, 272, 40), ('🎷\n\nStyle Jam M', 32, 182, 40), ('🎲\n\nJam Session', 32, 224, 40)]]
+  PASS  [360px] Creative modes: no sideways page scroll
+  PASS  [360px] Creative modes: a click selects 'Style Jam'  [active=['🎷\n\nStyle Jam Mode']]
+  PASS  [360px] Creative modes: clicking the selected button does not deselect it  [active=['🎷\n\nStyle Jam Mode']]
+
+21/21 gates passed at 360px
+stopping the server (pid 241916)
