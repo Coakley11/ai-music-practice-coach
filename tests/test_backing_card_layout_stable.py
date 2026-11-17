@@ -139,3 +139,8 @@ def test_stop_explains_the_key_cycling_restart_while_cycling() -> None:
     assert f'BACKING_KC_STOP_HINT = "{hint}"' in app
     block = app[app.index('with st.container(key="backing_card_transport_row"):'):][:1200]
     assert "if _cycle_on:" in block and 'st.caption("■ Stop Backing Track: " + BACKING_KC_STOP_HINT)' in block
+
+
+def test_icon_only_pause_is_easy_to_tap() -> None:
+    """Measured 43 px wide when shown as its icon beside "Stop Backing Track"; at least 44 px."""
+    assert 'body[data-pair="1"][data-fit="icon"] #pz { flex: 0 0 auto; padding: 0 12px; min-width: 44px; }' in TRANSPORT

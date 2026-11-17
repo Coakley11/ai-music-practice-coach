@@ -344,7 +344,7 @@ _CONTROLLER_JS = r"""
     + "gap:8px;padding:6px;border-radius:999px;background:rgba(15,23,42,.92);box-shadow:0 6px 24px rgba(15,23,42,.28);"
     + "align-items:center;font-family:system-ui,-apple-system,Segoe UI,sans-serif;";
   var BTN_CSS = "border:0;border-radius:999px;padding:9px 16px;font-size:15px;font-weight:600;cursor:pointer;"
-    + "min-height:40px;white-space:nowrap;line-height:1;";
+    + "min-height:44px;min-width:44px;white-space:nowrap;line-height:1;";
   function cardTransportDoc() {
     try {
       var f = doc.querySelector(".st-key-backing_card_transport_row iframe");

@@ -293,3 +293,9 @@ def test_no_melody_leads_while_a_karaoke_set_is_active():
     assert "LS_PRIORITY = %d" % lpf.LEAD_SHEET_PRIORITY in code and "__LS_PRIO__" not in code
     assert lpf.MELODY_PRIORITY > lpf.LEAD_SHEET_PRIORITY and lpf.ORIGINAL_MELODY_PRIORITY > lpf.LEAD_SHEET_PRIORITY
 
+
+
+def test_compact_bar_buttons_are_easy_to_tap():
+    """User, 2026-11-17: Stop / Pause easy to tap at 360 px. Measured 40 px tall; 44 x 44 px is the comfortable
+    minimum."""
+    assert "min-height:44px;min-width:44px;" in lpf._CONTROLLER_JS
