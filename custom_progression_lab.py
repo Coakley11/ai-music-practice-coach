@@ -1874,7 +1874,7 @@ def clear_cpl_widget_state(session_state: dict) -> None:
             session_state.pop(key, None)
         if is_cpl_ephemeral_widget_key(key):
             session_state.pop(key, None)
-    for key in ("_cpl_editing_display_key", "cpl_finished", "_cpl_last_bar_apply", "_cpl_widget_owner_id"):
+    for key in ("_cpl_editing_display_key", "cpl_finished", "_cpl_last_bar_apply", "_cpl_widget_owner_id", "_cpl_user_emptied_song_id"):
         session_state.pop(key, None)
     cpl_clear_pending_chord(session_state)
 
@@ -2547,12 +2547,16 @@ def cpl_save_draft(
     """Single write path: widgets → draft blob → session → optional cloud persist."""
     detach_active_from_library(session_state)
     active = ensure_original_structure(session_state.get(CPL_ACTIVE_KEY) or active)
+    chords_before = _record_chord_count(active)
     active = sync_cpl_draft_widgets_to_active(session_state, active)
     home = (
         ensure_all_cpl_sections(sections)
         if sections is not None
         else ensure_all_cpl_sections(active.get("original_sections"))
     )
+    if chords_before > 0 and _record_chord_count({"original_sections": home}) == 0:
+        # This draft HAD chords and the user's edit removed them: a deliberate emptying of THIS song.
+        session_state[USER_EMPTIED_SONG_ID_KEY] = str(active.get("id") or "").strip()
     active["user_locked_home_key"] = True
     active = commit_home_sections(active, home)
     session_state[CPL_ACTIVE_KEY] = active
@@ -3284,6 +3288,25 @@ class SongSaveConflict(Exception):
     """A save was refused because it would change a saved song that the draft was not derived from."""
 
 
+class EmptyDraftOverwriteRefused(SongSaveConflict):
+    """A chordless draft was about to replace a saved song that has chords."""
+
+
+USER_EMPTIED_SONG_ID_KEY = "_cpl_user_emptied_song_id"
+
+
+def _record_chord_count(rec) -> int:
+    secs = (rec or {}).get("original_sections") if isinstance(rec, dict) else None
+    if not isinstance(secs, dict):
+        return 0
+    return sum(
+        1
+        for entries in secs.values()
+        for e in (entries or [])
+        if isinstance(e, dict) and (e.get("repeat") or str(e.get("chord") or "").strip())
+    )
+
+
 def _same_version(a, b) -> bool:
     try:
         return abs(float(a) - float(b)) < 1e-6
@@ -3291,18 +3314,23 @@ def _same_version(a, b) -> bool:
         return False
 
 
-def save_progression(store, name, data, *, expected_updated_at=None):
-    save_progression_named(store, name, data, expected_updated_at=expected_updated_at)
+def save_progression(store, name, data, *, expected_updated_at=None, allow_empty=False):
+    save_progression_named(
+        store, name, data, expected_updated_at=expected_updated_at, allow_empty=allow_empty
+    )
     return store
 
 
-def save_progression_named(store, name, data, *, expected_updated_at=None):
+def save_progression_named(store, name, data, *, expected_updated_at=None, allow_empty=False):
     """Save ``data`` into the library and return the library name it was stored under.
 
     ``expected_updated_at`` is the version of the saved song the draft was loaded from (the draft's
     ``base_updated_at``). When given, the save only goes ahead if the song with this id still has exactly
     that version, so a draft can never overwrite a record it was not derived from, and a stale copy that
     holds the same id under another title can only be re-identified by a draft proven to descend from it.
+
+    ``allow_empty`` is the deliberate "I emptied this song" signal. Without it a draft with NO chords is refused
+    when it would replace a saved song that has chords (a blank default-shaped draft once emptied a saved song).
 
     Never overwrites a different song: a new song (different id) whose title matches
     an existing entry is stored as ``Title (2)``. If a rename leaves another entry
@@ -3321,6 +3349,15 @@ def save_progression_named(store, name, data, *, expected_updated_at=None):
         save_name = _unique_library_name(store, save_name, incoming_id)
     existing = store.get(save_name) if isinstance(store.get(save_name), dict) else {}
     song_id = str(data.get("id") or existing.get("id") or "").strip() or str(uuid.uuid4())
+    if not allow_empty and _record_chord_count(data) == 0:
+        for _k, rec in store.items():
+            if isinstance(rec, dict) and (
+                str(rec.get("id") or "").strip() == song_id or (_k == save_name and not incoming_id)
+            ) and _record_chord_count(rec) > 0:
+                raise EmptyDraftOverwriteRefused(
+                    "This draft has no chords but the saved song does, so the save was refused to protect "
+                    "the saved chords. Clear the song on purpose first if you want it empty."
+                )
     if expected_updated_at is not None:
         for _k, rec in store.items():
             if isinstance(rec, dict) and str(rec.get("id") or "").strip() == song_id:
@@ -4786,9 +4823,15 @@ def cpl_on_save_library_callback() -> None:
             ).strip()
         saved = st.session_state.setdefault(CPL_SAVED_KEY, {})
         name = str(active.get("name") or title or "My Progression").strip() or "My Progression"
+        _emptied = str(st.session_state.get(USER_EMPTIED_SONG_ID_KEY) or "").strip()
         name = save_progression_named(
-            saved, name, active, expected_updated_at=active.get("base_updated_at")
+            saved,
+            name,
+            active,
+            expected_updated_at=active.get("base_updated_at"),
+            allow_empty=bool(_emptied and _emptied == str(active.get("id") or "").strip()),
         )
+        st.session_state.pop(USER_EMPTIED_SONG_ID_KEY, None)
         stored = saved.get(name) if isinstance(saved.get(name), dict) else {}
         song_id = str((stored or {}).get("id") or "").strip()
         if not song_id:

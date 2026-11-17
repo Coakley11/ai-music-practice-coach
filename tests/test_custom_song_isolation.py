@@ -195,5 +195,62 @@ class TestLyricsTargetsById(unittest.TestCase):
         self.assertEqual(seen.get("name"), "SYN Trial")
 
 
+class TestEmptyDraftCannotOverwriteAPopulatedSong(unittest.TestCase):
+    """Blues lost its chords in production (empty sections, default 100 BPM). Whatever the trigger, a chordless
+    draft must not silently replace a saved song that has chords - while a deliberate emptying still works."""
+
+    def test_blank_default_shaped_draft_with_the_songs_id_is_refused(self) -> None:
+        _a, b, store, golden, _ss = _world()
+        blank = L.default_active_progression()
+        blank.update({"id": b["id"], "name": b["name"], "artist": b["artist"], "original_key_center": "Fm",
+                      "progression_style": "Blues"})
+        with self.assertRaises(L.EmptyDraftOverwriteRefused):
+            L.save_progression_named(store, b["name"], blank)
+        with self.assertRaises(L.EmptyDraftOverwriteRefused):  # even with a matching version
+            L.save_progression_named(store, b["name"], blank, expected_updated_at=b["updated_at"])
+        self.assertEqual(_canon(store), _canon(golden))
+
+    def test_blank_draft_that_only_shares_the_title_is_refused_too(self) -> None:
+        _a, b, store, golden, _ss = _world()
+        blank = L.default_active_progression()
+        blank["name"] = b["name"]  # no id at all
+        with self.assertRaises(L.EmptyDraftOverwriteRefused):
+            L.save_progression_named(store, b["name"], blank)
+        self.assertEqual(_canon(store), _canon(golden))
+
+    def test_a_brand_new_empty_song_can_still_be_saved(self) -> None:
+        _a, _b, store, _golden, _ss = _world()
+        fresh = L.start_new_progression()
+        fresh["name"] = "SYN Brand New"
+        L.save_progression_named(store, "SYN Brand New", fresh)
+        self.assertIn("SYN Brand New", store)
+
+    def test_deliberately_emptying_a_song_is_allowed(self) -> None:
+        _a, b, store, _golden, ss = _world()
+        L.apply_cpl_session_progression(ss, L.load_saved_progression(store, "SYN Blues"), reset_display_key=True)
+        active = L.cpl_active_from_session(ss)
+        L.cpl_save_draft(ss, active, {"Verse": []}, persist=False)  # the user removed every chord
+        self.assertEqual(ss.get(L.USER_EMPTIED_SONG_ID_KEY), b["id"])
+        draft = L.cpl_active_from_session(ss)
+        L.save_progression_named(store, "SYN Blues", draft, expected_updated_at=draft["base_updated_at"], allow_empty=True)
+        self.assertEqual(_chords(store["SYN Blues"]) if store["SYN Blues"]["original_sections"].get("Verse") else [], [])
+
+    def test_switching_songs_forgets_the_emptied_marker(self) -> None:
+        _a, _b, store, _golden, ss = _world()
+        ss[L.USER_EMPTIED_SONG_ID_KEY] = "whatever"
+        L.apply_cpl_session_progression(ss, L.load_saved_progression(store, "SYN Trial"), reset_display_key=True)
+        self.assertNotIn(L.USER_EMPTIED_SONG_ID_KEY, ss)
+
+    def test_lyrics_save_never_replaces_saved_chords_with_an_empty_draft(self) -> None:
+        import songs.cpl_lyrics_runtime as R
+
+        _a, b, store, golden, ss = _world()
+        blank = L.default_active_progression()
+        blank.update({"id": b["id"], "name": b["name"]})
+        blank["lyrics_by_section"] = {"Verse": "la"}
+        R._persist_cpl_lyrics_library_copy(ss, blank)
+        self.assertEqual(_canon(ss[L.CPL_SAVED_KEY]), _canon(golden))
+
+
 if __name__ == "__main__":
     unittest.main()

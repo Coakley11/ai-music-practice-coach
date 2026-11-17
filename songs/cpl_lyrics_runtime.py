@@ -120,7 +120,7 @@ def _persist_cpl_lyrics_library_copy(session_state: dict[str, Any], active: dict
 
     """Mirror lyrics into the saved custom song library entry when one exists."""
 
-    from custom_progression_lab import CPL_SAVED_KEY, save_progression
+    from custom_progression_lab import CPL_SAVED_KEY, SongSaveConflict, save_progression
 
 
 
@@ -152,8 +152,12 @@ def _persist_cpl_lyrics_library_copy(session_state: dict[str, Any], active: dict
 
         return
 
-    save_progression(store, target_name, active)
-
+    try:
+        save_progression(store, target_name, active)
+    except SongSaveConflict:
+        # A lyrics-only save must never replace saved chords with a chordless/stale draft; the lyrics stay on
+        # the working draft and the saved song is left exactly as it was.
+        return
     session_state[CPL_SAVED_KEY] = store
 
 
