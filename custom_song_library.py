@@ -398,6 +398,15 @@ def push_unsynced_custom_songs(session_state: dict[str, Any], *, st: Any | None 
         # Not every cloud id is known, so "absent from the cloud" cannot be trusted.
         return 0, "cloud_listing_truncated"
     cloud_ids = set(LAST_CLOUD_ALL_IDS)
+    # The listing above only holds VALID rows, so a song the owner deleted looks "missing from the cloud".
+    # Uploading it would set valid back to true and resurrect it. Skip every deleted key; if the deleted keys
+    # cannot be read, upload nothing (safe default).
+    try:
+        from suite_account import load_deleted_item_keys
+
+        deleted_keys = load_deleted_item_keys(ITEM_TYPE, app=APP_ID)
+    except Exception as exc:
+        return 0, f"cloud_deleted_keys_unavailable:{type(exc).__name__}"
     from custom_progression_lab import CPL_SAVED_KEY
 
     store = session_state.get(CPL_SAVED_KEY) if isinstance(session_state.get(CPL_SAVED_KEY), dict) else {}
@@ -407,7 +416,7 @@ def push_unsynced_custom_songs(session_state: dict[str, Any], *, st: Any | None 
         if not isinstance(data, dict):
             continue
         sid = str(data.get("id") or "").strip()
-        if not sid or sid in cloud_ids:
+        if not sid or sid in cloud_ids or _song_item_key(sid) in deleted_keys:
             continue
         ok, _key, e = upsert_custom_song_to_cloud(str(data.get("name") or name), data, st=st)
         if ok:

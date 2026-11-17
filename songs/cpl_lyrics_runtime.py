@@ -139,21 +139,15 @@ def _persist_cpl_lyrics_library_copy(session_state: dict[str, Any], active: dict
     active_id = str(active.get("id") or "").strip()
 
     target_name = ""
-
-    if song_name in store:
-
-        target_name = song_name
-
-    elif active_id:
-
+    # The stable id decides which saved song receives the lyrics. A title is only used for a draft that has
+    # no id at all (a title can be shared by, or stamped onto, another saved song).
+    if active_id:
         for name, blob in store.items():
-
             if isinstance(blob, dict) and str(blob.get("id") or "").strip() == active_id:
-
                 target_name = str(name)
-
                 break
-
+    elif song_name in store:
+        target_name = song_name
     if not target_name:
 
         return

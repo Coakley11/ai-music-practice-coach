@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import copy
+
 from typing import Any
 
 from song_catalog import (
@@ -633,15 +635,24 @@ def apply_saved_custom_pick_key_context(
     if active is None:
         saved_lib = st.session_state.get("cpl_saved_progressions") or {}
         if isinstance(saved_lib, dict):
+            def _label_matches(prog_row: Any, key: Any) -> bool:
+                return str(key).strip() == suffix or str((prog_row or {}).get("name") or "").strip() == suffix
+
+            _name_hits = sum(
+                1 for k, v in saved_lib.items() if isinstance(v, dict) and _label_matches(v, k)
+            )
             for name, prog in saved_lib.items():
                 if not isinstance(prog, dict):
                     continue
-                cand = ensure_original_structure(prog)
+                # A COPY: the draft must never be the stored library record itself.
+                cand = ensure_original_structure(copy.deepcopy(prog))
+                cand["base_updated_at"] = prog.get("updated_at")
+                # The stable id decides. A title is only trusted when exactly one saved song carries it
+                # (two songs titled alike must never be chosen by name).
                 if (
                     custom_pick_key_for(cand) == pick_key
-                    or str(name).strip() == suffix
                     or str(cand.get("id") or "").strip() == suffix
-                    or str(cand.get("name") or "").strip() == suffix
+                    or (_name_hits == 1 and _label_matches(cand, name))
                 ):
                     active = cand
                     break

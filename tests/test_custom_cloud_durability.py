@@ -66,6 +66,7 @@ def _song(song_id: str = "song-1", name: str = "Bossa Test") -> dict:
 class CloudCase(unittest.TestCase):
     def setUp(self) -> None:
         self.cloud = FakeCloud()
+        self.deleted_keys: set = set()
         self.workspace = "daniel"
         self.status = {"enabled": True, "mode": "cloud", "reason": ""}
         patches = [
@@ -74,6 +75,7 @@ class CloudCase(unittest.TestCase):
             mock.patch("suite_user.last_account_error", side_effect=lambda: self.status["reason"]),
             mock.patch("suite_account.remember_saved_item", side_effect=self.cloud.remember),
             mock.patch("suite_account.load_saved_items", side_effect=self.cloud.load),
+            mock.patch("suite_account.load_deleted_item_keys", side_effect=lambda *a, **k: set(self.deleted_keys)),
             mock.patch("custom_song_library.active_workspace_id", side_effect=lambda st=None: self.workspace),
         ]
         for p in patches:
@@ -187,6 +189,23 @@ class TestReadBackAndRepair(CloudCase):
         self.assertEqual((uploaded, err), (1, None))
         self.assertEqual(self.cloud.rows["custom_a-1"], cloud_before)
         self.assertIn("custom_o-1", self.cloud.rows)
+
+    def test_a_deleted_song_is_never_resurrected_by_the_unsynced_upload(self) -> None:
+        """A delete only marks the row invalid, so the valid listing no longer holds it. A stale session that
+        still has the song must NOT upload it again (the upsert would set it valid)."""
+        self.deleted_keys = {"custom_bossa-1"}
+        session = {CPL_SAVED_KEY: {"Bossa": _song("bossa-1", "Bossa"), "Offline Song": _song("o-1", "Offline Song")}}
+        uploaded, err = lib.push_unsynced_custom_songs(session)
+        self.assertEqual((uploaded, err), (1, None))
+        self.assertNotIn("custom_bossa-1", self.cloud.rows)
+        self.assertIn("custom_o-1", self.cloud.rows)
+
+    def test_nothing_is_pushed_when_the_deleted_keys_cannot_be_read(self) -> None:
+        with mock.patch("suite_account.load_deleted_item_keys", side_effect=RuntimeError("nope")):
+            uploaded, err = lib.push_unsynced_custom_songs({CPL_SAVED_KEY: {"X": _song("x-1", "X")}})
+        self.assertEqual(uploaded, 0)
+        self.assertIn("cloud_deleted_keys_unavailable", err)
+        self.assertEqual(self.cloud.writes, 0)
 
     def test_nothing_is_pushed_when_the_cloud_cannot_be_listed(self) -> None:
         self.cloud.raise_on_read = RuntimeError("down")

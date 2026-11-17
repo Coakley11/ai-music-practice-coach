@@ -55,6 +55,7 @@ class ListingCase(unittest.TestCase):
             mock.patch("suite_user.account_mode", return_value="cloud"),
             mock.patch("suite_user.last_account_error", return_value=""),
             mock.patch("suite_account.load_saved_items", side_effect=self.cloud.load),
+            mock.patch("suite_account.load_deleted_item_keys", return_value=set()),
             mock.patch("suite_account.remember_saved_item", side_effect=self.cloud.remember),
             mock.patch("custom_song_library.active_workspace_id", return_value="daniel"),
             mock.patch(

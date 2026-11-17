@@ -4365,7 +4365,7 @@ def _queue_last_custom_restore_from_session(session_state: dict[str, Any]) -> bo
     active = None
     snap = session_state.get(LAST_CUSTOM_STATE_KEY)
     if isinstance(snap, dict) and isinstance(snap.get("active"), dict):
-        active = dict(snap["active"])
+        active = copy.deepcopy(snap["active"])
     if active is None:
         try:
             from custom_progression_lab import cpl_active_from_session
@@ -7771,7 +7771,7 @@ def ensure_custom_progression_for_backing(
             if isinstance(snap, dict) and isinstance(snap.get("active"), dict) and cpl_active_is_substantive(
                 snap["active"]
             ):
-                active = dict(snap["active"])
+                active = copy.deepcopy(snap["active"])
             elif not isinstance(active, dict):
                 active = default_active_progression()
             # else keep non-substantive live shell only when LAST_CUSTOM is absent
