@@ -1,16 +1,21 @@
-"""Part 7 and Part 11: a setlist of mixed material, and the colour comes from the metadata.
+"""Part 7 and Part 11: a three-entry setlist of mixed material, driven end to end.
 
-The main acceptance run builds the three Catalog songs from the report, which can only
-exercise one of the three source colours. This adds a Custom progression to the same setlist
-and checks that its row says Custom - in words and in its own colour class - while the Catalog
-rows are unchanged.
+Catalog, Catalog and a Custom progression, each queued in its own key, then Next, Previous,
+Stop, End Set and reopening the saved setlist - with a temporary key change in the middle, so
+the thing that must not happen (a saved entry or a song's own Practice Key moving) has a chance
+to happen.
 
-Why it matters beyond the colour: the assignment is explicit that source identity must come
-from stored metadata and not from titles. A Custom progression called "Blue Bossa" is the
-clearest possible case, because a title-based guess would call it a Catalog standard.
+Two lessons from the earlier runs are built in rather than rediscovered:
+
+* setlist rows live in the Songs page's karaoke panel. Starting a set navigates to Backing,
+  where there are no rows at all - reading them there reported "row None -> None" about a
+  transport that had worked perfectly.
+* the Blue Bossa demo loader sits inside a collapsed "Load saved or demo charts" expander, so
+  clicking it blind finds nothing. A Custom progression called Blue Bossa is the sharpest test
+  of "source identity from metadata, not from the title", which is why it is worth opening.
 
 Usage:
-  python -X utf8 scripts/_accept_karaoke_mixed_source.py http://127.0.0.1:8599
+  python -X utf8 scripts/_accept_karaoke_mixed_source.py http://127.0.0.1:8607
 """
 
 from __future__ import annotations
@@ -26,16 +31,18 @@ SCRIPTS = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPTS))
 sys.path.insert(0, str(ROOT))
 
-URL = sys.argv[1] if len(sys.argv) > 1 and sys.argv[1].startswith("http") else "http://127.0.0.1:8599"
+URL = sys.argv[1] if len(sys.argv) > 1 and sys.argv[1].startswith("http") else "http://127.0.0.1:8607"
 
 from _accept_issue69_karaoke_transposition import (  # noqa: E402
     click_key,
     click_text,
+    key_token,
     low,
     settle,
     wait_for_app,
 )
-from _accept_karaoke_qa import ROWS_JS, open_karaoke  # noqa: E402
+from _accept_karaoke_qa import ROWS_JS, card_identity, set_pk_token  # noqa: E402
+from _walk_custom_practice_key import pk_val  # noqa: E402
 from walk_creative_backing_matrix import click_nav, expand_sidebar, set_baseweb_select  # noqa: E402
 from walk_guitar_shape_key import pick_song  # noqa: E402
 
@@ -72,11 +79,53 @@ def shot(page: Page, name: str) -> str:
     return body
 
 
-def rows(page: Page) -> list[dict]:
+def setlist(page: Page) -> list[dict]:
+    """The rows, read where they exist: the Songs page's karaoke panel."""
+    click_nav(page, "Songs")
+    settle(page, 4)
+    click_key(page, "catalog_hub_karaoke") or click_text(page, "Karaoke")
+    settle(page, 4)
     try:
         return page.evaluate(ROWS_JS) or []
     except Exception:
         return []
+
+
+def now_singing_row(rows: list[dict]) -> int | None:
+    for r in rows:
+        if "singing" in low(r.get("marker") or ""):
+            return r.get("row")
+    return None
+
+
+def saved_keys(rows: list[dict]) -> list[str]:
+    out = []
+    for r in rows:
+        label = r.get("label") or ""
+        out.append(key_token(label.split("·")[-1]) if "·" in label else "")
+    return out
+
+
+def expand_named(page: Page, title: str) -> bool:
+    """Open a collapsed expander by its summary text, and only if it is closed."""
+    return bool(page.evaluate(
+        """(title) => {
+          const want = String(title).toLowerCase();
+          const heads = [...document.querySelectorAll('summary, [data-testid="stExpander"] summary')];
+          for (const h of heads) {
+            if (!(h.textContent || '').toLowerCase().includes(want)) continue;
+            const det = h.closest('details');
+            if (det && !det.open) { h.click(); return true; }
+            return true;   // already open
+          }
+          return false;
+        }""", title))
+
+
+def queue_active_song(page: Page) -> bool:
+    click_nav(page, "Songs")
+    settle(page, 4)
+    return bool(click_key(page, "karaoke_add_card_") or click_text(page, "Add to Karaoke Set"))
 
 
 def main() -> int:
@@ -87,131 +136,134 @@ def main() -> int:
         try:
             page.goto(URL, wait_until="domcontentloaded")
             settle(page, 5)
-            mark("M1 app renders", wait_for_app(page))
+            ready = wait_for_app(page, 300)
+            if not ready:
+                observe("the app did not render in 300 s; reloading once")
+                page.reload(wait_until="domcontentloaded")
+                settle(page, 8)
+                ready = wait_for_app(page, 300)
+            mark("M1 app renders", ready)
 
-            # Voice mode needs a song active first, as the main run found the hard way.
+            # Voice mode needs a song active first, or the card has no karaoke button at all.
             pick_song(page, OBSERVED, "Say", "pop")
             settle(page, 4)
             expand_sidebar(page)
             set_baseweb_select(page, "Instrument", "Voice")
             settle(page, 6)
+            mark("M2 Say is queued in its own key", queue_active_song(page) and key_token(pk_val(page)) == "bb",
+                 f"sidebar={pk_val(page)!r}")
 
-            click_nav(page, "Songs")
-            settle(page, 3)
-            queued_catalog = click_key(page, "karaoke_add_card_") or click_text(page, "Add to Karaoke Set")
-            mark("M2 a Catalog song is in the set", bool(queued_catalog))
+            pick_song(page, OBSERVED, "Just the Two of Us", "pop")
+            settle(page, 4)
+            set_pk_token(page, "Db")
+            mark("M3 Just the Two of Us is queued in Db", queue_active_song(page),
+                 f"sidebar={pk_val(page)!r}")
 
             # A real Custom progression, from the app's own demo loader.
-            opened = click_nav(page, "Custom Progression") or click_text(page, "Custom Progression")
+            click_nav(page, "Custom Progression") or click_text(page, "Custom Progression")
             settle(page, 5)
+            # Both, not either: the demo buttons sit inside "Jazz chart demos", which is itself
+            # inside "Load saved or demo charts". Opening only the outer one left the button
+            # unreachable and the run reported expander=True load=False.
+            opened_outer = expand_named(page, "Load saved or demo charts")
+            settle(page, 2)
+            opened_inner = expand_named(page, "Jazz chart demos")
+            opened = opened_outer and opened_inner
+            settle(page, 3)
             shot(page, "m1-custom-page")
             loaded = click_key(page, "cpl_demo_blue_bossa") or click_text(page, "Load Blue Bossa")
             settle(page, 5)
-            saved = click_key(page, "cpl_save_prog") or click_text(page, "Save progression")
+            saved = click_key(page, "cpl_save_prog") or click_text(page, "Save to Library")
             settle(page, 5)
             active = click_key(page, "cpl_set_active") or click_text(page, "Set active")
             settle(page, 6)
             body = shot(page, "m2-custom-active")
-            mark("M3 a Custom progression is the active song",
-                 bool(loaded) and ("blue bossa" in low(body)),
-                 f"load={bool(loaded)} save={bool(saved)} active={bool(active)}")
+            mark("M4 a Custom progression is the active song",
+                 bool(loaded) and "blue bossa" in low(body),
+                 f"expanders={bool(opened_outer)}/{bool(opened_inner)} load={bool(loaded)} save={bool(saved)} "
+                 f"active={bool(active)}")
+            mark("M5 the Custom progression is queued", queue_active_song(page))
 
-            click_nav(page, "Songs")
-            settle(page, 4)
-            queued_custom = click_key(page, "karaoke_add_card_") or click_text(page, "Add to Karaoke Set")
-            mark("M4 the Custom progression was added to the set", bool(queued_custom))
-
-            open_karaoke(page)
+            rows = setlist(page)
+            (OUT / "m3-rows.json").write_text(json.dumps(rows, indent=2), encoding="utf-8")
             shot(page, "m3-mixed-setlist")
-            got = rows(page)
-            (OUT / "m3-rows.json").write_text(json.dumps(got, indent=2), encoding="utf-8")
-            sources = [(r.get("source"), r.get("chip")) for r in got]
-            mark("M5 the setlist holds both kinds of material", len(got) >= 2, f"{sources}")
-
-            customs = [r for r in got if (r.get("source") or "") == "custom"]
-            catalogs = [r for r in got if (r.get("source") or "") == "catalog"]
-            mark("M6 the Custom row says Custom, from its metadata",
-                 len(customs) == 1 and (customs[0].get("chip") or "").strip() == "Custom",
+            sources = [(r.get("source"), r.get("chip")) for r in rows]
+            mark("M6 three entries of mixed material", len(rows) == 3, f"{sources}")
+            customs = [r for r in rows if (r.get("source") or "") == "custom"]
+            catalogs = [r for r in rows if (r.get("source") or "") == "catalog"]
+            mark("M7 the Custom row says Custom, from its metadata",
+                 bool(customs) and all((r.get("chip") or "") == "Custom" for r in customs),
                  f"{[(r.get('chip'), r.get('label')) for r in customs]}")
-            mark("M7 it carries the Custom colour class, not the Catalog one",
-                 bool(customs) and "src-custom" in (customs[0].get("classes") or "")
-                 and "src-catalog" not in (customs[0].get("classes") or ""),
-                 f"classes={(customs[0].get('classes') if customs else '')!r}")
-            mark("M8 the Catalog rows are untouched",
-                 bool(catalogs) and all((r.get("chip") or "") == "Catalog" for r in catalogs),
+            mark("M8 the Catalog rows say Catalog",
+                 len(catalogs) == 2 and all((r.get("chip") or "") == "Catalog" for r in catalogs),
                  f"{[r.get('chip') for r in catalogs]}")
-            colours = {r.get("source"): r.get("chip_bg") for r in got}
-            mark("M9 the two kinds are painted differently",
+            colours = {r.get("source"): r.get("chip_bg") for r in rows}
+            mark("M9 the kinds are painted differently",
                  len({v for v in colours.values() if v}) >= 2, f"{colours}")
-            mark("M10 a title that looks like a standard is still Custom",
+            mark("M10 a Custom title that looks like a standard is still Custom",
                  bool(customs) and "blue bossa" in low(customs[0].get("label") or ""),
                  f"label={(customs[0].get('label') if customs else '')!r}")
+            before_saved = saved_keys(rows)
+            log(f"    saved keys before the performance: {before_saved}")
 
-            # Part 11's transport list, on this mixed setlist. The unit suites cover advance,
-            # regress, repeats and reordering as state; these are the clicks.
-            started = (click_text(page, "Start karaoke set") or click_text(page, "Start"))
+            # ---- the transport, on mixed material -------------------------------------
+            started = click_text(page, "Start karaoke set") or click_text(page, "Start")
             settle(page, 8)
-            body = shot(page, "m4-performing")
-            mark("M11 the mixed set performs", "now singing" in low(body),
-                 f"(start helper {bool(started)})")
-
-            first = [r for r in rows(page) if "singing" in low(r.get("marker") or "")]
-            nexted = click_text(page, "Skip") or click_text(page, "Next song")
-            settle(page, 8)
-            second = [r for r in rows(page) if "singing" in low(r.get("marker") or "")]
-            mark("M12 Next moves Now Singing to another entry",
-                 bool(first) and bool(second) and first[0].get("row") != second[0].get("row"),
-                 f"row {first[0].get('row') if first else None} -> "
-                 f"{second[0].get('row') if second else None} (helper {bool(nexted)})")
-
-            prev = click_text(page, "Previous song")
-            settle(page, 8)
-            third = [r for r in rows(page) if "singing" in low(r.get("marker") or "")]
-            mark("M13 Previous brings it back",
-                 bool(third) and bool(first) and third[0].get("row") == first[0].get("row"),
-                 f"row {second[0].get('row') if second else None} -> "
-                 f"{third[0].get('row') if third else None} (helper {bool(prev)})")
-
-            from _accept_issue69_karaoke_transposition import press_pause_or_resume, press_play
+            first = now_singing_row(setlist(page))
+            mark("M11 the mixed set performs", first is not None,
+                 f"Now Singing row {first} (start helper {bool(started)})")
 
             click_nav(page, "Backing")
+            settle(page, 5)
+            nexted = click_text(page, "Skip") or click_text(page, "Next song")
+            settle(page, 8)
+            second = now_singing_row(setlist(page))
+            mark("M12 Next moves Now Singing", first is not None and second is not None
+                 and first != second, f"row {first} -> {second} (helper {bool(nexted)})")
+
+            click_nav(page, "Backing")
+            settle(page, 5)
+            prev = click_text(page, "Previous song")
+            settle(page, 8)
+            third = now_singing_row(setlist(page))
+            mark("M13 Previous brings it back", third == first,
+                 f"row {second} -> {third} (helper {bool(prev)})")
+
+            # ---- a temporary key change on the mixed set -------------------------------
+            click_nav(page, "Backing")
+            settle(page, 5)
+            ident_before = card_identity(page)
+            moved = set_pk_token(page, "F")
+            settle(page, 8)
+            ident_after = card_identity(page)
+            mark("M14 a temporary key change takes during the performance", moved,
+                 f"{ident_before.get('backing_line')!r} -> {ident_after.get('backing_line')!r}")
+            rows_after = setlist(page)
+            mark("M15 no saved entry moved with it", saved_keys(rows_after) == before_saved,
+                 f"{before_saved} -> {saved_keys(rows_after)}")
+
+            # ---- Stop, End Set, reopen -------------------------------------------------
+            click_nav(page, "Backing")
+            settle(page, 5)
+            stopped = click_text(page, "Stop")
             settle(page, 6)
-            played = press_play(page)
-            if played:
-                # Part 8 and Part 1 on the performance surface itself: the lyrics are open
-                # while singing, the chart is folded behind them with its DOM still mounted,
-                # and the chord hints are under the lyrics rather than in place of them.
-                from _accept_karaoke_qa import perf
-                from _accept_issue69_karaoke_transposition import wait_for_live_strip
-
-                wait_for_live_strip(page, 240)
-                surface = perf(page)
-                log(f"    performance surface: {surface}")
-                mark("M16 the karaoke lyrics are open during playback",
-                     bool(surface.get("lyric_panel")) and int(surface.get("lyric_lines") or 0) > 0,
-                     f"{surface.get('lyric_lines')} lines")
-                mark("M17 the chord chart is folded, not removed",
-                     surface.get("chart_root") is True and surface.get("chart_folded") is True,
-                     f"root={surface.get('chart_root')} folded={surface.get('chart_folded')} "
-                     f"summary={surface.get('details_label')!r}")
-                mark("M18 chord hints appear under the lyrics",
-                     int(surface.get("chord_chips") or 0) > 0,
-                     f"{surface.get('chord_chips')} chips")
-            if played:
-                first_mode = press_pause_or_resume(page)
-                second_mode = press_pause_or_resume(page)
-                mark("M14 Pause and Resume both answer during a performance",
-                     bool(first_mode) and bool(second_mode),
-                     f"{first_mode!r} then {second_mode!r}")
-            else:
-                observe("Play was not available on the Backing page, so Pause/Resume "
-                        "were not measured here")
-
+            mark("M16 Stop answers during a performance", bool(stopped))
             ended = click_text(page, "End karaoke set")
-            settle(page, 6)
-            after = rows(page)
-            mark("M15 ending the set keeps both entries",
-                 len(after) >= 2, f"{len(after)} rows (helper {bool(ended)})")
+            settle(page, 7)
+            body = shot(page, "m4-ended")
+            mark("M17 the set ends", bool(ended) and "now singing" not in low(body))
+
+            final = setlist(page)
+            (OUT / "m5-rows-after.json").write_text(json.dumps(final, indent=2), encoding="utf-8")
+            shot(page, "m5-reopened")
+            mark("M18 reopening the setlist finds all three entries", len(final) == 3,
+                 f"{len(final)} rows")
+            mark("M19 every saved key survived the performance",
+                 saved_keys(final) == before_saved,
+                 f"{before_saved} -> {saved_keys(final)}")
+            mark("M20 the sources survived too",
+                 [r.get("source") for r in final] == [r.get("source") for r in rows],
+                 f"{[r.get('source') for r in final]}")
         finally:
             browser.close()
 

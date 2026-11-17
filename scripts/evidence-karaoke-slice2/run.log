@@ -1,0 +1,52 @@
+worktree : /c/tmp/ai-music-slice2
+script   : scripts/_accept_karaoke_slice2.py
+port     : 8612
+cleared  : ignored app state under /c/tmp/ai-music-slice2/data (tracked fixtures kept)
+server pid: 184628
+[PASS] K1 app renders  
+picked Say dropdown=True landed=True sidebar_song='SONG\n\nSONG\nSay — John Mayer\n\n🎼 Songs\n\nSay · Pop\n\n📜 Song Original Key: Bb\n\n🗝️ Practice / Co'
+[PASS] K2 a karaoke set is performing  queued=True start=True
+[PASS] K3 the Lead Sheet is Off (its default)  
+[PASS] K4 the performance surface mounts with the Lead Sheet OFF  play=True
+    audio nudge: started
+    surface: {'lyric_panel': True, 'lyric_lines': 1, 'active_line': 'Instrumental ? B? ? E? ? Gm ? F', 'current_cell': '', 'active_chip': 'Bb', 'chart_folded': True, 'box_top': 0, 'playing': True, 'controller_reachable': True, 'held': False}
+[PASS] K5 the karaoke lyrics are on screen with the Lead Sheet OFF  1 line(s), active 'Instrumental ? B? ? E? ? Gm ? F'
+[PASS] K6 the chord chart is folded behind them, not removed  folded=True
+[PASS] K7 chord hints appear under the lyrics  chip='Bb'
+[PASS] K8 the shared page controller is reachable from this frame  window.top.__lsFollow reachable=True
+    audio elements: 1, audible: 0
+      frame3   paused=False muted=True ready=4 t=1.46 audible=False ...f-b0c4-4261e1da0e12/f982831640321997810d.wav
+[PASS] K9 exactly one audible player with the Lead Sheet OFF  0 audible of 1 elements
+    page [3527, 3527, 3527, 3527, 3527, 3527, 3527, 3527, 3527, 3527, 3527, 3527, 3527, 3527, 3527, 3527, 3527, 3527, 3527] box [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+[PASS] K10 a real wheel suspends the shared hold  held=True (page 3527 -> 3760)
+[PASS] K11 the view is left alone during the grace period  box 0 -> [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+[PASS] K12 highlighting keeps running while the follow is held  1 distinct lyric line(s)
+[PASS] K13 the hold releases after about six seconds  suspended() went false 5.85s after the gesture (the shared hold is 6000 ms)
+[PASS] K14 following resumes once the hold expires  box after release: [0, 0, 0, 0, 0, 0, 0, 0]
+[PASS] K15 turning the Lead Sheet ON keeps the karaoke lyrics  panel=True folded=None (switch helper True)
+[PASS] K16 exactly one audible player with the Lead Sheet ON  0 audible of 1 elements
+[PASS] K17 turning it back Off does not hide the karaoke lyrics  panel=True (switch helper True)
+
+======================================================================
+  PASS  K1 app renders
+  PASS  K2 a karaoke set is performing
+  PASS  K3 the Lead Sheet is Off (its default)
+  PASS  K4 the performance surface mounts with the Lead Sheet OFF
+  PASS  K5 the karaoke lyrics are on screen with the Lead Sheet OFF
+  PASS  K6 the chord chart is folded behind them, not removed
+  PASS  K7 chord hints appear under the lyrics
+  PASS  K8 the shared page controller is reachable from this frame
+  PASS  K9 exactly one audible player with the Lead Sheet OFF
+  PASS  K10 a real wheel suspends the shared hold
+  PASS  K11 the view is left alone during the grace period
+  PASS  K12 highlighting keeps running while the follow is held
+  PASS  K13 the hold releases after about six seconds
+  PASS  K14 following resumes once the hold expires
+  PASS  K15 turning the Lead Sheet ON keeps the karaoke lyrics
+  PASS  K16 exactly one audible player with the Lead Sheet ON
+  PASS  K17 turning it back Off does not hide the karaoke lyrics
+  OBS   picked Say dropdown=True landed=True sidebar_song='SONG\n\nSONG\nSay ? John Mayer\n\n? Songs\n\nSay ? Pop\n\n? Song Original Key: Bb\n\n?? Practice / Co'
+
+17/17 gates passed
+stopping the server (pid 184628)
+exit=0

@@ -1,0 +1,109 @@
+{
+  "entry_src": "http://127.0.0.1:8656/app/static/kc/03bd305e-643c-4a78-97fc-dc94de3c7b9c/f982831640321997810d.wav",
+  "retuned_src": "http://127.0.0.1:8656/app/static/kc/03bd305e-643c-4a78-97fc-dc94de3c7b9c/87a209611679825322b9.wav",
+  "entry_label": "bb",
+  "live_label": "ab",
+  "chroma_rotation": 10,
+  "chroma_scores": [
+    0.6911,
+    0.6906,
+    0.6844,
+    0.8282,
+    0.6236,
+    0.8355,
+    0.6875,
+    0.7104,
+    0.6724,
+    0.6244,
+    0.9982,
+    0.632
+  ],
+  "trace": [
+    {
+      "label": "entry key, playing",
+      "elements": 1,
+      "sounding": 1,
+      "audible": 1,
+      "positions": [
+        7.55
+      ],
+      "muted": [
+        false
+      ]
+    },
+    {
+      "label": "retuned, playing",
+      "elements": 1,
+      "sounding": 1,
+      "audible": 1,
+      "positions": [
+        3.89
+      ],
+      "muted": [
+        false
+      ]
+    },
+    {
+      "label": "after Pause",
+      "elements": 1,
+      "sounding": 0,
+      "audible": 0,
+      "positions": [
+        22.82
+      ],
+      "muted": [
+        false
+      ]
+    },
+    {
+      "label": "after Resume",
+      "elements": 1,
+      "sounding": 1,
+      "audible": 1,
+      "positions": [
+        26.68
+      ],
+      "muted": [
+        false
+      ]
+    },
+    {
+      "label": "Lead Sheet ON, playing",
+      "elements": 2,
+      "sounding": 1,
+      "audible": 1,
+      "positions": [
+        0,
+        44.94
+      ],
+      "muted": [
+        false,
+        false
+      ]
+    },
+    {
+      "label": "Lead Sheet OFF again, playing",
+      "elements": 1,
+      "sounding": 1,
+      "audible": 1,
+      "positions": [
+        56.04
+      ],
+      "muted": [
+        false
+      ]
+    },
+    {
+      "label": "after Stop",
+      "elements": 1,
+      "sounding": 0,
+      "audible": 0,
+      "positions": [
+        0
+      ],
+      "muted": [
+        false
+      ]
+    }
+  ]
+}

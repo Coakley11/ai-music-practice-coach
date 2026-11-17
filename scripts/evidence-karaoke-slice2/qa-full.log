@@ -1,0 +1,144 @@
+worktree : /c/tmp/ai-music-slice2
+script   : scripts/_accept_karaoke_qa.py
+port     : 8617
+cleared  : ignored app state under /c/tmp/ai-music-slice2/data (tracked fixtures kept)
+server pid: 185499
+
+==== phase A ====
+[PASS] A1 app renders  2954 chars
+picked Say dropdown=True landed=True sidebar_song='SONG\n\nSONG\nSay — John Mayer\n\n🎼 Songs\n\nSay · Pop\n\n📜 Song Original Key: Bb\n\n🗝️ Practice / Co'
+[PASS] A2 Say is the active song  
+[PASS] A3 instrument is Voice (karaoke needs it)  instrument='Voice'
+[PASS] A4 Say opens on its own key  practice key='Bb'
+
+==== phase B ====
+    queued Say: sidebar='Bb' added=True
+[PASS] B1 Say queued in Bb (its own key)  
+picked Just the Two of Us dropdown=True landed=True sidebar_song='SONG\n\nSONG\nJust the Two of Us — Grover Washington Jr. / Bill Withers\n\n🎼 Songs\n\nJust the Tw'
+    Practice Key Db: 'Db' -> 'Db' (clicked 'Db') -> 'Db' after the rerun
+    queued Just the Two of Us: sidebar='Db' added=True
+[PASS] B2 Just the Two of Us queued in Db  
+picked Perfect dropdown=True landed=True sidebar_song='SONG\n\nSONG\nPerfect — Ed Sheeran\n\n🎼 Songs\n\nPerfect · Pop\n\n📜 Song Original Key: Ab\n\n🗝️ Pract'
+    Practice Key Ab: 'Ab' -> 'Ab' (clicked 'Ab') -> 'Ab' after the rerun
+    queued Perfect: sidebar='Ab' added=True
+[PASS] B3 Perfect queued in Ab  
+[PASS] B4 three rows in the setlist  3 rows
+[PASS] B5 each row shows its own saved key  labels=['1. Say ? Bb', '2. Just the Two of Us ? Db', '3. Perfect ? Ab']
+picked Say dropdown=True landed=True sidebar_song='SONG\n\nSONG\nSay — John Mayer\n\n🎼 Songs\n\nSay · Pop\n\n📜 Song Original Key: Bb\n\n🗝️ Practice / Co'
+    Practice Key D: 'Bb' -> 'D' (clicked 'D') -> 'D' after the rerun
+[PASS] B6 Say's own Practice Key is set to D with no set running  practice key='D'
+[PASS] B7 the queued entry stayed at Bb when the song's own key moved  row='1. Say ? Bb'
+
+==== phase C ====
+[PASS] C1 every row names its source from metadata  [('catalog', 'Catalog', 'rgba(220, 38, 38, 0.82)'), ('catalog', 'Catalog', 'rgba(220, 38, 38, 0.82)'), ('catalog', 'Catalog', 'rgba(220, 38, 38, 0.82)')]
+[PASS] C2 Catalog rows carry the catalog colour class  3/3
+[PASS] C3 the source chip is painted  {'rgba(220, 38, 38, 0.82)'}
+[PASS] C4 the source is readable as words, not only colour  chips=['Catalog', 'Catalog', 'Catalog']
+[PASS] C5 Start carries the play icon and keeps its words  start='?? Start Karaoke Set'
+[PASS] C6 Clear Setlist carries the trash icon  clear='?? Clear Setlist'
+[PASS] C7 End/Start and Clear are not the same control  
+
+==== phase D ====
+[PASS] D1 the set is performing  (click helper True)
+[PASS] D2 the backing is the song being sung, in that entry's own key  'Backing source: Catalog song ? Say ? Bb ? 82 BPM'
+[PASS] D3 the card shows the song's own Original Key  original='' sidebar='Bb'
+[PASS] D4 End karaoke set carries the stop icon  '?? End karaoke set'
+[PASS] D5 Skip carries the next-track icon  '? Skip to next song'
+[PASS] D6 Previous carries the previous-track icon  '? Previous song'
+[PASS] D7 the chord-hints control is reachable while singing  1 control(s)
+[PASS] D8 the Lead Sheet starts Off  
+
+==== phase E ====
+    live strip before the change: {'current': 'Bb', 'next': 'Bbsus4', 'bar': '1 of 8', 'section': 'Intro'}
+    synthesized before the change: ['synth_submit:Bb', 'synth_done:Bb']
+    Practice Key Ab: 'D' -> 'Ab' (clicked 'Ab') -> 'Ab' after the rerun
+[PASS] E1 the sidebar key moved to Ab during the performance  pk='Ab'
+[PASS] E3 the saved setlist row still reads Bb  '1. Say ? Bb' -> '1. Say ? Bb'
+    retune trace called: requested='Ab', voice_mode=True, session_active=True, display_key='Ab', concert_key='D', instrument='Voice', entry_key='Bb'
+    retune trace retuned: previous='Bb', to='Ab', voice_mode=True, session_active=True, display_key='Ab', concert_key='D', instrument='Voice', entry_key='Ab'
+[PASS] E4b the retune ran for this gesture  [('Ab', 'Ab')] of 2 trace rows
+[PASS] E2 the backing surface is in the new key  'Backing source: Catalog song ? Say ? Ab ? 82 BPM'
+[PASS] E4 the backing was rebuilt in the new key  synthesized since the change: ['synth_submit:Ab']
+[OBS ] the lead sheet is Off during karaoke, so there is no live chord strip to read; the synthesizer log is what answers for the audio
+[PASS] E5 the next entry loads its own saved key  'Backing source: Catalog song ? Just the Two of Us ? Db ? 100 BPM' (skip helper True)
+[PASS] E6 the set ended  
+[PASS] E7 every saved key survived the performance  ['bb', 'db', 'ab']
+[PASS] E8 ending the set did not delete the setlist  3 rows
+
+==== phase F ====
+picked Say dropdown=True landed=True sidebar_song='SONG\n\nSONG\nSay — John Mayer\n\n🎼 Songs\n\nSay · Pop\n\n📜 Song Original Key: Bb\n\n🗝️ Practice / Co'
+[FAIL] F1 Say reopens on the Practice Key chosen outside karaoke  practice key='Ab' (want D, not the Ab it was sung in)
+[OBS ] neither a backing-source line nor a card chip here; read the sidebar ('Ab') - which is the EDITING song's key by design, so treat this as unmeasured
+[FAIL] F2 the card shows Say's own key, not the performance's  card={'backing_line': '', 'backing_kind': '', 'backing_song': '', 'backing_key': '', 'card_title': '', 'original': '', 'practice': '', 'sidebar_original': 'Bb', 'now_singing': True, 'now_editing': False, 'has_say': True, 'has_jttou': True, 'has_perfect': True}
+[PASS] F3 Say's Original Key is untouched  original='' sidebar='Bb'
+
+==== phase G 390 ====
+[PASS] G390-1 setlist rows are not clipped at 390px  0 clipped of 3
+[PASS] G390-2 the source words survive at 390px  chips=['Catalog', 'Catalog', 'Catalog']
+[PASS] G390-3 no control hangs off the viewport at 390px  []
+[PASS] G390-4 the transport icons are still on their buttons at 390px  start='?? Start Karaoke Set'
+
+==== phase G 360 ====
+[PASS] G360-1 setlist rows are not clipped at 360px  0 clipped of 3
+[PASS] G360-2 the source words survive at 360px  chips=['Catalog', 'Catalog', 'Catalog']
+[PASS] G360-3 no control hangs off the viewport at 360px  []
+[PASS] G360-4 the transport icons are still on their buttons at 360px  start='?? Start Karaoke Set'
+
+========================================================================
+  PASS  A1 app renders
+  PASS  A2 Say is the active song
+  PASS  A3 instrument is Voice (karaoke needs it)
+  PASS  A4 Say opens on its own key
+  PASS  B1 Say queued in Bb (its own key)
+  PASS  B2 Just the Two of Us queued in Db
+  PASS  B3 Perfect queued in Ab
+  PASS  B4 three rows in the setlist
+  PASS  B5 each row shows its own saved key
+  PASS  B6 Say's own Practice Key is set to D with no set running
+  PASS  B7 the queued entry stayed at Bb when the song's own key moved
+  PASS  C1 every row names its source from metadata
+  PASS  C2 Catalog rows carry the catalog colour class
+  PASS  C3 the source chip is painted
+  PASS  C4 the source is readable as words, not only colour
+  PASS  C5 Start carries the play icon and keeps its words
+  PASS  C6 Clear Setlist carries the trash icon
+  PASS  C7 End/Start and Clear are not the same control
+  PASS  D1 the set is performing
+  PASS  D2 the backing is the song being sung, in that entry's own key
+  PASS  D3 the card shows the song's own Original Key
+  PASS  D4 End karaoke set carries the stop icon
+  PASS  D5 Skip carries the next-track icon
+  PASS  D6 Previous carries the previous-track icon
+  PASS  D7 the chord-hints control is reachable while singing
+  PASS  D8 the Lead Sheet starts Off
+  PASS  E1 the sidebar key moved to Ab during the performance
+  PASS  E3 the saved setlist row still reads Bb
+  PASS  E4b the retune ran for this gesture
+  PASS  E2 the backing surface is in the new key
+  PASS  E4 the backing was rebuilt in the new key
+  PASS  E5 the next entry loads its own saved key
+  PASS  E6 the set ended
+  PASS  E7 every saved key survived the performance
+  PASS  E8 ending the set did not delete the setlist
+  FAIL  F1 Say reopens on the Practice Key chosen outside karaoke
+  FAIL  F2 the card shows Say's own key, not the performance's
+  PASS  F3 Say's Original Key is untouched
+  PASS  G390-1 setlist rows are not clipped at 390px
+  PASS  G390-2 the source words survive at 390px
+  PASS  G390-3 no control hangs off the viewport at 390px
+  PASS  G390-4 the transport icons are still on their buttons at 390px
+  PASS  G360-1 setlist rows are not clipped at 360px
+  PASS  G360-2 the source words survive at 360px
+  PASS  G360-3 no control hangs off the viewport at 360px
+  PASS  G360-4 the transport icons are still on their buttons at 360px
+  OBS   picked Say dropdown=True landed=True sidebar_song='SONG\n\nSONG\nSay ? John Mayer\n\n? Songs\n\nSay ? Pop\n\n? Song Original Key: Bb\n\n?? Practice / Co'
+  OBS   picked Just the Two of Us dropdown=True landed=True sidebar_song='SONG\n\nSONG\nJust the Two of Us ? Grover Washington Jr. / Bill Withers\n\n? Songs\n\nJust the Tw'
+  OBS   picked Perfect dropdown=True landed=True sidebar_song='SONG\n\nSONG\nPerfect ? Ed Sheeran\n\n? Songs\n\nPerfect ? Pop\n\n? Song Original Key: Ab\n\n?? Pract'
+  OBS   picked Say dropdown=True landed=True sidebar_song='SONG\n\nSONG\nSay ? John Mayer\n\n? Songs\n\nSay ? Pop\n\n? Song Original Key: Bb\n\n?? Practice / Co'
+  OBS   the lead sheet is Off during karaoke, so there is no live chord strip to read; the synthesizer log is what answers for the audio
+  OBS   picked Say dropdown=True landed=True sidebar_song='SONG\n\nSONG\nSay ? John Mayer\n\n? Songs\n\nSay ? Pop\n\n? Song Original Key: Bb\n\n?? Practice / Co'
+  OBS   neither a backing-source line nor a card chip here; read the sidebar ('Ab') - which is the EDITING song's key by design, so treat this as unmeasured
+
+44/46 gates passed
+stopping the server (pid 185499)
+exit=1

@@ -1,0 +1,46 @@
+worktree : /c/tmp/ai-music-slice2
+script   : scripts/_accept_karaoke_stop_transport_v2.py
+port     : 8620
+cleared  : ignored app state under /c/tmp/ai-music-slice2/data (tracked fixtures kept)
+server pid: 189945
+  PASS  S1 app renders
+picked Say dropdown=True landed=True sidebar_song='SONG\n\nSONG\nSay — John Mayer\n\n🎼 Songs\n\nSay · Pop\n\n📜 Song Original Key: Bb\n\n🗝️ Practice / Co'
+    Practice Key D: 'Bb' -> 'D' (clicked 'D') -> 'D' after the rerun
+picked Say dropdown=True landed=True sidebar_song='SONG\n\nSONG\nSay — John Mayer\n\n🎼 Songs\n\nSay · Pop\n\n📜 Song Original Key: Bb\n\n🗝️ Practice / Co'
+    saved store before: {"Pop\u001fSay \u2014 John Mayer": "D"}
+  PASS  S2 Say's own Practice Key is saved as D before any performance  [store='d' sidebar='d']
+  PASS  S3 the set performs  [entry='d']
+    Practice Key Ab: 'D major' -> 'A? major' (clicked 'A? major') -> 'A? major' after the rerun
+  PASS  S4 the performance is retuned to a temporary Ab
+  FAIL  S5 the take is actually playing before Stop  [play=True t=0.02]
+  FAIL  S6 the transport offers a Stop control once the take runs  [card state='paused' stop=null]
+  OBS   the transport's #stop would not take the click; trying the page's Stop
+  FAIL  S7 Stop was really pressed and the take stopped  [clicked=False take now paused=True]
+picked Say dropdown=True landed=True sidebar_song='SONG\n\nSONG\nSay — John Mayer\n\n🎼 Songs\n\nSay · Pop\n\n📜 Song Original Key: Bb\n\n🗝️ Practice / Co'
+    saved store after Stop: {"Pop\u001fSay \u2014 John Mayer": "Ab"}
+  FAIL  S8 Stop did not rewrite Say's SAVED Practice Key  [store 'd' -> 'ab' (sidebar shows 'ab')]
+  FAIL  S9 Stop did not move the saved setlist entry  [entry 'd' -> 'd']
+picked Say dropdown=True landed=True sidebar_song='SONG\n\nSONG\nSay — John Mayer\n\n🎼 Songs\n\nSay · Pop\n\n📜 Song Original Key: Bb\n\n🗝️ Practice / Co'
+    saved store after End Set: {"Pop\u001fSay \u2014 John Mayer": "Ab"}
+  FAIL  S10 End Set left Say's SAVED Practice Key as D  [store='ab' (sidebar 'ab', ended=True)]
+  FAIL  S11 End Set left the saved setlist entry at Bb  [entry='d']
+  OBS   after End Set the sidebar still displays 'ab' while the saved store holds 'ab' - the known temporary-key DISPLAY residue, held as its own QA item
+
+======================================================================
+  PASS  S1 app renders
+  PASS  S2 Say's own Practice Key is saved as D before any performance
+  PASS  S3 the set performs
+  PASS  S4 the performance is retuned to a temporary Ab
+  FAIL  S5 the take is actually playing before Stop
+  FAIL  S6 the transport offers a Stop control once the take runs
+  FAIL  S7 Stop was really pressed and the take stopped
+  FAIL  S8 Stop did not rewrite Say's SAVED Practice Key
+  FAIL  S9 Stop did not move the saved setlist entry
+  FAIL  S10 End Set left Say's SAVED Practice Key as D
+  FAIL  S11 End Set left the saved setlist entry at Bb
+  OBS   picked Say dropdown=True landed=True sidebar_song='SONG\n\nSONG\nSay — John Mayer\n\n🎼 Songs\n\nSay · Pop\n\n📜 Song Original Key: Bb\n\n🗝️ Practice / Co'
+  OBS   the transport's #stop would not take the click; trying the page's Stop
+  OBS   after End Set the sidebar still displays 'ab' while the saved store holds 'ab' - the known temporary-key DISPLAY residue, held as its own QA item
+
+4/11 gates passed
+stopping the server (pid 189945)

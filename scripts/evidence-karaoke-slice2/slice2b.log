@@ -1,0 +1,50 @@
+worktree : /c/tmp/ai-music-slice2
+script   : scripts/_accept_karaoke_slice2b.py
+port     : 8616
+cleared  : ignored app state under /c/tmp/ai-music-slice2/data (tracked fixtures kept)
+server pid: 188815
+  PASS  P1 app renders
+picked Say dropdown=True landed=True sidebar_song='SONG\n\nSONG\nSay — John Mayer\n\n🎼 Songs\n\nSay · Pop\n\n📜 Song Original Key: Bb\n\n🗝️ Practice / Co'
+  PASS  P2 a karaoke set is performing  [queued=True start=True]
+  PASS  P3 the performance surface mounts with the Lead Sheet OFF  [play=True]
+    audio nudge: started
+    playing: 1 element(s), 0 audible, t=[1.97], pz={"text": "\u23f8 Pause", "state": "", "mode": "pause", "disabled": false, "hidden": true}
+  PASS  P4 the transport exposes its own Pause control  [pz={"text": "\u23f8 Pause", "state": "", "mode": "pause", "disabled": false, "hidden": true}]
+  PASS  P5 exactly one audible player while the take runs  [0 audible of 1]
+    after transport Pause: 1 element(s), 0 audible, t=[6.43], pz={"text": "\u23f8 Pause", "state": "", "mode": "pause", "disabled": false, "hidden": true}
+  FAIL  P6 Pause from the transport's own control silences the take  [click=False audible=0]
+  PASS  P7 Pause created no second player  [1 -> 1 element(s)]
+    after transport Resume: 1 element(s), 0 audible, t=[11.91], pz={"text": "\u23f8 Pause", "state": "", "mode": "pause", "disabled": false, "hidden": true}
+  FAIL  P8 Resume from the transport's own control sounds exactly one player  [click=False audible=0]
+  PASS  P9 Resume carried on instead of restarting  [position 6.43 -> 11.91, 1 element(s)]
+    after a neutral rerun: 1 element(s), 0 audible, t=[24.86], pz={"text": "\u23f8 Pause", "state": "", "mode": "pause", "disabled": false, "hidden": true}
+  PASS  P10 a rerun while playing leaves one audible player  [0 audible of 1]
+    after the Lead Sheet switch ON: 1 element(s), 0 audible, t=[0], pz={"text": "\u23f8 Pause", "state": "", "mode": "pause", "disabled": false, "hidden": true}
+  PASS  P11 turning the Lead Sheet ON does not add a second audible player  [0 audible of 1]
+    after the Lead Sheet switch OFF again: 1 element(s), 0 audible, t=[0], pz={"text": "\u23f8 Pause", "state": "", "mode": "pause", "disabled": false, "hidden": true}
+  PASS  P12 turning it back OFF does not add a second audible player  [0 audible of 1]
+    controller: {"reachable": true, "version": null, "leader": "lead-sheet#1794799884318.004", "suspended": false, "providers": [{"id": "lead-sheet", "priority": 10, "from_this_frame": true, "has_current": true}]}
+  PASS  P13 the karaoke frame is registered with the one page controller  [1 provider(s) from this frame of 1]
+  PASS  P14 one provider per frame - the lyrics cannot lose the page to the chart  [['lead-sheet']]
+  OBS   no Original Melody staff renders on this surface during a karaoke performance, so the melody-vs-lyrics priority case cannot be exercised here - priorities are pinned by unit test instead (MELODY_PRIORITY 20 > LEAD_SHEET_PRIORITY 10)
+
+======================================================================
+  PASS  P1 app renders
+  PASS  P2 a karaoke set is performing
+  PASS  P3 the performance surface mounts with the Lead Sheet OFF
+  PASS  P4 the transport exposes its own Pause control
+  PASS  P5 exactly one audible player while the take runs
+  FAIL  P6 Pause from the transport's own control silences the take
+  PASS  P7 Pause created no second player
+  FAIL  P8 Resume from the transport's own control sounds exactly one player
+  PASS  P9 Resume carried on instead of restarting
+  PASS  P10 a rerun while playing leaves one audible player
+  PASS  P11 turning the Lead Sheet ON does not add a second audible player
+  PASS  P12 turning it back OFF does not add a second audible player
+  PASS  P13 the karaoke frame is registered with the one page controller
+  PASS  P14 one provider per frame - the lyrics cannot lose the page to the chart
+  OBS   picked Say dropdown=True landed=True sidebar_song='SONG\n\nSONG\nSay — John Mayer\n\n🎼 Songs\n\nSay · Pop\n\n📜 Song Original Key: Bb\n\n🗝️ Practice / Co'
+  OBS   no Original Melody staff renders on this surface during a karaoke performance, so the melody-vs-lyrics priority case cannot be exercised here - priorities are pinned by unit test instead (MELODY_PRIORITY 20 > LEAD_SHEET_PRIORITY 10)
+
+12/14 gates passed
+stopping the server (pid 188815)

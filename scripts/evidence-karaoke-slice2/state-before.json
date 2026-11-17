@@ -1,0 +1,2554 @@
+{
+  "version": 1,
+  "app": "music",
+  "saved_at": "2026-11-16T04:44:34+00:00",
+  "state": {
+    "core": {
+      "song": "Say",
+      "artist": "John Mayer",
+      "pick_key": "Pop\u001fSay — John Mayer",
+      "page": "picker",
+      "studio_page": "picker",
+      "focus": "Breath Control",
+      "instrument": "Voice",
+      "display_key": "D",
+      "practice_focus_section": "",
+      "level": "Intermediate",
+      "mode": ""
+    },
+    "session": {
+      "studio_page": "picker",
+      "chart_library_mode": "Full library",
+      "song_picker_chart_status": "All songs",
+      "song_search_text": "",
+      "song_search_scope": "Entire library",
+      "song_picker_level_filter": "Any level",
+      "workspace_genre_filter": "All genres",
+      "backing_track_scope": "Full song",
+      "backing_track_loops": 2,
+      "backing_groove_style": "Ballad",
+      "backing_track_bpm": 82,
+      "backing_time_signature_override": false,
+      "backing_quick_section": "Full song",
+      "_backing_play_session": {
+        "play_session_id": "",
+        "launch_id": "",
+        "source_identity": "pk::Pop\u001fSay — John Mayer",
+        "expired": true,
+        "defaults": {},
+        "overrides": {}
+      },
+      "_backing_play_session_expired": true,
+      "_backing_key_cycle_sessions": {},
+      "composer_saved_compositions": {},
+      "active_music_source": "catalog_song",
+      "explicit_music_source_choice": "catalog_song",
+      "song_picker_active_source": "🎵 Song Selection (catalog song)",
+      "chart_edit_mode": false,
+      "picker_editor_tab": "Lyrics & Cues",
+      "picker_song_editor_open": false,
+      "song_picker_favorites_only": false,
+      "cpl_active_progression": {
+        "name": "My Progression",
+        "original_key_center": "C",
+        "original_sections": {
+          "Intro": [],
+          "Verse": [],
+          "Pre-Chorus": [],
+          "Chorus": [],
+          "Bridge": [],
+          "Solo": [],
+          "Outro": []
+        },
+        "progression_style": "Pop",
+        "user_locked_home_key": true,
+        "time_signature": "4/4",
+        "bpm": 100,
+        "groove_style": "Auto",
+        "loops": 2,
+        "lyrics_by_section": {},
+        "artist": ""
+      },
+      "cpl_saved_progressions": {},
+      "cpl_last_display_key": "D",
+      "guitar_capo_enabled": false,
+      "guitar_capo_sounding_key": "D",
+      "guitar_capo_shape_key": "D",
+      "guitar_capo_last_concert_key": "D",
+      "backing_context": {
+        "source": "regular_song",
+        "source_label": "Catalog song",
+        "active_song_id": "Pop\u001fSay — John Mayer",
+        "song_title": "Say",
+        "key": "Bb",
+        "display_key": "D",
+        "concert_key": "D",
+        "bpm": 82,
+        "style": "",
+        "groove": "Ballad",
+        "section": null,
+        "sections": [],
+        "scope": "Full song",
+        "loops": 2,
+        "progression": [],
+        "progression_label": "",
+        "duration_bars": null,
+        "loop": true,
+        "mission_id": null,
+        "jam_id": null,
+        "entry_mode": null,
+        "custom_revision_id": null,
+        "mode_label": "",
+        "mood": "",
+        "groove_intensity": "",
+        "difficulty": "",
+        "meter": "4/4",
+        "chart_display_key": "",
+        "section_labels": [],
+        "created_at": "2026-11-16T04:42:14+00:00",
+        "updated_at": "2026-11-16T04:43:56+00:00",
+        "source_signature": "8ce971f20b105bae",
+        "bound_pick_key": "Pop\u001fSay — John Mayer",
+        "sbi_source_owner": "",
+        "sbi_material_kind": ""
+      },
+      "_backing_source_preference": "catalog",
+      "_backing_released_specialized_context": true,
+      "improv_style_meta": {
+        "bpm": 82,
+        "groove": "Ballad",
+        "style": "Ballad",
+        "meter": "4/4"
+      },
+      "improv_style": "Ballad",
+      "improv_style_bpm": 82,
+      "improv_groove": "Ballad",
+      "improv_style_meter": "4/4",
+      "_cpl_original_key_commit": "C",
+      "_pk_user_commit_at": 1794804236.589335,
+      "improv_jam_style": "Ballad",
+      "improv_song_concert_sections": {
+        "Intro": [
+          "D",
+          "Dsus4",
+          "D",
+          "Dsus4/E",
+          "D",
+          "Dsus4",
+          "D",
+          "Dsus4/E"
+        ],
+        "Verse 1": [
+          "D:2|G:2p",
+          "Bm:2|A:2p",
+          "D:2|G:2p",
+          "Bm:2|A:2p",
+          "D:2|G:2p",
+          "Bm:2|A:2p",
+          "D:2|G:2p",
+          "Bm:2|A:2p"
+        ],
+        "Chorus 1": [
+          "D:2|G:2p",
+          "Bm:2|A:2p",
+          "D:2|G:2p",
+          "Bm:2|A:2p",
+          "D:2|G:2p",
+          "Bm:2|A:2p",
+          "D:2|G:2p",
+          "Bm:2|A:2p"
+        ],
+        "Turnaround 1": [
+          "D:2|G:2p",
+          "Bm:2|A:2p"
+        ],
+        "Verse 2": [
+          "D:2|G:2p",
+          "Bm:2|A:2p",
+          "D:2|G:2p",
+          "Bm:2|A:2p",
+          "D:2|G:2p",
+          "Bm:2|A:2p",
+          "D:2|G:2p",
+          "Bm:2|A:2p"
+        ],
+        "Chorus 2": [
+          "D:2|G:2p",
+          "Bm:2|A:2p",
+          "D:2|G:2p",
+          "Bm:2|A:2p",
+          "D:2|G:2p",
+          "Bm:2|A:2p",
+          "D:2|G:2p",
+          "Bm:2|A:2p"
+        ],
+        "Turnaround 2": [
+          "D:2|G:2p",
+          "Bm:2|A:2p"
+        ],
+        "Bridge": [
+          "Em",
+          "G:2|A:2p",
+          "Em",
+          "G:2|A:2p",
+          "Em",
+          "G:2|A:2p",
+          "G",
+          "G:2|A:2p"
+        ],
+        "Turnaround 3": [
+          "D:2|G:2p",
+          "Bm:2|A:2p"
+        ],
+        "Verse 3": [
+          "D:2|G:2p",
+          "Bm:2|A:2p",
+          "D:2|G:2p",
+          "Bm:2|A:2p",
+          "D:2|G:2p",
+          "Bm:2|A:2p",
+          "D:2|G:2p",
+          "Bm:2|A:2p"
+        ],
+        "Final Chorus": [
+          "Bm:2|D:2p",
+          "G7",
+          "Bm:2|D:2p",
+          "G7",
+          "Bm:2|D:2p",
+          "G7",
+          "Bm:2|D:2p",
+          "G7",
+          "Bm:2|D:2p",
+          "G7",
+          "Bm:2|D:2p",
+          "G7",
+          "Bm:2|D:2p",
+          "G7",
+          "Bm:2|D:2p",
+          "G7"
+        ]
+      },
+      "improv_mission_practice_context": {
+        "version": 1,
+        "mission_type": "",
+        "mission_pick": "",
+        "chord": {
+          "symbol": "",
+          "root": "",
+          "quality": "",
+          "quality_label": "",
+          "extensions": "",
+          "bass": "",
+          "inversion_hint": "",
+          "section": "",
+          "chord_index": 0,
+          "chord_label": ""
+        },
+        "tempo_bpm": 82,
+        "backing_style": "Ballad",
+        "backing_groove": "Ballad",
+        "meter": "4/4",
+        "loop": true,
+        "loops": 2,
+        "volume": 0.85,
+        "count_in_bars": 0,
+        "song_title": "Say",
+        "pick_key": "Pop\u001fSay — John Mayer",
+        "display_key": "Bb",
+        "recording_association": "",
+        "context_fingerprint": "4d1cc7c93a2f451ce1ee9a5a",
+        "sealed_at": "",
+        "evaluation_focus": "Overall mission execution",
+        "score_against_example": false
+      },
+      "improv_mission_concert_key": "D",
+      "improv_mission_workspace_updated_at": "2026-11-16T04:44:34.471943+00:00",
+      "_creative_visit_source": "sbi_active",
+      "_creative_visit_practice_key": "D",
+      "practice_key_by_source": {
+        "Pop\u001fSay — John Mayer": "D"
+      },
+      "practice_key_user_override_picks": [
+        "Pop\u001fSay — John Mayer"
+      ],
+      "practice_key_mode": "standard",
+      "catalog_session": {
+        "pick_key": "Pop\u001fSay — John Mayer",
+        "selected_song": {
+          "title": "Say",
+          "artist": "John Mayer",
+          "genre": "Pop",
+          "key": "Bb",
+          "sections": {
+            "Intro": [
+              "Bb",
+              "Bbsus4",
+              "Bb",
+              "Bbsus4/C",
+              "Bb",
+              "Bbsus4",
+              "Bb",
+              "Bbsus4/C"
+            ],
+            "Verse 1": [
+              "Bb:2|Eb:2p",
+              "Gm:2|F:2p",
+              "Bb:2|Eb:2p",
+              "Gm:2|F:2p",
+              "Bb:2|Eb:2p",
+              "Gm:2|F:2p",
+              "Bb:2|Eb:2p",
+              "Gm:2|F:2p"
+            ],
+            "Chorus 1": [
+              "Bb:2|Eb:2p",
+              "Gm:2|F:2p",
+              "Bb:2|Eb:2p",
+              "Gm:2|F:2p",
+              "Bb:2|Eb:2p",
+              "Gm:2|F:2p",
+              "Bb:2|Eb:2p",
+              "Gm:2|F:2p"
+            ],
+            "Turnaround 1": [
+              "Bb:2|Eb:2p",
+              "Gm:2|F:2p"
+            ],
+            "Verse 2": [
+              "Bb:2|Eb:2p",
+              "Gm:2|F:2p",
+              "Bb:2|Eb:2p",
+              "Gm:2|F:2p",
+              "Bb:2|Eb:2p",
+              "Gm:2|F:2p",
+              "Bb:2|Eb:2p",
+              "Gm:2|F:2p"
+            ],
+            "Chorus 2": [
+              "Bb:2|Eb:2p",
+              "Gm:2|F:2p",
+              "Bb:2|Eb:2p",
+              "Gm:2|F:2p",
+              "Bb:2|Eb:2p",
+              "Gm:2|F:2p",
+              "Bb:2|Eb:2p",
+              "Gm:2|F:2p"
+            ],
+            "Turnaround 2": [
+              "Bb:2|Eb:2p",
+              "Gm:2|F:2p"
+            ],
+            "Bridge": [
+              "Cm",
+              "Eb:2|F:2p",
+              "Cm",
+              "Eb:2|F:2p",
+              "Cm",
+              "Eb:2|F:2p",
+              "Eb",
+              "Eb:2|F:2p"
+            ],
+            "Turnaround 3": [
+              "Bb:2|Eb:2p",
+              "Gm:2|F:2p"
+            ],
+            "Verse 3": [
+              "Bb:2|Eb:2p",
+              "Gm:2|F:2p",
+              "Bb:2|Eb:2p",
+              "Gm:2|F:2p",
+              "Bb:2|Eb:2p",
+              "Gm:2|F:2p",
+              "Bb:2|Eb:2p",
+              "Gm:2|F:2p"
+            ],
+            "Final Chorus": [
+              "Gm:2|Bb:2p",
+              "Eb7",
+              "Gm:2|Bb:2p",
+              "Eb7",
+              "Gm:2|Bb:2p",
+              "Eb7",
+              "Gm:2|Bb:2p",
+              "Eb7",
+              "Gm:2|Bb:2p",
+              "Eb7",
+              "Gm:2|Bb:2p",
+              "Eb7",
+              "Gm:2|Bb:2p",
+              "Eb7",
+              "Gm:2|Bb:2p",
+              "Eb7"
+            ]
+          },
+          "chart_versions": {
+            "Beginner": {
+              "Intro": [
+                "Bb",
+                "Bbsus4",
+                "Bb",
+                "Bbsus4/C",
+                "Bb",
+                "Bbsus4",
+                "Bb",
+                "Bbsus4/C"
+              ],
+              "Verse 1": [
+                "Bb|Eb",
+                "Gm|F",
+                "Bb|Eb",
+                "Gm|F",
+                "Bb|Eb",
+                "Gm|F",
+                "Bb|Eb",
+                "Gm|F"
+              ],
+              "Chorus 1": [
+                "Bb|Eb",
+                "Gm|F",
+                "Bb|Eb",
+                "Gm|F",
+                "Bb|Eb",
+                "Gm|F",
+                "Bb|Eb",
+                "Gm|F"
+              ],
+              "Turnaround 1": [
+                "Bb|Eb",
+                "Gm|F"
+              ],
+              "Verse 2": [
+                "Bb|Eb",
+                "Gm|F",
+                "Bb|Eb",
+                "Gm|F",
+                "Bb|Eb",
+                "Gm|F",
+                "Bb|Eb",
+                "Gm|F"
+              ],
+              "Chorus 2": [
+                "Bb|Eb",
+                "Gm|F",
+                "Bb|Eb",
+                "Gm|F",
+                "Bb|Eb",
+                "Gm|F",
+                "Bb|Eb",
+                "Gm|F"
+              ],
+              "Turnaround 2": [
+                "Bb|Eb",
+                "Gm|F"
+              ],
+              "Bridge": [
+                "Cm",
+                "Eb|F",
+                "Cm",
+                "Eb|F",
+                "Cm",
+                "Eb|F",
+                "Eb",
+                "Eb|F"
+              ],
+              "Turnaround 3": [
+                "Bb|Eb",
+                "Gm|F"
+              ],
+              "Verse 3": [
+                "Bb|Eb",
+                "Gm|F",
+                "Bb|Eb",
+                "Gm|F",
+                "Bb|Eb",
+                "Gm|F",
+                "Bb|Eb",
+                "Gm|F"
+              ],
+              "Final Chorus": [
+                "Gm|Bb",
+                "Eb7",
+                "Gm|Bb",
+                "Eb7",
+                "Gm|Bb",
+                "Eb7",
+                "Gm|Bb",
+                "Eb7",
+                "Gm|Bb",
+                "Eb7",
+                "Gm|Bb",
+                "Eb7",
+                "Gm|Bb",
+                "Eb7",
+                "Gm|Bb",
+                "Eb7"
+              ]
+            },
+            "Intermediate": {
+              "Intro": [
+                "Bb",
+                "Bbsus4",
+                "Bb",
+                "Bbsus4/C",
+                "Bb",
+                "Bbsus4",
+                "Bb",
+                "Bbsus4/C"
+              ],
+              "Verse 1": [
+                "Bb:2|Eb:2p",
+                "Gm:2|F:2p",
+                "Bb:2|Eb:2p",
+                "Gm:2|F:2p",
+                "Bb:2|Eb:2p",
+                "Gm:2|F:2p",
+                "Bb:2|Eb:2p",
+                "Gm:2|F:2p"
+              ],
+              "Chorus 1": [
+                "Bb:2|Eb:2p",
+                "Gm:2|F:2p",
+                "Bb:2|Eb:2p",
+                "Gm:2|F:2p",
+                "Bb:2|Eb:2p",
+                "Gm:2|F:2p",
+                "Bb:2|Eb:2p",
+                "Gm:2|F:2p"
+              ],
+              "Turnaround 1": [
+                "Bb:2|Eb:2p",
+                "Gm:2|F:2p"
+              ],
+              "Verse 2": [
+                "Bb:2|Eb:2p",
+                "Gm:2|F:2p",
+                "Bb:2|Eb:2p",
+                "Gm:2|F:2p",
+                "Bb:2|Eb:2p",
+                "Gm:2|F:2p",
+                "Bb:2|Eb:2p",
+                "Gm:2|F:2p"
+              ],
+              "Chorus 2": [
+                "Bb:2|Eb:2p",
+                "Gm:2|F:2p",
+                "Bb:2|Eb:2p",
+                "Gm:2|F:2p",
+                "Bb:2|Eb:2p",
+                "Gm:2|F:2p",
+                "Bb:2|Eb:2p",
+                "Gm:2|F:2p"
+              ],
+              "Turnaround 2": [
+                "Bb:2|Eb:2p",
+                "Gm:2|F:2p"
+              ],
+              "Bridge": [
+                "Cm",
+                "Eb:2|F:2p",
+                "Cm",
+                "Eb:2|F:2p",
+                "Cm",
+                "Eb:2|F:2p",
+                "Eb",
+                "Eb:2|F:2p"
+              ],
+              "Turnaround 3": [
+                "Bb:2|Eb:2p",
+                "Gm:2|F:2p"
+              ],
+              "Verse 3": [
+                "Bb:2|Eb:2p",
+                "Gm:2|F:2p",
+                "Bb:2|Eb:2p",
+                "Gm:2|F:2p",
+                "Bb:2|Eb:2p",
+                "Gm:2|F:2p",
+                "Bb:2|Eb:2p",
+                "Gm:2|F:2p"
+              ],
+              "Final Chorus": [
+                "Gm:2|Bb:2p",
+                "Eb7",
+                "Gm:2|Bb:2p",
+                "Eb7",
+                "Gm:2|Bb:2p",
+                "Eb7",
+                "Gm:2|Bb:2p",
+                "Eb7",
+                "Gm:2|Bb:2p",
+                "Eb7",
+                "Gm:2|Bb:2p",
+                "Eb7",
+                "Gm:2|Bb:2p",
+                "Eb7",
+                "Gm:2|Bb:2p",
+                "Eb7"
+              ]
+            },
+            "Advanced": {
+              "Intro": [
+                "Bb",
+                "Bbsus4",
+                "Bb",
+                "Bbsus4/C",
+                "Bb",
+                "Bbsus4",
+                "Bb",
+                "Bbsus4/C"
+              ],
+              "Verse 1": [
+                "Bb:2|Eb:2p",
+                "Gm:2|F:2p",
+                "Bb:2|Eb:2p",
+                "Gm:2|F:2p",
+                "Bb:2|Eb:2p",
+                "Gm:2|F:2p",
+                "Bb:2|Eb:2p",
+                "Gm:2|F:2p"
+              ],
+              "Chorus 1": [
+                "Bb:2|Eb:2p",
+                "Gm:2|F:2p",
+                "Bb:2|Eb:2p",
+                "Gm:2|F:2p",
+                "Bb:2|Eb:2p",
+                "Gm:2|F:2p",
+                "Bb:2|Eb:2p",
+                "Gm:2|F:2p"
+              ],
+              "Turnaround 1": [
+                "Bb:2|Eb:2p",
+                "Gm:2|F:2p"
+              ],
+              "Verse 2": [
+                "Bb:2|Eb:2p",
+                "Gm:2|F:2p",
+                "Bb:2|Eb:2p",
+                "Gm:2|F:2p",
+                "Bb:2|Eb:2p",
+                "Gm:2|F:2p",
+                "Bb:2|Eb:2p",
+                "Gm:2|F:2p"
+              ],
+              "Chorus 2": [
+                "Bb:2|Eb:2p",
+                "Gm:2|F:2p",
+                "Bb:2|Eb:2p",
+                "Gm:2|F:2p",
+                "Bb:2|Eb:2p",
+                "Gm:2|F:2p",
+                "Bb:2|Eb:2p",
+                "Gm:2|F:2p"
+              ],
+              "Turnaround 2": [
+                "Bb:2|Eb:2p",
+                "Gm:2|F:2p"
+              ],
+              "Bridge": [
+                "Cm",
+                "Eb:2|F:2p",
+                "Cm",
+                "Eb:2|F:2p",
+                "Cm",
+                "Eb:2|F:2p",
+                "Eb",
+                "Eb:2|F:2p"
+              ],
+              "Turnaround 3": [
+                "Bb:2|Eb:2p",
+                "Gm:2|F:2p"
+              ],
+              "Verse 3": [
+                "Bb:2|Eb:2p",
+                "Gm:2|F:2p",
+                "Bb:2|Eb:2p",
+                "Gm:2|F:2p",
+                "Bb:2|Eb:2p",
+                "Gm:2|F:2p",
+                "Bb:2|Eb:2p",
+                "Gm:2|F:2p"
+              ],
+              "Final Chorus": [
+                "Gm:2|Bb:2p",
+                "Eb7",
+                "Gm:2|Bb:2p",
+                "Eb7",
+                "Gm:2|Bb:2p",
+                "Eb7",
+                "Gm:2|Bb:2p",
+                "Eb7",
+                "Gm:2|Bb:2p",
+                "Eb7",
+                "Gm:2|Bb:2p",
+                "Eb7",
+                "Gm:2|Bb:2p",
+                "Eb7",
+                "Gm:2|Bb:2p",
+                "Eb7"
+              ]
+            }
+          },
+          "chart_status": "practice_level_verified",
+          "trusted_core": true,
+          "guitar_tabs": {
+            "Bb": "x13331",
+            "Bbsus4": "x13341",
+            "Bbsus4/C": "x33341",
+            "Eb": "x68886",
+            "Gm": "355333",
+            "F": "133211",
+            "Cm": "x35543",
+            "Eb7": "x68686"
+          },
+          "composer": null,
+          "lyric_cues": {
+            "Intro": [
+              "Instrumental — B♭ · E♭ · Gm · F"
+            ],
+            "Verse 1": [
+              "Take all of your wasted honor",
+              "Every little past frustration",
+              "Take all of your so-called problems",
+              "Better put 'em in quotations"
+            ],
+            "Chorus 1": [
+              "Even if your hands are shaking",
+              "And your faith is broken",
+              "Even if your eyes are closing",
+              "Say it anyway"
+            ],
+            "Verse 2": [
+              "Second verse — same B♭ · E♭ · Gm · F loop"
+            ],
+            "Chorus 2": [
+              "Chorus lift — same loop, more energy"
+            ],
+            "Bridge": [
+              "Walking like a one man army",
+              "Fighting with the shadows in your head",
+              "Living out the same old moment",
+              "Knowing that it's all a waste of time"
+            ],
+            "Verse 3": [
+              "Third verse — return to main loop"
+            ],
+            "Final Chorus": [
+              "Say what you need to say — Gm · B♭ · E♭7 hold"
+            ]
+          },
+          "extensions": {
+            "midi_path": null,
+            "musicxml_path": null,
+            "harmonic_analysis": null,
+            "arrangement_notes": "**B♭ major** pop ballad (**4/4**, mid-tempo, straight 8ths); published original key B♭ (Hooktheory, Musicnotes) — guitar charts read it in **G shapes with a capo on fret 3**. Intro **B♭ | B♭sus4 | B♭ | B♭sus4/C** (one chord per bar, twice). The record puts **two chords in a bar**: the main loop is the two bars **B♭ E♭ | Gm F**, with **E♭** and **F** pushed an eighth early (`:2|:2p`). Form: **Intro** → **Verse 1** → **Chorus 1** → **Turnaround** → **Verse 2** → **Chorus 2** → **Turnaround** → **Bridge** (**Cm–Cm–E♭–F** ×3 with pushed **F**, then **E♭–E♭–E♭–F**) → **Turnaround** → **Verse 3** → **Final Chorus** (**Gm–B♭ / E♭7**, eight times, **B♭** pushed early). Backing intensity builds on successive choruses; final chorus is the peak. BAR GRID CORRECTED (W21): the chart was written at half-bar granularity, so one pass ran 156 bars = 7:36 at 82 BPM against a 3:49 single. The lyric-and-chord sheet this song is charted from writes the verse as `|Bb Eb | Gm F |` repeated 4x and labels it a **8-bar verse** - two chords to a bar. Regridded to that: 78 bars = 3:48. Tempo (82, matching the Musicnotes metronome mark; Hooktheory reads 89), key, chord identities and the pushes are unchanged; the pushes are re-expressed on the halved grid. Section repeat counts themselves remain unverified beyond the verse and chorus the sheet labels.",
+            "default_bpm": 82,
+            "default_groove": "Ballad",
+            "time_signature": "4/4",
+            "capo_note": "Capo 3 (G-shape chart) · concert key B♭ major",
+            "lyric_chord_chart": [
+              {
+                "section": "Intro",
+                "progression_block": [
+                  {
+                    "chords": [
+                      "Bb",
+                      "Bbsus4",
+                      "Bb",
+                      "Bbsus4/C"
+                    ]
+                  }
+                ],
+                "progression_repeat": 2,
+                "lyrics": []
+              },
+              {
+                "section": "Verse",
+                "progression_block": [
+                  {
+                    "chords": [
+                      "Bb:2|Eb:2p",
+                      "Gm:2|F:2p"
+                    ]
+                  }
+                ],
+                "progression_repeat": 4,
+                "lyrics": [
+                  "Take all of your wasted honor",
+                  "Every little past frustration",
+                  "Take all of your so-called problems",
+                  "Better put 'em in quotations",
+                  "Say what you need to say",
+                  "Say what you need to say",
+                  "Say what you need to say",
+                  "Say what you need to say"
+                ]
+              },
+              {
+                "section": "Chorus",
+                "lines": [
+                  {
+                    "chords": [
+                      "Bb:2|Eb:2p"
+                    ],
+                    "lyrics": "Even if your hands are shaking"
+                  },
+                  {
+                    "chords": [
+                      "Gm:2|F:2p"
+                    ],
+                    "lyrics": "And your faith is broken"
+                  },
+                  {
+                    "chords": [
+                      "Bb:2|Eb:2p"
+                    ],
+                    "lyrics": "Even if your eyes are closing"
+                  },
+                  {
+                    "chords": [
+                      "Gm:2|F:2p"
+                    ],
+                    "lyrics": "Say it anyway"
+                  }
+                ]
+              },
+              {
+                "section": "Bridge",
+                "lines": [
+                  {
+                    "chords": [
+                      "Cm",
+                      "Eb:2|F:2p"
+                    ],
+                    "lyrics": "Walking like a one man army"
+                  },
+                  {
+                    "chords": [
+                      "Cm",
+                      "Eb:2|F:2p"
+                    ],
+                    "lyrics": "Fighting with the shadows in your head"
+                  },
+                  {
+                    "chords": [
+                      "Cm",
+                      "Eb:2|F:2p"
+                    ],
+                    "lyrics": "Living out the same old moment"
+                  },
+                  {
+                    "chords": [
+                      "Eb",
+                      "Eb:2|F:2p"
+                    ],
+                    "lyrics": "Knowing that it's all a waste of time"
+                  }
+                ]
+              },
+              {
+                "section": "Final Chorus",
+                "progression_block": [
+                  {
+                    "chords": [
+                      "Gm:2|Bb:2p",
+                      "Eb7"
+                    ]
+                  }
+                ],
+                "progression_repeat": 8,
+                "lyrics": [
+                  "Say what you need to say",
+                  "Say what you need to say",
+                  "Say what you need to say",
+                  "Say what you need to say",
+                  "Say what you need to say",
+                  "Say what you need to say",
+                  "Say what you need to say",
+                  "Say what you need to say"
+                ]
+              }
+            ]
+          },
+          "user_override": null,
+          "user_song_content": null,
+          "section_order": [
+            "Intro",
+            "Verse 1",
+            "Chorus 1",
+            "Turnaround 1",
+            "Verse 2",
+            "Chorus 2",
+            "Turnaround 2",
+            "Bridge",
+            "Turnaround 3",
+            "Verse 3",
+            "Final Chorus"
+          ],
+          "pick_key": "Pop\u001fSay — John Mayer",
+          "chart_origin": "catalog",
+          "catalog_revision": "1b4fde28aefce461",
+          "bpm": 82,
+          "groove": "Ballad"
+        },
+        "display_key": "D",
+        "original_key": "Bb",
+        "sections": {
+          "Intro": [
+            "Bb",
+            "Bbsus4",
+            "Bb",
+            "Bbsus4/C",
+            "Bb",
+            "Bbsus4",
+            "Bb",
+            "Bbsus4/C"
+          ],
+          "Verse 1": [
+            "Bb:2|Eb:2p",
+            "Gm:2|F:2p",
+            "Bb:2|Eb:2p",
+            "Gm:2|F:2p",
+            "Bb:2|Eb:2p",
+            "Gm:2|F:2p",
+            "Bb:2|Eb:2p",
+            "Gm:2|F:2p"
+          ],
+          "Chorus 1": [
+            "Bb:2|Eb:2p",
+            "Gm:2|F:2p",
+            "Bb:2|Eb:2p",
+            "Gm:2|F:2p",
+            "Bb:2|Eb:2p",
+            "Gm:2|F:2p",
+            "Bb:2|Eb:2p",
+            "Gm:2|F:2p"
+          ],
+          "Turnaround 1": [
+            "Bb:2|Eb:2p",
+            "Gm:2|F:2p"
+          ],
+          "Verse 2": [
+            "Bb:2|Eb:2p",
+            "Gm:2|F:2p",
+            "Bb:2|Eb:2p",
+            "Gm:2|F:2p",
+            "Bb:2|Eb:2p",
+            "Gm:2|F:2p",
+            "Bb:2|Eb:2p",
+            "Gm:2|F:2p"
+          ],
+          "Chorus 2": [
+            "Bb:2|Eb:2p",
+            "Gm:2|F:2p",
+            "Bb:2|Eb:2p",
+            "Gm:2|F:2p",
+            "Bb:2|Eb:2p",
+            "Gm:2|F:2p",
+            "Bb:2|Eb:2p",
+            "Gm:2|F:2p"
+          ],
+          "Turnaround 2": [
+            "Bb:2|Eb:2p",
+            "Gm:2|F:2p"
+          ],
+          "Bridge": [
+            "Cm",
+            "Eb:2|F:2p",
+            "Cm",
+            "Eb:2|F:2p",
+            "Cm",
+            "Eb:2|F:2p",
+            "Eb",
+            "Eb:2|F:2p"
+          ],
+          "Turnaround 3": [
+            "Bb:2|Eb:2p",
+            "Gm:2|F:2p"
+          ],
+          "Verse 3": [
+            "Bb:2|Eb:2p",
+            "Gm:2|F:2p",
+            "Bb:2|Eb:2p",
+            "Gm:2|F:2p",
+            "Bb:2|Eb:2p",
+            "Gm:2|F:2p",
+            "Bb:2|Eb:2p",
+            "Gm:2|F:2p"
+          ],
+          "Final Chorus": [
+            "Gm:2|Bb:2p",
+            "Eb7",
+            "Gm:2|Bb:2p",
+            "Eb7",
+            "Gm:2|Bb:2p",
+            "Eb7",
+            "Gm:2|Bb:2p",
+            "Eb7",
+            "Gm:2|Bb:2p",
+            "Eb7",
+            "Gm:2|Bb:2p",
+            "Eb7",
+            "Gm:2|Bb:2p",
+            "Eb7",
+            "Gm:2|Bb:2p",
+            "Eb7"
+          ]
+        },
+        "chart_origin": "catalog",
+        "catalog_revision": "1b4fde28aefce461"
+      },
+      "_last_catalog_song_state": {
+        "pick_key": "Pop\u001fSay — John Mayer",
+        "selected_song": {
+          "title": "Say",
+          "artist": "John Mayer",
+          "genre": "Pop",
+          "key": "Bb",
+          "sections": {
+            "Intro": [
+              "Bb",
+              "Bbsus4",
+              "Bb",
+              "Bbsus4/C",
+              "Bb",
+              "Bbsus4",
+              "Bb",
+              "Bbsus4/C"
+            ],
+            "Verse 1": [
+              "Bb:2|Eb:2p",
+              "Gm:2|F:2p",
+              "Bb:2|Eb:2p",
+              "Gm:2|F:2p",
+              "Bb:2|Eb:2p",
+              "Gm:2|F:2p",
+              "Bb:2|Eb:2p",
+              "Gm:2|F:2p"
+            ],
+            "Chorus 1": [
+              "Bb:2|Eb:2p",
+              "Gm:2|F:2p",
+              "Bb:2|Eb:2p",
+              "Gm:2|F:2p",
+              "Bb:2|Eb:2p",
+              "Gm:2|F:2p",
+              "Bb:2|Eb:2p",
+              "Gm:2|F:2p"
+            ],
+            "Turnaround 1": [
+              "Bb:2|Eb:2p",
+              "Gm:2|F:2p"
+            ],
+            "Verse 2": [
+              "Bb:2|Eb:2p",
+              "Gm:2|F:2p",
+              "Bb:2|Eb:2p",
+              "Gm:2|F:2p",
+              "Bb:2|Eb:2p",
+              "Gm:2|F:2p",
+              "Bb:2|Eb:2p",
+              "Gm:2|F:2p"
+            ],
+            "Chorus 2": [
+              "Bb:2|Eb:2p",
+              "Gm:2|F:2p",
+              "Bb:2|Eb:2p",
+              "Gm:2|F:2p",
+              "Bb:2|Eb:2p",
+              "Gm:2|F:2p",
+              "Bb:2|Eb:2p",
+              "Gm:2|F:2p"
+            ],
+            "Turnaround 2": [
+              "Bb:2|Eb:2p",
+              "Gm:2|F:2p"
+            ],
+            "Bridge": [
+              "Cm",
+              "Eb:2|F:2p",
+              "Cm",
+              "Eb:2|F:2p",
+              "Cm",
+              "Eb:2|F:2p",
+              "Eb",
+              "Eb:2|F:2p"
+            ],
+            "Turnaround 3": [
+              "Bb:2|Eb:2p",
+              "Gm:2|F:2p"
+            ],
+            "Verse 3": [
+              "Bb:2|Eb:2p",
+              "Gm:2|F:2p",
+              "Bb:2|Eb:2p",
+              "Gm:2|F:2p",
+              "Bb:2|Eb:2p",
+              "Gm:2|F:2p",
+              "Bb:2|Eb:2p",
+              "Gm:2|F:2p"
+            ],
+            "Final Chorus": [
+              "Gm:2|Bb:2p",
+              "Eb7",
+              "Gm:2|Bb:2p",
+              "Eb7",
+              "Gm:2|Bb:2p",
+              "Eb7",
+              "Gm:2|Bb:2p",
+              "Eb7",
+              "Gm:2|Bb:2p",
+              "Eb7",
+              "Gm:2|Bb:2p",
+              "Eb7",
+              "Gm:2|Bb:2p",
+              "Eb7",
+              "Gm:2|Bb:2p",
+              "Eb7"
+            ]
+          },
+          "chart_versions": {
+            "Beginner": {
+              "Intro": [
+                "Bb",
+                "Bbsus4",
+                "Bb",
+                "Bbsus4/C",
+                "Bb",
+                "Bbsus4",
+                "Bb",
+                "Bbsus4/C"
+              ],
+              "Verse 1": [
+                "Bb|Eb",
+                "Gm|F",
+                "Bb|Eb",
+                "Gm|F",
+                "Bb|Eb",
+                "Gm|F",
+                "Bb|Eb",
+                "Gm|F"
+              ],
+              "Chorus 1": [
+                "Bb|Eb",
+                "Gm|F",
+                "Bb|Eb",
+                "Gm|F",
+                "Bb|Eb",
+                "Gm|F",
+                "Bb|Eb",
+                "Gm|F"
+              ],
+              "Turnaround 1": [
+                "Bb|Eb",
+                "Gm|F"
+              ],
+              "Verse 2": [
+                "Bb|Eb",
+                "Gm|F",
+                "Bb|Eb",
+                "Gm|F",
+                "Bb|Eb",
+                "Gm|F",
+                "Bb|Eb",
+                "Gm|F"
+              ],
+              "Chorus 2": [
+                "Bb|Eb",
+                "Gm|F",
+                "Bb|Eb",
+                "Gm|F",
+                "Bb|Eb",
+                "Gm|F",
+                "Bb|Eb",
+                "Gm|F"
+              ],
+              "Turnaround 2": [
+                "Bb|Eb",
+                "Gm|F"
+              ],
+              "Bridge": [
+                "Cm",
+                "Eb|F",
+                "Cm",
+                "Eb|F",
+                "Cm",
+                "Eb|F",
+                "Eb",
+                "Eb|F"
+              ],
+              "Turnaround 3": [
+                "Bb|Eb",
+                "Gm|F"
+              ],
+              "Verse 3": [
+                "Bb|Eb",
+                "Gm|F",
+                "Bb|Eb",
+                "Gm|F",
+                "Bb|Eb",
+                "Gm|F",
+                "Bb|Eb",
+                "Gm|F"
+              ],
+              "Final Chorus": [
+                "Gm|Bb",
+                "Eb7",
+                "Gm|Bb",
+                "Eb7",
+                "Gm|Bb",
+                "Eb7",
+                "Gm|Bb",
+                "Eb7",
+                "Gm|Bb",
+                "Eb7",
+                "Gm|Bb",
+                "Eb7",
+                "Gm|Bb",
+                "Eb7",
+                "Gm|Bb",
+                "Eb7"
+              ]
+            },
+            "Intermediate": {
+              "Intro": [
+                "Bb",
+                "Bbsus4",
+                "Bb",
+                "Bbsus4/C",
+                "Bb",
+                "Bbsus4",
+                "Bb",
+                "Bbsus4/C"
+              ],
+              "Verse 1": [
+                "Bb:2|Eb:2p",
+                "Gm:2|F:2p",
+                "Bb:2|Eb:2p",
+                "Gm:2|F:2p",
+                "Bb:2|Eb:2p",
+                "Gm:2|F:2p",
+                "Bb:2|Eb:2p",
+                "Gm:2|F:2p"
+              ],
+              "Chorus 1": [
+                "Bb:2|Eb:2p",
+                "Gm:2|F:2p",
+                "Bb:2|Eb:2p",
+                "Gm:2|F:2p",
+                "Bb:2|Eb:2p",
+                "Gm:2|F:2p",
+                "Bb:2|Eb:2p",
+                "Gm:2|F:2p"
+              ],
+              "Turnaround 1": [
+                "Bb:2|Eb:2p",
+                "Gm:2|F:2p"
+              ],
+              "Verse 2": [
+                "Bb:2|Eb:2p",
+                "Gm:2|F:2p",
+                "Bb:2|Eb:2p",
+                "Gm:2|F:2p",
+                "Bb:2|Eb:2p",
+                "Gm:2|F:2p",
+                "Bb:2|Eb:2p",
+                "Gm:2|F:2p"
+              ],
+              "Chorus 2": [
+                "Bb:2|Eb:2p",
+                "Gm:2|F:2p",
+                "Bb:2|Eb:2p",
+                "Gm:2|F:2p",
+                "Bb:2|Eb:2p",
+                "Gm:2|F:2p",
+                "Bb:2|Eb:2p",
+                "Gm:2|F:2p"
+              ],
+              "Turnaround 2": [
+                "Bb:2|Eb:2p",
+                "Gm:2|F:2p"
+              ],
+              "Bridge": [
+                "Cm",
+                "Eb:2|F:2p",
+                "Cm",
+                "Eb:2|F:2p",
+                "Cm",
+                "Eb:2|F:2p",
+                "Eb",
+                "Eb:2|F:2p"
+              ],
+              "Turnaround 3": [
+                "Bb:2|Eb:2p",
+                "Gm:2|F:2p"
+              ],
+              "Verse 3": [
+                "Bb:2|Eb:2p",
+                "Gm:2|F:2p",
+                "Bb:2|Eb:2p",
+                "Gm:2|F:2p",
+                "Bb:2|Eb:2p",
+                "Gm:2|F:2p",
+                "Bb:2|Eb:2p",
+                "Gm:2|F:2p"
+              ],
+              "Final Chorus": [
+                "Gm:2|Bb:2p",
+                "Eb7",
+                "Gm:2|Bb:2p",
+                "Eb7",
+                "Gm:2|Bb:2p",
+                "Eb7",
+                "Gm:2|Bb:2p",
+                "Eb7",
+                "Gm:2|Bb:2p",
+                "Eb7",
+                "Gm:2|Bb:2p",
+                "Eb7",
+                "Gm:2|Bb:2p",
+                "Eb7",
+                "Gm:2|Bb:2p",
+                "Eb7"
+              ]
+            },
+            "Advanced": {
+              "Intro": [
+                "Bb",
+                "Bbsus4",
+                "Bb",
+                "Bbsus4/C",
+                "Bb",
+                "Bbsus4",
+                "Bb",
+                "Bbsus4/C"
+              ],
+              "Verse 1": [
+                "Bb:2|Eb:2p",
+                "Gm:2|F:2p",
+                "Bb:2|Eb:2p",
+                "Gm:2|F:2p",
+                "Bb:2|Eb:2p",
+                "Gm:2|F:2p",
+                "Bb:2|Eb:2p",
+                "Gm:2|F:2p"
+              ],
+              "Chorus 1": [
+                "Bb:2|Eb:2p",
+                "Gm:2|F:2p",
+                "Bb:2|Eb:2p",
+                "Gm:2|F:2p",
+                "Bb:2|Eb:2p",
+                "Gm:2|F:2p",
+                "Bb:2|Eb:2p",
+                "Gm:2|F:2p"
+              ],
+              "Turnaround 1": [
+                "Bb:2|Eb:2p",
+                "Gm:2|F:2p"
+              ],
+              "Verse 2": [
+                "Bb:2|Eb:2p",
+                "Gm:2|F:2p",
+                "Bb:2|Eb:2p",
+                "Gm:2|F:2p",
+                "Bb:2|Eb:2p",
+                "Gm:2|F:2p",
+                "Bb:2|Eb:2p",
+                "Gm:2|F:2p"
+              ],
+              "Chorus 2": [
+                "Bb:2|Eb:2p",
+                "Gm:2|F:2p",
+                "Bb:2|Eb:2p",
+                "Gm:2|F:2p",
+                "Bb:2|Eb:2p",
+                "Gm:2|F:2p",
+                "Bb:2|Eb:2p",
+                "Gm:2|F:2p"
+              ],
+              "Turnaround 2": [
+                "Bb:2|Eb:2p",
+                "Gm:2|F:2p"
+              ],
+              "Bridge": [
+                "Cm",
+                "Eb:2|F:2p",
+                "Cm",
+                "Eb:2|F:2p",
+                "Cm",
+                "Eb:2|F:2p",
+                "Eb",
+                "Eb:2|F:2p"
+              ],
+              "Turnaround 3": [
+                "Bb:2|Eb:2p",
+                "Gm:2|F:2p"
+              ],
+              "Verse 3": [
+                "Bb:2|Eb:2p",
+                "Gm:2|F:2p",
+                "Bb:2|Eb:2p",
+                "Gm:2|F:2p",
+                "Bb:2|Eb:2p",
+                "Gm:2|F:2p",
+                "Bb:2|Eb:2p",
+                "Gm:2|F:2p"
+              ],
+              "Final Chorus": [
+                "Gm:2|Bb:2p",
+                "Eb7",
+                "Gm:2|Bb:2p",
+                "Eb7",
+                "Gm:2|Bb:2p",
+                "Eb7",
+                "Gm:2|Bb:2p",
+                "Eb7",
+                "Gm:2|Bb:2p",
+                "Eb7",
+                "Gm:2|Bb:2p",
+                "Eb7",
+                "Gm:2|Bb:2p",
+                "Eb7",
+                "Gm:2|Bb:2p",
+                "Eb7"
+              ]
+            }
+          },
+          "chart_status": "practice_level_verified",
+          "trusted_core": true,
+          "guitar_tabs": {
+            "Bb": "x13331",
+            "Bbsus4": "x13341",
+            "Bbsus4/C": "x33341",
+            "Eb": "x68886",
+            "Gm": "355333",
+            "F": "133211",
+            "Cm": "x35543",
+            "Eb7": "x68686"
+          },
+          "composer": null,
+          "lyric_cues": {
+            "Intro": [
+              "Instrumental — B♭ · E♭ · Gm · F"
+            ],
+            "Verse 1": [
+              "Take all of your wasted honor",
+              "Every little past frustration",
+              "Take all of your so-called problems",
+              "Better put 'em in quotations"
+            ],
+            "Chorus 1": [
+              "Even if your hands are shaking",
+              "And your faith is broken",
+              "Even if your eyes are closing",
+              "Say it anyway"
+            ],
+            "Verse 2": [
+              "Second verse — same B♭ · E♭ · Gm · F loop"
+            ],
+            "Chorus 2": [
+              "Chorus lift — same loop, more energy"
+            ],
+            "Bridge": [
+              "Walking like a one man army",
+              "Fighting with the shadows in your head",
+              "Living out the same old moment",
+              "Knowing that it's all a waste of time"
+            ],
+            "Verse 3": [
+              "Third verse — return to main loop"
+            ],
+            "Final Chorus": [
+              "Say what you need to say — Gm · B♭ · E♭7 hold"
+            ]
+          },
+          "extensions": {
+            "midi_path": null,
+            "musicxml_path": null,
+            "harmonic_analysis": null,
+            "arrangement_notes": "**B♭ major** pop ballad (**4/4**, mid-tempo, straight 8ths); published original key B♭ (Hooktheory, Musicnotes) — guitar charts read it in **G shapes with a capo on fret 3**. Intro **B♭ | B♭sus4 | B♭ | B♭sus4/C** (one chord per bar, twice). The record puts **two chords in a bar**: the main loop is the two bars **B♭ E♭ | Gm F**, with **E♭** and **F** pushed an eighth early (`:2|:2p`). Form: **Intro** → **Verse 1** → **Chorus 1** → **Turnaround** → **Verse 2** → **Chorus 2** → **Turnaround** → **Bridge** (**Cm–Cm–E♭–F** ×3 with pushed **F**, then **E♭–E♭–E♭–F**) → **Turnaround** → **Verse 3** → **Final Chorus** (**Gm–B♭ / E♭7**, eight times, **B♭** pushed early). Backing intensity builds on successive choruses; final chorus is the peak. BAR GRID CORRECTED (W21): the chart was written at half-bar granularity, so one pass ran 156 bars = 7:36 at 82 BPM against a 3:49 single. The lyric-and-chord sheet this song is charted from writes the verse as `|Bb Eb | Gm F |` repeated 4x and labels it a **8-bar verse** - two chords to a bar. Regridded to that: 78 bars = 3:48. Tempo (82, matching the Musicnotes metronome mark; Hooktheory reads 89), key, chord identities and the pushes are unchanged; the pushes are re-expressed on the halved grid. Section repeat counts themselves remain unverified beyond the verse and chorus the sheet labels.",
+            "default_bpm": 82,
+            "default_groove": "Ballad",
+            "time_signature": "4/4",
+            "capo_note": "Capo 3 (G-shape chart) · concert key B♭ major",
+            "lyric_chord_chart": [
+              {
+                "section": "Intro",
+                "progression_block": [
+                  {
+                    "chords": [
+                      "Bb",
+                      "Bbsus4",
+                      "Bb",
+                      "Bbsus4/C"
+                    ]
+                  }
+                ],
+                "progression_repeat": 2,
+                "lyrics": []
+              },
+              {
+                "section": "Verse",
+                "progression_block": [
+                  {
+                    "chords": [
+                      "Bb:2|Eb:2p",
+                      "Gm:2|F:2p"
+                    ]
+                  }
+                ],
+                "progression_repeat": 4,
+                "lyrics": [
+                  "Take all of your wasted honor",
+                  "Every little past frustration",
+                  "Take all of your so-called problems",
+                  "Better put 'em in quotations",
+                  "Say what you need to say",
+                  "Say what you need to say",
+                  "Say what you need to say",
+                  "Say what you need to say"
+                ]
+              },
+              {
+                "section": "Chorus",
+                "lines": [
+                  {
+                    "chords": [
+                      "Bb:2|Eb:2p"
+                    ],
+                    "lyrics": "Even if your hands are shaking"
+                  },
+                  {
+                    "chords": [
+                      "Gm:2|F:2p"
+                    ],
+                    "lyrics": "And your faith is broken"
+                  },
+                  {
+                    "chords": [
+                      "Bb:2|Eb:2p"
+                    ],
+                    "lyrics": "Even if your eyes are closing"
+                  },
+                  {
+                    "chords": [
+                      "Gm:2|F:2p"
+                    ],
+                    "lyrics": "Say it anyway"
+                  }
+                ]
+              },
+              {
+                "section": "Bridge",
+                "lines": [
+                  {
+                    "chords": [
+                      "Cm",
+                      "Eb:2|F:2p"
+                    ],
+                    "lyrics": "Walking like a one man army"
+                  },
+                  {
+                    "chords": [
+                      "Cm",
+                      "Eb:2|F:2p"
+                    ],
+                    "lyrics": "Fighting with the shadows in your head"
+                  },
+                  {
+                    "chords": [
+                      "Cm",
+                      "Eb:2|F:2p"
+                    ],
+                    "lyrics": "Living out the same old moment"
+                  },
+                  {
+                    "chords": [
+                      "Eb",
+                      "Eb:2|F:2p"
+                    ],
+                    "lyrics": "Knowing that it's all a waste of time"
+                  }
+                ]
+              },
+              {
+                "section": "Final Chorus",
+                "progression_block": [
+                  {
+                    "chords": [
+                      "Gm:2|Bb:2p",
+                      "Eb7"
+                    ]
+                  }
+                ],
+                "progression_repeat": 8,
+                "lyrics": [
+                  "Say what you need to say",
+                  "Say what you need to say",
+                  "Say what you need to say",
+                  "Say what you need to say",
+                  "Say what you need to say",
+                  "Say what you need to say",
+                  "Say what you need to say",
+                  "Say what you need to say"
+                ]
+              }
+            ]
+          },
+          "user_override": null,
+          "user_song_content": null,
+          "section_order": [
+            "Intro",
+            "Verse 1",
+            "Chorus 1",
+            "Turnaround 1",
+            "Verse 2",
+            "Chorus 2",
+            "Turnaround 2",
+            "Bridge",
+            "Turnaround 3",
+            "Verse 3",
+            "Final Chorus"
+          ],
+          "pick_key": "Pop\u001fSay — John Mayer",
+          "chart_origin": "catalog",
+          "catalog_revision": "1b4fde28aefce461"
+        },
+        "display_key": "Bb",
+        "original_key": "Bb"
+      },
+      "karaoke_queue": [
+        {
+          "entry_id": "baccea5f-1a42-44f8-8a22-1e1e6f75a92f",
+          "pick_key": "Pop\u001fSay — John Mayer",
+          "source": "catalog_song",
+          "practice_key": "Bb",
+          "play_count": 1,
+          "title": "Say",
+          "artist": "John Mayer",
+          "bpm": 0,
+          "groove": "",
+          "meter": ""
+        }
+      ],
+      "catalog_recent_pick_keys": [
+        "Pop\u001fSay — John Mayer"
+      ],
+      "_studio_page_snapshots": {
+        "home": {},
+        "picker": {
+          "song_picker_chart_status": "All songs",
+          "song_search_scope": "Entire library",
+          "workspace_genre_filter": "All genres",
+          "song_search_text": "",
+          "workspace_genre_filters": [],
+          "chart_library_mode": "Full library",
+          "song_picker_level_filter": "Any level",
+          "song_picker_favorites_only": false
+        },
+        "creative": {
+          "improv_style_meta": {
+            "bpm": 82,
+            "groove": "Ballad",
+            "style": "Ballad",
+            "meter": "4/4"
+          },
+          "improv_style_bpm": 82,
+          "improv_style": "Ballad",
+          "improv_jam_style": "Ballad",
+          "_creative_visit_source": "sbi_active",
+          "_creative_visit_practice_key": "D",
+          "improv_groove": "Ballad"
+        }
+      },
+      "_cpl_widget_state": {
+        "cpl_last_display_key": "D",
+        "cpl_name": "My Progression",
+        "cpl_title_input": "My Progression",
+        "cpl_artist_input": "",
+        "cpl_original_key": "C",
+        "cpl_time_signature": "4/4",
+        "cpl_style_early": "Pop",
+        "cpl_bpm_builder": 100
+      },
+      "show_chart_in_instrument_key": false,
+      "_chart_written_key_instrument_anchor": "Voice"
+    },
+    "active_song_state": {
+      "pick_key": "Pop\u001fSay — John Mayer",
+      "display_key": "D",
+      "display_key_owner_identity": "pk::Pop\u001fSay — John Mayer",
+      "instrument": "Voice",
+      "level": "Intermediate",
+      "focus": "Breath Control",
+      "selected_song": {
+        "title": "Say",
+        "artist": "John Mayer",
+        "genre": "Pop",
+        "key": "Bb",
+        "sections": {
+          "Intro": [
+            "Bb",
+            "Bbsus4",
+            "Bb",
+            "Bbsus4/C",
+            "Bb",
+            "Bbsus4",
+            "Bb",
+            "Bbsus4/C"
+          ],
+          "Verse 1": [
+            "Bb:2|Eb:2p",
+            "Gm:2|F:2p",
+            "Bb:2|Eb:2p",
+            "Gm:2|F:2p",
+            "Bb:2|Eb:2p",
+            "Gm:2|F:2p",
+            "Bb:2|Eb:2p",
+            "Gm:2|F:2p"
+          ],
+          "Chorus 1": [
+            "Bb:2|Eb:2p",
+            "Gm:2|F:2p",
+            "Bb:2|Eb:2p",
+            "Gm:2|F:2p",
+            "Bb:2|Eb:2p",
+            "Gm:2|F:2p",
+            "Bb:2|Eb:2p",
+            "Gm:2|F:2p"
+          ],
+          "Turnaround 1": [
+            "Bb:2|Eb:2p",
+            "Gm:2|F:2p"
+          ],
+          "Verse 2": [
+            "Bb:2|Eb:2p",
+            "Gm:2|F:2p",
+            "Bb:2|Eb:2p",
+            "Gm:2|F:2p",
+            "Bb:2|Eb:2p",
+            "Gm:2|F:2p",
+            "Bb:2|Eb:2p",
+            "Gm:2|F:2p"
+          ],
+          "Chorus 2": [
+            "Bb:2|Eb:2p",
+            "Gm:2|F:2p",
+            "Bb:2|Eb:2p",
+            "Gm:2|F:2p",
+            "Bb:2|Eb:2p",
+            "Gm:2|F:2p",
+            "Bb:2|Eb:2p",
+            "Gm:2|F:2p"
+          ],
+          "Turnaround 2": [
+            "Bb:2|Eb:2p",
+            "Gm:2|F:2p"
+          ],
+          "Bridge": [
+            "Cm",
+            "Eb:2|F:2p",
+            "Cm",
+            "Eb:2|F:2p",
+            "Cm",
+            "Eb:2|F:2p",
+            "Eb",
+            "Eb:2|F:2p"
+          ],
+          "Turnaround 3": [
+            "Bb:2|Eb:2p",
+            "Gm:2|F:2p"
+          ],
+          "Verse 3": [
+            "Bb:2|Eb:2p",
+            "Gm:2|F:2p",
+            "Bb:2|Eb:2p",
+            "Gm:2|F:2p",
+            "Bb:2|Eb:2p",
+            "Gm:2|F:2p",
+            "Bb:2|Eb:2p",
+            "Gm:2|F:2p"
+          ],
+          "Final Chorus": [
+            "Gm:2|Bb:2p",
+            "Eb7",
+            "Gm:2|Bb:2p",
+            "Eb7",
+            "Gm:2|Bb:2p",
+            "Eb7",
+            "Gm:2|Bb:2p",
+            "Eb7",
+            "Gm:2|Bb:2p",
+            "Eb7",
+            "Gm:2|Bb:2p",
+            "Eb7",
+            "Gm:2|Bb:2p",
+            "Eb7",
+            "Gm:2|Bb:2p",
+            "Eb7"
+          ]
+        },
+        "chart_versions": {
+          "Beginner": {
+            "Intro": [
+              "Bb",
+              "Bbsus4",
+              "Bb",
+              "Bbsus4/C",
+              "Bb",
+              "Bbsus4",
+              "Bb",
+              "Bbsus4/C"
+            ],
+            "Verse 1": [
+              "Bb|Eb",
+              "Gm|F",
+              "Bb|Eb",
+              "Gm|F",
+              "Bb|Eb",
+              "Gm|F",
+              "Bb|Eb",
+              "Gm|F"
+            ],
+            "Chorus 1": [
+              "Bb|Eb",
+              "Gm|F",
+              "Bb|Eb",
+              "Gm|F",
+              "Bb|Eb",
+              "Gm|F",
+              "Bb|Eb",
+              "Gm|F"
+            ],
+            "Turnaround 1": [
+              "Bb|Eb",
+              "Gm|F"
+            ],
+            "Verse 2": [
+              "Bb|Eb",
+              "Gm|F",
+              "Bb|Eb",
+              "Gm|F",
+              "Bb|Eb",
+              "Gm|F",
+              "Bb|Eb",
+              "Gm|F"
+            ],
+            "Chorus 2": [
+              "Bb|Eb",
+              "Gm|F",
+              "Bb|Eb",
+              "Gm|F",
+              "Bb|Eb",
+              "Gm|F",
+              "Bb|Eb",
+              "Gm|F"
+            ],
+            "Turnaround 2": [
+              "Bb|Eb",
+              "Gm|F"
+            ],
+            "Bridge": [
+              "Cm",
+              "Eb|F",
+              "Cm",
+              "Eb|F",
+              "Cm",
+              "Eb|F",
+              "Eb",
+              "Eb|F"
+            ],
+            "Turnaround 3": [
+              "Bb|Eb",
+              "Gm|F"
+            ],
+            "Verse 3": [
+              "Bb|Eb",
+              "Gm|F",
+              "Bb|Eb",
+              "Gm|F",
+              "Bb|Eb",
+              "Gm|F",
+              "Bb|Eb",
+              "Gm|F"
+            ],
+            "Final Chorus": [
+              "Gm|Bb",
+              "Eb7",
+              "Gm|Bb",
+              "Eb7",
+              "Gm|Bb",
+              "Eb7",
+              "Gm|Bb",
+              "Eb7",
+              "Gm|Bb",
+              "Eb7",
+              "Gm|Bb",
+              "Eb7",
+              "Gm|Bb",
+              "Eb7",
+              "Gm|Bb",
+              "Eb7"
+            ]
+          },
+          "Intermediate": {
+            "Intro": [
+              "Bb",
+              "Bbsus4",
+              "Bb",
+              "Bbsus4/C",
+              "Bb",
+              "Bbsus4",
+              "Bb",
+              "Bbsus4/C"
+            ],
+            "Verse 1": [
+              "Bb:2|Eb:2p",
+              "Gm:2|F:2p",
+              "Bb:2|Eb:2p",
+              "Gm:2|F:2p",
+              "Bb:2|Eb:2p",
+              "Gm:2|F:2p",
+              "Bb:2|Eb:2p",
+              "Gm:2|F:2p"
+            ],
+            "Chorus 1": [
+              "Bb:2|Eb:2p",
+              "Gm:2|F:2p",
+              "Bb:2|Eb:2p",
+              "Gm:2|F:2p",
+              "Bb:2|Eb:2p",
+              "Gm:2|F:2p",
+              "Bb:2|Eb:2p",
+              "Gm:2|F:2p"
+            ],
+            "Turnaround 1": [
+              "Bb:2|Eb:2p",
+              "Gm:2|F:2p"
+            ],
+            "Verse 2": [
+              "Bb:2|Eb:2p",
+              "Gm:2|F:2p",
+              "Bb:2|Eb:2p",
+              "Gm:2|F:2p",
+              "Bb:2|Eb:2p",
+              "Gm:2|F:2p",
+              "Bb:2|Eb:2p",
+              "Gm:2|F:2p"
+            ],
+            "Chorus 2": [
+              "Bb:2|Eb:2p",
+              "Gm:2|F:2p",
+              "Bb:2|Eb:2p",
+              "Gm:2|F:2p",
+              "Bb:2|Eb:2p",
+              "Gm:2|F:2p",
+              "Bb:2|Eb:2p",
+              "Gm:2|F:2p"
+            ],
+            "Turnaround 2": [
+              "Bb:2|Eb:2p",
+              "Gm:2|F:2p"
+            ],
+            "Bridge": [
+              "Cm",
+              "Eb:2|F:2p",
+              "Cm",
+              "Eb:2|F:2p",
+              "Cm",
+              "Eb:2|F:2p",
+              "Eb",
+              "Eb:2|F:2p"
+            ],
+            "Turnaround 3": [
+              "Bb:2|Eb:2p",
+              "Gm:2|F:2p"
+            ],
+            "Verse 3": [
+              "Bb:2|Eb:2p",
+              "Gm:2|F:2p",
+              "Bb:2|Eb:2p",
+              "Gm:2|F:2p",
+              "Bb:2|Eb:2p",
+              "Gm:2|F:2p",
+              "Bb:2|Eb:2p",
+              "Gm:2|F:2p"
+            ],
+            "Final Chorus": [
+              "Gm:2|Bb:2p",
+              "Eb7",
+              "Gm:2|Bb:2p",
+              "Eb7",
+              "Gm:2|Bb:2p",
+              "Eb7",
+              "Gm:2|Bb:2p",
+              "Eb7",
+              "Gm:2|Bb:2p",
+              "Eb7",
+              "Gm:2|Bb:2p",
+              "Eb7",
+              "Gm:2|Bb:2p",
+              "Eb7",
+              "Gm:2|Bb:2p",
+              "Eb7"
+            ]
+          },
+          "Advanced": {
+            "Intro": [
+              "Bb",
+              "Bbsus4",
+              "Bb",
+              "Bbsus4/C",
+              "Bb",
+              "Bbsus4",
+              "Bb",
+              "Bbsus4/C"
+            ],
+            "Verse 1": [
+              "Bb:2|Eb:2p",
+              "Gm:2|F:2p",
+              "Bb:2|Eb:2p",
+              "Gm:2|F:2p",
+              "Bb:2|Eb:2p",
+              "Gm:2|F:2p",
+              "Bb:2|Eb:2p",
+              "Gm:2|F:2p"
+            ],
+            "Chorus 1": [
+              "Bb:2|Eb:2p",
+              "Gm:2|F:2p",
+              "Bb:2|Eb:2p",
+              "Gm:2|F:2p",
+              "Bb:2|Eb:2p",
+              "Gm:2|F:2p",
+              "Bb:2|Eb:2p",
+              "Gm:2|F:2p"
+            ],
+            "Turnaround 1": [
+              "Bb:2|Eb:2p",
+              "Gm:2|F:2p"
+            ],
+            "Verse 2": [
+              "Bb:2|Eb:2p",
+              "Gm:2|F:2p",
+              "Bb:2|Eb:2p",
+              "Gm:2|F:2p",
+              "Bb:2|Eb:2p",
+              "Gm:2|F:2p",
+              "Bb:2|Eb:2p",
+              "Gm:2|F:2p"
+            ],
+            "Chorus 2": [
+              "Bb:2|Eb:2p",
+              "Gm:2|F:2p",
+              "Bb:2|Eb:2p",
+              "Gm:2|F:2p",
+              "Bb:2|Eb:2p",
+              "Gm:2|F:2p",
+              "Bb:2|Eb:2p",
+              "Gm:2|F:2p"
+            ],
+            "Turnaround 2": [
+              "Bb:2|Eb:2p",
+              "Gm:2|F:2p"
+            ],
+            "Bridge": [
+              "Cm",
+              "Eb:2|F:2p",
+              "Cm",
+              "Eb:2|F:2p",
+              "Cm",
+              "Eb:2|F:2p",
+              "Eb",
+              "Eb:2|F:2p"
+            ],
+            "Turnaround 3": [
+              "Bb:2|Eb:2p",
+              "Gm:2|F:2p"
+            ],
+            "Verse 3": [
+              "Bb:2|Eb:2p",
+              "Gm:2|F:2p",
+              "Bb:2|Eb:2p",
+              "Gm:2|F:2p",
+              "Bb:2|Eb:2p",
+              "Gm:2|F:2p",
+              "Bb:2|Eb:2p",
+              "Gm:2|F:2p"
+            ],
+            "Final Chorus": [
+              "Gm:2|Bb:2p",
+              "Eb7",
+              "Gm:2|Bb:2p",
+              "Eb7",
+              "Gm:2|Bb:2p",
+              "Eb7",
+              "Gm:2|Bb:2p",
+              "Eb7",
+              "Gm:2|Bb:2p",
+              "Eb7",
+              "Gm:2|Bb:2p",
+              "Eb7",
+              "Gm:2|Bb:2p",
+              "Eb7",
+              "Gm:2|Bb:2p",
+              "Eb7"
+            ]
+          }
+        },
+        "chart_status": "practice_level_verified",
+        "trusted_core": true,
+        "guitar_tabs": {
+          "Bb": "x13331",
+          "Bbsus4": "x13341",
+          "Bbsus4/C": "x33341",
+          "Eb": "x68886",
+          "Gm": "355333",
+          "F": "133211",
+          "Cm": "x35543",
+          "Eb7": "x68686"
+        },
+        "composer": null,
+        "lyric_cues": {
+          "Intro": [
+            "Instrumental — B♭ · E♭ · Gm · F"
+          ],
+          "Verse 1": [
+            "Take all of your wasted honor",
+            "Every little past frustration",
+            "Take all of your so-called problems",
+            "Better put 'em in quotations"
+          ],
+          "Chorus 1": [
+            "Even if your hands are shaking",
+            "And your faith is broken",
+            "Even if your eyes are closing",
+            "Say it anyway"
+          ],
+          "Verse 2": [
+            "Second verse — same B♭ · E♭ · Gm · F loop"
+          ],
+          "Chorus 2": [
+            "Chorus lift — same loop, more energy"
+          ],
+          "Bridge": [
+            "Walking like a one man army",
+            "Fighting with the shadows in your head",
+            "Living out the same old moment",
+            "Knowing that it's all a waste of time"
+          ],
+          "Verse 3": [
+            "Third verse — return to main loop"
+          ],
+          "Final Chorus": [
+            "Say what you need to say — Gm · B♭ · E♭7 hold"
+          ]
+        },
+        "extensions": {
+          "midi_path": null,
+          "musicxml_path": null,
+          "harmonic_analysis": null,
+          "arrangement_notes": "**B♭ major** pop ballad (**4/4**, mid-tempo, straight 8ths); published original key B♭ (Hooktheory, Musicnotes) — guitar charts read it in **G shapes with a capo on fret 3**. Intro **B♭ | B♭sus4 | B♭ | B♭sus4/C** (one chord per bar, twice). The record puts **two chords in a bar**: the main loop is the two bars **B♭ E♭ | Gm F**, with **E♭** and **F** pushed an eighth early (`:2|:2p`). Form: **Intro** → **Verse 1** → **Chorus 1** → **Turnaround** → **Verse 2** → **Chorus 2** → **Turnaround** → **Bridge** (**Cm–Cm–E♭–F** ×3 with pushed **F**, then **E♭–E♭–E♭–F**) → **Turnaround** → **Verse 3** → **Final Chorus** (**Gm–B♭ / E♭7**, eight times, **B♭** pushed early). Backing intensity builds on successive choruses; final chorus is the peak. BAR GRID CORRECTED (W21): the chart was written at half-bar granularity, so one pass ran 156 bars = 7:36 at 82 BPM against a 3:49 single. The lyric-and-chord sheet this song is charted from writes the verse as `|Bb Eb | Gm F |` repeated 4x and labels it a **8-bar verse** - two chords to a bar. Regridded to that: 78 bars = 3:48. Tempo (82, matching the Musicnotes metronome mark; Hooktheory reads 89), key, chord identities and the pushes are unchanged; the pushes are re-expressed on the halved grid. Section repeat counts themselves remain unverified beyond the verse and chorus the sheet labels.",
+          "default_bpm": 82,
+          "default_groove": "Ballad",
+          "time_signature": "4/4",
+          "capo_note": "Capo 3 (G-shape chart) · concert key B♭ major",
+          "lyric_chord_chart": [
+            {
+              "section": "Intro",
+              "progression_block": [
+                {
+                  "chords": [
+                    "Bb",
+                    "Bbsus4",
+                    "Bb",
+                    "Bbsus4/C"
+                  ]
+                }
+              ],
+              "progression_repeat": 2,
+              "lyrics": []
+            },
+            {
+              "section": "Verse",
+              "progression_block": [
+                {
+                  "chords": [
+                    "Bb:2|Eb:2p",
+                    "Gm:2|F:2p"
+                  ]
+                }
+              ],
+              "progression_repeat": 4,
+              "lyrics": [
+                "Take all of your wasted honor",
+                "Every little past frustration",
+                "Take all of your so-called problems",
+                "Better put 'em in quotations",
+                "Say what you need to say",
+                "Say what you need to say",
+                "Say what you need to say",
+                "Say what you need to say"
+              ]
+            },
+            {
+              "section": "Chorus",
+              "lines": [
+                {
+                  "chords": [
+                    "Bb:2|Eb:2p"
+                  ],
+                  "lyrics": "Even if your hands are shaking"
+                },
+                {
+                  "chords": [
+                    "Gm:2|F:2p"
+                  ],
+                  "lyrics": "And your faith is broken"
+                },
+                {
+                  "chords": [
+                    "Bb:2|Eb:2p"
+                  ],
+                  "lyrics": "Even if your eyes are closing"
+                },
+                {
+                  "chords": [
+                    "Gm:2|F:2p"
+                  ],
+                  "lyrics": "Say it anyway"
+                }
+              ]
+            },
+            {
+              "section": "Bridge",
+              "lines": [
+                {
+                  "chords": [
+                    "Cm",
+                    "Eb:2|F:2p"
+                  ],
+                  "lyrics": "Walking like a one man army"
+                },
+                {
+                  "chords": [
+                    "Cm",
+                    "Eb:2|F:2p"
+                  ],
+                  "lyrics": "Fighting with the shadows in your head"
+                },
+                {
+                  "chords": [
+                    "Cm",
+                    "Eb:2|F:2p"
+                  ],
+                  "lyrics": "Living out the same old moment"
+                },
+                {
+                  "chords": [
+                    "Eb",
+                    "Eb:2|F:2p"
+                  ],
+                  "lyrics": "Knowing that it's all a waste of time"
+                }
+              ]
+            },
+            {
+              "section": "Final Chorus",
+              "progression_block": [
+                {
+                  "chords": [
+                    "Gm:2|Bb:2p",
+                    "Eb7"
+                  ]
+                }
+              ],
+              "progression_repeat": 8,
+              "lyrics": [
+                "Say what you need to say",
+                "Say what you need to say",
+                "Say what you need to say",
+                "Say what you need to say",
+                "Say what you need to say",
+                "Say what you need to say",
+                "Say what you need to say",
+                "Say what you need to say"
+              ]
+            }
+          ]
+        },
+        "user_override": null,
+        "user_song_content": null,
+        "section_order": [
+          "Intro",
+          "Verse 1",
+          "Chorus 1",
+          "Turnaround 1",
+          "Verse 2",
+          "Chorus 2",
+          "Turnaround 2",
+          "Bridge",
+          "Turnaround 3",
+          "Verse 3",
+          "Final Chorus"
+        ],
+        "pick_key": "Pop\u001fSay — John Mayer",
+        "chart_origin": "catalog",
+        "catalog_revision": "1b4fde28aefce461"
+      },
+      "music_source": "catalog_song",
+      "custom_progression_name": "",
+      "custom_home_key": "",
+      "show_chart_in_instrument_key": false,
+      "_chart_written_key_instrument_anchor": "Voice",
+      "guitar_capo_enabled": false,
+      "guitar_capo_sounding_key": "D",
+      "guitar_capo_shape_key": "D",
+      "guitar_capo_last_concert_key": "D",
+      "last_write_reason": "autosave"
+    },
+    "studio_nav_state": {
+      "studio_page": "picker",
+      "page": "picker",
+      "last_write_reason": "autosave"
+    },
+    "practice_state": {
+      "practice_focus_section": "",
+      "practice_groove_style": "Ballad",
+      "practice_groove_song_identity": "pk::Pop\u001fSay — John Mayer",
+      "practice_minutes": null,
+      "practice_notation_lines": 2,
+      "practice_notation_difficulty": "medium",
+      "last_practice_mode": "",
+      "last_write_reason": "autosave"
+    },
+    "practice_workspace_state": {
+      "schema_version": 2,
+      "selected_practice_tool": "",
+      "time_pitch_view": "live_tuner",
+      "metronome": {
+        "bpm": 100,
+        "meter": "4/4",
+        "subdivision": "quarter",
+        "accent_enabled": true
+      },
+      "tuner": {
+        "reference_pitch": 440,
+        "instrument_context": "",
+        "transposition_mode": "concert",
+        "ui_mode": "live"
+      },
+      "tone": {
+        "pitch_class": "A",
+        "octave": 4,
+        "reference_pitch": 440,
+        "octave_mode": "any"
+      },
+      "updated_at": "2026-11-16T04:44:34.486426+00:00",
+      "studio_page": "picker",
+      "page": "picker"
+    },
+    "creative_workspace_state": {
+      "schema_version": 1,
+      "updated_at": "2026-11-16T04:44:34.487398+00:00",
+      "improv_mission_practice_context": {
+        "version": 1,
+        "mission_type": "",
+        "mission_pick": "",
+        "chord": {
+          "symbol": "",
+          "root": "",
+          "quality": "",
+          "quality_label": "",
+          "extensions": "",
+          "bass": "",
+          "inversion_hint": "",
+          "section": "",
+          "chord_index": 0,
+          "chord_label": ""
+        },
+        "tempo_bpm": 82,
+        "backing_style": "Ballad",
+        "backing_groove": "Ballad",
+        "meter": "4/4",
+        "loop": true,
+        "loops": 2,
+        "volume": 0.85,
+        "count_in_bars": 0,
+        "song_title": "Say",
+        "pick_key": "Pop\u001fSay — John Mayer",
+        "display_key": "Bb",
+        "recording_association": "",
+        "context_fingerprint": "4d1cc7c93a2f451ce1ee9a5a",
+        "sealed_at": "",
+        "evaluation_focus": "Overall mission execution",
+        "score_against_example": false
+      },
+      "improv_mission_workspace_updated_at": "2026-11-16T04:44:34.471943+00:00",
+      "improv_mission_concert_key": "D"
+    },
+    "composition_workspace_state": {
+      "schema_version": 2,
+      "active_document": null,
+      "library": {},
+      "needs_seed": true,
+      "active_section_id": "",
+      "focus_lane": "chords",
+      "workflow_phase": "vision",
+      "updated_at": "2026-11-16T04:44:34.489677+00:00",
+      "deleted_document_ids": [],
+      "library_initialized": false
+    },
+    "backing_track_state": {
+      "backing_track_scope": "Full song",
+      "backing_track_single_section": "",
+      "backing_track_multi_sections": [],
+      "backing_track_loops": 2,
+      "backing_track_bpm": 82,
+      "backing_groove_style": "Ballad",
+      "backing_volume": 0.75,
+      "backing_time_signature": "4/4",
+      "backing_time_signature_override": false,
+      "backing_time_signature_override_song": "",
+      "backing_quick_section": "Full song",
+      "backing_autoplay": false,
+      "backing_transport_status": "stopped",
+      "last_write_reason": "autosave"
+    },
+    "music_workspace_state": {
+      "schema_version": 1,
+      "workspace_revision": 41,
+      "updated_at": "2026-11-16T04:44:34.496624+00:00",
+      "device_id": "befaa7c4-9cba-4a48-b43a-14dc0023877e",
+      "save_reason": "autosave",
+      "workspace_id": "daniel",
+      "page": "picker",
+      "studio_page": "picker",
+      "pick_key": "Pop\u001fSay — John Mayer",
+      "instrument": "Voice",
+      "display_key": "D",
+      "active_song": {
+        "pick_key": "Pop\u001fSay — John Mayer",
+        "title": "Say",
+        "artist": "John Mayer",
+        "genre": "Pop",
+        "original_key": "Bb",
+        "source_type": "catalog_song",
+        "display_key": "D",
+        "instrument": "Voice",
+        "level": "Intermediate",
+        "focus": "Breath Control",
+        "music_source": "catalog_song",
+        "custom_progression_name": "",
+        "custom_home_key": "",
+        "show_chart_in_instrument_key": false,
+        "_chart_written_key_instrument_anchor": "Voice",
+        "practice_focus_section": ""
+      },
+      "practice_filters": {
+        "practice_focus_section": null,
+        "practice_groove_style": "Ballad",
+        "practice_minutes": null,
+        "practice_notation_lines": 2,
+        "practice_notation_difficulty": "medium",
+        "last_practice_mode": ""
+      },
+      "backing_filters": {
+        "backing_track_scope": "Full song",
+        "backing_track_single_section": "",
+        "backing_track_multi_sections": [],
+        "backing_track_loops": 2,
+        "backing_track_bpm": 82,
+        "backing_groove_style": "Ballad",
+        "backing_volume": 0.75,
+        "backing_time_signature": "4/4",
+        "backing_time_signature_override": false,
+        "backing_time_signature_override_song": "",
+        "backing_quick_section": "Full song",
+        "backing_autoplay": false,
+        "backing_transport_status": "stopped"
+      },
+      "practice_workspace_state": {
+        "schema_version": 2,
+        "selected_practice_tool": "",
+        "time_pitch_view": "live_tuner",
+        "metronome": {
+          "bpm": 100,
+          "meter": "4/4",
+          "subdivision": "quarter",
+          "accent_enabled": true
+        },
+        "tuner": {
+          "reference_pitch": 440,
+          "instrument_context": "",
+          "transposition_mode": "concert",
+          "ui_mode": "live"
+        },
+        "tone": {
+          "pitch_class": "A",
+          "octave": 4,
+          "reference_pitch": 440,
+          "octave_mode": "any"
+        },
+        "updated_at": "2026-11-16T04:44:34.486426+00:00",
+        "studio_page": "picker",
+        "page": "picker"
+      },
+      "creative_workspace_state": {
+        "schema_version": 1,
+        "updated_at": "2026-11-16T04:44:34.487398+00:00",
+        "improv_mission_practice_context": {
+          "version": 1,
+          "mission_type": "",
+          "mission_pick": "",
+          "chord": {
+            "symbol": "",
+            "root": "",
+            "quality": "",
+            "quality_label": "",
+            "extensions": "",
+            "bass": "",
+            "inversion_hint": "",
+            "section": "",
+            "chord_index": 0,
+            "chord_label": ""
+          },
+          "tempo_bpm": 82,
+          "backing_style": "Ballad",
+          "backing_groove": "Ballad",
+          "meter": "4/4",
+          "loop": true,
+          "loops": 2,
+          "volume": 0.85,
+          "count_in_bars": 0,
+          "song_title": "Say",
+          "pick_key": "Pop\u001fSay — John Mayer",
+          "display_key": "Bb",
+          "recording_association": "",
+          "context_fingerprint": "4d1cc7c93a2f451ce1ee9a5a",
+          "sealed_at": "",
+          "evaluation_focus": "Overall mission execution",
+          "score_against_example": false
+        },
+        "improv_mission_workspace_updated_at": "2026-11-16T04:44:34.471943+00:00",
+        "improv_mission_concert_key": "D"
+      },
+      "composition_workspace_state": {
+        "schema_version": 2,
+        "active_document": null,
+        "library": {},
+        "needs_seed": true,
+        "active_section_id": "",
+        "focus_lane": "chords",
+        "workflow_phase": "vision",
+        "updated_at": "2026-11-16T04:44:34.489677+00:00",
+        "deleted_document_ids": [],
+        "library_initialized": false
+      }
+    },
+    "studio_page": "picker",
+    "workspace_revision": 41
+  }
+}

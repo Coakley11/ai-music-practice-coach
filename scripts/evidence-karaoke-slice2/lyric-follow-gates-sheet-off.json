@@ -1,0 +1,18 @@
+{
+  "gates": {
+    "L1 app renders [sheet-off]": true,
+    "L2 performing [sheet-off]": true,
+    "L3 the surface mounts [sheet-off]": true,
+    "L4 a lyric-bearing section is on screen [sheet-off]": true,
+    "L5 the lyrics advance with the music [sheet-off]": true,
+    "L6 the musician can scroll away from the lyrics [sheet-off]": true,
+    "L7 following is suspended by the gesture [sheet-off]": true,
+    "L8 the view stays where the singer put it for the first five seconds [sheet-off]": true,
+    "L9 playback and lyric highlighting continue while held [sheet-off]": true,
+    "L10 after about six seconds the view returns to the current lyric [sheet-off]": true,
+    "L11 following continues as later lyrics arrive [sheet-off]": true
+  },
+  "observed": [
+    "picked Say dropdown=True landed=True sidebar_song='SONG\\n\\nSONG\\nSay \u2014 John Mayer\\n\\n\ud83c\udfbc Songs\\n\\nSay \u00b7 Pop\\n\\n\ud83d\udcdc Song Original Key: Bb\\n\\n\ud83d\udddd\ufe0f Practice / Co'"
+  ]
+}

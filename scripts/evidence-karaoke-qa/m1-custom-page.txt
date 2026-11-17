@@ -1,0 +1,334 @@
+keyboard_double_arrow_left
+
+←
+
+→
+
+keyboard_arrow_down
+
+Account & Workspace
+
+Active workspace: Daniel
+
+Shared suite profile (no individual sign-in on this deploy).
+
+Command Center
+
+🏠
+
+Saved Sessions
+
+Your last page, filters, and inputs reload automatically.
+
+Reset to default
+
+Membership
+
+Current access: Open access
+
+View plans
+
+🎼 ACTIVE SONG
+
+SONG
+Just the Two of Us — Grover Washington Jr. / Bill Withers
+
+🎼 Songs
+
+Just the Two of Us · Soul
+
+📜 Custom Original Key: C
+
+Custom workspace Practice / Concert Key
+
+🎸 YOUR PRACTICE SETUP
+
+Instrument
+
+📈 Level
+
+🔍 Practice focus
+
+💬 MUSIC COACH
+
+💬 Ask the Music Coach
+
+Get help with practice, theory, navigation, backing tracks, karaoke, or this app.
+
+Question
+
+💬 Ask the Music Coach
+
+⏱️ SESSION
+
+⏱️ Session: 30 min (adjust on the Practice page)
+
+☰ Pages
+
+Deploy
+🎵 Daniel Cohen Music Practice Coach AI
+
+AI-powered practice studio for songs, backing tracks, harmony, improvisation, recording, and instrument-specific coaching.
+
+📖 Tutorial
+
+🏠
+Home
+
+Open
+
+🎯
+Practice
+
+Open
+
+🎼
+Songs
+
+Open
+
+🎧
+Backing
+
+Open
+
+✍️
+Custom
+
+Open
+
+🪶
+Compose
+
+Open
+
+🎨
+Creative
+
+Open
+
+🎙️
+Upload
+
+Open
+
+🎚️
+Multitrack
+
+Open
+
+📓
+Log
+
+Open
+
+✍️
+
+PROGRESSION LAB
+
+Custom
+
+Custom Progression Lab
+
+Build chord progressions for your active song — then open in Backing Track.
+
+🎤
+Vocal practice mode · Breath Control — Breath, resonance, and vowel consistency more than volume. · Edit your custom chord progression.
+CUSTOM SONG BUILDER
+
+Create Your Own Song
+
+Build a chord chart, set it as your active song, then practice with backing or karaoke.
+
+Song title
+
+Artist (optional)
+
+🥁 Meter
+
+4/4
+
+3/4
+
+6/8
+
+2/4
+
+⏱ BPM
+
+100
+
+50
+
+200
+
+✨ Genre / style
+
+Editing My Progression
+
+Choose the Original Key, then Save to library.
+
+📜 Original Key
+
+💾 Save to library
+
+➕ New song
+
+☑️ Set as Active Song
+
+keyboard_arrow_down
+
+Load saved or demo charts
+
+No saved songs yet — build chords below, then save.
+
+keyboard_arrow_down
+
+Jazz chart demos
+
+Load a full jazz-standard chart with measure bars and repeat (%) notation.
+
+Load Blue Bossa
+
+Load Take The A Train
+
+PREVIEW
+
+My Progression
+
+Original key C major · Practice / Concert Key C major
+
+⏱
+BPM
+100
+🥁
+METER
+4/4
+✨
+STYLE
+Pop
+📀
+SOURCE
+Custom Progression
+
+Add chords in step 2 to see your song structure here.
+
+🎧 Open in Backing Studio
+
+Section to edit
+
+1
+Style
+2
+Key
+3
+Chords
+4
+Finish
+5
+Save to Library
+6
+Backing Track
+
+Verse
+
+Original key C major · Practice key C major (builder and progression project from Practice Key; preset buttons use Presets key)
+
+keyboard_arrow_right
+
+🎼 Suggested Next Chord: C
+
+1. Pick a chord
+
+C
+
+I
+
+Dm
+
+ii
+
+Em
+
+iii
+
+F
+
+IV
+
+G
+
+V
+
+Am
+
+vi
+keyboard_arrow_right
+
+➕ Custom / slash chord
+
+2. Choose duration (adds the chord, or resizes the last one)
+
+Verse Progression
+
+Tap a chord above, then choose 1, 2, or 4 bars to add it.
+
+▶ Preview Section
+
+¼ bar
+
+½ bar
+
+1 bar
+
+2 bars
+
+4 bars
+
+keyboard_arrow_right
+
+Chord builder — root + quality + extension
+
+Presets
+
+Presets key
+
+Preset buttons use C major. Song Practice Key stays C major.
+
+Pop presets (C major) — appends to Verse
+
+I–V–vi–IV: C G Am F
+
+Roman numerals: I – V – vi – IV
+
+vi–IV–I–V: Am F C G
+
+Roman numerals: vi – IV – I – V
+
+I–vi–IV–V: C Am F G
+
+Roman numerals: I – vi – IV – V
+
+↩️ Undo last chord
+
+🧹 Clear section
+
+🏁 Finish Song
+
+📋 Copy section
+
+📌 Paste
+
+▶ Preview Entire Song
+
+Launch in the studio
+
+💾 Save to library
+
+☑️ Set as Active Song
+
+🎼 Songs
+
+keyboard_arrow_right
+
+More options

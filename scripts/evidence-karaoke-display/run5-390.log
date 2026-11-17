@@ -1,0 +1,55 @@
+worktree : /c/tmp/ai-music-kdisplay
+script   : scripts/_accept_karaoke_display.py
+port     : 8641
+cleared  : ignored app state under /c/tmp/ai-music-kdisplay/data (tracked fixtures kept)
+server pid: 227598
+picked Say dropdown=True landed=True sidebar_song='SONG\n\nSONG\nSay — John Mayer\n\n🎼 Songs\n\nSay · Pop\n\n📜 Song Original Key: Bb\n\n🗝️ Practice / Co'
+picked Yellow dropdown=True landed=True sidebar_song='SONG\n\nSONG\nYellow — Coldplay\n\n🎼 Songs\n\nYellow · Pop\n\n📜 Song Original Key: B\n\n🗝️ Practice /'
+    added to the set: [True, True]
+  PASS  [390px] a Karaoke Set is performing
+  PASS  [390px] the Karaoke performance display is mounted
+  PASS  [390px] no sideways page scroll
+    Say: {"marker": null, "lyric_lines": 1, "chart_cells": 72, "chart_wrap": "open", "target": "lyric", "leading": "karaoke-lyrics", "held": false, "provs": ["karaoke-lyrics:5"], "t": 0, "paused": true}
+  PASS  [390px] Say: the lyrics are on screen with the Lead Sheet OFF  [1 lines]
+  PASS  [390px] Say: registered as karaoke-lyrics at priority 5  [['karaoke-lyrics:5']]
+  PASS  [390px] Say: Lead Sheet OFF follows the lyric  [target=lyric]
+    Say: Lead Sheet ON: 1 element(s), 1 sounding, 1 audible, t=[18.36], card='playing'
+        frame3   paused=False muted=False ready=4 t=18.36 audible=True ...8-a5ac-ca44892bf556/f982831640321997810d.wav
+  PASS  [390px] Say: Lead Sheet switched ON during playback - the same player kept playing (iframe not replaced)  [marker kept=True]
+  PASS  [390px] Say: Lead Sheet switched ON during playback - the music did not restart  [t 7.31 -> 18.35 paused=False]
+  PASS  [390px] Say: Lead Sheet switched ON during playback - exactly one player sounding  [1 of 1]
+  PASS  [390px] Say: Lead Sheet switched ON during playback - follows the chord  [target=chord chart=open lead=karaoke-lyrics]
+    Say: Lead Sheet switched ON during playback: before={"marker": null, "lyric_lines": 1, "chart_cells": 72, "chart_wrap": "open", "target": "lyric", "leading": "karaoke-lyrics", "held": false, "provs": ["karaoke-ly after={"marker": "m1794887990289", "lyric_lines": 1, "chart_cells": 72, "chart_wrap": "open", "target": "chord", "leading": "karaoke-lyrics", "held": false, "provs": ["karaoke-lyrics:5"], "t": 18.35, "pause
+  PASS  [390px] Say: with the Lead Sheet ON the Karaoke display is still there  [lyrics=1 chart=open]
+    Say: Lead Sheet OFF: 1 element(s), 1 sounding, 1 audible, t=[38.15], card='playing'
+        frame3   paused=False muted=False ready=4 t=38.15 audible=True ...8-a5ac-ca44892bf556/f982831640321997810d.wav
+  PASS  [390px] Say: Lead Sheet switched OFF during playback - the same player kept playing (iframe not replaced)  [marker kept=True]
+  PASS  [390px] Say: Lead Sheet switched OFF during playback - the music did not restart  [t 18.38 -> 38.14 paused=False]
+  PASS  [390px] Say: Lead Sheet switched OFF during playback - exactly one player sounding  [1 of 1]
+  PASS  [390px] Say: Lead Sheet switched OFF during playback - follows the lyric  [target=lyric chart=folded lead=karaoke-lyrics]
+    Say: Lead Sheet switched OFF during playback: before={"marker": "m1794887990289", "lyric_lines": 1, "chart_cells": 72, "chart_wrap": "open", "target": "chord", "leading": "karaoke-lyrics", "held": false, "provs":  after={"marker": "m1794888009587", "lyric_lines": 4, "chart_cells": 72, "chart_wrap": "folded", "target": "lyric", "leading": "karaoke-lyrics", "held": false, "provs": ["karaoke-lyrics:5"], "t": 38.14, "pau
+  PASS  [390px] Say: a manual scroll suspends following, which returns after the shared hold  [held=True then=False hold_ms=6000]
+    Yellow: {"marker": null, "lyric_lines": 0, "chart_cells": 28, "chart_wrap": "no-fold (chart is the display)", "target": "chord", "leading": "karaoke-lyrics", "held": false, "provs": ["karaoke-lyrics:5"], "t": 9.5, "paused": false}
+  PASS  [390px] Yellow: no lyrics - the chords are the display, visible  [cells=28 chart=no-fold (chart is the display)]
+  PASS  [390px] Yellow: no lyrics - an invitation to add lyrics
+  PASS  [390px] Yellow: registered as karaoke-lyrics at priority 5  [['karaoke-lyrics:5']]
+  PASS  [390px] Yellow: Lead Sheet OFF follows the chord  [target=chord]
+    Yellow: Lead Sheet ON: 1 element(s), 1 sounding, 1 audible, t=[28.65], card='playing'
+        frame4   paused=False muted=False ready=4 t=28.65 audible=True ...8-a5ac-ca44892bf556/ce5913d9e1d827c5f589.wav
+  PASS  [390px] Yellow: Lead Sheet switched ON during playback - the same player kept playing (iframe not replaced)  [marker kept=True]
+  PASS  [390px] Yellow: Lead Sheet switched ON during playback - the music did not restart  [t 9.54 -> 28.64 paused=False]
+  PASS  [390px] Yellow: Lead Sheet switched ON during playback - exactly one player sounding  [1 of 1]
+  PASS  [390px] Yellow: Lead Sheet switched ON during playback - follows the chord  [target=chord chart=no-fold (chart is the display) lead=karaoke-lyrics]
+    Yellow: Lead Sheet switched ON during playback: before={"marker": null, "lyric_lines": 0, "chart_cells": 28, "chart_wrap": "no-fold (chart is the display)", "target": "chord", "leading": "karaoke-lyrics", "held": fa after={"marker": "m1794888090691", "lyric_lines": 0, "chart_cells": 28, "chart_wrap": "no-fold (chart is the display)", "target": "chord", "leading": "karaoke-lyrics", "held": false, "provs": ["karaoke-lyri
+  PASS  [390px] Yellow: with the Lead Sheet ON the Karaoke display is still there  [lyrics=0 chart=no-fold (chart is the display)]
+    Yellow: Lead Sheet OFF: 1 element(s), 1 sounding, 1 audible, t=[49.11], card='playing'
+        frame3   paused=False muted=False ready=4 t=49.11 audible=True ...8-a5ac-ca44892bf556/ce5913d9e1d827c5f589.wav
+  PASS  [390px] Yellow: Lead Sheet switched OFF during playback - the same player kept playing (iframe not replaced)  [marker kept=True]
+  PASS  [390px] Yellow: Lead Sheet switched OFF during playback - the music did not restart  [t 28.69 -> 49.11 paused=False]
+  PASS  [390px] Yellow: Lead Sheet switched OFF during playback - exactly one player sounding  [1 of 1]
+  PASS  [390px] Yellow: Lead Sheet switched OFF during playback - follows the chord  [target=chord chart=no-fold (chart is the display) lead=karaoke-lyrics]
+    Yellow: Lead Sheet switched OFF during playback: before={"marker": "m1794888090691", "lyric_lines": 0, "chart_cells": 28, "chart_wrap": "no-fold (chart is the display)", "target": "chord", "leading": "karaoke-lyrics" after={"marker": "m1794888109839", "lyric_lines": 0, "chart_cells": 28, "chart_wrap": "no-fold (chart is the display)", "target": "chord", "leading": "karaoke-lyrics", "held": false, "provs": ["karaoke-lyri
+  PASS  [390px] Yellow: a manual scroll suspends following, which returns after the shared hold  [held=True then=False hold_ms=6000]
+
+30/30 gates passed at 390px
+stopping the server (pid 227598)

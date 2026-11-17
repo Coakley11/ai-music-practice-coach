@@ -1,0 +1,11 @@
+[kd-targeted] 45 test files, sequential
+  baseline  3 failed, 709 passed, 22 warnings, 269 subtests passed in 110.12s (0:01:50)
+  candidate 4 failed, 708 passed, 20 warnings, 269 subtests passed in 94.04s (0:01:34)
+  test ids: baseline=712 candidate=712
+  only in baseline (disappeared): 0
+  only in candidate (new): 0
+  outcome changed: 1
+     ~ tests/test_karaoke_chord_hints_and_lead_sheet.py::TheLyricsDoNotDependOnTheLeadSheet::test_the_chart_is_folded_not_removed: PASSED -> FAILED
+  REGRESSIONS (passed -> not passed): 1
+     ! tests/test_karaoke_chord_hints_and_lead_sheet.py::TheLyricsDoNotDependOnTheLeadSheet::test_the_chart_is_folded_not_removed
+VERDICT: INVESTIGATE

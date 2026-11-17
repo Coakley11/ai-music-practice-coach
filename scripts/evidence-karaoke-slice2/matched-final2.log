@@ -1,0 +1,9 @@
+[slice2-final2] 170 test files, sequential
+  baseline  53 failed, 4168 passed, 16 skipped, 42 warnings, 4 errors, 789 subtests passed in 1056.31s (0:17:36)
+  candidate 53 failed, 4168 passed, 16 skipped, 42 warnings, 4 errors, 789 subtests passed in 1025.02s (0:17:05)
+  test ids: baseline=3967 candidate=3967
+  only in baseline (disappeared): 0
+  only in candidate (new): 0
+  outcome changed: 0
+  REGRESSIONS (passed -> not passed): 0
+VERDICT: CLEAN

@@ -1,0 +1,267 @@
+←
+
+→
+
+keyboard_arrow_down
+
+Account & Workspace
+
+Active workspace: Daniel
+
+Shared suite profile (no individual sign-in on this deploy).
+
+Command Center
+
+🏠
+
+Saved Sessions
+
+Your last page, filters, and inputs reload automatically.
+
+Reset to default
+
+Membership
+
+Current access: Open access
+
+View plans
+
+🎼 ACTIVE SONG
+
+SONG
+Say — John Mayer
+
+🎼 Songs
+
+Say · Pop
+
+📜 Song Original Key: Bb
+
+🎸 YOUR PRACTICE SETUP
+
+Instrument
+
+📈 Level
+
+🔍 Practice focus
+
+💬 MUSIC COACH
+
+💬 Ask the Music Coach
+
+Get help with practice, theory, navigation, backing tracks, karaoke, or this app.
+
+Question
+
+💬 Ask the Music Coach
+
+⏱️ SESSION
+
+⏱️ Session: 30 min (adjust on the Practice page)
+
+🧭 PAGES
+
+◀
+
+🏠 Home
+
+🎯 Practice
+
+🎼 Song Selection
+
+🎧 Backing Track
+
+✍️ Custom Progression
+
+🪶 Composition Studio
+
+🎨 Creative Lab
+
+🎙️ Upload Analysis
+
+🎚️ Multitrack
+
+📓 Practice Log
+
+Deploy
+🎵 Daniel Cohen Music Practice Coach AI
+
+AI-powered practice studio for songs, backing tracks, harmony, improvisation, recording, and instrument-specific coaching.
+
+📖 Tutorial
+
+🏠
+Home
+
+Open
+
+🎯
+Practice
+
+Open
+
+🎼
+Songs
+
+Open
+
+🎧
+Backing
+
+Open
+
+✍️
+Custom
+
+Open
+
+🪶
+Compose
+
+Open
+
+🎨
+Creative
+
+Open
+
+🎙️
+Upload
+
+Open
+
+🎚️
+Multitrack
+
+Open
+
+📓
+Log
+
+Open
+
+🎧
+
+AUDIO STUDIO
+
+Backing
+
+Vocal Performance Mode
+
+Sing along to a backing track shaped for your voice - phrasing, breath, and emotional delivery first.
+
+🎤
+Vocal practice mode · Breath Control — Breath, resonance, and vowel consistency more than volume. · Play along with generated accompaniment.
+Backing source: Catalog song · Say · Ab · 100 BPM
+
+No saved Custom Progression yet.
+
+✍️ Choose a Custom Progression
+
+CATALOG
+🎤
+POP
+Say
+
+John Mayer
+
+📜
+ORIGINAL KEY
+
+B♭ major
+
+🗝️
+I’M PLAYING IN
+
+2 semitones lower
+
+✨
+Style
+🎤
+Pop
+🎧
+Backing groove
+🕺
+Funk groove
+🥁
+Meter
+4/4
+📀
+Source
+🎵
+Catalog
+
+BPM
+
+100
+
+20
+
+180
+
+book
+
+Lead sheet: Off
+
+⚙️ Advanced settings
+
+🔄 Key Cycling: Off
+
+🎼 Return to Song Catalog
+
+🎯 Return to Practice
+
+Playback
+
+Choose what to play; set the tempo on the song card above.
+
+Range
+Full song ×2
+
+PLAYBACK SCOPE
+
+Full song or a custom group of sections in song order.
+
+Full song
+
+Selected sections
+
+LOOP COUNT / REPEATS
+
+How many times to loop the chosen range.
+
+−
+
+2
+
+1
+
+10
+
++
+
+keyboard_arrow_right
+
+Advanced playback settings
+
+Press Play Backing Track to generate and play.
+
+keyboard_arrow_right
+
+Karaoke session
+
+🎤
+
+NO LYRICS OR CUES YET
+
+Add lyrics & cues for Say
+
+Singer-friendly lyrics + phrasing cues unlock the full karaoke flow.
+
+🎤 Open Lyrics & Cues editor
+
+keyboard_arrow_right
+
+💡 Quick coaching — Intro
+
+Key cycling off

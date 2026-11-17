@@ -1,0 +1,28 @@
+{
+  "gates": {
+    "M1 app renders": true,
+    "M2 Say is queued in its own key": true,
+    "M3 Just the Two of Us is queued in Db": true,
+    "M4 a Custom progression is the active song": true,
+    "M5 the Custom progression is queued": true,
+    "M6 three entries of mixed material": true,
+    "M7 the Custom row says Custom, from its metadata": true,
+    "M8 the Catalog rows say Catalog": true,
+    "M9 the kinds are painted differently": true,
+    "M10 a Custom title that looks like a standard is still Custom": true,
+    "M11 the mixed set performs": true,
+    "M12 Next moves Now Singing": true,
+    "M13 Previous brings it back": true,
+    "M14 a temporary key change takes during the performance": false,
+    "M15 no saved entry moved with it": true,
+    "M16 Stop answers during a performance": false,
+    "M17 the set ends": true,
+    "M18 reopening the setlist finds all three entries": true,
+    "M19 every saved key survived the performance": true,
+    "M20 the sources survived too": true
+  },
+  "observed": [
+    "picked Say dropdown=True landed=True sidebar_song='SONG\\n\\nSONG\\nSay \u2014 John Mayer\\n\\n\ud83c\udfbc Songs\\n\\nSay \u00b7 Pop\\n\\n\ud83d\udcdc Song Original Key: Bb\\n\\n\ud83d\udddd\ufe0f Practice / Co'",
+    "picked Just the Two of Us dropdown=True landed=True sidebar_song='SONG\\n\\nSONG\\nJust the Two of Us \u2014 Grover Washington Jr. / Bill Withers\\n\\n\ud83c\udfbc Songs\\n\\nJust the Tw'"
+  ]
+}

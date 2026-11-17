@@ -1,0 +1,46 @@
+worktree : /c/tmp/ai-music-slice2
+script   : scripts/_probe_take_continuity.py
+port     : 8660
+cleared  : ignored app state under /c/tmp/ai-music-slice2/data (tracked fixtures kept)
+server pid: 203109
+picked Say dropdown=True landed=True sidebar_song='SONG\n\nSONG\nSay — John Mayer\n\n🎼 Songs\n\nSay · Pop\n\n📜 Song Original Key: Bb\n\n🗝️ Practice / Co'
+take as mounted: {"has_audio": true, "src": "b4-11d26744b82c/f982831640321997810d.wav", "paused": true, "muted": false, "t": 0, "ready": 4, "button": {"text": "\u25b6 Resume playback", "state": "resume", "hidden": false, "disabled": false}}
+pressed the surface's play once
+
+sampling every second for 30s
+  sec  where     paused  t        src tail
+  0    frame3    False   0.4      ...4b82c/f982831640321997810d.wav
+  1    frame3    False   1.67     ...4b82c/f982831640321997810d.wav
+  2    frame3    False   3.16     ...4b82c/f982831640321997810d.wav
+  3    frame3    False   4.21     ...4b82c/f982831640321997810d.wav
+  4    frame3    True    4.7      ...4b82c/f982831640321997810d.wav
+  5    frame3    True    4.7      ...4b82c/f982831640321997810d.wav
+  6    frame3    True    4.7      ...4b82c/f982831640321997810d.wav
+  7    frame3    True    4.7      ...4b82c/f982831640321997810d.wav
+  8    frame3    False   4.72     ...4b82c/f982831640321997810d.wav
+  9    frame3    False   5.69     ...4b82c/f982831640321997810d.wav
+  10   frame3    False   6.7      ...4b82c/f982831640321997810d.wav
+  11   frame3    False   7.72     ...4b82c/f982831640321997810d.wav
+  12   frame3    False   8.73     ...4b82c/f982831640321997810d.wav
+  13   frame3    False   9.75     ...4b82c/f982831640321997810d.wav
+  14   frame3    False   10.76    ...4b82c/f982831640321997810d.wav
+  15   frame3    False   11.77    ...4b82c/f982831640321997810d.wav
+  16   frame3    False   12.79    ...4b82c/f982831640321997810d.wav
+  17   frame3    False   13.8     ...4b82c/f982831640321997810d.wav
+  18   frame3    False   14.82    ...4b82c/f982831640321997810d.wav
+  19   frame3    False   15.84    ...4b82c/f982831640321997810d.wav
+  20   frame3    False   16.85    ...4b82c/f982831640321997810d.wav
+  21   frame3    False   17.86    ...4b82c/f982831640321997810d.wav
+  22   frame3    False   18.86    ...4b82c/f982831640321997810d.wav
+  23   frame3    False   19.89    ...4b82c/f982831640321997810d.wav
+  24   frame3    False   20.89    ...4b82c/f982831640321997810d.wav
+  25   frame3    False   21.91    ...4b82c/f982831640321997810d.wav
+  26   frame3    False   22.93    ...4b82c/f982831640321997810d.wav
+  27   frame3    False   23.94    ...4b82c/f982831640321997810d.wav
+  28   frame3    False   24.95    ...4b82c/f982831640321997810d.wav
+  29   frame3    False   25.96    ...4b82c/f982831640321997810d.wav
+
+distinct sources seen: 1
+   ...4b82c/f982831640321997810d.wav
+samples with something playing: 26/30
+stopping the server (pid 203109)

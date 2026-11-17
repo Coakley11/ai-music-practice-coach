@@ -1,0 +1,66 @@
+worktree : /c/tmp/ai-music-slice2
+script   : scripts/_accept_karaoke_slice2b.py
+port     : 8619
+cleared  : ignored app state under /c/tmp/ai-music-slice2/data (tracked fixtures kept)
+server pid: 189690
+  PASS  P1 app renders
+picked Say dropdown=True landed=True sidebar_song='SONG\n\nSONG\nSay — John Mayer\n\n🎼 Songs\n\nSay · Pop\n\n📜 Song Original Key: Bb\n\n🗝️ Practice / Co'
+  PASS  P2 a karaoke set is performing  [queued=True start=True]
+  PASS  P3 the performance surface mounts with the Lead Sheet OFF  [play=True]
+    take as mounted: {"has_audio": true, "src": "b4-b50a86f445cf/f982831640321997810d.wav", "paused": true, "muted": false, "t": 0, "ready": 4, "button": {"text": "\u25b6 Resume playback", "state": "resume", "hidden": false, "disabled": false}}
+  PASS  P4 the surface mounts a take of its own  [ready=4 paused=True]
+    take once started: {"has_audio": true, "src": "b4-b50a86f445cf/f982831640321997810d.wav", "paused": false, "muted": false, "t": 0.02, "ready": 4, "button": {"text": "\u23f8 Pause playback", "state": "stop", "hidden": false, "disabled": false}}
+  PASS  P5 the take plays from the surface's own control  [{"has_audio": true, "src": "b4-b50a86f445cf/f982831640321997810d.wav", "paused": false, "muted": false, "t": 0.02, "ready": 4, "button": {"text": "\u23f8 Pause playback", "state": "stop", "hidden": fa]
+    playing: 1 element(s), 1 sounding, 1 audible, t=[0.04], card='playing'
+        frame3   paused=False muted=False ready=4 t=0.04 audible=True ...0-8eb4-b50a86f445cf/f982831640321997810d.wav
+  PASS  P6 exactly one element is sounding while the take runs  [1 sounding of 1]
+  PASS  P7 that player is actually audible - not muted, not silent  [1 audible, muted=[False]]
+  OBS   the Backing card's transport reads 'playing' during a karaoke performance - correct: the surface owns the audio, so the card offers no Pause of its own
+    after Pause: 1 element(s), 0 sounding, 0 audible, t=[4.95], card='paused'
+        frame3   paused=True muted=False ready=4 t=4.95 audible=False ...0-8eb4-b50a86f445cf/f982831640321997810d.wav
+  PASS  P8 Pause on the surface's own control silences the take  [click=True sounding=0]
+  PASS  P9 Pause created no second player  [1 -> 1 element(s)]
+    after Resume: 1 element(s), 1 sounding, 1 audible, t=[13.83], card='playing'
+        frame3   paused=False muted=False ready=4 t=13.83 audible=True ...0-8eb4-b50a86f445cf/f982831640321997810d.wav
+  PASS  P10 Resume sounds exactly one player, not two  [click=True sounding=1]
+  PASS  P11 Resume carried on instead of restarting  [position 4.95 -> 13.83, 1 element(s)]
+    playing, after a neutral rerun: 1 element(s), 1 sounding, 1 audible, t=[32.95], card='playing'
+        frame3   paused=False muted=False ready=4 t=32.95 audible=True ...0-8eb4-b50a86f445cf/f982831640321997810d.wav
+  PASS  P12 a rerun while playing leaves exactly one player sounding  [1 sounding of 1]
+    playing, Lead Sheet switched ON: 2 element(s), 1 sounding, 1 audible, t=[0, 50.61], card='playing'
+        page     paused=True muted=False ready=4 t=0 audible=False ...9/media/474e36b667f3db1d195ca47117656a0a.wav
+        frame3   paused=False muted=False ready=4 t=50.61 audible=True ...0-8eb4-b50a86f445cf/f982831640321997810d.wav
+  PASS  P13 turning the Lead Sheet ON keeps exactly one player sounding  [1 sounding of 2]
+    playing, Lead Sheet switched OFF again: 1 element(s), 1 sounding, 1 audible, t=[59.14], card='playing'
+        frame3   paused=False muted=False ready=4 t=59.14 audible=True ...0-8eb4-b50a86f445cf/f982831640321997810d.wav
+  PASS  P14 turning it back OFF keeps exactly one player sounding  [1 sounding of 1]
+  PASS  P15 two players never sounded at the same time, at any point in this run  [most sounding at once: 1 (elements seen: [1, 1, 1, 1, 2, 1])]
+    controller: {"reachable": true, "leader": "lead-sheet#1794801430749.004", "suspended": false, "providers": [{"id": "lead-sheet", "priority": 10, "from_this_frame": true, "has_current": true}]}
+  PASS  P16 the karaoke frame is registered with the one page controller  [1 provider(s) from this frame of 1]
+  PASS  P17 one provider per frame - the lyrics cannot lose the page to the chart  [['lead-sheet']]
+  OBS   no Original Melody staff renders on this surface during a karaoke performance, so the melody-vs-lyrics priority case cannot be exercised here - priorities stay pinned by unit test (MELODY_PRIORITY 20 > LEAD_SHEET_PRIORITY 10)
+
+======================================================================
+  PASS  P1 app renders
+  PASS  P2 a karaoke set is performing
+  PASS  P3 the performance surface mounts with the Lead Sheet OFF
+  PASS  P4 the surface mounts a take of its own
+  PASS  P5 the take plays from the surface's own control
+  PASS  P6 exactly one element is sounding while the take runs
+  PASS  P7 that player is actually audible - not muted, not silent
+  PASS  P8 Pause on the surface's own control silences the take
+  PASS  P9 Pause created no second player
+  PASS  P10 Resume sounds exactly one player, not two
+  PASS  P11 Resume carried on instead of restarting
+  PASS  P12 a rerun while playing leaves exactly one player sounding
+  PASS  P13 turning the Lead Sheet ON keeps exactly one player sounding
+  PASS  P14 turning it back OFF keeps exactly one player sounding
+  PASS  P15 two players never sounded at the same time, at any point in this run
+  PASS  P16 the karaoke frame is registered with the one page controller
+  PASS  P17 one provider per frame - the lyrics cannot lose the page to the chart
+  OBS   picked Say dropdown=True landed=True sidebar_song='SONG\n\nSONG\nSay — John Mayer\n\n🎼 Songs\n\nSay · Pop\n\n📜 Song Original Key: Bb\n\n🗝️ Practice / Co'
+  OBS   the Backing card's transport reads 'playing' during a karaoke performance - correct: the surface owns the audio, so the card offers no Pause of its own
+  OBS   no Original Melody staff renders on this surface during a karaoke performance, so the melody-vs-lyrics priority case cannot be exercised here - priorities stay pinned by unit test (MELODY_PRIORITY 20 > LEAD_SHEET_PRIORITY 10)
+
+17/17 gates passed
+stopping the server (pid 189690)

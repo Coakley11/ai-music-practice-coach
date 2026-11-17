@@ -1,0 +1,271 @@
+{
+  "trace": [
+    {
+      "label": "playing",
+      "elements": 1,
+      "sounding": 1,
+      "audible": 1,
+      "positions": [
+        0.04
+      ],
+      "muted": [
+        false
+      ],
+      "card_state": "playing",
+      "surface": {
+        "has_audio": true,
+        "src": "b4-b50a86f445cf/f982831640321997810d.wav",
+        "paused": false,
+        "muted": false,
+        "t": 0.06,
+        "ready": 4,
+        "button": {
+          "text": "\u23f8 Pause playback",
+          "state": "stop",
+          "hidden": false,
+          "disabled": false
+        }
+      },
+      "rows": [
+        {
+          "where": "frame3",
+          "src": "0-8eb4-b50a86f445cf/f982831640321997810d.wav",
+          "paused": false,
+          "ended": false,
+          "muted": false,
+          "volume": 1,
+          "readyState": 4,
+          "t": 0.04,
+          "audible": true
+        }
+      ]
+    },
+    {
+      "label": "after Pause",
+      "elements": 1,
+      "sounding": 0,
+      "audible": 0,
+      "positions": [
+        4.95
+      ],
+      "muted": [
+        false
+      ],
+      "card_state": "paused",
+      "surface": {
+        "has_audio": true,
+        "src": "b4-b50a86f445cf/f982831640321997810d.wav",
+        "paused": true,
+        "muted": false,
+        "t": 4.95,
+        "ready": 4,
+        "button": {
+          "text": "\u25b6 Resume playback",
+          "state": "resume",
+          "hidden": false,
+          "disabled": false
+        }
+      },
+      "rows": [
+        {
+          "where": "frame3",
+          "src": "0-8eb4-b50a86f445cf/f982831640321997810d.wav",
+          "paused": true,
+          "ended": false,
+          "muted": false,
+          "volume": 1,
+          "readyState": 4,
+          "t": 4.95,
+          "audible": false
+        }
+      ]
+    },
+    {
+      "label": "after Resume",
+      "elements": 1,
+      "sounding": 1,
+      "audible": 1,
+      "positions": [
+        13.83
+      ],
+      "muted": [
+        false
+      ],
+      "card_state": "playing",
+      "surface": {
+        "has_audio": true,
+        "src": "b4-b50a86f445cf/f982831640321997810d.wav",
+        "paused": false,
+        "muted": false,
+        "t": 13.83,
+        "ready": 4,
+        "button": {
+          "text": "\u23f8 Pause playback",
+          "state": "stop",
+          "hidden": false,
+          "disabled": false
+        }
+      },
+      "rows": [
+        {
+          "where": "frame3",
+          "src": "0-8eb4-b50a86f445cf/f982831640321997810d.wav",
+          "paused": false,
+          "ended": false,
+          "muted": false,
+          "volume": 1,
+          "readyState": 4,
+          "t": 13.83,
+          "audible": true
+        }
+      ]
+    },
+    {
+      "label": "playing, after a neutral rerun",
+      "elements": 1,
+      "sounding": 1,
+      "audible": 1,
+      "positions": [
+        32.95
+      ],
+      "muted": [
+        false
+      ],
+      "card_state": "playing",
+      "surface": {
+        "has_audio": true,
+        "src": "b4-b50a86f445cf/f982831640321997810d.wav",
+        "paused": false,
+        "muted": false,
+        "t": 32.96,
+        "ready": 4,
+        "button": {
+          "text": "\u23f8 Pause playback",
+          "state": "stop",
+          "hidden": false,
+          "disabled": false
+        }
+      },
+      "rows": [
+        {
+          "where": "frame3",
+          "src": "0-8eb4-b50a86f445cf/f982831640321997810d.wav",
+          "paused": false,
+          "ended": false,
+          "muted": false,
+          "volume": 1,
+          "readyState": 4,
+          "t": 32.95,
+          "audible": true
+        }
+      ]
+    },
+    {
+      "label": "playing, Lead Sheet switched ON",
+      "elements": 2,
+      "sounding": 1,
+      "audible": 1,
+      "positions": [
+        0,
+        50.61
+      ],
+      "muted": [
+        false,
+        false
+      ],
+      "card_state": "playing",
+      "surface": {
+        "has_audio": true,
+        "src": "b4-b50a86f445cf/f982831640321997810d.wav",
+        "paused": false,
+        "muted": false,
+        "t": 50.63,
+        "ready": 4,
+        "button": {
+          "text": "\u23f8 Pause playback",
+          "state": "stop",
+          "hidden": false,
+          "disabled": false
+        }
+      },
+      "rows": [
+        {
+          "where": "page",
+          "src": "9/media/474e36b667f3db1d195ca47117656a0a.wav",
+          "paused": true,
+          "ended": false,
+          "muted": false,
+          "volume": 1,
+          "readyState": 4,
+          "t": 0,
+          "audible": false
+        },
+        {
+          "where": "frame3",
+          "src": "0-8eb4-b50a86f445cf/f982831640321997810d.wav",
+          "paused": false,
+          "ended": false,
+          "muted": false,
+          "volume": 1,
+          "readyState": 4,
+          "t": 50.61,
+          "audible": true
+        }
+      ]
+    },
+    {
+      "label": "playing, Lead Sheet switched OFF again",
+      "elements": 1,
+      "sounding": 1,
+      "audible": 1,
+      "positions": [
+        59.14
+      ],
+      "muted": [
+        false
+      ],
+      "card_state": "playing",
+      "surface": {
+        "has_audio": true,
+        "src": "b4-b50a86f445cf/f982831640321997810d.wav",
+        "paused": false,
+        "muted": false,
+        "t": 59.14,
+        "ready": 4,
+        "button": {
+          "text": "\u23f8 Pause playback",
+          "state": "stop",
+          "hidden": false,
+          "disabled": false
+        }
+      },
+      "rows": [
+        {
+          "where": "frame3",
+          "src": "0-8eb4-b50a86f445cf/f982831640321997810d.wav",
+          "paused": false,
+          "ended": false,
+          "muted": false,
+          "volume": 1,
+          "readyState": 4,
+          "t": 59.14,
+          "audible": true
+        }
+      ]
+    }
+  ],
+  "controller": {
+    "reachable": true,
+    "leader": "lead-sheet#1794801430749.004",
+    "suspended": false,
+    "providers": [
+      {
+        "id": "lead-sheet",
+        "priority": 10,
+        "from_this_frame": true,
+        "has_current": true
+      }
+    ]
+  },
+  "staves": []
+}

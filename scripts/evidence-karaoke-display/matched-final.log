@@ -1,0 +1,12 @@
+[kd-final] 45 test files, sequential
+  baseline  6 failed, 706 passed, 20 warnings, 269 subtests passed in 94.44s (0:01:34)
+  candidate 3 failed, 709 passed, 22 warnings, 269 subtests passed in 94.84s (0:01:34)
+  test ids: baseline=712 candidate=712
+  only in baseline (disappeared): 0
+  only in candidate (new): 0
+  outcome changed: 3
+     ~ tests/test_karaoke_position_device_state.py::KaraokePositionDeviceStateTests::test_mid_session_reapply_still_syncs_the_setlist: FAILED -> PASSED
+     ~ tests/test_karaoke_position_device_state.py::KaraokePositionDeviceStateTests::test_next_survives_a_mid_session_reapply: FAILED -> PASSED
+     ~ tests/test_karaoke_position_device_state.py::KaraokePositionDeviceStateTests::test_page_load_still_restores_the_saved_position: FAILED -> PASSED
+  REGRESSIONS (passed -> not passed): 0
+VERDICT: CLEAN
