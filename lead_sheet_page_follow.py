@@ -362,7 +362,8 @@ _CONTROLLER_JS = r"""
     pz.type = "button"; pz.id = "ls-mini-pause"; pz.style.cssText = BTN_CSS + "background:#22c55e;color:#04220f;";
     var stop = doc.createElement("button");
     stop.type = "button"; stop.id = "ls-mini-stop"; stop.style.cssText = BTN_CSS + "background:#f1f5f9;color:#0f172a;";
-    stop.textContent = "■ Stop";
+    stop.textContent = "■ Stop Backing Track";   // what it stops (Key Cycling has its own "Stop Key Cycling")
+    stop.setAttribute("aria-label", "Stop Backing Track");
     pz.addEventListener("click", function () {
       var p = transportProvider();
       if (cardStarting() || keyCyclingOn()) { syncBar(); return; }

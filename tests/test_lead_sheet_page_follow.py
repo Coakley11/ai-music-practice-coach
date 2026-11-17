@@ -254,3 +254,11 @@ def test_a_follow_staff_is_drawn_at_its_own_height_with_no_inner_scroll_box():
     assert "fe.setAttribute('scrolling', 'no');" in sync
     assert "lsFitFrameHost(fe, Math.round(parseFloat(fe.style.height) || h));" in sync
     assert src.index("if measure_sync:") < src.index("(function pmFullHeight()")
+
+
+def test_compact_bar_stop_says_what_it_stops():
+    """User, 2026-11-16: "Stop Backing Track" (Key Cycling's own button says "Stop Key Cycling"). The "■ Stop"
+    prefix stays: Key Cycling recognises the bar's Stop by it and stops its buffers too."""
+    js = lpf._CONTROLLER_JS
+    assert 'stop.textContent = "■ Stop Backing Track";' in js
+    assert 'stop.setAttribute("aria-label", "Stop Backing Track");' in js

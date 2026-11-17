@@ -11,8 +11,13 @@
          "Paused" onto a third) inside the card's fixed-height row. */
       #wrap { display: flex; flex-wrap: nowrap; align-items: center; gap: 8px; padding: 2px 2px 4px 2px; min-width: 0; }
       .lbl { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-      /* "Backing Track" is dropped when Stop and Pause share the line or the column is narrow. */
-      body[data-pair="1"] .ext { display: none; }
+      /* Stop keeps its full name, "Stop Backing Track" (user, 2026-11-16: a bare "Stop" -- stop what?), whenever the
+         row has room. A row too narrow for both full labels first shows Pause / Resume as its icon (the full name
+         stays its accessible name); only if Stop still does not fit is "Backing Track" dropped (fitLabels). */
+      body[data-pair="1"][data-fit="icon"] #pz .word, body[data-pair="1"][data-fit="short"] #pz .word { display: none; }
+      body[data-pair="1"][data-fit="icon"] #pz, body[data-pair="1"][data-fit="short"] #pz { flex: 0 0 auto; padding: 0 14px; }
+      body[data-pair="1"][data-fit="icon"] #btn, body[data-pair="1"][data-fit="short"] #btn { flex: 1 1 auto; }
+      body[data-pair="1"][data-fit="short"] .ext { display: none; }
       body[data-pair="1"] #btn, body[data-pair="1"] #pz { flex: 1 1 0; }
       @media (max-width: 199px) { .ext { display: none; } }
       #btn {
@@ -92,6 +97,17 @@
         const lbl = document.createElement("span");
         lbl.className = "lbl";
         lbl.textContent = cut < 0 ? label : label.slice(0, cut);
+        // Pause / Resume: icon and word in spans of their own, so a narrow row can show the icon alone.
+        const sp = label.indexOf(" ");
+        if (el === pz && sp > 0) {
+          const ico = document.createElement("span");
+          ico.className = "ico";
+          ico.textContent = label.slice(0, sp);
+          const word = document.createElement("span");
+          word.className = "word";
+          word.textContent = "\u00a0" + label.slice(sp + 1);
+          lbl.replaceChildren(ico, word);
+        }
         if (cut >= 0) {
           const ext = document.createElement("span");
           ext.className = "ext";
@@ -101,6 +117,21 @@
         el.replaceChildren(lbl);
         el.setAttribute("aria-label", label);
       }
+      // Full labels when they fit; else Pause / Resume as its icon; else Stop without "Backing Track".
+      function overflows(el) {
+        const l = el && el.querySelector(".lbl");
+        return !!l && l.scrollWidth > l.clientWidth + 1;
+      }
+      function fitLabels() {
+        const b = document.body;
+        b.dataset.fit = "";
+        if (b.dataset.pair !== "1") return;
+        if (!overflows(btn) && !overflows(pz)) return;
+        b.dataset.fit = "icon";
+        if (!overflows(btn)) return;
+        b.dataset.fit = "short";
+      }
+      try { new ResizeObserver(() => fitLabels()).observe(document.getElementById("wrap")); } catch (e) {}
       let nonce = 0;
       let pendingUntil = 0;
       let pendingToken = "";
@@ -521,6 +552,7 @@
         pz.dataset.mode = state === "paused" ? "resume" : "pause";
         setLabel(pz, state === "paused" ? LABEL_RESUME : LABEL_PAUSE);
         document.body.dataset.pair = showPz ? "1" : "";
+        fitLabels();
         hint.textContent = state === "starting" ? "Starting…" : state === "paused" ? "Paused" : "";
         if (ciRun && state !== "paused") {
           if (ciRun.phase === "counting" && ciRun.beat > 0) {

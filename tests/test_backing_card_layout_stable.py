@@ -27,8 +27,20 @@ def test_transport_stays_on_one_line() -> None:
     assert "#btn, #pz { width: 100%" not in TRANSPORT
 
 
+def test_stop_keeps_its_full_name_when_the_row_has_room() -> None:
+    """User, 2026-11-16: a bare "Stop" -- stop what? Stop says "Stop Backing Track" whenever it fits; a narrow row
+    first shows Pause / Resume as its icon, and only then drops "Backing Track" (measured, not by pairing alone)."""
+    assert 'body[data-pair="1"] .ext { display: none; }' not in TRANSPORT
+    assert 'body[data-pair="1"][data-fit="short"] .ext { display: none; }' in TRANSPORT
+    assert 'body[data-pair="1"][data-fit="icon"] #pz .word' in TRANSPORT
+    fit = TRANSPORT[TRANSPORT.index("function fitLabels()"):TRANSPORT.index("let nonce = 0;")]
+    assert fit.index('b.dataset.fit = "icon";') < fit.index('b.dataset.fit = "short";')
+    assert "l.scrollWidth > l.clientWidth + 1" in TRANSPORT
+    assert TRANSPORT.index('document.body.dataset.pair = showPz ? "1" : "";') < TRANSPORT.index("        fitLabels();")
+    assert 'const LABEL_STOP = "■ Stop Backing Track";' in TRANSPORT
+
+
 def test_backing_track_suffix_drops_when_two_buttons_share_the_line() -> None:
-    assert 'body[data-pair="1"] .ext { display: none; }' in TRANSPORT
     assert 'document.body.dataset.pair = showPz ? "1" : "";' in TRANSPORT
     assert "setLabel(btn, state === \"stopped\" ? LABEL_PLAY : LABEL_STOP);" in TRANSPORT
     assert "setLabel(pz, state === \"paused\" ? LABEL_RESUME : LABEL_PAUSE);" in TRANSPORT
