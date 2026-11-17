@@ -12,11 +12,14 @@
       #wrap { display: flex; flex-wrap: nowrap; align-items: center; gap: 8px; padding: 2px 2px 4px 2px; min-width: 0; }
       .lbl { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       /* Stop keeps its full name, "Stop Backing Track" (user, 2026-11-16: a bare "Stop" -- stop what?), whenever the
-         row has room. A row too narrow for both full labels first shows Pause / Resume as its icon (the full name
-         stays its accessible name); only if Stop still does not fit is "Backing Track" dropped (fitLabels). */
-      body[data-pair="1"][data-fit="icon"] #pz .word, body[data-pair="1"][data-fit="short"] #pz .word { display: none; }
-      body[data-pair="1"][data-fit="icon"] #pz, body[data-pair="1"][data-fit="short"] #pz { flex: 0 0 auto; padding: 0 14px; }
-      body[data-pair="1"][data-fit="icon"] #btn, body[data-pair="1"][data-fit="short"] #btn { flex: 1 1 auto; }
+         row has room. A row too narrow for both full labels shows Pause / Resume as its icon (the full name stays its
+         accessible name) when that makes room for "Stop Backing Track"; when even that is not enough, both keep their
+         words and Stop drops "Backing Track" -- measured on the card at 1500 and 390 px: an icon-only Pause beside a
+         bare "Stop" said less than "Stop" + "Pause" (fitLabels). */
+      body[data-pair="1"][data-fit="icon"] #pz .word { display: none; }
+      body[data-pair="1"][data-fit="icon"] #pz { flex: 0 0 auto; padding: 0 12px; }
+      /* the card's row is 260 px (1500) / 288 px (390): "Stop Backing Track" fits beside the Pause icon at 13 px */
+      body[data-pair="1"][data-fit="icon"] #btn { flex: 1 1 auto; padding: 0 10px; font-size: 13px; letter-spacing: 0; }
       body[data-pair="1"][data-fit="short"] .ext { display: none; }
       body[data-pair="1"] #btn, body[data-pair="1"] #pz { flex: 1 1 0; }
       @media (max-width: 199px) { .ext { display: none; } }

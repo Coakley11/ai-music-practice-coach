@@ -33,6 +33,8 @@ def test_stop_keeps_its_full_name_when_the_row_has_room() -> None:
     assert 'body[data-pair="1"] .ext { display: none; }' not in TRANSPORT
     assert 'body[data-pair="1"][data-fit="short"] .ext { display: none; }' in TRANSPORT
     assert 'body[data-pair="1"][data-fit="icon"] #pz .word' in TRANSPORT
+    # Stop that cannot be full even beside the icon keeps Pause's word: "Stop" + "Pause", never "Stop" + an icon
+    assert '[data-fit="short"] #pz .word' not in TRANSPORT and '[data-fit="short"] #pz {' not in TRANSPORT
     fit = TRANSPORT[TRANSPORT.index("function fitLabels()"):TRANSPORT.index("let nonce = 0;")]
     assert fit.index('b.dataset.fit = "icon";') < fit.index('b.dataset.fit = "short";')
     assert "l.scrollWidth > l.clientWidth + 1" in TRANSPORT
