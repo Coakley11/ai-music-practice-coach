@@ -48,6 +48,12 @@ def selector_css(key: str) -> str:
 .st-key-{key} [data-testid="stButtonGroup"] button {{
   min-height: 2.5rem;
 }}
+@media (max-width: 640px) {{
+  /* Comfortable touch targets on phones (about 44 px). */
+  .st-key-{key} [data-testid="stButtonGroup"] button {{
+    min-height: 2.75rem;
+  }}
+}}
 </style>
 """
 
