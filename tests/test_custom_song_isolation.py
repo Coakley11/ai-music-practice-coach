@@ -323,5 +323,56 @@ class TestDeletedSongIsNeverRevivedBySaving(unittest.TestCase):
         self.assertIn("SYN Fresh", store)
 
 
+class TestOfflineSaveKeepsTheOldCloudBase(unittest.TestCase):
+    """A save made while the cloud is unreachable looks newer by the clock but is derived from OLD content. Its
+    cloud base must stay old, so a later reconnect cannot overwrite a newer cloud copy it never saw."""
+
+    def test_cloud_hydration_marks_a_record_as_in_sync_at_its_own_version(self) -> None:
+        import custom_song_library as lib
+
+        rec = _song("SYN Trial", "D", ["D"], bpm=100)
+        rec["updated_at"] = 500.0
+        merged = lib._merge_progression_store({}, [{"payload": {"progression": rec}, "title": "SYN Trial"}])
+        self.assertEqual(merged["SYN Trial"]["cloud_base_updated_at"], 500.0)
+
+    def test_the_session_only_marker_is_never_sent_to_the_cloud(self) -> None:
+        import custom_song_library as lib
+
+        sent = {}
+        rec = _song("SYN Trial", "D", ["D"])
+        rec["cloud_base_updated_at"] = 5.0
+        with mock.patch.object(lib, "cloud_enabled", return_value=True), mock.patch.object(
+            lib, "cloud_storage_status", return_value={"durable": True, "state": "durable"}
+        ), mock.patch.object(lib, "active_workspace_id", return_value="daniel"), mock.patch(
+            "suite_account.remember_saved_item", side_effect=lambda *a, **k: sent.update(k) or {"write_mode": "upsert"}
+        ):
+            ok, _key, _err = lib.upsert_custom_song_to_cloud("SYN Trial", rec)
+        self.assertTrue(ok)
+        self.assertNotIn("cloud_base_updated_at", sent["payload"]["progression"])
+
+    def test_a_failed_cloud_write_keeps_the_old_base_and_a_good_one_advances_it(self) -> None:
+        _a, _b, store, _golden, _ss = _world()
+        store["SYN Trial"]["cloud_base_updated_at"] = 2.0
+        draft = L.load_saved_progression(store, "SYN Trial")
+        draft["bpm"] = 70
+        with mock.patch("custom_song_library.upsert_custom_song_to_cloud", return_value=(False, "", "offline")):
+            L.save_progression_named(store, "SYN Trial", draft, expected_updated_at=draft["base_updated_at"])
+        self.assertEqual(store["SYN Trial"]["cloud_base_updated_at"], 2.0)
+        draft = L.load_saved_progression(store, "SYN Trial")
+        draft["bpm"] = 71
+        with mock.patch("custom_song_library.upsert_custom_song_to_cloud", return_value=(True, "k", None)):
+            L.save_progression_named(store, "SYN Trial", draft, expected_updated_at=draft["base_updated_at"])
+        self.assertEqual(store["SYN Trial"]["cloud_base_updated_at"], store["SYN Trial"]["updated_at"])
+
+    def test_the_cloud_guard_uses_the_cloud_base_not_the_clock(self) -> None:
+        _a, _b, store, golden, _ss = _world()
+        store["SYN Trial"]["cloud_base_updated_at"] = 2.0
+        store["SYN Trial"]["updated_at"] = 9999.0  # saved offline: looks newer than anything in the cloud
+        draft = L.load_saved_progression(store, "SYN Trial")
+        with mock.patch("custom_song_library.cloud_song_state", return_value={"valid": True, "version": 300.0}):
+            with self.assertRaises(L.SongSaveConflict):
+                L.save_progression_named(store, "SYN Trial", draft, expected_updated_at=draft["base_updated_at"])
+
+
 if __name__ == "__main__":
     unittest.main()

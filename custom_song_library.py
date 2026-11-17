@@ -246,6 +246,7 @@ def upsert_custom_song_to_cloud(
     if not cloud_enabled():
         return False, "", cloud_block_reason() or "cloud_disabled"
     prog = _json_safe(progression if isinstance(progression, dict) else {})
+    prog = {k: v for k, v in prog.items() if k != "cloud_base_updated_at"}  # session-only marker
     save_name = str(prog.get("name") or name or "").strip()
     if not save_name:
         return False, "", "missing_title"
@@ -361,6 +362,7 @@ def _merge_progression_store(local: dict[str, Any], cloud_rows: list[dict[str, A
         local_ts = float(local_row.get("updated_at") or 0) if isinstance(local_row, dict) else 0.0
         if not local_row or cloud_ts >= local_ts:
             merged[store_key] = copy.deepcopy(prog)
+            merged[store_key]["cloud_base_updated_at"] = cloud_ts
     return merged
 
 

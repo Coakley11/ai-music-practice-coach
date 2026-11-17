@@ -3332,8 +3332,9 @@ def _refuse_if_cloud_moved(song_id, expected_updated_at) -> None:
         return
     if state["version"] > mine + 1e-6:
         raise SongSaveConflict(
-            "This song was changed in the cloud (another tab or device) after it was opened here, so this save "
-            "was refused to protect the newer version. Reload it from the library and try again."
+            "This song was changed in the cloud (another tab or device) after this tab last synced it, so this save "
+            "was refused to protect the newer version. Nothing was sent to the cloud. Your version stays in this tab "
+            "only: copy anything you need, then reload the page to get the cloud version."
         )
 
 
@@ -3344,20 +3345,24 @@ def _same_version(a, b) -> bool:
         return False
 
 
-def save_progression(store, name, data, *, expected_updated_at=None, allow_empty=False):
+def save_progression(store, name, data, *, expected_updated_at=None, allow_empty=False, cloud_base_updated_at=None):
     save_progression_named(
-        store, name, data, expected_updated_at=expected_updated_at, allow_empty=allow_empty
+        store, name, data, expected_updated_at=expected_updated_at, allow_empty=allow_empty,
+        cloud_base_updated_at=cloud_base_updated_at,
     )
     return store
 
 
-def save_progression_named(store, name, data, *, expected_updated_at=None, allow_empty=False):
+def save_progression_named(store, name, data, *, expected_updated_at=None, allow_empty=False, cloud_base_updated_at=None):
     """Save ``data`` into the library and return the library name it was stored under.
 
     ``expected_updated_at`` is the version of the saved song the draft was loaded from (the draft's
     ``base_updated_at``). When given, the save only goes ahead if the song with this id still has exactly
     that version, so a draft can never overwrite a record it was not derived from, and a stale copy that
     holds the same id under another title can only be re-identified by a draft proven to descend from it.
+
+    ``cloud_base_updated_at`` is the cloud version this draft last agreed with (a song saved while the cloud was
+    unreachable keeps its OLD base, so a later reconnect cannot overwrite a newer cloud copy it never saw).
 
     ``allow_empty`` is the deliberate "I emptied this song" signal. Without it a draft with NO chords is refused
     when it would replace a saved song that has chords (a blank default-shaped draft once emptied a saved song).
@@ -3379,7 +3384,15 @@ def save_progression_named(store, name, data, *, expected_updated_at=None, allow
         save_name = _unique_library_name(store, save_name, incoming_id)
     existing = store.get(save_name) if isinstance(store.get(save_name), dict) else {}
     song_id = str(data.get("id") or existing.get("id") or "").strip() or str(uuid.uuid4())
-    _refuse_if_cloud_moved(song_id, expected_updated_at)
+    _cloud_base = cloud_base_updated_at
+    if _cloud_base is None:
+        _cloud_base = data.get("cloud_base_updated_at")
+    if _cloud_base is None:
+        _cloud_base = next((r.get("cloud_base_updated_at") for r in store.values()
+                            if isinstance(r, dict) and str(r.get("id") or "").strip() == song_id), None)
+    if _cloud_base is None:
+        _cloud_base = expected_updated_at
+    _refuse_if_cloud_moved(song_id, _cloud_base)
     if not allow_empty and _record_chord_count(data) == 0:
         for _k, rec in store.items():
             if isinstance(rec, dict) and (
@@ -3424,10 +3437,14 @@ def save_progression_named(store, name, data, *, expected_updated_at=None, allow
         "created_at": existing.get("created_at") or now,
         "updated_at": now,
     }
+    if _cloud_base is not None:
+        store[save_name]["cloud_base_updated_at"] = _cloud_base
     try:
         from custom_song_library import upsert_custom_song_to_cloud
 
         ok, _key, err = upsert_custom_song_to_cloud(save_name, store[save_name])
+        if ok:
+            store[save_name]["cloud_base_updated_at"] = store[save_name]["updated_at"]  # in sync again
         from custom_song_library import cloud_storage_status
 
         status = cloud_storage_status()
@@ -4860,6 +4877,7 @@ def cpl_on_save_library_callback() -> None:
             name,
             active,
             expected_updated_at=active.get("base_updated_at"),
+            cloud_base_updated_at=active.get("cloud_base_updated_at"),
             allow_empty=bool(_emptied and _emptied == str(active.get("id") or "").strip()),
         )
         st.session_state.pop(USER_EMPTIED_SONG_ID_KEY, None)
@@ -4875,6 +4893,7 @@ def cpl_on_save_library_callback() -> None:
         ).strip() or "C"
         live["user_locked_home_key"] = True
         live["base_updated_at"] = stored.get("updated_at")
+        live["cloud_base_updated_at"] = stored.get("cloud_base_updated_at")
         if not is_generic_cpl_title(live["name"]):
             commit_user_title(
                 st.session_state, live["name"], active=live, assign_widget=False
