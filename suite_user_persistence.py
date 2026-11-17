@@ -143,17 +143,52 @@ def load_user_state(app_id: str) -> tuple[dict[str, Any], str | None]:
 def save_user_state(app_id: str, state: dict[str, Any], *, workspace_id: str | None = None) -> bool:
     if not isinstance(state, dict):
         return False
+    path = state_file_path(app_id, workspace_id)
+    if str(app_id or "").strip().lower() == "music":
+        # Every session on this server writes this one file. A session that does not hold the
+        # Karaoke setlist - a tab opened before it existed - must not erase it by saving.
+        try:
+            from karaoke_setlist_durability import merge_disk_state
+
+            def _prior() -> dict[str, Any]:
+                raw, _warn, _ts = _load_raw(app_id, workspace_id)
+                return raw
+
+            session = None
+            try:
+                import streamlit as _st
+
+                session = _st.session_state
+            except Exception:
+                session = None
+            state = merge_disk_state(str(path), state, _prior, session=session)
+        except ImportError:
+            pass
     payload = {
         "version": STATE_VERSION,
         "app": app_id,
         "saved_at": _utc_now_iso(),
         "state": state,
     }
-    return _write_json(state_file_path(app_id, workspace_id), payload)
+    ok = _write_json(path, payload)
+    if ok and str(app_id or "").strip().lower() == "music":
+        try:
+            from karaoke_setlist_durability import note_disk_written
+
+            note_disk_written(str(path), state)
+        except ImportError:
+            pass
+    return ok
 
 
 def reset_user_state(app_id: str, *, workspace_id: str | None = None) -> bool:
     path = state_file_path(app_id, workspace_id)
+    try:
+        from karaoke_setlist_durability import forget_disk_file
+
+        forget_disk_file(str(path))
+    except ImportError:
+        pass
     try:
         if path.is_file():
             path.unlink()
@@ -1988,7 +2023,19 @@ def render_reset_controls(
     def _body() -> None:
         st.caption("Your last page, filters, and inputs reload automatically.")
         if pending:
-            st.warning("This clears saved preferences for this app. Continue?")
+            warning = "This clears saved preferences for this app. Continue?"
+            if str(app_id or "").strip().lower() == "music":
+                # Reset to default erases the saved Karaoke setlist (a deliberate clear), so the
+                # question names what it will erase rather than calling it "preferences".
+                queue = st.session_state.get("karaoke_queue")
+                n = len(queue) if isinstance(queue, list) else 0
+                if n:
+                    warning = (
+                        f"This clears saved preferences for this app **and erases your saved Karaoke "
+                        f"setlist ({n} song{'s' if n != 1 else ''}, with their order and keys)**. "
+                        "This cannot be undone. Continue?"
+                    )
+            st.warning(warning)
             c1, c2 = st.columns(2)
             with c1:
                 st.button(

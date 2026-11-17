@@ -78,6 +78,27 @@ def pending_card_command(session: Any) -> tuple[str, str]:
     return action, token
 
 
+def pending_card_cycle_report(session: Any) -> dict[str, str]:
+    """Key Cycling's optional ``kc`` field on the pending Pause, or {}.
+
+    Additive and optional: the card sends it only with a Pause while cycling is
+    active (the key that was sounding at the press). Every other command, and a
+    Pause from an older page, carries none and is handled as before.
+    """
+    raw = session.get(BACKING_CARD_TRANSPORT_KEY)
+    kc = raw.get("kc") if isinstance(raw, dict) else None
+    if not isinstance(kc, dict):
+        return {}
+    sounding = str(kc.get("sounding") or "").strip()
+    if not sounding:
+        return {}
+    out = {"sounding": sounding, "cycleId": str(kc.get("cycleId") or "").strip()}
+    finished = str(kc.get("from") or "").strip()
+    if finished:  # optional: the take that finished when the paused position moved on
+        out["from"] = finished
+    return out
+
+
 def commit_card_command(session: Any, token: str) -> None:
     """The command is fully applied: never handle it again."""
     if token and session.get(BACKING_CARD_TRANSPORT_CONSUMED_KEY) != token:
@@ -173,11 +194,22 @@ def apply_card_command(
         session[BACKING_PLAY_FEEDBACK_KEY] = "Paused"
         _cycle = False
         try:
-            from backing_key_cycle import is_cycle_active, pause_key_cycle
+            from backing_key_cycle import adopt_sounding_key_at_pause, is_cycle_active, pause_key_cycle
 
             if is_cycle_active(session):
                 _cycle = True
                 pause_key_cycle(session)
+                # Freeze the key that was sounding: a Pause right after an
+                # automatic key change carries the new key the page was playing
+                # (idempotent; only the cycle's next key is adopted).
+                report = pending_card_cycle_report(session)
+                if report:
+                    adopt_sounding_key_at_pause(
+                        session,
+                        report["sounding"],
+                        cycle_id=report.get("cycleId", ""),
+                        from_key=report.get("from", ""),
+                    )
         except Exception:
             pass
         _mark_handled(session, token)
@@ -228,4 +260,5 @@ __all__ = [
     "card_echo_token",
     "commit_card_command",
     "pending_card_command",
+    "pending_card_cycle_report",
 ]

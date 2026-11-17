@@ -463,9 +463,15 @@ def render_multitrack_history_panel(st_obj: Any, *, song_title: str = "") -> Non
 
     flash = ss.pop(MT_FLASH_KEY, None) or ss.pop("mt_hist_flash", None)
 
-    with st_obj.expander("Project Library", expanded=False):
+    flash_level = ss.pop("_mt_flash_level", "success")
+    with st_obj.expander("Project Library", expanded=bool(flash and flash_level == "error")):
         if flash:
-            st_obj.success(str(flash))
+            if flash_level == "error":
+                st_obj.error(str(flash))
+            elif flash_level == "info":
+                st_obj.info(str(flash))
+            else:
+                st_obj.success(str(flash))
         if not cloud_enabled():
             st_obj.caption(
                 cloud_block_reason()
@@ -548,7 +554,14 @@ def render_multitrack_history_panel(st_obj: Any, *, song_title: str = "") -> Non
                 save_mode=save_mode,
             )
             if ok:
-                ss[MT_FLASH_KEY] = f"{success_label} ({item_key})."
+                try:
+                    from multitrack_project_audio_restore import SAVE_STATUS_KEY, project_save_message
+
+                    _lvl, _msg = project_save_message(ss.get(SAVE_STATUS_KEY), success_label)
+                except ImportError:
+                    _lvl, _msg = "success", success_label
+                ss[MT_FLASH_KEY] = _msg
+                ss["_mt_flash_level"] = _lvl
                 ss["mt_hist_active_item"] = item_key
                 ss["multitrack_catalog_active_id"] = item_key
                 ss["_last_catalog_multitrack_id"] = item_key

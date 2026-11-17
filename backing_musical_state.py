@@ -53,6 +53,46 @@ class BackingMusicalState:
 
     instrument: str = ""
 
+    # The normal song / Backing / Mission card. Key Cycling is a temporary
+    # performance context: the fields above follow the cycling sounding key
+    # (audio, lead sheet), these always describe the saved Practice Key, so
+    # the card's Written / Shape badge and progressions never move with a
+    # cycle step. Outside cycling both sets are identical.
+    card_chart_mode: str = "concert"
+    card_chart_display_key: str = ""
+    card_written_key: str = ""
+    card_show_chart_badge: bool = False
+    card_chart_badge_label: str = ""
+    card_chart_badge_value: str = ""
+    card_concert_sections: dict[str, list[str]] = field(default_factory=dict)
+    card_chart_sections: dict[str, list[str]] = field(default_factory=dict)
+
+
+def card_view(state: "BackingMusicalState | None") -> "BackingMusicalState | None":
+    """The state as the normal song / Backing / Mission card shows it: the saved Practice Key.
+
+    Key Cycling only moves the sounding (audio / lead sheet) fields; the card's
+    Written / Shape badge, chart key and progressions keep the saved key. A state
+    built without card fields (``card_chart_display_key`` empty) is returned as is.
+    """
+    if state is None or not str(getattr(state, "card_chart_display_key", "") or "").strip():
+        return state
+    from dataclasses import replace
+
+    return replace(
+        state,
+        chart_mode=state.card_chart_mode,  # type: ignore[arg-type]
+        chart_display_key=state.card_chart_display_key,
+        written_key=state.card_written_key,
+        show_chart_badge=state.card_show_chart_badge,
+        chart_badge_label=state.card_chart_badge_label,
+        chart_badge_value=state.card_chart_badge_value,
+        concert_sections=dict(state.card_concert_sections),
+        chart_sections=dict(state.card_chart_sections),
+        progression_key_audio=state.practice_concert_key,
+        progression_key_chart=state.card_chart_display_key,
+    )
+
 
 def clear_stale_chart_session_keys(session: dict[str, Any]) -> None:
     """Drop cached chart keys that can leak across chart-mode toggles."""
@@ -676,15 +716,12 @@ def resolve_current_backing_musical_state(
     shape_key_raw = str(session.get(CAPO_SHAPE_KEY) or "").strip()
     if shape_on and shape_key_raw:
         try:
-            from guitar_capo import shape_chart_key_for_concert, shape_tonic_only
+            from guitar_capo import shape_tonic_only
 
             shape_key_raw = shape_tonic_only(shape_key_raw)
-            chart_from_shape = shape_chart_key_for_concert(sounding, shape_key_raw)
         except ImportError:
-            chart_from_shape = shape_key_raw
-    else:
-        chart_from_shape = ""
-    if major_jam and shape_key_raw:
+            pass
+    elif major_jam and shape_key_raw:
         try:
             from guitar_capo import shape_tonic_only
 
@@ -692,42 +729,58 @@ def resolve_current_backing_musical_state(
         except ImportError:
             pass
 
-    written_key = ""
-    if written_on:
-        written_key = str(written_key_for_instrument(sounding, instrument, session) or "").strip()
-        if major_jam and written_key:
+    def _chart_projection(concert: str) -> tuple[str, str, str, bool, str, str]:
+        """(chart mode, chart key, written key, show badge, badge label, badge value) for one concert key."""
+        if shape_on and shape_key_raw:
             try:
-                from music_theory import key_center_token, split_key_center
+                from guitar_capo import shape_chart_key_for_concert
 
-                tonic, mode = split_key_center(written_key)
-                written_key = key_center_token(tonic, mode)
+                from_shape = shape_chart_key_for_concert(concert, shape_key_raw)
             except ImportError:
-                pass
-
-    if shape_on and chart_from_shape:
-        chart_mode: ChartMode = "shape"
-        chart_display = chart_from_shape
-    elif written_on and written_key:
-        chart_mode = "written"
-        chart_display = written_key
-    else:
-        chart_mode = "concert"
-        chart_display = sounding
-        clear_stale_chart_session_keys(session)
-
-    show_badge = chart_mode != "concert" and chart_display != sounding
-    if show_badge:
-        if chart_mode == "shape":
-            try:
-                from guitar_capo import shape_chart_label_for_concert
-
-                badge_label, badge_val = "Charts in", shape_chart_label_for_concert(sounding, shape_key_raw)
-            except ImportError:
-                badge_label, badge_val = "Guitar shape", chart_display
+                from_shape = shape_key_raw
         else:
-            badge_label, badge_val = "Written key", chart_display
+            from_shape = ""
+        written = ""
+        if written_on:
+            written = str(written_key_for_instrument(concert, instrument, session) or "").strip()
+            if major_jam and written:
+                try:
+                    from music_theory import key_center_token, split_key_center
+
+                    tonic, mode = split_key_center(written)
+                    written = key_center_token(tonic, mode)
+                except ImportError:
+                    pass
+        if shape_on and from_shape:
+            mode_: str = "shape"
+            display = from_shape
+        elif written_on and written:
+            mode_ = "written"
+            display = written
+        else:
+            mode_ = "concert"
+            display = concert
+        badge = mode_ != "concert" and display != concert
+        label, value = "", ""
+        if badge:
+            if mode_ == "shape":
+                try:
+                    from guitar_capo import shape_chart_label_for_concert
+
+                    label, value = "Charts in", shape_chart_label_for_concert(concert, shape_key_raw)
+                except ImportError:
+                    label, value = "Guitar shape", display
+            else:
+                label, value = "Written key", display
+        return mode_, display, written, badge, label, value
+
+    chart_mode, chart_display, written_key, show_badge, badge_label, badge_val = _chart_projection(sounding)
+    if chart_mode == "concert":
+        clear_stale_chart_session_keys(session)
+    if sounding == practice:
+        card_projection = (chart_mode, chart_display, written_key, show_badge, badge_label, badge_val)
     else:
-        badge_label, badge_val = "", ""
+        card_projection = _chart_projection(practice)
 
     if creative:
         source_bpm = int(creative.bpm or 100)
@@ -831,6 +884,8 @@ def resolve_current_backing_musical_state(
     elif ctx is not None and ctx.source == "composition_song":
         concert_sections = sections_dict_from_backing_context(session, ctx)
 
+    # The card keeps the saved Practice Key's progression while cycling.
+    card_concert_sections = dict(concert_sections)
     # Temporary cycle: concert_sections arrive at saved Practice Key; shift to sounding.
     if concert_sections and sounding and practice and sounding != practice:
         try:
@@ -855,6 +910,16 @@ def resolve_current_backing_musical_state(
             concert_sections,
             concert_key=sounding,
         )
+    if sounding == practice:
+        card_chart_sections = dict(chart_sections)
+    elif card_concert_sections:
+        card_chart_sections = sections_dict_for_chart_display(
+            session,
+            card_concert_sections,
+            concert_key=practice,
+        )
+    else:
+        card_chart_sections = {}
 
     resolved_key_mode = key_mode(sounding)
     try:
@@ -899,6 +964,14 @@ def resolve_current_backing_musical_state(
         progression_key_audio=sounding,
         progression_key_chart=chart_display,
         instrument=instrument,
+        card_chart_mode=card_projection[0],
+        card_chart_display_key=card_projection[1],
+        card_written_key=card_projection[2],
+        card_show_chart_badge=card_projection[3],
+        card_chart_badge_label=card_projection[4],
+        card_chart_badge_value=card_projection[5],
+        card_concert_sections=card_concert_sections,
+        card_chart_sections=dict(card_chart_sections),
     )
 
 

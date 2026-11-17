@@ -195,11 +195,28 @@ def check_audio_bytes(data: Any, filename: str = "") -> AudioCheck:
     )
 
 
-def rejection_message(check: AudioCheck, filename: str = "", *, layer_name: str = "") -> str:
-    """What to tell the musician when an upload cannot be used, without blaming their playing."""
-    who = str(filename or "that file").strip() or "that file"
+#: Sources whose bytes were captured here rather than chosen from a file.
+RECORDED_SOURCES = frozenset({"shared-clock", "basic-recorder"})
+
+
+def rejection_message(
+    check: AudioCheck, filename: str = "", *, layer_name: str = "", source: str = "upload"
+) -> str:
+    """What to tell the musician when a take cannot be used, without blaming their playing.
+
+    The advice depends on where the take came from. "Export it again and upload it" is right for a
+    file and wrong for something that was just recorded here - the musician has no file to export,
+    and the honest instruction is to record it again.
+    """
     where = f" The {layer_name} layer is unchanged." if layer_name else ""
     detail = check.reason or "it could not be decoded"
+    if str(source or "") in RECORDED_SOURCES:
+        return (
+            f"**That recording could not be read as audio** — {detail}. Nothing was changed."
+            + where
+            + " It was not kept, so it cannot cause a problem later; please record it again."
+        )
+    who = str(filename or "that file").strip() or "that file"
     return (
         f"**{who} could not be added as a layer** — {detail}. Nothing was changed."
         + where
@@ -228,6 +245,7 @@ def unverified_notice(check: AudioCheck, filename: str = "") -> str:
 __all__ = [
     "AudioCheck",
     "MIN_AUDIO_BYTES",
+    "RECORDED_SOURCES",
     "REJECTED",
     "UNVERIFIED",
     "VERIFIED",

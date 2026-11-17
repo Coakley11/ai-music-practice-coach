@@ -1,0 +1,29 @@
+worktree : /c/tmp/ai-music-mtfix
+port     : 8696
+cleared  : ignored app state under /c/tmp/ai-music-mtfix/data (tracked fixtures kept)
+data root: /tmp/mtfix-root-gj3KqT
+server pid (shell): 210353
+listener pid(s): 56544 
+  PASS  R1 the app boots
+  PASS  R2 Multitrack opens
+  PASS  R3 a take is recorded  [Guitar, 30s]
+    take size: 3113260 bytes (2.97 MiB; the persist cap is 2.00 MiB)
+  PASS  R4 the take is in the live session  [fp=df9c786e, 3113260 bytes]
+    pressed Save layer: 'clicked'
+  PASS  R4b Save layer was pressed  [clicked]
+    durable copy (persist blob) before the refresh: NONE
+
+    6 trace line(s) after the refresh
+  FAIL  R5 THE SAVED LAYER SURVIVED A REFRESH  [found=None in nowhere (recorded df9c786e)]
+    audio elements on the page after the refresh: 0
+
+======================================================================
+  PASS  R1 the app boots
+  PASS  R2 Multitrack opens
+  PASS  R3 a take is recorded
+  PASS  R4 the take is in the live session
+  PASS  R4b Save layer was pressed
+  FAIL  R5 THE SAVED LAYER SURVIVED A REFRESH
+
+5/6 gates passed
+stopping the server

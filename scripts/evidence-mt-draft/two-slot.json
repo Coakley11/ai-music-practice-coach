@@ -1,0 +1,2669 @@
+{
+  "gates": {
+    "T1 the app boots": true,
+    "T2 Multitrack opens": true,
+    "T3 a take is recorded into the first slot": true,
+    "T4 the first slot holds audio": true,
+    "T5 the first round trip really left Multitrack": true,
+    "T6 the snapshot now HOLDS the first layer - the case that is not accidental": true,
+    "T7 a second take is recorded into another slot": true,
+    "T8 the second slot holds audio before navigating": true,
+    "T9 the second round trip really left Multitrack": true,
+    "T10 the saved first layer is still there": true,
+    "T11 THE UNSAVED SECOND TAKE SURVIVED": true,
+    "T12 both takes are offered on the page": true
+  },
+  "notes": [],
+  "first_fp": "074fabe0",
+  "second_fp": "eaf6ea8c",
+  "live_first": "074fabe0",
+  "live_second": "eaf6ea8c",
+  "trace": [
+    {
+      "t": 1794851375.504,
+      "stage": "run:page=home",
+      "studio_page": "home",
+      "multitrack_catalog_active_id": "",
+      "slots_with_audio": [],
+      "slots_with_audio_count": 0
+    },
+    {
+      "t": 1794851381.74,
+      "stage": "run:page=home",
+      "studio_page": "home",
+      "multitrack_catalog_active_id": "",
+      "slots_with_audio": [],
+      "slots_with_audio_count": 0
+    },
+    {
+      "t": 1794851381.883,
+      "stage": "page_change_save:entry",
+      "studio_page": "multitrack",
+      "multitrack_catalog_active_id": "",
+      "target_page": "multitrack",
+      "nav_origin": "user_navigation",
+      "slots_with_audio": [],
+      "slots_with_audio_count": 0
+    },
+    {
+      "t": 1794851381.891,
+      "stage": "page_change_save:entry",
+      "studio_page": "multitrack",
+      "multitrack_catalog_active_id": "",
+      "target_page": "multitrack",
+      "nav_origin": "user_navigation",
+      "slots_with_audio": [],
+      "slots_with_audio_count": 0
+    },
+    {
+      "t": 1794851382.353,
+      "stage": "run:page=multitrack",
+      "studio_page": "multitrack",
+      "multitrack_catalog_active_id": "",
+      "slots_with_audio": [],
+      "slots_with_audio_count": 0
+    },
+    {
+      "t": 1794851382.59,
+      "stage": "multitrack_page:enter",
+      "studio_page": "multitrack",
+      "multitrack_catalog_active_id": "",
+      "slots_with_audio": [],
+      "slots_with_audio_count": 0
+    },
+    {
+      "t": 1794851382.598,
+      "stage": "multitrack_page:after_history_bootstrap",
+      "studio_page": "multitrack",
+      "multitrack_catalog_active_id": "",
+      "slots_with_audio": [],
+      "slots_with_audio_count": 0
+    },
+    {
+      "t": 1794851400.694,
+      "stage": "run:page=multitrack",
+      "studio_page": "multitrack",
+      "multitrack_catalog_active_id": "",
+      "slots_with_audio": [],
+      "slots_with_audio_count": 0
+    },
+    {
+      "t": 1794851401.198,
+      "stage": "multitrack_page:enter",
+      "studio_page": "multitrack",
+      "multitrack_catalog_active_id": "",
+      "slots_with_audio": [],
+      "slots_with_audio_count": 0
+    },
+    {
+      "t": 1794851401.205,
+      "stage": "multitrack_page:after_history_bootstrap",
+      "studio_page": "multitrack",
+      "multitrack_catalog_active_id": "",
+      "slots_with_audio": [],
+      "slots_with_audio_count": 0
+    },
+    {
+      "t": 1794851401.918,
+      "stage": "run:page=multitrack",
+      "studio_page": "multitrack",
+      "multitrack_catalog_active_id": "",
+      "slots_with_audio": [
+        {
+          "slot": "Guitar",
+          "mt_tracks": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "persist_blob": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "page_snapshot": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "resolved": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          }
+        }
+      ],
+      "slots_with_audio_count": 1
+    },
+    {
+      "t": 1794851402.201,
+      "stage": "multitrack_page:enter",
+      "studio_page": "multitrack",
+      "multitrack_catalog_active_id": "",
+      "slots_with_audio": [
+        {
+          "slot": "Guitar",
+          "mt_tracks": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "persist_blob": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "page_snapshot": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "resolved": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          }
+        }
+      ],
+      "slots_with_audio_count": 1
+    },
+    {
+      "t": 1794851402.226,
+      "stage": "multitrack_page:after_history_bootstrap",
+      "studio_page": "multitrack",
+      "multitrack_catalog_active_id": "",
+      "slots_with_audio": [
+        {
+          "slot": "Guitar",
+          "mt_tracks": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "persist_blob": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "page_snapshot": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "resolved": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          }
+        }
+      ],
+      "slots_with_audio_count": 1
+    },
+    {
+      "t": 1794851404.634,
+      "stage": "run:page=multitrack",
+      "studio_page": "multitrack",
+      "multitrack_catalog_active_id": "",
+      "slots_with_audio": [
+        {
+          "slot": "Guitar",
+          "mt_tracks": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "persist_blob": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "page_snapshot": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "resolved": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          }
+        }
+      ],
+      "slots_with_audio_count": 1
+    },
+    {
+      "t": 1794851404.847,
+      "stage": "multitrack_page:enter",
+      "studio_page": "multitrack",
+      "multitrack_catalog_active_id": "",
+      "slots_with_audio": [
+        {
+          "slot": "Guitar",
+          "mt_tracks": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "persist_blob": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "page_snapshot": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "resolved": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          }
+        }
+      ],
+      "slots_with_audio_count": 1
+    },
+    {
+      "t": 1794851404.869,
+      "stage": "multitrack_page:after_history_bootstrap",
+      "studio_page": "multitrack",
+      "multitrack_catalog_active_id": "",
+      "slots_with_audio": [
+        {
+          "slot": "Guitar",
+          "mt_tracks": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "persist_blob": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "page_snapshot": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "resolved": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          }
+        }
+      ],
+      "slots_with_audio_count": 1
+    },
+    {
+      "t": 1794851420.565,
+      "stage": "run:page=multitrack",
+      "studio_page": "multitrack",
+      "multitrack_catalog_active_id": "",
+      "slots_with_audio": [
+        {
+          "slot": "Guitar",
+          "mt_tracks": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "persist_blob": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "page_snapshot": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "resolved": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          }
+        }
+      ],
+      "slots_with_audio_count": 1
+    },
+    {
+      "t": 1794851421.157,
+      "stage": "run:page=multitrack",
+      "studio_page": "multitrack",
+      "multitrack_catalog_active_id": "",
+      "slots_with_audio": [
+        {
+          "slot": "Guitar",
+          "mt_tracks": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "persist_blob": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "page_snapshot": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "resolved": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          }
+        }
+      ],
+      "slots_with_audio_count": 1
+    },
+    {
+      "t": 1794851421.427,
+      "stage": "multitrack_page:enter",
+      "studio_page": "multitrack",
+      "multitrack_catalog_active_id": "",
+      "slots_with_audio": [
+        {
+          "slot": "Guitar",
+          "mt_tracks": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "persist_blob": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "page_snapshot": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "resolved": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          }
+        }
+      ],
+      "slots_with_audio_count": 1
+    },
+    {
+      "t": 1794851421.458,
+      "stage": "multitrack_page:after_history_bootstrap",
+      "studio_page": "multitrack",
+      "multitrack_catalog_active_id": "",
+      "slots_with_audio": [
+        {
+          "slot": "Guitar",
+          "mt_tracks": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "persist_blob": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "page_snapshot": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "resolved": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          }
+        }
+      ],
+      "slots_with_audio_count": 1
+    },
+    {
+      "t": 1794851425.224,
+      "stage": "run:page=multitrack",
+      "studio_page": "multitrack",
+      "multitrack_catalog_active_id": "",
+      "slots_with_audio": [
+        {
+          "slot": "Guitar",
+          "mt_tracks": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "persist_blob": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "page_snapshot": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "resolved": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          }
+        }
+      ],
+      "slots_with_audio_count": 1
+    },
+    {
+      "t": 1794851425.503,
+      "stage": "page_change_save:entry",
+      "studio_page": "practice",
+      "multitrack_catalog_active_id": "",
+      "target_page": "practice",
+      "nav_origin": "user_navigation",
+      "slots_with_audio": [
+        {
+          "slot": "Guitar",
+          "mt_tracks": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "persist_blob": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "page_snapshot": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "resolved": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          }
+        }
+      ],
+      "slots_with_audio_count": 1
+    },
+    {
+      "t": 1794851425.56,
+      "stage": "page_change_save:entry",
+      "studio_page": "practice",
+      "multitrack_catalog_active_id": "",
+      "target_page": "practice",
+      "nav_origin": "user_navigation",
+      "slots_with_audio": [
+        {
+          "slot": "Guitar",
+          "mt_tracks": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "persist_blob": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "page_snapshot": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "resolved": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          }
+        }
+      ],
+      "slots_with_audio_count": 1
+    },
+    {
+      "t": 1794851426.376,
+      "stage": "run:page=practice",
+      "studio_page": "practice",
+      "multitrack_catalog_active_id": "",
+      "slots_with_audio": [
+        {
+          "slot": "Guitar",
+          "mt_tracks": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "persist_blob": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "page_snapshot": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "resolved": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          }
+        }
+      ],
+      "slots_with_audio_count": 1
+    },
+    {
+      "t": 1794851435.092,
+      "stage": "run:page=practice",
+      "studio_page": "practice",
+      "multitrack_catalog_active_id": "",
+      "slots_with_audio": [
+        {
+          "slot": "Guitar",
+          "mt_tracks": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "persist_blob": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "page_snapshot": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "resolved": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          }
+        }
+      ],
+      "slots_with_audio_count": 1
+    },
+    {
+      "t": 1794851435.92,
+      "stage": "run:page=practice",
+      "studio_page": "practice",
+      "multitrack_catalog_active_id": "",
+      "slots_with_audio": [
+        {
+          "slot": "Guitar",
+          "mt_tracks": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "persist_blob": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "page_snapshot": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "resolved": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          }
+        }
+      ],
+      "slots_with_audio_count": 1
+    },
+    {
+      "t": 1794851440.847,
+      "stage": "run:page=practice",
+      "studio_page": "practice",
+      "multitrack_catalog_active_id": "",
+      "slots_with_audio": [
+        {
+          "slot": "Guitar",
+          "mt_tracks": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "persist_blob": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "page_snapshot": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "resolved": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          }
+        }
+      ],
+      "slots_with_audio_count": 1
+    },
+    {
+      "t": 1794851441.025,
+      "stage": "page_change_save:entry",
+      "studio_page": "multitrack",
+      "multitrack_catalog_active_id": "",
+      "target_page": "multitrack",
+      "nav_origin": "user_navigation",
+      "slots_with_audio": [
+        {
+          "slot": "Guitar",
+          "mt_tracks": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "persist_blob": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "page_snapshot": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "resolved": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          }
+        }
+      ],
+      "slots_with_audio_count": 1
+    },
+    {
+      "t": 1794851441.06,
+      "stage": "page_change_save:entry",
+      "studio_page": "multitrack",
+      "multitrack_catalog_active_id": "",
+      "target_page": "multitrack",
+      "nav_origin": "user_navigation",
+      "slots_with_audio": [
+        {
+          "slot": "Guitar",
+          "mt_tracks": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "persist_blob": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "page_snapshot": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "resolved": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          }
+        }
+      ],
+      "slots_with_audio_count": 1
+    },
+    {
+      "t": 1794851441.557,
+      "stage": "run:page=multitrack",
+      "studio_page": "multitrack",
+      "multitrack_catalog_active_id": "",
+      "slots_with_audio": [
+        {
+          "slot": "Guitar",
+          "mt_tracks": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "persist_blob": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "page_snapshot": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "resolved": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          }
+        }
+      ],
+      "slots_with_audio_count": 1
+    },
+    {
+      "t": 1794851441.804,
+      "stage": "multitrack_page:enter",
+      "studio_page": "multitrack",
+      "multitrack_catalog_active_id": "",
+      "slots_with_audio": [
+        {
+          "slot": "Guitar",
+          "mt_tracks": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "persist_blob": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "page_snapshot": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "resolved": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          }
+        }
+      ],
+      "slots_with_audio_count": 1
+    },
+    {
+      "t": 1794851441.833,
+      "stage": "multitrack_page:after_history_bootstrap",
+      "studio_page": "multitrack",
+      "multitrack_catalog_active_id": "",
+      "slots_with_audio": [
+        {
+          "slot": "Guitar",
+          "mt_tracks": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "persist_blob": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "page_snapshot": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "resolved": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          }
+        }
+      ],
+      "slots_with_audio_count": 1
+    },
+    {
+      "t": 1794851445.317,
+      "stage": "run:page=multitrack",
+      "studio_page": "multitrack",
+      "multitrack_catalog_active_id": "",
+      "slots_with_audio": [
+        {
+          "slot": "Guitar",
+          "mt_tracks": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "persist_blob": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "page_snapshot": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "resolved": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          }
+        }
+      ],
+      "slots_with_audio_count": 1
+    },
+    {
+      "t": 1794851445.584,
+      "stage": "multitrack_page:enter",
+      "studio_page": "multitrack",
+      "multitrack_catalog_active_id": "",
+      "slots_with_audio": [
+        {
+          "slot": "Guitar",
+          "mt_tracks": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "persist_blob": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "page_snapshot": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "resolved": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          }
+        }
+      ],
+      "slots_with_audio_count": 1
+    },
+    {
+      "t": 1794851445.623,
+      "stage": "multitrack_page:after_history_bootstrap",
+      "studio_page": "multitrack",
+      "multitrack_catalog_active_id": "",
+      "slots_with_audio": [
+        {
+          "slot": "Guitar",
+          "mt_tracks": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "persist_blob": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "page_snapshot": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "resolved": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          }
+        }
+      ],
+      "slots_with_audio_count": 1
+    },
+    {
+      "t": 1794851470.598,
+      "stage": "run:page=multitrack",
+      "studio_page": "multitrack",
+      "multitrack_catalog_active_id": "",
+      "slots_with_audio": [
+        {
+          "slot": "Guitar",
+          "mt_tracks": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "persist_blob": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "page_snapshot": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "resolved": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          }
+        }
+      ],
+      "slots_with_audio_count": 1
+    },
+    {
+      "t": 1794851470.876,
+      "stage": "multitrack_page:enter",
+      "studio_page": "multitrack",
+      "multitrack_catalog_active_id": "",
+      "slots_with_audio": [
+        {
+          "slot": "Guitar",
+          "mt_tracks": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "persist_blob": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "page_snapshot": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "resolved": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          }
+        }
+      ],
+      "slots_with_audio_count": 1
+    },
+    {
+      "t": 1794851470.901,
+      "stage": "multitrack_page:after_history_bootstrap",
+      "studio_page": "multitrack",
+      "multitrack_catalog_active_id": "",
+      "slots_with_audio": [
+        {
+          "slot": "Guitar",
+          "mt_tracks": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "persist_blob": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "page_snapshot": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "resolved": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          }
+        }
+      ],
+      "slots_with_audio_count": 1
+    },
+    {
+      "t": 1794851471.692,
+      "stage": "run:page=multitrack",
+      "studio_page": "multitrack",
+      "multitrack_catalog_active_id": "",
+      "slots_with_audio": [
+        {
+          "slot": "Guitar",
+          "mt_tracks": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "persist_blob": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "page_snapshot": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "resolved": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          }
+        },
+        {
+          "slot": "Sax / winds",
+          "mt_tracks": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          },
+          "persist_blob": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          },
+          "page_snapshot": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          },
+          "resolved": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          }
+        }
+      ],
+      "slots_with_audio_count": 2
+    },
+    {
+      "t": 1794851472.058,
+      "stage": "multitrack_page:enter",
+      "studio_page": "multitrack",
+      "multitrack_catalog_active_id": "",
+      "slots_with_audio": [
+        {
+          "slot": "Guitar",
+          "mt_tracks": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "persist_blob": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "page_snapshot": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "resolved": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          }
+        },
+        {
+          "slot": "Sax / winds",
+          "mt_tracks": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          },
+          "persist_blob": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          },
+          "page_snapshot": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          },
+          "resolved": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          }
+        }
+      ],
+      "slots_with_audio_count": 2
+    },
+    {
+      "t": 1794851472.122,
+      "stage": "multitrack_page:after_history_bootstrap",
+      "studio_page": "multitrack",
+      "multitrack_catalog_active_id": "",
+      "slots_with_audio": [
+        {
+          "slot": "Guitar",
+          "mt_tracks": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "persist_blob": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "page_snapshot": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "resolved": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          }
+        },
+        {
+          "slot": "Sax / winds",
+          "mt_tracks": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          },
+          "persist_blob": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          },
+          "page_snapshot": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          },
+          "resolved": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          }
+        }
+      ],
+      "slots_with_audio_count": 2
+    },
+    {
+      "t": 1794851475.878,
+      "stage": "run:page=multitrack",
+      "studio_page": "multitrack",
+      "multitrack_catalog_active_id": "",
+      "slots_with_audio": [
+        {
+          "slot": "Guitar",
+          "mt_tracks": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "persist_blob": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "page_snapshot": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "resolved": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          }
+        },
+        {
+          "slot": "Sax / winds",
+          "mt_tracks": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          },
+          "persist_blob": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          },
+          "page_snapshot": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          },
+          "resolved": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          }
+        }
+      ],
+      "slots_with_audio_count": 2
+    },
+    {
+      "t": 1794851476.112,
+      "stage": "multitrack_page:enter",
+      "studio_page": "multitrack",
+      "multitrack_catalog_active_id": "",
+      "slots_with_audio": [
+        {
+          "slot": "Guitar",
+          "mt_tracks": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "persist_blob": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "page_snapshot": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "resolved": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          }
+        },
+        {
+          "slot": "Sax / winds",
+          "mt_tracks": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          },
+          "persist_blob": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          },
+          "page_snapshot": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          },
+          "resolved": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          }
+        }
+      ],
+      "slots_with_audio_count": 2
+    },
+    {
+      "t": 1794851476.152,
+      "stage": "multitrack_page:after_history_bootstrap",
+      "studio_page": "multitrack",
+      "multitrack_catalog_active_id": "",
+      "slots_with_audio": [
+        {
+          "slot": "Guitar",
+          "mt_tracks": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "persist_blob": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "page_snapshot": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "resolved": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          }
+        },
+        {
+          "slot": "Sax / winds",
+          "mt_tracks": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          },
+          "persist_blob": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          },
+          "page_snapshot": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          },
+          "resolved": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          }
+        }
+      ],
+      "slots_with_audio_count": 2
+    },
+    {
+      "t": 1794851477.441,
+      "stage": "run:page=multitrack",
+      "studio_page": "multitrack",
+      "multitrack_catalog_active_id": "",
+      "slots_with_audio": [
+        {
+          "slot": "Guitar",
+          "mt_tracks": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "persist_blob": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "page_snapshot": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "resolved": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          }
+        },
+        {
+          "slot": "Sax / winds",
+          "mt_tracks": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          },
+          "persist_blob": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          },
+          "page_snapshot": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          },
+          "resolved": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          }
+        }
+      ],
+      "slots_with_audio_count": 2
+    },
+    {
+      "t": 1794851477.687,
+      "stage": "multitrack_page:enter",
+      "studio_page": "multitrack",
+      "multitrack_catalog_active_id": "",
+      "slots_with_audio": [
+        {
+          "slot": "Guitar",
+          "mt_tracks": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "persist_blob": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "page_snapshot": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "resolved": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          }
+        },
+        {
+          "slot": "Sax / winds",
+          "mt_tracks": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          },
+          "persist_blob": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          },
+          "page_snapshot": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          },
+          "resolved": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          }
+        }
+      ],
+      "slots_with_audio_count": 2
+    },
+    {
+      "t": 1794851477.73,
+      "stage": "multitrack_page:after_history_bootstrap",
+      "studio_page": "multitrack",
+      "multitrack_catalog_active_id": "",
+      "slots_with_audio": [
+        {
+          "slot": "Guitar",
+          "mt_tracks": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "persist_blob": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "page_snapshot": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "resolved": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          }
+        },
+        {
+          "slot": "Sax / winds",
+          "mt_tracks": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          },
+          "persist_blob": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          },
+          "page_snapshot": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          },
+          "resolved": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          }
+        }
+      ],
+      "slots_with_audio_count": 2
+    },
+    {
+      "t": 1794851490.058,
+      "stage": "run:page=multitrack",
+      "studio_page": "multitrack",
+      "multitrack_catalog_active_id": "",
+      "slots_with_audio": [
+        {
+          "slot": "Guitar",
+          "mt_tracks": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "persist_blob": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "page_snapshot": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "resolved": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          }
+        },
+        {
+          "slot": "Sax / winds",
+          "mt_tracks": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          },
+          "persist_blob": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          },
+          "page_snapshot": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          },
+          "resolved": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          }
+        }
+      ],
+      "slots_with_audio_count": 2
+    },
+    {
+      "t": 1794851490.701,
+      "stage": "run:page=multitrack",
+      "studio_page": "multitrack",
+      "multitrack_catalog_active_id": "",
+      "slots_with_audio": [
+        {
+          "slot": "Guitar",
+          "mt_tracks": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "persist_blob": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "page_snapshot": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "resolved": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          }
+        },
+        {
+          "slot": "Sax / winds",
+          "mt_tracks": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          },
+          "persist_blob": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          },
+          "page_snapshot": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          },
+          "resolved": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          }
+        }
+      ],
+      "slots_with_audio_count": 2
+    },
+    {
+      "t": 1794851490.971,
+      "stage": "multitrack_page:enter",
+      "studio_page": "multitrack",
+      "multitrack_catalog_active_id": "",
+      "slots_with_audio": [
+        {
+          "slot": "Guitar",
+          "mt_tracks": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "persist_blob": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "page_snapshot": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "resolved": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          }
+        },
+        {
+          "slot": "Sax / winds",
+          "mt_tracks": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          },
+          "persist_blob": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          },
+          "page_snapshot": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          },
+          "resolved": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          }
+        }
+      ],
+      "slots_with_audio_count": 2
+    },
+    {
+      "t": 1794851491.021,
+      "stage": "multitrack_page:after_history_bootstrap",
+      "studio_page": "multitrack",
+      "multitrack_catalog_active_id": "",
+      "slots_with_audio": [
+        {
+          "slot": "Guitar",
+          "mt_tracks": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "persist_blob": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "page_snapshot": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "resolved": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          }
+        },
+        {
+          "slot": "Sax / winds",
+          "mt_tracks": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          },
+          "persist_blob": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          },
+          "page_snapshot": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          },
+          "resolved": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          }
+        }
+      ],
+      "slots_with_audio_count": 2
+    },
+    {
+      "t": 1794851494.722,
+      "stage": "run:page=multitrack",
+      "studio_page": "multitrack",
+      "multitrack_catalog_active_id": "",
+      "slots_with_audio": [
+        {
+          "slot": "Guitar",
+          "mt_tracks": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "persist_blob": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "page_snapshot": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "resolved": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          }
+        },
+        {
+          "slot": "Sax / winds",
+          "mt_tracks": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          },
+          "persist_blob": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          },
+          "page_snapshot": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          },
+          "resolved": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          }
+        }
+      ],
+      "slots_with_audio_count": 2
+    },
+    {
+      "t": 1794851495.063,
+      "stage": "page_change_save:entry",
+      "studio_page": "practice",
+      "multitrack_catalog_active_id": "",
+      "target_page": "practice",
+      "nav_origin": "user_navigation",
+      "slots_with_audio": [
+        {
+          "slot": "Guitar",
+          "mt_tracks": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "persist_blob": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "page_snapshot": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "resolved": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          }
+        },
+        {
+          "slot": "Sax / winds",
+          "mt_tracks": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          },
+          "persist_blob": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          },
+          "page_snapshot": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          },
+          "resolved": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          }
+        }
+      ],
+      "slots_with_audio_count": 2
+    },
+    {
+      "t": 1794851495.132,
+      "stage": "page_change_save:entry",
+      "studio_page": "practice",
+      "multitrack_catalog_active_id": "",
+      "target_page": "practice",
+      "nav_origin": "user_navigation",
+      "slots_with_audio": [
+        {
+          "slot": "Guitar",
+          "mt_tracks": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "persist_blob": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "page_snapshot": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "resolved": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          }
+        },
+        {
+          "slot": "Sax / winds",
+          "mt_tracks": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          },
+          "persist_blob": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          },
+          "page_snapshot": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          },
+          "resolved": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          }
+        }
+      ],
+      "slots_with_audio_count": 2
+    },
+    {
+      "t": 1794851495.978,
+      "stage": "run:page=practice",
+      "studio_page": "practice",
+      "multitrack_catalog_active_id": "",
+      "slots_with_audio": [
+        {
+          "slot": "Guitar",
+          "mt_tracks": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "persist_blob": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "page_snapshot": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "resolved": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          }
+        },
+        {
+          "slot": "Sax / winds",
+          "mt_tracks": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          },
+          "persist_blob": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          },
+          "page_snapshot": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          },
+          "resolved": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          }
+        }
+      ],
+      "slots_with_audio_count": 2
+    },
+    {
+      "t": 1794851504.104,
+      "stage": "run:page=practice",
+      "studio_page": "practice",
+      "multitrack_catalog_active_id": "",
+      "slots_with_audio": [
+        {
+          "slot": "Guitar",
+          "mt_tracks": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "persist_blob": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "page_snapshot": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "resolved": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          }
+        },
+        {
+          "slot": "Sax / winds",
+          "mt_tracks": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          },
+          "persist_blob": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          },
+          "page_snapshot": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          },
+          "resolved": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          }
+        }
+      ],
+      "slots_with_audio_count": 2
+    },
+    {
+      "t": 1794851504.693,
+      "stage": "run:page=practice",
+      "studio_page": "practice",
+      "multitrack_catalog_active_id": "",
+      "slots_with_audio": [
+        {
+          "slot": "Guitar",
+          "mt_tracks": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "persist_blob": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "page_snapshot": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "resolved": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          }
+        },
+        {
+          "slot": "Sax / winds",
+          "mt_tracks": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          },
+          "persist_blob": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          },
+          "page_snapshot": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          },
+          "resolved": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          }
+        }
+      ],
+      "slots_with_audio_count": 2
+    },
+    {
+      "t": 1794851509.667,
+      "stage": "run:page=practice",
+      "studio_page": "practice",
+      "multitrack_catalog_active_id": "",
+      "slots_with_audio": [
+        {
+          "slot": "Guitar",
+          "mt_tracks": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "persist_blob": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "page_snapshot": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "resolved": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          }
+        },
+        {
+          "slot": "Sax / winds",
+          "mt_tracks": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          },
+          "persist_blob": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          },
+          "page_snapshot": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          },
+          "resolved": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          }
+        }
+      ],
+      "slots_with_audio_count": 2
+    },
+    {
+      "t": 1794851509.827,
+      "stage": "page_change_save:entry",
+      "studio_page": "multitrack",
+      "multitrack_catalog_active_id": "",
+      "target_page": "multitrack",
+      "nav_origin": "user_navigation",
+      "slots_with_audio": [
+        {
+          "slot": "Guitar",
+          "mt_tracks": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "persist_blob": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "page_snapshot": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "resolved": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          }
+        },
+        {
+          "slot": "Sax / winds",
+          "mt_tracks": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          },
+          "persist_blob": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          },
+          "page_snapshot": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          },
+          "resolved": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          }
+        }
+      ],
+      "slots_with_audio_count": 2
+    },
+    {
+      "t": 1794851509.87,
+      "stage": "page_change_save:entry",
+      "studio_page": "multitrack",
+      "multitrack_catalog_active_id": "",
+      "target_page": "multitrack",
+      "nav_origin": "user_navigation",
+      "slots_with_audio": [
+        {
+          "slot": "Guitar",
+          "mt_tracks": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "persist_blob": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "page_snapshot": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "resolved": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          }
+        },
+        {
+          "slot": "Sax / winds",
+          "mt_tracks": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          },
+          "persist_blob": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          },
+          "page_snapshot": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          },
+          "resolved": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          }
+        }
+      ],
+      "slots_with_audio_count": 2
+    },
+    {
+      "t": 1794851510.348,
+      "stage": "run:page=multitrack",
+      "studio_page": "multitrack",
+      "multitrack_catalog_active_id": "",
+      "slots_with_audio": [
+        {
+          "slot": "Guitar",
+          "mt_tracks": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "persist_blob": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "page_snapshot": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "resolved": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          }
+        },
+        {
+          "slot": "Sax / winds",
+          "mt_tracks": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          },
+          "persist_blob": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          },
+          "page_snapshot": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          },
+          "resolved": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          }
+        }
+      ],
+      "slots_with_audio_count": 2
+    },
+    {
+      "t": 1794851510.564,
+      "stage": "multitrack_page:enter",
+      "studio_page": "multitrack",
+      "multitrack_catalog_active_id": "",
+      "slots_with_audio": [
+        {
+          "slot": "Guitar",
+          "mt_tracks": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "persist_blob": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "page_snapshot": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "resolved": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          }
+        },
+        {
+          "slot": "Sax / winds",
+          "mt_tracks": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          },
+          "persist_blob": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          },
+          "page_snapshot": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          },
+          "resolved": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          }
+        }
+      ],
+      "slots_with_audio_count": 2
+    },
+    {
+      "t": 1794851510.606,
+      "stage": "multitrack_page:after_history_bootstrap",
+      "studio_page": "multitrack",
+      "multitrack_catalog_active_id": "",
+      "slots_with_audio": [
+        {
+          "slot": "Guitar",
+          "mt_tracks": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "persist_blob": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "page_snapshot": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "resolved": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          }
+        },
+        {
+          "slot": "Sax / winds",
+          "mt_tracks": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          },
+          "persist_blob": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          },
+          "page_snapshot": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          },
+          "resolved": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          }
+        }
+      ],
+      "slots_with_audio_count": 2
+    },
+    {
+      "t": 1794851513.499,
+      "stage": "run:page=multitrack",
+      "studio_page": "multitrack",
+      "multitrack_catalog_active_id": "",
+      "slots_with_audio": [
+        {
+          "slot": "Guitar",
+          "mt_tracks": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "persist_blob": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "page_snapshot": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "resolved": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          }
+        },
+        {
+          "slot": "Sax / winds",
+          "mt_tracks": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          },
+          "persist_blob": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          },
+          "page_snapshot": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          },
+          "resolved": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          }
+        }
+      ],
+      "slots_with_audio_count": 2
+    },
+    {
+      "t": 1794851514.408,
+      "stage": "run:page=multitrack",
+      "studio_page": "multitrack",
+      "multitrack_catalog_active_id": "",
+      "slots_with_audio": [
+        {
+          "slot": "Guitar",
+          "mt_tracks": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "persist_blob": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "page_snapshot": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "resolved": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          }
+        },
+        {
+          "slot": "Sax / winds",
+          "mt_tracks": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          },
+          "persist_blob": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          },
+          "page_snapshot": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          },
+          "resolved": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          }
+        }
+      ],
+      "slots_with_audio_count": 2
+    },
+    {
+      "t": 1794851515.243,
+      "stage": "run:page=multitrack",
+      "studio_page": "multitrack",
+      "multitrack_catalog_active_id": "",
+      "slots_with_audio": [
+        {
+          "slot": "Guitar",
+          "mt_tracks": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "persist_blob": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "page_snapshot": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "resolved": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          }
+        },
+        {
+          "slot": "Sax / winds",
+          "mt_tracks": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          },
+          "persist_blob": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          },
+          "page_snapshot": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          },
+          "resolved": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          }
+        }
+      ],
+      "slots_with_audio_count": 2
+    },
+    {
+      "t": 1794851515.481,
+      "stage": "multitrack_page:enter",
+      "studio_page": "multitrack",
+      "multitrack_catalog_active_id": "",
+      "slots_with_audio": [
+        {
+          "slot": "Guitar",
+          "mt_tracks": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "persist_blob": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "page_snapshot": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "resolved": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          }
+        },
+        {
+          "slot": "Sax / winds",
+          "mt_tracks": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          },
+          "persist_blob": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          },
+          "page_snapshot": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          },
+          "resolved": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          }
+        }
+      ],
+      "slots_with_audio_count": 2
+    },
+    {
+      "t": 1794851515.52,
+      "stage": "multitrack_page:after_history_bootstrap",
+      "studio_page": "multitrack",
+      "multitrack_catalog_active_id": "",
+      "slots_with_audio": [
+        {
+          "slot": "Guitar",
+          "mt_tracks": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "persist_blob": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "page_snapshot": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          },
+          "resolved": {
+            "present": true,
+            "bytes": 502316,
+            "fp": "074fabe0"
+          }
+        },
+        {
+          "slot": "Sax / winds",
+          "mt_tracks": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          },
+          "persist_blob": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          },
+          "page_snapshot": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          },
+          "resolved": {
+            "present": true,
+            "bytes": 525100,
+            "fp": "eaf6ea8c"
+          }
+        }
+      ],
+      "slots_with_audio_count": 2
+    }
+  ]
+}

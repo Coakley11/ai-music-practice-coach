@@ -686,6 +686,7 @@ def _persist_session_tracks(
             track["local_path"] = store.get("local_path")
         if store.get("storage_ref"):
             track["storage_ref"] = store.get("storage_ref")
+        track["cloud_verified"] = bool(store.get("cloud_verified"))
         track["playback_status"] = store.get("playback_status") or PLAYBACK_METADATA_ONLY
         if store.get("storage_error"):
             track["storage_error"] = store.get("storage_error")
@@ -729,6 +730,7 @@ def _persist_session_backing(
         fields["backing_local_path"] = store.get("local_path")
     if store.get("storage_ref"):
         fields["backing_storage_ref"] = store.get("storage_ref")
+        fields["backing_cloud_verified"] = bool(store.get("cloud_verified"))
     elif fields.get("backing_prepared_at"):
         fields.pop("backing_storage_ref", None)
     if not fields.get("backing_prepared_at"):
@@ -885,6 +887,13 @@ def save_multitrack_session_with_notes(
             existing_session=existing_session if active_mid == mid else migrate_multitrack_session(dict(row)),
         )
         row = update_multitrack_session(st, mid, fields)
+        try:
+            from multitrack_project_audio_restore import note_project_saved, record_project_save_status
+
+            note_project_saved(session_state, mid)
+            record_project_save_status(session_state, fields)
+        except ImportError:
+            pass
         session_state[_LAST_CATALOG_MULTITRACK_KEY] = mid
         session_state[_ACTIVE_CATALOG_MULTITRACK_KEY] = mid
         session_state["multitrack_catalog_active_id"] = mid

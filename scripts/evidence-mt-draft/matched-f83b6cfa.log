@@ -1,0 +1,131 @@
+1060 test files in 27 chunks of up to 40
+candidate-only files: ['test_multitrack_draft_store.py', 'test_multitrack_recorded_take_validation.py']
+baseline-only files:  none
+
+=== chunk 1/27 (40 files) ===
+  [mt-stage1-f83b6cfa-base-01] 1204 outcomes, rc=1, 324s
+  [mt-stage1-f83b6cfa-cand-01] 1204 outcomes, rc=1, 291s
+
+=== chunk 2/27 (40 files) ===
+  [mt-stage1-f83b6cfa-base-02] 1606 outcomes, rc=1, 462s
+  [mt-stage1-f83b6cfa-cand-02] 1606 outcomes, rc=1, 406s
+
+=== chunk 3/27 (40 files) ===
+  [mt-stage1-f83b6cfa-base-03] 464 outcomes, rc=1, 117s
+  [mt-stage1-f83b6cfa-cand-03] 464 outcomes, rc=1, 119s
+
+=== chunk 4/27 (40 files) ===
+  [mt-stage1-f83b6cfa-base-04] 568 outcomes, rc=1, 66s
+  [mt-stage1-f83b6cfa-cand-04] 568 outcomes, rc=1, 69s
+
+=== chunk 5/27 (40 files) ===
+  [mt-stage1-f83b6cfa-base-05] 1059 outcomes, rc=1, 66s
+  [mt-stage1-f83b6cfa-cand-05] 1059 outcomes, rc=1, 64s
+
+=== chunk 6/27 (40 files) ===
+  [mt-stage1-f83b6cfa-base-06] 843 outcomes, rc=1, 134s
+  [mt-stage1-f83b6cfa-cand-06] 843 outcomes, rc=1, 152s
+
+=== chunk 7/27 (40 files) ===
+  [mt-stage1-f83b6cfa-base-07] 631 outcomes, rc=1, 59s
+  [mt-stage1-f83b6cfa-cand-07] 631 outcomes, rc=1, 60s
+
+=== chunk 8/27 (40 files) ===
+  [mt-stage1-f83b6cfa-base-08] 387 outcomes, rc=1, 72s
+  [mt-stage1-f83b6cfa-cand-08] 387 outcomes, rc=1, 66s
+
+=== chunk 9/27 (40 files) ===
+  [mt-stage1-f83b6cfa-base-09] 475 outcomes, rc=1, 84s
+  [mt-stage1-f83b6cfa-cand-09] 475 outcomes, rc=1, 87s
+
+=== chunk 10/27 (40 files) ===
+  [mt-stage1-f83b6cfa-base-10] 471 outcomes, rc=1, 37s
+  [mt-stage1-f83b6cfa-cand-10] 471 outcomes, rc=1, 34s
+
+=== chunk 11/27 (40 files) ===
+  [mt-stage1-f83b6cfa-base-11] 803 outcomes, rc=1, 106s
+  [mt-stage1-f83b6cfa-cand-11] 803 outcomes, rc=1, 118s
+
+=== chunk 12/27 (40 files) ===
+  [mt-stage1-f83b6cfa-base-12] 629 outcomes, rc=1, 119s
+  [mt-stage1-f83b6cfa-cand-12] 629 outcomes, rc=1, 124s
+
+=== chunk 13/27 (40 files) ===
+  [mt-stage1-f83b6cfa-base-13] 402 outcomes, rc=1, 48s
+  [mt-stage1-f83b6cfa-cand-13] 402 outcomes, rc=1, 45s
+
+=== chunk 14/27 (40 files) ===
+  [mt-stage1-f83b6cfa-base-14] 587 outcomes, rc=1, 358s
+  [mt-stage1-f83b6cfa-cand-14] 587 outcomes, rc=1, 410s
+
+=== chunk 15/27 (40 files) ===
+  [mt-stage1-f83b6cfa-base-15] 386 outcomes, rc=1, 98s
+  [mt-stage1-f83b6cfa-cand-15] 386 outcomes, rc=1, 103s
+
+=== chunk 16/27 (40 files) ===
+  [mt-stage1-f83b6cfa-base-16] 393 outcomes, rc=1, 49s
+  [mt-stage1-f83b6cfa-cand-16] 393 outcomes, rc=1, 49s
+
+=== chunk 17/27 (40 files) ===
+  [mt-stage1-f83b6cfa-base-17] 850 outcomes, rc=1, 47s
+  [mt-stage1-f83b6cfa-cand-17] 850 outcomes, rc=1, 42s
+
+=== chunk 18/27 (40 files) ===
+  [mt-stage1-f83b6cfa-base-18] 327 outcomes, rc=1, 55s
+  [mt-stage1-f83b6cfa-cand-18] 327 outcomes, rc=1, 55s
+
+=== chunk 19/27 (40 files) ===
+  [mt-stage1-f83b6cfa-base-19] 499 outcomes, rc=1, 38s
+  [mt-stage1-f83b6cfa-cand-19] 499 outcomes, rc=1, 37s
+
+=== chunk 20/27 (40 files) ===
+  [mt-stage1-f83b6cfa-base-20] 765 outcomes, rc=1, 197s
+  [mt-stage1-f83b6cfa-cand-20] 765 outcomes, rc=1, 192s
+
+=== chunk 21/27 (40 files) ===
+  [mt-stage1-f83b6cfa-base-21] 454 outcomes, rc=1, 61s
+  [mt-stage1-f83b6cfa-cand-21] 454 outcomes, rc=1, 57s
+
+=== chunk 22/27 (40 files) ===
+  [mt-stage1-f83b6cfa-base-22] 735 outcomes, rc=1, 135s
+  [mt-stage1-f83b6cfa-cand-22] 735 outcomes, rc=1, 136s
+
+=== chunk 23/27 (40 files) ===
+  [mt-stage1-f83b6cfa-base-23] 506 outcomes, rc=1, 45s
+  [mt-stage1-f83b6cfa-cand-23] 506 outcomes, rc=1, 51s
+
+=== chunk 24/27 (40 files) ===
+  [mt-stage1-f83b6cfa-base-24] 615 outcomes, rc=1, 197s
+  [mt-stage1-f83b6cfa-cand-24] 615 outcomes, rc=1, 193s
+
+=== chunk 25/27 (40 files) ===
+  [mt-stage1-f83b6cfa-base-25] 350 outcomes, rc=1, 54s
+  [mt-stage1-f83b6cfa-cand-25] 350 outcomes, rc=1, 56s
+
+=== chunk 26/27 (40 files) ===
+  [mt-stage1-f83b6cfa-base-26] 309 outcomes, rc=1, 39s
+  [mt-stage1-f83b6cfa-cand-26] 309 outcomes, rc=1, 37s
+
+=== chunk 27/27 (20 files) ===
+  [mt-stage1-f83b6cfa-base-27] 0 outcomes, rc=4, 2s
+  [mt-stage1-f83b6cfa-base-27] WARNING: no outcomes parsed - see mt-stage1-f83b6cfa-base-27.txt
+  [mt-stage1-f83b6cfa-cand-27] 319 outcomes, rc=1, 27s
+
+================ MATCHED COMPARISON ================
+baseline  16313 outcomes  {'ERROR': 3, 'FAILED': 310, 'PASSED': 15992, 'SKIPPED': 2, 'SUBFAILED': 6}
+candidate 16632 outcomes  {'ERROR': 11, 'FAILED': 316, 'PASSED': 16297, 'SKIPPED': 2, 'SUBFAILED': 6}
+new tests on the candidate side: 319 {'FAILED': 6, 'PASSED': 313}
+
+DIFFERENCES: 10 test ID(s) changed outcome
+  PASSED -> ERROR  tests/test_backing_card_actions.py::test_advanced_settings_opens_the_existing_expander_and_scrolls_to_it
+  PASSED -> ERROR  tests/test_backing_card_actions.py::test_key_cycling_on_the_card_is_the_radio_click[None-On]
+  PASSED -> ERROR  tests/test_backing_card_actions.py::test_key_cycling_on_the_card_is_the_radio_click[Off-On]
+  PASSED -> ERROR  tests/test_backing_card_actions.py::test_key_cycling_on_the_card_is_the_radio_click[On-Off]
+  PASSED -> ERROR  tests/test_backing_card_actions.py::test_lead_sheet_on_the_card_before_a_take_is_the_preference_play_reads
+  PASSED -> ERROR  tests/test_backing_card_actions.py::test_lead_sheet_on_the_card_with_a_take_is_the_open_close_click[False-True]
+  PASSED -> ERROR  tests/test_backing_card_actions.py::test_lead_sheet_on_the_card_with_a_take_is_the_open_close_click[True-False]
+  PASSED -> ERROR  tests/test_backing_card_actions.py::test_the_slot_is_set_per_run_and_reset_with_the_card
+  PASSED -> FAILED  tests/test_backing_source_identity_cards.py::TestSongsSourceCaptions::test_composition_and_custom_captions_include_creative
+  FAILED -> PASSED  tests/test_music_navigation_speed.py::TestMissionArtifactProjectionSkip::test_projection_skip_is_faster_on_repeat
+
+report: C:\tmp\ai-music-mtfix\scripts\matched\mt-stage1-f83b6cfa-chunked-compare.json

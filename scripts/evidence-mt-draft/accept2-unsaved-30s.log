@@ -1,0 +1,33 @@
+worktree : /c/tmp/ai-music-mtfix
+port     : 8712
+cleared  : ignored app state under /c/tmp/ai-music-mtfix/data (tracked fixtures kept)
+data root: /tmp/mtfix-root-UaCzTO
+server pid (shell): 211517
+listener pid(s): 732 
+  PASS  R1 the app boots
+  PASS  R2 Multitrack opens
+  PASS  R3 a take is recorded  [Guitar, 30s]
+    take size: 3117100 bytes (2.97 MiB; the persist cap is 2.00 MiB)
+  PASS  R4 the take is in the live session  [fp=55f64168, 3117100 bytes]
+    durable copy (persist blob) before the refresh: NONE
+    draft files on the server before the refresh: 1 (3117100 bytes)
+  PASS  R4c the take was kept as its own file  [1 draft file(s)]
+
+    9 trace line(s) after the refresh
+  PASS  R5 THE UNSAVED TAKE SURVIVED A REFRESH  [found=55f64168 in mt_tracks (recorded 55f64168)]
+    audio elements on the page after the refresh: 1
+  PASS  R6 the page says what it is  [looked for 'unsaved draft']
+  PASS  R7 a long take states the temporary-storage limit
+
+======================================================================
+  PASS  R1 the app boots
+  PASS  R2 Multitrack opens
+  PASS  R3 a take is recorded
+  PASS  R4 the take is in the live session
+  PASS  R4c the take was kept as its own file
+  PASS  R5 THE UNSAVED TAKE SURVIVED A REFRESH
+  PASS  R6 the page says what it is
+  PASS  R7 a long take states the temporary-storage limit
+
+8/8 gates passed
+stopping the server

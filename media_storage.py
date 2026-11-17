@@ -1231,6 +1231,24 @@ def build_track_supabase_object_key(
     return f"{uid}/{ws}/multitrack/{mid}/{tid}{ext}"
 
 
+def verify_uploaded_object(client: Any, bucket: str, object_key: str, size: int) -> bool:
+    """True only when the bucket lists this object at exactly ``size`` bytes."""
+    folder, _, name = str(object_key).rpartition("/")
+    try:
+        items = client.storage.from_(bucket).list(folder, {"search": name, "limit": 20})
+    except Exception:
+        return False
+    for item in items or []:
+        if not isinstance(item, dict) or str(item.get("name") or "") != name:
+            continue
+        meta = item.get("metadata") if isinstance(item.get("metadata"), dict) else {}
+        try:
+            return int(meta.get("size")) == int(size)
+        except (TypeError, ValueError):
+            return False
+    return False
+
+
 def persist_track_audio(
     st: Any | None,
     multitrack_id: str,
@@ -1268,6 +1286,7 @@ def persist_track_audio(
 
     storage_ref = ""
     cloud_err = ""
+    cloud_verified = False
     if _cloud_storage_enabled():
         client = _service_storage_client()
         if client is None:
@@ -1291,6 +1310,12 @@ def persist_track_audio(
                 storage_ref = build_storage_ref(bucket, object_key)
             except Exception as exc:
                 cloud_err = str(exc)
+            if storage_ref:
+                # An accepted upload is not yet a verified one: the object must be listed at the
+                # size that was sent before the project may say it is saved to the account.
+                cloud_verified = verify_uploaded_object(client, bucket, object_key, len(data))
+                if not cloud_verified:
+                    cloud_err = cloud_err or "upload_not_verified"
 
     if local_ok or storage_ref:
         return {
@@ -1298,7 +1323,8 @@ def persist_track_audio(
             "local_path": rel if local_ok else None,
             "storage_ref": storage_ref or None,
             "local_ok": local_ok,
-            "cloud_ok": bool(storage_ref),
+            "cloud_ok": bool(storage_ref) and cloud_verified,
+            "cloud_verified": bool(storage_ref) and cloud_verified,
             "local_error": local_err or None,
             "cloud_error": cloud_err or None,
             "playback_status": PLAYBACK_PLAYABLE,
@@ -1342,6 +1368,7 @@ def persist_backing_audio(
     except Exception as exc:
         local_err = str(exc)
 
+    backing_verified = False
     storage_ref = ""
     cloud_err = ""
     if _cloud_storage_enabled():
@@ -1360,6 +1387,10 @@ def persist_backing_audio(
                 storage_ref = build_storage_ref(bucket, object_key)
             except Exception as exc:
                 cloud_err = str(exc)
+            if storage_ref:
+                backing_verified = verify_uploaded_object(client, bucket, object_key, len(data))
+                if not backing_verified:
+                    cloud_err = cloud_err or "upload_not_verified"
 
     if local_ok or storage_ref:
         return {
@@ -1367,7 +1398,8 @@ def persist_backing_audio(
             "local_path": rel if local_ok else None,
             "storage_ref": storage_ref or None,
             "local_ok": local_ok,
-            "cloud_ok": bool(storage_ref),
+            "cloud_ok": bool(storage_ref) and backing_verified,
+            "cloud_verified": bool(storage_ref) and backing_verified,
             "local_error": local_err or None,
             "cloud_error": cloud_err or None,
             "playback_status": PLAYBACK_PLAYABLE,
