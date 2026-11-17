@@ -36,6 +36,7 @@ EVID = SCRIPTS / "evidence-mt-save-project"
 EVID.mkdir(parents=True, exist_ok=True)
 DATA1 = Path(tempfile.mkdtemp(prefix="mtsp-disk1-"))
 DATA2 = Path(tempfile.mkdtemp(prefix="mtsp-disk2-"))
+DATA3 = Path(tempfile.mkdtemp(prefix="mtsp-disk3-"))
 os.environ["MUSIC_APP_DATA_DIR"] = str(DATA1)  # before the helpers read it
 sys.path.insert(0, str(SCRIPTS))
 sys.path.insert(0, str(ROOT))
@@ -122,12 +123,12 @@ def start_cloud() -> None:
     raise SystemExit("stand-in cloud did not start")
 
 
-def start_app(data: Path, tag: str) -> None:
+def start_app(data: Path, tag: str, user: str = TEST_USER) -> None:
     if listening(APP_PORT):
         raise SystemExit(f"REFUSING: {APP_PORT} is in use")
     env = dict(os.environ)
     env.update({"SUITE_SUPABASE_URL": f"http://127.0.0.1:{CLOUD_PORT}", "SUITE_SUPABASE_KEY": FAKE_KEY,
-                "SUITE_USER_ID": TEST_USER, "MUSIC_EGRESS_STRICT": "1", "MUSIC_APP_DATA_DIR": str(data),
+                "SUITE_USER_ID": user, "MUSIC_EGRESS_STRICT": "1", "MUSIC_APP_DATA_DIR": str(data),
                 "MUSIC_MT_DRAFT_TRACE": "1"})
     PROCS["app"] = subprocess.Popen(
         [sys.executable, "-m", "streamlit", "run", "streamlit_music_practice_app.py", "--server.port", str(APP_PORT),
@@ -430,6 +431,67 @@ def main() -> int:
                      f"{wav_info(restored[0].read_bytes())}")
             if take_sha:
                 reopen_and_check(browser, DATA2, take_sha[:8], "N2 another new session after the restart")
+
+            # Another project in the same account: its own take, and neither project gets the other's.
+            if take_sha and os.environ.get("MT_ISOLATION", "1") == "1":
+                pctx, ppage = new_context(browser)
+                try:
+                    H.goto_multitrack(ppage)
+                    H.settle(ppage, 10)
+                    open_expanders(ppage, ("project", "library", "save"))
+                    started = click_key(ppage, "mt_new_project_btn")
+                    H.settle(ppage, 8)
+                    before2 = len(trace_rows(DATA2))
+                    rec2 = bool(H.record_once(ppage, SLOT, seconds=25))
+                    H.settle(ppage, 10)
+                    fp2, size2 = live_fp(DATA2, before2)
+                    open_expanders(ppage, ("project", "library", "save"))
+                    fill(ppage, "mt_history_save_name", "Second project")
+                    H.settle(ppage, 2)
+                    saved2 = click_key(ppage, "mt_history_save_new_btn") or click_key(ppage, "mt_history_save_as_new_btn")
+                    H.settle(ppage, 15)
+                    mark("X1 a second project gets its own take and is saved",
+                         started and rec2 and bool(fp2) and fp2 != take_sha[:8] and saved2,
+                         f"new={started} rec={rec2} fp={fp2} saved={saved2}")
+                    # Reopen the FIRST project from the library: it must bring its own audio.
+                    open_expanders(ppage, ("project", "library", "saved", "all projects"))
+                    before_load = len(trace_rows(DATA2))
+                    loaded = False
+                    for b in ppage.locator('[class*="st-key-mt_hist_load_"] button').all():
+                        try:
+                            row = b.locator("xpath=ancestor::div[contains(@class,'stHorizontalBlock')][1]").inner_text()
+                        except Exception:
+                            row = ""
+                        if PROJECT.lower() in (row or "").lower() and b.is_enabled():
+                            b.click()
+                            loaded = True
+                            break
+                    H.settle(ppage, 15)
+                    fp1, _ = live_fp(DATA2, before_load)
+                    mark("X2 reopening the first project brings ITS take, not the second project's",
+                         loaded and fp1 == take_sha[:8], f"load={loaded} fp={fp1} want={take_sha[:8]} second={fp2}")
+                finally:
+                    pctx.close()
+
+            # Another user on the same cloud: nothing of the first user's is listed or restored.
+            if take_sha and os.environ.get("MT_ISOLATION", "1") == "1":
+                stop_app()
+                start_app(DATA3, "server3-other-user", user="mt_isolated_OTHER_user")
+                uctx, upage = new_context(browser)
+                try:
+                    H.goto_multitrack(upage)
+                    H.settle(upage, 10)
+                    open_expanders(upage, ("project", "library", "saved"))
+                    t = H.low(H.main_body(upage))
+                    fpu, _ = live_fp(DATA3)
+                    mark("U1 another user does not see the first user's projects",
+                         PROJECT.lower() not in t and "second project" not in t)
+                    mark("U2 another user gets none of the first user's audio", fpu is None, f"fp={fpu}")
+                    copies = [q for q in DATA3.rglob("*.wav") if hashlib.sha256(q.read_bytes()).hexdigest() == take_sha]
+                    mark("U3 the first user's recording was not copied to the other user's disk", not copies,
+                         f"{len(copies)} cop(y/ies)")
+                finally:
+                    uctx.close()
             browser.close()
     finally:
         stop_app()
@@ -440,6 +502,7 @@ def main() -> int:
         else:
             shutil.rmtree(DATA1, ignore_errors=True)
             shutil.rmtree(DATA2, ignore_errors=True)
+            shutil.rmtree(DATA3, ignore_errors=True)
     failed = [g for g, ok, _ in RESULTS if not ok]
     print(f"\n{len(RESULTS) - len(failed)}/{len(RESULTS)} gates passed")
     return 1 if failed else 0
