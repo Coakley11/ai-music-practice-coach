@@ -7,7 +7,7 @@ from typing import Any, Callable
 
 import streamlit as st
 
-from music_feature_icons import feature_label
+from music_feature_icons import action_label, feature_label
 from practice_ui_labels import decorate_levels
 from song_catalog.user_overrides import (
     USER_CORRECTED,
@@ -416,7 +416,8 @@ def render_chart_editor_panel(
             height=120,
             key=f"chart_edit_order::{title}::{artist}",
         )
-        if st.button("Apply section order", key=f"chart_edit_apply_order::{title}"):
+        if st.button(action_label("apply_text", "Apply section order"),
+                     key=f"chart_edit_apply_order::{title}"):
             new_order = [ln.strip() for ln in order_text.splitlines() if ln.strip()]
             reordered: dict[str, list[str]] = {}
             for name in new_order:
@@ -432,7 +433,7 @@ def render_chart_editor_panel(
     with cols_top[0]:
         new_section = st.text_input("New section name", key=f"chart_edit_new_sec::{title}")
     with cols_top[1]:
-        if st.button("Add section", key=f"chart_edit_add_sec::{title}") and new_section.strip():
+        if st.button(action_label("add", "Add section"), key=f"chart_edit_add_sec::{title}") and new_section.strip():
             draft[new_section.strip()] = ["C"]
             st.rerun()
     with cols_top[2]:
@@ -441,7 +442,8 @@ def render_chart_editor_panel(
             ["—"] + section_names,
             key=f"chart_edit_del_sec_pick::{title}",
         )
-        if st.button("Delete section", key=f"chart_edit_del_sec::{title}"):
+        if st.button(action_label("delete", "Delete section"),
+                         key=f"chart_edit_del_sec::{title}"):
             if del_section != "—" and del_section in draft:
                 del draft[del_section]
                 st.rerun()
@@ -457,7 +459,10 @@ def render_chart_editor_panel(
             placeholder=f"{sec_name}: C | G/B | Am7 | F",
         )
         if quick and parse_pipe_chord_line(quick) != chords:
-            if st.button(f"Apply pasted chords to {sec_name}", key=f"chart_edit_quick_apply::{sec_name}"):
+            if st.button(
+                action_label("apply_text", f"Apply pasted chords to {sec_name}"),
+                key=f"chart_edit_quick_apply::{sec_name}",
+            ):
                 draft[sec_name] = parse_pipe_chord_line(quick)
                 st.rerun()
 
@@ -482,11 +487,17 @@ def render_chart_editor_panel(
 
         b1, b2, b3 = st.columns(3)
         with b1:
-            if st.button(f"+ bar @ end ({sec_name})", key=f"chart_edit_add_bar::{sec_name}"):
+            if st.button(
+                action_label("add", f"bar @ end ({sec_name})"),
+                key=f"chart_edit_add_bar::{sec_name}",
+            ):
                 draft[sec_name].append(draft[sec_name][-1] if draft[sec_name] else "C")
                 st.rerun()
         with b2:
-            if st.button(f"− last bar ({sec_name})", key=f"chart_edit_rm_bar::{sec_name}"):
+            if st.button(
+                action_label("remove", f"last bar ({sec_name})"),
+                key=f"chart_edit_rm_bar::{sec_name}",
+            ):
                 if draft[sec_name]:
                     draft[sec_name].pop()
                     st.rerun()
@@ -497,7 +508,10 @@ def render_chart_editor_panel(
                 key=f"chart_edit_dup::{sec_name}",
                 help="Append copies of the last bar(s).",
             )
-            if st.button(f"Duplicate ({sec_name})", key=f"chart_edit_dup_go::{sec_name}"):
+            if st.button(
+                action_label("duplicate", f"Duplicate ({sec_name})"),
+                key=f"chart_edit_dup_go::{sec_name}",
+            ):
                 try:
                     n = max(1, int(dup))
                 except ValueError:
@@ -517,22 +531,24 @@ def render_chart_editor_panel(
     save_a, save_b, save_c, save_d = st.columns(4)
     with save_a:
         save_corrected = st.button(
-            feature_label("charts_lyrics", "Save corrected chart"),
+            action_label("save", "Save corrected chart"),
             type="primary",
             use_container_width=True,
         )
     with save_b:
         save_verified = st.button(
-            feature_label("charts_lyrics", "Save as user verified"),
+            action_label("verify", "Save as user verified"),
             use_container_width=True,
         )
     with save_c:
         revert = st.button(
-            feature_label("charts_lyrics", "Revert to catalog"),
+            action_label("revert", "Revert to catalog"),
             use_container_width=True,
         )
     with save_d:
-        reload_draft = st.button("Reset draft", use_container_width=True)
+        reload_draft = st.button(
+            action_label("reset", "Reset draft"), use_container_width=True
+        )
 
     if reload_draft:
         st.session_state.pop(_draft_key(title, artist, level), None)
@@ -759,14 +775,18 @@ def render_chart_editor_panel(
 
     with st.expander("Backup / restore overrides", expanded=False):
         st.download_button(
-            "Download all overrides (JSON)",
+            action_label("download", "Download all overrides (JSON)"),
             export_overrides_json(),
             file_name="user_chart_overrides.json",
             mime="application/json",
         )
-        uploaded = st.file_uploader("Import overrides JSON", type=["json"], key="chart_override_import")
+        uploaded = st.file_uploader(
+            action_label("upload", "Import overrides JSON"),
+            type=["json"],
+            key="chart_override_import",
+        )
         if uploaded is not None:
-            if st.button("Merge imported overrides"):
+            if st.button(action_label("import", "Merge imported overrides")):
                 try:
                     count = import_overrides_json(uploaded.getvalue().decode("utf-8"), merge=True)
                     refresh_app_catalog_globals(module_globals)
