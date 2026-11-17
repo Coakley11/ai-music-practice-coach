@@ -34,6 +34,8 @@ LOG_PATH = Path(sys.argv[3])
 LOCK = threading.Lock()
 #: While this file exists, writes to the state table fail with 503 - a cloud outage, on demand.
 FAIL_FLAG = Path(sys.argv[4]) if len(sys.argv) > 4 else None
+#: Uploaded objects (the storage bucket) live here, beside the tables - they outlive the app server.
+STORE_DIR = DB_PATH.parent / (DB_PATH.stem + "-storage")
 RESERVED = {"select", "order", "limit", "offset", "on_conflict", "columns"}
 
 
@@ -157,11 +159,78 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(data)
         return len(data)
 
+    def _storage(self, path: str, raw_body: bytes, params: list) -> None:
+        """/storage/v1/object[/authenticated]/<bucket>/<key>: bytes kept under STORE_DIR."""
+        rest = path[len("/storage/v1/object/"):]
+        for prefix in ("authenticated/", "public/"):
+            if rest.startswith(prefix):
+                rest = rest[len(prefix):]
+        bucket, _, key = rest.partition("/")
+        target = STORE_DIR / bucket / key
+        if self.command in ("POST", "PUT"):
+            data = raw_body
+            ctype = self.headers.get("Content-Type") or ""
+            if ctype.startswith("multipart/form-data"):
+                from email.parser import BytesParser
+                from email.policy import HTTP
+
+                msg = BytesParser(policy=HTTP).parsebytes(
+                    b"Content-Type: " + ctype.encode() + bytes([13, 10, 13, 10]) + raw_body)
+                for part in msg.iter_parts():
+                    if part.get_filename() or part.get_param("name", header="content-disposition") == "file":
+                        data = part.get_payload(decode=True) or b""
+                        break
+            if target.exists() and "true" not in str(self.headers.get("x-upsert") or "").lower():
+                n = self._send(400, {"statusCode": "409", "error": "Duplicate", "message": "exists"})
+                self._log(400, "storage:" + bucket, params, len(raw_body), n, "duplicate")
+                return
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(data)
+            n = self._send(200, {"Key": f"{bucket}/{key}", "Id": str(uuid.uuid4()), "path": key})
+            self._log(200, "storage:" + bucket, params, len(raw_body), n, f"stored {len(data)} bytes")
+            return
+        if self.command == "GET":
+            if not target.is_file():
+                n = self._send(400, {"statusCode": "404", "error": "not_found", "message": "Object not found"})
+                self._log(400, "storage:" + bucket, params, 0, n, "missing")
+                return
+            data = target.read_bytes()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/octet-stream")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+            self._log(200, "storage:" + bucket, params, 0, len(data), "served")
+            return
+        n = self._send(405, {"message": "method"})
+        self._log(405, "storage:" + bucket, params, len(raw_body), n)
+
     def _handle(self):
         parts = urlsplit(self.path)
         length = int(self.headers.get("Content-Length") or 0)
         raw_body = self.rfile.read(length) if length else b""
         params = parse_qsl(parts.query, keep_blank_values=True)
+        if parts.path.startswith("/storage/v1/object/list/"):
+            bucket = parts.path[len("/storage/v1/object/list/"):].strip("/")
+            req = json.loads(raw_body.decode("utf-8") or "{}") if raw_body else {}
+            folder = STORE_DIR / bucket / str(req.get("prefix") or "")
+            search = str(req.get("search") or "")
+            items = []
+            if folder.is_dir() and not (FAIL_FLAG is not None and FAIL_FLAG.exists()):
+                for f in sorted(folder.iterdir()):
+                    if f.is_file() and (not search or search in f.name):
+                        items.append({"name": f.name, "id": f.name, "metadata": {"size": f.stat().st_size}})
+            n = self._send(200, items)
+            self._log(200, "storage-list:" + bucket, params, len(raw_body), n, f"{len(items)} item(s)")
+            return
+        if (parts.path.startswith("/storage/v1/object/") and FAIL_FLAG is not None and FAIL_FLAG.exists()
+                and self.command != "GET"):
+            n = self._send(503, {"message": "simulated outage"})
+            self._log(503, "storage", params, len(raw_body), n, "simulated outage")
+            return
+        if parts.path.startswith("/storage/v1/object/"):
+            self._storage(parts.path, raw_body, params)
+            return
         if not parts.path.startswith("/rest/v1/") or parts.path.startswith("/rest/v1/rpc/"):
             n = self._send(404, {"message": "not implemented by the fake"})
             self._log(404, parts.path[:40], params, len(raw_body), n, "unsupported path")

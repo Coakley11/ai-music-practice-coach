@@ -2023,7 +2023,19 @@ def render_reset_controls(
     def _body() -> None:
         st.caption("Your last page, filters, and inputs reload automatically.")
         if pending:
-            st.warning("This clears saved preferences for this app. Continue?")
+            warning = "This clears saved preferences for this app. Continue?"
+            if str(app_id or "").strip().lower() == "music":
+                # Reset to default erases the saved Karaoke setlist (a deliberate clear), so the
+                # question names what it will erase rather than calling it "preferences".
+                queue = st.session_state.get("karaoke_queue")
+                n = len(queue) if isinstance(queue, list) else 0
+                if n:
+                    warning = (
+                        f"This clears saved preferences for this app **and erases your saved Karaoke "
+                        f"setlist ({n} song{'s' if n != 1 else ''}, with their order and keys)**. "
+                        "This cannot be undone. Continue?"
+                    )
+            st.warning(warning)
             c1, c2 = st.columns(2)
             with c1:
                 st.button(

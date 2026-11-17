@@ -1,0 +1,13 @@
+[ks-targeted4] 81 test files, sequential
+  baseline  23 failed, 963 passed, 16 warnings, 160 subtests passed in 140.12s (0:02:20)
+  candidate 19 failed, 967 passed, 16 warnings, 160 subtests passed in 116.11s (0:01:56)
+  test ids: baseline=986 candidate=986
+  only in baseline (disappeared): 0
+  only in candidate (new): 0
+  outcome changed: 4
+     ~ tests/test_kc_restore_after_stop.py::test_a_stale_write_cannot_bring_back_the_stopped_session: FAILED -> PASSED
+     ~ tests/test_kc_restore_after_stop.py::test_saved_stop_marker_survives_the_disk_merge: FAILED -> PASSED
+     ~ tests/test_suite_session_restore.py::test_restore_missing_song_shows_neutral_notice: FAILED -> PASSED
+     ~ tests/test_suite_session_restore.py::test_restore_runs_once_and_applies_saved_state: FAILED -> PASSED
+  REGRESSIONS (passed -> not passed): 0
+VERDICT: CLEAN

@@ -18,6 +18,12 @@ meeting what is already stored, or a restore meeting the copies on disk and in t
 newest deliberate edit wins. A copy that is missing, or empty without a deliberate clear behind it,
 never replaces a real setlist. A deliberate Clear is an edit like any other, so it does win.
 
+Two deliberate edits that did not see each other (two tabs or devices, each editing the copy it
+loaded) are MERGED, not raced: every edit remembers the copy it started from (``base_stamp`` and a
+fingerprint per entry), so the newer edit's own changes - songs it added, songs it removed, entries
+it changed - are applied on top of the other copy. Nobody's change is silently lost, and the result
+does not depend on which save reaches storage first.
+
 No expiry: nothing here ages a setlist out.
 """
 from __future__ import annotations
@@ -31,6 +37,8 @@ QUEUE_KEY = "karaoke_queue"
 META_KEY = "karaoke_setlist_meta"
 SAVE_STATUS_KEY = "_karaoke_setlist_save_status"
 TRACE_KEY = "_karaoke_setlist_durability_trace"
+#: The stored version this session's setlist last agreed with: what its next edit starts from.
+SYNCED_KEY = "_karaoke_setlist_synced"
 
 _LOCK = threading.Lock()
 #: Last setlist this server process wrote to (or read from) each disk state file. All sessions on a
@@ -111,6 +119,84 @@ def better(candidate: tuple[list | None, dict | None], incumbent: tuple[list | N
     return _rank(*candidate) > _rank(*incumbent)
 
 
+def _entry_hash(entry: Any) -> str:
+    import hashlib
+    import json
+
+    try:
+        return hashlib.sha1(json.dumps(entry, sort_keys=True, default=str).encode("utf-8")).hexdigest()[:12]
+    except Exception:
+        return ""
+
+
+def _eid(entry: Any) -> str:
+    return str((entry or {}).get("entry_id") or "") if isinstance(entry, dict) else ""
+
+
+def fingerprints(queue: list | None) -> dict[str, str]:
+    return {_eid(e): _entry_hash(e) for e in (queue or []) if _eid(e)}
+
+
+def _stamp(meta: dict | None) -> str:
+    return str((meta or {}).get("saved_at") or "")
+
+
+def _three_way(newer: tuple[list, dict], older: tuple[list, dict]) -> tuple[list, dict]:
+    """Apply the newer edit's own changes (against the copy it started from) on top of ``older``."""
+    mine, meta = newer
+    theirs, older_meta = older
+    base = dict((meta or {}).get("base") or {})
+    mine_by_id = {_eid(e): e for e in mine if _eid(e)}
+    removed = set(base) - set(mine_by_id)
+    added = [e for e in mine if _eid(e) and _eid(e) not in base]
+    changed = {i for i, e in mine_by_id.items() if i in base and _entry_hash(e) != base[i]}
+    result: list = []
+    for e in theirs or []:
+        i = _eid(e)
+        if i in removed:
+            continue
+        result.append(copy.deepcopy(mine_by_id[i]) if i in changed else copy.deepcopy(e))
+    have = {_eid(e) for e in result}
+    for e in added:
+        if _eid(e) not in have:
+            result.append(copy.deepcopy(e))
+    merged_meta = {
+        "saved_at": _stamp(meta),
+        "count": len(result),
+        "deliberate": True,
+        "merged": True,
+        "base_stamp": _stamp(older_meta),
+        "base": fingerprints(theirs),
+    }
+    return result, merged_meta
+
+
+def resolve(a: tuple[list | None, dict | None], b: tuple[list | None, dict | None]) -> tuple[list | None, dict | None]:
+    """The setlist to keep when two copies meet (``b`` is the incumbent on a tie)."""
+    sa, sb = _stamp(a[1]), _stamp(b[1])
+    if not (sa and sb and a[0] is not None and b[0] is not None):
+        return a if better(a, b) else b
+    if sa == sb:
+        return b
+    newer, older = (a, b) if sa > sb else (b, a)
+    base_stamp = str((newer[1] or {}).get("base_stamp") or "")
+    # The newer copy was made from the older one (or from nothing on record): it simply wins.
+    if not base_stamp or base_stamp == _stamp(older[1]) or not isinstance((newer[1] or {}).get("base"), dict):
+        return newer
+    # The newer edit started from a copy older than ``older``: two edits that did not see each other.
+    if base_stamp > _stamp(older[1]):
+        return newer
+    return _three_way(newer, older)  # type: ignore[arg-type]
+
+
+def note_synced(session: Any, setlist: tuple[list | None, dict | None]) -> None:
+    """This session now agrees with this stored version: its next edit starts from it."""
+    try:
+        session[SYNCED_KEY] = {"stamp": _stamp(setlist[1]), "base": fingerprints(setlist[0])}
+    except Exception:
+        pass
+
+
 def _trace(session: Any, event: str, **fields: Any) -> None:
     try:
         if session is None:
@@ -137,7 +223,14 @@ def stamp_deliberate_edit(session: Any) -> dict:
     if not isinstance(queue, list):
         queue = []
         session[QUEUE_KEY] = queue
-    meta = {"saved_at": now_stamp(), "count": len(queue), "deliberate": True}
+    synced = session.get(SYNCED_KEY) if isinstance(session.get(SYNCED_KEY), dict) else {}
+    prev = session.get(META_KEY) if isinstance(session.get(META_KEY), dict) else {}
+    if not synced and prev.get("saved_at"):
+        # No confirmed sync recorded in this session yet: start from the version it holds.
+        synced = {"stamp": prev.get("base_stamp") if prev.get("unsynced") else prev.get("saved_at"),
+                  "base": prev.get("base") if prev.get("unsynced") else {}}
+    meta = {"saved_at": now_stamp(), "count": len(queue), "deliberate": True, "unsynced": True,
+            "base_stamp": str(synced.get("stamp") or ""), "base": dict(synced.get("base") or {})}
     session[META_KEY] = meta
     _trace(session, "deliberate_edit", **_summary(queue, meta))
     return meta
@@ -151,8 +244,14 @@ def merge_into_state(new_state: dict, prior_state: Any, *, where: str, session: 
     if prior[0] is None:
         return new_state
     incoming = setlist_of(new_state)
-    if not better(prior, incoming):
+    kept = resolve(incoming, prior)
+    if kept is incoming:
         return new_state
+    if kept is prior:
+        chosen = prior
+    else:
+        chosen = kept
+        _trace(session, "merged_two_edits", where=where, result=_summary(*kept))
     out = dict(new_state)
     if isinstance(out.get("session"), dict):
         part = dict(out["session"])
@@ -162,12 +261,13 @@ def merge_into_state(new_state: dict, prior_state: Any, *, where: str, session: 
         out["session"] = part
     else:
         part = out
-    part[QUEUE_KEY] = copy.deepcopy(prior[0])
-    if prior[1] is not None:
-        part[META_KEY] = copy.deepcopy(prior[1])
+    part[QUEUE_KEY] = copy.deepcopy(chosen[0])
+    if chosen[1] is not None:
+        part[META_KEY] = copy.deepcopy(chosen[1])
     else:
         part.pop(META_KEY, None)
-    _trace(session, "kept_stored_setlist", where=where, stored=_summary(*prior), refused=_summary(*incoming))
+    _trace(session, "kept_stored_setlist", where=where, stored=_summary(*prior), refused=_summary(*incoming),
+           result=_summary(*chosen))
     return out
 
 
@@ -245,14 +345,25 @@ def reconcile_session(session: Any, sources: list[tuple[str, Any]]) -> str:
             name == "payload" and cand[0] and not (cand[1] or {}).get("saved_at")
             and not (best[1] or {}).get("saved_at") and _rank(*cand) == _rank(*best)
         )
-        if better(cand, best) or legacy_sync:
+        if legacy_sync:
             best, best_name = cand, name
+            continue
+        kept = resolve(cand, best)
+        if kept is cand:
+            best, best_name = cand, name
+        elif kept is not best:
+            best, best_name = kept, f"merged:{best_name}+{name}"
     if best_name != "session":
         session[QUEUE_KEY] = copy.deepcopy(best[0])
         if best[1] is not None:
-            session[META_KEY] = copy.deepcopy(best[1])
+            meta = copy.deepcopy(best[1])
+            if not best_name.startswith("merged:"):
+                meta.pop("unsynced", None)  # this session now holds exactly the stored version
+            session[META_KEY] = meta
         else:
             session.pop(META_KEY, None)
+    if best[0] is not None and not (best_name == "session" and (best[1] or {}).get("unsynced"))             and not best_name.startswith("merged:"):
+        note_synced(session, best)
     _trace(session, "restore_reconcile", winner=best_name, seen=seen)
     return best_name
 
@@ -284,8 +395,12 @@ def save_status_message(status: dict | None) -> tuple[str, str]:
         return "info", f"Setlist saved ({songs}). Cloud storage is not set up for this app, so it is kept on this server."
     reason = str(status.get("reason") or "")
     if reason == "stale_revision_conflict":
-        why = "another tab or device saved your workspace more recently"
-    elif reason:
+        return "error", (
+            "Your setlist change was NOT saved to your account yet: another tab or device saved your "
+            "workspace more recently. Refresh this page - your change is kept on this server and is "
+            "merged with the latest setlist when the page reloads, without undoing the other change."
+        )
+    if reason:
         why = f"the save did not complete ({reason})"
     else:
         why = "the save could not be confirmed"

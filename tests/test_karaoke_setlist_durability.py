@@ -178,6 +178,63 @@ class Restore(unittest.TestCase):
         self.assertIn("_reconcile_karaoke_setlist_on_apply(ss, session_extra)", src)
 
 
+def meta(stamp, base_stamp="", base=None):
+    return {"saved_at": stamp, "base_stamp": base_stamp, "base": base or {}, "deliberate": True}
+
+
+class TwoEditsThatDidNotSeeEachOther(unittest.TestCase):
+    V1 = "2026-11-16T09:00:00.000000+00:00"
+    TA = "2026-11-16T10:00:00.000000+00:00"
+    TB = "2026-11-16T11:00:00.000000+00:00"
+
+    def test_a_removal_and_an_addition_are_both_kept(self):
+        base = ksd.fingerprints(SET)
+        a = ([SET[0], SET[2]], meta(self.TA, self.V1, base))                       # A removed Perfect
+        new = {"entry_id": "e4", "title": "Love Story", "practice_key": "G"}
+        b = (list(SET) + [new], meta(self.TB, self.V1, base))                        # B added Love Story
+        q, m = ksd.resolve(b, a)
+        self.assertEqual([e["title"] for e in q], ["Shape of You", "Let It Be", "Love Story"])
+        self.assertTrue(m.get("merged"))
+        self.assertEqual(ksd.resolve(a, b)[0], q)  # same answer whichever copy arrives first
+
+    def test_a_key_change_and_a_reorder_are_both_kept(self):
+        base = ksd.fingerprints(SET)
+        a = ([SET[2], SET[0], SET[1]], meta(self.TA, self.V1, base))                # A moved Let It Be first
+        changed = dict(SET[1], practice_key="A")
+        b = ([SET[0], changed, SET[2]], meta(self.TB, self.V1, base))               # B re-keyed Perfect
+        q, _m = ksd.resolve(b, a)
+        self.assertEqual([(e["title"], e["practice_key"]) for e in q],
+                         [("Let It Be", "C"), ("Shape of You", "Bm"), ("Perfect", "A")])
+
+    def test_an_edit_made_from_the_stored_copy_simply_wins(self):
+        a = (list(SET), meta(self.TA, self.V1, {}))
+        b = ([SET[0]], meta(self.TB, self.TA, ksd.fingerprints(SET)))
+        self.assertIs(ksd.resolve(b, a), b)
+
+    def test_an_older_copy_with_no_edit_never_wins(self):
+        newer = ([SET[0], SET[2]], meta(self.TA, self.V1, ksd.fingerprints(SET)))
+        older = (list(SET), meta(self.V1))
+        self.assertIs(ksd.resolve(older, newer), newer)
+        self.assertIs(ksd.resolve(newer, older), newer)
+
+    def test_the_disk_save_merges_too(self):
+        base = ksd.fingerprints(SET)
+        stored = full([SET[0], SET[2]], self.TA)
+        stored["session"][ksd.META_KEY].update(base_stamp=self.V1, base=base)
+        incoming = full(list(SET) + [{"entry_id": "e4", "title": "Love Story", "practice_key": "G"}], self.TB)
+        incoming["session"][ksd.META_KEY].update(base_stamp=self.V1, base=base)
+        out = ksd.merge_cloud_full_session(incoming, stored)
+        self.assertEqual(titles(out), ["Shape of You", "Let It Be", "Love Story"])
+
+    def test_an_edit_remembers_the_copy_it_started_from(self):
+        session = {ksd.QUEUE_KEY: list(SET)}
+        ksd.reconcile_session(session, [("cloud", full(SET, self.V1))])
+        session[ksd.QUEUE_KEY] = [SET[0]]
+        m = ksd.stamp_deliberate_edit(session)
+        self.assertEqual(m["base_stamp"], self.V1)
+        self.assertEqual(m["base"], ksd.fingerprints(SET))
+
+
 class LegacyCopiesStillSync(unittest.TestCase):
     def test_an_unstamped_copy_from_another_device_still_brings_its_songs(self):
         session = {ksd.QUEUE_KEY: SET[:2]}
@@ -219,7 +276,7 @@ class SaveStatus(unittest.TestCase):
                                                                   reason="stale_revision_conflict"))
         self.assertEqual(lvl, "error")
         self.assertIn("NOT saved to your account", txt)
-        self.assertIn("Retry saving setlist", txt)
+        self.assertIn("Refresh this page", txt)
 
     def test_persist_reports_failure_when_the_cloud_did_not_confirm(self):
         import karaoke_ui
@@ -252,6 +309,55 @@ class ClearNeedsConfirmation(unittest.TestCase):
         self.assertNotIn("clear_queue(st.session_state)", block)
         self.assertIn('key="karaoke_clear_confirm_yes"', src)
         self.assertIn('key="karaoke_clear_confirm_no"', src)
+
+
+class ResetToDefaultNamesTheSetlist(unittest.TestCase):
+    def _warning(self, queue):
+        import suite_user_persistence as sup
+
+        shown = []
+
+        class Col:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+        class St:
+            session_state = {}
+
+            def caption(self, *a, **k):
+                pass
+
+            def markdown(self, *a, **k):
+                pass
+
+            def warning(self, text):
+                shown.append(text)
+
+            def columns(self, n):
+                return [Col() for _ in range(n)]
+
+            def button(self, *a, **k):
+                return False
+
+            def expander(self, *a, **k):
+                return Col()
+
+        st = St()
+        st.session_state = {sup.reset_confirm_session_key("music"): True}
+        if queue is not None:
+            st.session_state["karaoke_queue"] = queue
+        sup.render_reset_controls(st, "music", on_reset=lambda _st: None, nested=True)
+        return " ".join(shown)
+
+    def test_the_confirmation_says_the_setlist_will_be_erased(self):
+        text = self._warning(list(SET))
+        self.assertIn("erases your saved Karaoke setlist (3 songs", text)
+
+    def test_without_a_setlist_it_says_nothing_about_one(self):
+        self.assertNotIn("Karaoke", self._warning([]))
 
 
 if __name__ == "__main__":

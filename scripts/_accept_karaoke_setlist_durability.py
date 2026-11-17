@@ -204,6 +204,32 @@ def ui_setlist(page: Page) -> list[str]:
         return []
 
 
+def cloud_identities() -> list[tuple[str, str, str, str]] | None:
+    """(title, key, source, pick_key) per entry in the stand-in cloud - the full saved identity."""
+    if not CLOUD_DB.exists():
+        return None
+    db = json.loads(CLOUD_DB.read_text(encoding="utf-8") or "{}")
+    rows = [r for r in db.get("suite_app_current_state", []) if str(r.get("app") or "").startswith("music")]
+    if not rows:
+        return None
+    q = _queue_in(((rows[0].get("metrics") or {}).get("full_session") or {}))
+    return None if q is None else [(str(e.get("title")), str(e.get("practice_key")), str(e.get("source")),
+                                    str(e.get("pick_key"))) for e in q if isinstance(e, dict)]
+
+
+def strip_stamps_from_cloud() -> int:
+    """Make the stored setlist look like one saved before edit stamps existed."""
+    db = json.loads(CLOUD_DB.read_text(encoding="utf-8") or "{}")
+    n = 0
+    for r in db.get("suite_app_current_state", []):
+        sess = (((r.get("metrics") or {}).get("full_session") or {}).get("session") or {})
+        if "karaoke_setlist_meta" in sess:
+            sess.pop("karaoke_setlist_meta", None)
+            n += 1
+    CLOUD_DB.write_text(json.dumps(db, sort_keys=True), encoding="utf-8")
+    return n
+
+
 def titles(brief) -> list[str]:
     return [t for t, _ in (brief or [])]
 
@@ -284,16 +310,30 @@ def status_text(page: Page) -> str:
         return ""
 
 
-def edits_on_new_server(page: Page, data_dir: Path) -> None:
+def edits_on_new_server_after_two(page: Page, data_dir: Path, after_two: bool) -> None:
+    if not after_two:
+        return edits_on_new_server(page, data_dir)
+    # The two-session run already removed Perfect; continue from whatever the cloud holds now.
+    return edits_on_new_server(page, data_dir, skip_remove=True)
+
+
+def edits_on_new_server(page: Page, data_dir: Path, skip_remove: bool = False) -> None:
     """Deliberate changes still work - and a failed save says so."""
     click_nav(page, "Songs")
     settle(page, 3)
     open_karaoke(page)
-    # Remove the second song deliberately.
-    removed = click_key(page, "karaoke_rm_1_")
-    settle(page, 5)
-    mark("D1 a single song can be removed deliberately", bool(removed))
-    three_places("D2 after removing Perfect", page, data_dir, ["Shape of You", "Let It Be"])
+    if not skip_remove:
+        # Remove the second song deliberately.
+        removed = click_key(page, "karaoke_rm_1_")
+        settle(page, 5)
+        mark("D1 a single song can be removed deliberately", bool(removed))
+        three_places("D2 after removing Perfect", page, data_dir, ["Shape of You", "Let It Be"])
+    current = titles(cloud_setlist()) or []
+    if "Love Story" in current:
+        # Remove it so the outage step below can add it again.
+        idx = current.index("Love Story")
+        click_key(page, f"karaoke_rm_{idx}_")
+        settle(page, 6)
     st_txt = status_text(page)
     mark("D3 the page says the setlist was saved to the account", "saved to your account" in st_txt.lower(), st_txt[:90])
 
@@ -333,6 +373,93 @@ def edits_on_new_server(page: Page, data_dir: Path) -> None:
     page.reload(wait_until="domcontentloaded")
     settle(page, 8)
     mark("C5 and a deliberate clear stays cleared after a refresh", len(ui_setlist(page)) == 0)
+
+
+def confirm_fits(page: Page, width: int) -> None:
+    """The Clear confirmation at phone widths: visible, both buttons on screen, Keep keeps.
+
+    The setlist is opened at desktop width first (the harness's sidebar navigation does not drive
+    the phone layout); the page is then narrowed and everything below is done at phone width.
+    """
+    page.set_viewport_size({"width": 1500, "height": 1000})
+    settle(page, 2)
+    click_nav(page, "Songs")
+    settle(page, 3)
+    open_karaoke(page)
+    page.set_viewport_size({"width": width, "height": 800})
+    settle(page, 4)
+    click_key(page, "karaoke_clear_queue")
+    settle(page, 4)
+    asked = "erase all" in body(page).lower()
+    boxes = {}
+    for key in ("karaoke_clear_confirm_yes", "karaoke_clear_confirm_no"):
+        try:
+            loc = page.locator(f'[class*="st-key-{key}"] button').first
+            loc.scroll_into_view_if_needed()
+            b = loc.bounding_box()
+            boxes[key] = b
+        except Exception:
+            boxes[key] = None
+    fits = all(b and b["x"] >= 0 and b["x"] + b["width"] <= width + 1 and b["height"] >= 30 for b in boxes.values())
+    overflow = page.evaluate("() => document.documentElement.scrollWidth > window.innerWidth + 1")
+    shot(page, f"m-confirm-{width}")
+    mark(f"M{width}a the Clear confirmation appears at {width} px", asked)
+    mark(f"M{width}b both confirmation buttons are fully on screen and tappable", fits,
+         "; ".join(f"{k[-3:]}=({int(v['x'])},{int(v['width'])}x{int(v['height'])})" if v else f"{k[-3:]}=missing"
+                   for k, v in boxes.items()))
+    mark(f"M{width}c no sideways scrolling", not overflow)
+    click_key(page, "karaoke_clear_confirm_no")
+    settle(page, 4)
+
+
+def two_sessions(browser, data_dir: Path) -> None:
+    """Two sessions holding the same setlist. A removes a song; then B - which never reloaded -
+    first just navigates (an older copy, no edit), then adds a song (a deliberate edit)."""
+    actx, a = new_page(browser)
+    bctx, b = new_page(browser)
+    try:
+        ui_setlist(a)
+        ui_setlist(b)
+        click_key(a, "karaoke_rm_1_")
+        settle(a, 6)
+        three_places("T1 session A removes Perfect", a, data_dir, ["Shape of You", "Let It Be"])
+        page_change(b)
+        page_change(b)
+        three_places("T2 session B (older copy, no edit) navigates - A's removal stands", None, data_dir,
+                     ["Shape of You", "Let It Be"])
+        add_song(b, "Love Story", "Country")
+        click_nav(b, "Songs")
+        settle(b, 3)
+        open_karaoke(b)
+        st_b = status_text(b)
+        note(f"session B's status after its edit: {st_b[:200]!r}")
+        c = titles(cloud_setlist())
+        note(f"cloud after B's edit: {c}")
+        erased_a = "Perfect" in (c or [])
+        mark("T3 B's edit did not silently bring back the song A removed", not erased_a, f"cloud={c}")
+        b_saved = "saved to your account" in st_b.lower() and "not saved" not in st_b.lower()
+        b_refused = "not saved to your account" in st_b.lower()
+        mark("T4 B is told the truth about its edit (saved, or NOT saved with a reason)", b_saved or b_refused, st_b[:90])
+        if b_saved:
+            mark("T5 B's saved edit is in the cloud", "Love Story" in (c or []), f"cloud={c}")
+        if b_refused:
+            mark("T5 B's refused edit did not change the cloud", c == ["Shape of You", "Let It Be"], f"cloud={c}")
+            mark("T5b the refused edit says to refresh, and offers no Retry that cannot work",
+                 "refresh this page" in st_b.lower() and not click_key(b, "karaoke_setlist_save_retry"))
+            b.reload(wait_until="domcontentloaded")
+            settle(b, 8)
+            page_change(b)
+            c2 = titles(cloud_setlist())
+            note(f"after B refreshed: cloud={c2}")
+            mark("T6 after B refreshes, B's song is saved AND A's removal still stands",
+                 c2 == ["Shape of You", "Let It Be", "Love Story"], f"cloud={c2}")
+        nctx, n = new_page(browser)
+        got = ui_setlist(n)
+        note(f"a new session now shows: {got}")
+        nctx.close()
+    finally:
+        actx.close()
+        bctx.close()
 
 
 # ---------------------------------------------------------------- run
@@ -423,16 +550,31 @@ def main() -> int:
 
             if "restart" in wanted:
                 # What a Cloud restart or redeploy does: a new server with an empty disk.
+                ids_before = cloud_identities()
                 stop_app()
+                if "legacy" in wanted:
+                    note(f"stripped edit stamps from {strip_stamps_from_cloud()} stored setlist(s): a pre-stamp setlist")
                 start_app(data2, "server2")
                 ctx2, page2 = new_page(browser)
                 three_places("R1 after the server was replaced (new session, empty disk)", page2, data2, WANT)
+                mark("R1b songs, order, keys, sources and identities are exactly as saved",
+                     cloud_identities() == ids_before and bool(ids_before), f"{len(ids_before or [])} entr(y/ies)")
                 shot(page2, "r-after-restart")
                 page_change(page2)
                 three_places("R2 and it stays after the new session navigates", page2, data2, WANT)
-                if "edits" in wanted:
-                    edits_on_new_server(page2, data2)
+                if "mobile" in wanted:
+                    for width in (390, 360):
+                        confirm_fits(page2, width)
+                    page2.set_viewport_size({"width": 1500, "height": 1000})
+                    settle(page2, 3)
+                    three_places("M2 after the phone-width checks, nothing was erased", page2, data2, WANT)
                 ctx2.close()
+                if "two_sessions" in wanted:
+                    two_sessions(browser, data2)
+                if "edits" in wanted:
+                    ectx, epage = new_page(browser)
+                    edits_on_new_server_after_two(epage, data2, "two_sessions" in wanted)
+                    ectx.close()
             browser.close()
     finally:
         stop_app()

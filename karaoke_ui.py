@@ -72,7 +72,21 @@ def persist_karaoke_setlist(st: Any, *, deliberate: bool = True) -> bool:
             )
         except Exception:
             pass
-    return bool(ok and (cloud_ok or not cloud_on))
+    confirmed = bool(ok and (cloud_ok or not cloud_on))
+    if confirmed:
+        # The stored setlist is now this one: the next edit starts from it.
+        try:
+            from karaoke_setlist_durability import META_KEY, QUEUE_KEY, note_synced
+
+            meta = ss.get(META_KEY)
+            if isinstance(meta, dict):
+                meta = dict(meta)
+                meta.pop("unsynced", None)
+                ss[META_KEY] = meta
+            note_synced(ss, (ss.get(QUEUE_KEY), ss.get(META_KEY)))
+        except ImportError:
+            pass
+    return confirmed
 
 
 CLEAR_CONFIRM_KEY = "_karaoke_clear_setlist_confirm_pending"
@@ -94,7 +108,8 @@ def render_setlist_save_status(st: Any) -> None:
             st.caption(text)
         else:
             st.error(text)
-            if st.button("Retry saving setlist", key="karaoke_setlist_save_retry"):
+            stale = str((st.session_state.get(SAVE_STATUS_KEY) or {}).get("reason") or "") == "stale_revision_conflict"
+            if not stale and st.button("Retry saving setlist", key="karaoke_setlist_save_retry"):
                 persist_karaoke_setlist(st, deliberate=False)
                 st.rerun()
 
