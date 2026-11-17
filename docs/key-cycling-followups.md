@@ -16,6 +16,10 @@ That integration includes the transport fixes found during its QA:
 - The completed final key ending the cycle on both the page and the server: the receiver now
   delivers `final_key_stop`, and the page never replays the completed take or offers Resume
   (`1139f3e1`).
+- A new start after that end being a new cycle: the leftover completed take never ends it, and
+  the console's Pause is usable at once (`e51e289a`).
+- After Stop, a fresh Play showing Pause on the always-mounted console; listeners that must
+  outlive the bridge frame registered by the parent realm (`d96f26e4`).
 
 **None of the items below were changed by it.** Keep each one as its own item, so a fix
 to one does not reopen the verified Pause, Resume and Stop behaviour.
@@ -125,6 +129,13 @@ this lag was what made Resume undo itself and a late Resume undo a Stop.
 free-running boundary sweep, the server confirmed a Pause as Held after 1.82, 2.68, 3.16, 3.35,
 3.48, 4.75 and 5.62 s, and one confirmation did not arrive within the probe's wait. The audio
 went silent at once each time.
+
+**Seen 2026-11-16 as audible silence (`5f5f9a7f`, six-round trace, start RAM 3.1 GB):** with Held
+confirmed after 2.3-3.95 s in every round, the server left Held 4.4 s after a Lead Sheet Resume and
+reached Dm 7.2 s after it, while the page had played Am's remainder and Dm. When Dm ended the page
+still held no take for Gm (the server had not sent it), so it waited -- it never replays a finished
+take (`09b93037`) -- and Gm started after more than 6 s of silence. The same build under normal load
+(Held after 1.0-1.55 s) passed every round. The silence is the visible form of this item.
 
 **Not a correctness bug now, but a responsiveness one.** Until the rerun catches up:
 - the Key Cycling status row and the cards show the old state;
@@ -236,4 +247,23 @@ pre-existing:**
 
 Neither replayed or skipped a key. Measure both with the page's own clock (`__kcPlayDiag`,
 `__kcAckLog`) before changing anything.
+
+---
+
+## KC-F9. Two browser tests are flaky (seen 2026-11-16)
+
+Both fail intermittently on `e51e289a` as well as later, so they are not caused by the fixes made
+that day:
+- `test_key_cycle_pause_reports_sounding_key.py::StopOutranksAnEarlierResume::test_after_the_servers_off_a_new_start_plays`:
+  failed in 2 of 2 full-file runs on `e51e289a` and 1 of 2 on `d96f26e4`; it passes alone and in
+  the related suite.
+- `ATakeMarkedPlayingIsHeard::test_a_cold_take_started_from_a_silenced_slot_is_heard`: 1 of 6
+  isolated runs on each build.
+
+Both depend on fixed waits inside the harness. Make them wait for the state they check before
+reading it.
+
+The older `plain_block` Backing probe in the Key Cycling scratchpad is out of date: its Lead Sheet
+"pause" press is a Stop on the current controls, and it fails the same way on dev. Ordinary Backing
+Pause / Resume / Stop is covered by the compact-bar probe's Key Cycling Off mode.
 
