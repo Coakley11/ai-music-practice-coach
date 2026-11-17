@@ -1341,6 +1341,55 @@ class AFreshPlayAfterStopShowsPause(unittest.TestCase):
             self.assertEqual(console["icon"], "pause", console)
 
 
+class NextWhilePausedStaysPaused(unittest.TestCase):
+    """User decision 2026-11-17: Next / Previous pressed while paused moves to the new key and stays
+    paused at its start; Resume plays it. Before, the switch cleared the hold and started the new key
+    ("a Next while paused starts playing"). Pressed while playing, it still plays the new key."""
+
+    _WAIT = "async () => { await new Promise(r => setTimeout(r, %d)); return true; }"
+    _STATE = """() => { const d = window.__kcDual || {}; const q = window.__kcPendingPlayingAckQueue || [];
+      // The latest Previous / Next ack (a pause also queues reports of its own).
+      const nav = q.filter(x => x && x.manualSwitch);
+      const last = nav.length ? nav[nav.length - 1] : ((window.__kcPendingPlayingAck || {}).manualSwitch ? window.__kcPendingPlayingAck : {});
+      const a = document.getElementById(d.active === 1 ? 'kc-buf-1' : 'kc-buf-0');
+      return {up: !!d.userPaused, ss: sessionStorage.getItem('kc_user_paused'), activeKey: a ? a.getAttribute('data-kc-sounding') : '',
+              activeCt: a ? Math.round(Number(a.currentTime) * 100) / 100 : -1,
+              ack: {key: last.playingKey || '', stayPaused: !!last.stayPaused, manual: !!last.manualSwitch}}; }"""
+
+    def _start(self) -> list:
+        return [("cmd", _kc_cmd(10, "Gm", "Cm", restart=True, autoplay=True, forcePlay=True)),
+                ("eval", self._WAIT % 2500)]
+
+    def test_next_while_paused_shows_the_new_key_and_stays_paused(self) -> None:
+        snaps = _run_stop_race(self, self._start() + [
+            ("eval", "() => { window.__kcPauseBtnHandler(); return true; }"), ("eval", self._WAIT % 1200),
+            ("eval", "() => { window.__kcSwitchPrepared(1); return true; }"), ("eval", self._WAIT % 1500),
+            ("eval", _HEARD_JS), ("eval", self._STATE)])
+        heard, st = snaps[-2]["eval"], snaps[-1]["eval"]
+        self.assertEqual((heard["heard"], heard["running"]), ([], []), heard)
+        self.assertEqual(st["activeKey"], "Cm", st)  # the new key's take is the one Resume plays
+        self.assertTrue(st["up"], st)  # still paused
+        self.assertEqual(st["ack"], {"key": "Cm", "stayPaused": True, "manual": True}, st)
+
+    def test_resume_after_a_paused_next_plays_the_new_key_from_its_start(self) -> None:
+        snaps = _run_stop_race(self, self._start() + [
+            ("eval", "() => { window.__kcPauseBtnHandler(); return true; }"), ("eval", self._WAIT % 1200),
+            ("eval", "() => { window.__kcSwitchPrepared(1); return true; }"), ("eval", self._WAIT % 1500),
+            ("eval", "() => { window.__kcResumeAudio(); return true; }"), ("eval", self._WAIT % 1000),
+            ("eval", _HEARD_JS), ("eval", self._STATE)])
+        heard, st = snaps[-2]["eval"], snaps[-1]["eval"]
+        self.assertEqual(heard["heard"], ["cm.wav"], heard)
+        self.assertLess(st["activeCt"], 2.0, st)  # from the first chord, not the old take's pause point
+
+    def test_next_while_playing_still_plays_the_new_key(self) -> None:
+        snaps = _run_stop_race(self, self._start() + [
+            ("eval", "() => { window.__kcSwitchPrepared(1); return true; }"), ("eval", self._WAIT % 1500),
+            ("eval", _HEARD_JS), ("eval", self._STATE)])
+        heard, st = snaps[-2]["eval"], snaps[-1]["eval"]
+        self.assertEqual(heard["heard"], ["cm.wav"], heard)
+        self.assertEqual(st["ack"]["stayPaused"], False, st)
+
+
 class FinalKeyEndsOnlyWhenItsTakeCompletes(unittest.TestCase):
     """The final key selected (or prepared) is not the final key completed: only the completion of
     the final key's own take ends the sequence. Two-key cycle Gm -> Cm, starting on Cm."""
