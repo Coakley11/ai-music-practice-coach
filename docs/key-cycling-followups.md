@@ -250,7 +250,7 @@ Neither replayed or skipped a key. Measure both with the page's own clock (`__kc
 
 ---
 
-## KC-F9. Two browser tests are flaky (seen 2026-11-16)
+## KC-F9. Three browser tests are flaky (seen 2026-11-16)
 
 Both fail intermittently on `e51e289a` as well as later, so they are not caused by the fixes made
 that day:
@@ -259,6 +259,9 @@ that day:
   the related suite.
 - `ATakeMarkedPlayingIsHeard::test_a_cold_take_started_from_a_silenced_slot_is_heard`: 1 of 6
   isolated runs on each build.
+- `ATakeMarkedPlayingIsHeard::test_a_mute_the_musician_chose_is_kept`: 10 of 20 isolated runs on
+  `e51e289a`, 11 of 20 on `d96f26e4`. It races the page's own unmute sweep (KC-F6): an unmute
+  inside the 1.5 s after the touch overwrites the recorded mute.
 
 Both depend on fixed waits inside the harness. Make them wait for the state they check before
 reading it.
