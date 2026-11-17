@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from music_feature_icons import page_feature_label
+
 from music_feature_icons import action_label
 
 import html
@@ -6661,7 +6663,7 @@ def _tab_metrics_ai(
 
     if on_open_analysis:
         if st.button(
-            "Open Upload Analysis",
+            page_feature_label("analysis", "Open Upload Analysis"),
             key="improv_to_analysis",
             type="primary",
             use_container_width=True,

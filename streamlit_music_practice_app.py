@@ -27471,7 +27471,7 @@ elif _studio_page == "analysis":
                         st.caption(f"Developer · span alignment unavailable: {_span_exc!r}")
 
             if st.button(
-                "Run AI coach analysis",
+                action_label("analyze", "Run AI coach analysis"),
                 type="primary",
                 key="analysis_run_btn",
                 use_container_width=True,
