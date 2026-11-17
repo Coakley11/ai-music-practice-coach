@@ -279,3 +279,17 @@ def test_compact_bar_stop_explains_the_key_cycling_restart():
     js = lpf._CONTROLLER_JS
     bar = js[js.index("function syncBar()"):js.index("var timer = top.setInterval(")]
     assert 'if (keyCyclingOn()) stopBtn.title = "Stops playback. The next Play restarts Key Cycling from its first key.";' in bar
+
+
+def test_no_melody_leads_while_a_karaoke_set_is_active():
+    """User, 2026-11-16: in an active Karaoke Set the page follows the Lead Sheet if open, else the Karaoke lyrics
+    (registered below the Lead Sheet); a Practice / Original Melody staff never leads then."""
+    js = lpf._CONTROLLER_JS
+    ap = js[js.index("function activeProvider()"):js.index("function transportProvider()")]
+    assert "var best = null, karaoke = karaokeSetActive();" in ap
+    assert "if (karaoke && (Number(p.priority) || 0) > LS_PRIORITY) return;" in ap
+    assert 'doc.body.getAttribute("data-karaoke-session") === "true"' in js
+    code = lpf.page_follow_controller_js()
+    assert "LS_PRIORITY = %d" % lpf.LEAD_SHEET_PRIORITY in code and "__LS_PRIO__" not in code
+    assert lpf.MELODY_PRIORITY > lpf.LEAD_SHEET_PRIORITY and lpf.ORIGINAL_MELODY_PRIORITY > lpf.LEAD_SHEET_PRIORITY
+

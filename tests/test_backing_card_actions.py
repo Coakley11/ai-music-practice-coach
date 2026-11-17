@@ -120,7 +120,7 @@ def test_the_open_close_control_stays_above_the_sheet_and_writes_the_same_choice
     card = card[:card.index("\ndef ")]
     assert 'key="backing_art_lead_sheet_btn"' in card
     assert "backing_leadsheet_show_btn" not in card and "backing_leadsheet_hide_btn" not in card
-    assert ':material/menu_book:" if sheet_on else ":material/book:"' in card  # open / closed sheet icon
+    assert ':material/menu_book:" if (sheet_shown or sheet_pref) else ":material/book:"' in card  # open / closed sheet
     page = APP[APP.index("def _set_backing_lead_sheet_open(open_: bool)"):]
     setter, rest = page[:page.index("\n\n    #")], page
     assert 'st.session_state["backing_lead_sheet_open"] = bool(open_)' in setter
@@ -128,8 +128,9 @@ def test_the_open_close_control_stays_above_the_sheet_and_writes_the_same_choice
     row = rest[rest.index("if _leadsheet_controls_ready:"):][:1400]
     assert '"Open lead sheet"' in row and 'key="backing_leadsheet_show_btn"' in row
     assert '"Close lead sheet"' in row and 'key="backing_leadsheet_hide_btn"' in row
-    call = APP[APP.index("    _render_backing_art_actions("):][:200]
+    call = APP[APP.index("    _render_backing_art_actions("):][:320]
     assert "leadsheet_ready=_leadsheet_controls_ready" in call and "set_leadsheet_open=_set_backing_lead_sheet_open" in call
+    assert "sheet_visible=bool(_leadsheet_controls_ready and _leadsheet_open)" in call
 
 
 def test_the_card_lead_sheet_button_hands_the_playhead_over_like_open_close() -> None:
@@ -144,11 +145,13 @@ def test_the_card_lead_sheet_button_hands_the_playhead_over_like_open_close() ->
 
 def test_play_opens_the_sheet_while_lead_sheet_is_on() -> None:
     i = APP.index("    if _play_clicked:\n")
-    block = APP[i:i + 700]
+    block = APP[i:i + 1100]
     read = block.index("_sheet_on_play = backing_lead_sheet_preference(st.session_state)")
     init = block.index("initialize_backing_presentation(st.session_state, _bpm_sync_id)")
     assert read < init  # a new song's presentation starts closed: read the choice first
-    assert 'if _sheet_on_play and not km.is_voice_mode(st.session_state):\n            st.session_state["backing_lead_sheet_open"] = True' in block
+    # Voice is an instrument (user, 2026-11-16): only an active Karaoke Set keeps its own presentation.
+    assert "if _sheet_on_play and not (\n            km.is_voice_mode(st.session_state) and km.is_karaoke_session_active(st.session_state)\n        ):" in block
+    assert block.index("km.is_karaoke_session_active(st.session_state)\n        ):") < block.index('st.session_state["backing_lead_sheet_open"] = True')
 
 
 def test_the_lead_sheet_choice_is_kept_like_the_sheet_itself() -> None:
@@ -168,3 +171,35 @@ def test_the_actions_wear_the_card_colours_and_stack_on_a_phone() -> None:
     assert 'button[data-testid="stBaseButton-primary"]{background:var(--play-bg' in CSS
     phone = CSS.split("@container card (max-width:640px){\n  .st-key-backing_art_card .st-key-backing_art_actions", 1)[1][:400]
     assert "flex-direction:column" in phone
+
+
+# --- Lead sheet status vs the open-on-Play preference (user, 2026-11-16) ---------------------------------------
+
+def test_the_card_says_on_only_when_the_sheet_is_on_screen() -> None:
+    """Measured on dev 6e9da78b: "Lead sheet: On" while no sheet was on screen -- before the first Play, after a
+    reload, and all session long with Voice. On = visible; closed with the preference set = "Opens on Play"."""
+    card = APP[APP.index("def _render_backing_art_actions("):]
+    card = card[:card.index("\ndef ")]
+    assert "sheet_shown = bool(sheet_visible)" in card
+    on = card.index('sheet_label, sheet_help = "Lead sheet: On", None')
+    assert card.index("if sheet_shown:") < on < card.index("elif sheet_pref:") < card.index('sheet_label = "Lead sheet: Opens on Play"')
+    assert 'sheet_label = "Lead sheet: Off"' in card
+    assert 'type="primary" if sheet_shown else "secondary"' in card
+    assert "args=(bool(leadsheet_ready), set_leadsheet_open, sheet_shown)" in card
+
+
+@pytest.mark.parametrize("visible, after", [(False, True), (True, False)])
+def test_with_a_take_the_card_opens_or_closes_what_is_on_screen(app, visible, after) -> None:
+    """The preference said On while the sheet was closed: a press then closed a closed sheet. With a take to
+    follow, the press acts on what is on screen."""
+    calls = []
+    app.st.session_state[app.BACKING_LEAD_SHEET_ON_PLAY_KEY] = True
+    app._toggle_backing_lead_sheet_from_card(True, calls.append, visible)
+    assert calls == [after]
+
+
+def test_voice_play_message_mentions_karaoke_only_in_a_karaoke_set() -> None:
+    i = APP.index("_karaoke_voice_play = bool(")
+    expr = APP[i:i + 200]
+    assert "km.is_voice_mode(st.session_state) and km.is_karaoke_session_active(st.session_state)" in expr
+

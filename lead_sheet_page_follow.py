@@ -75,7 +75,7 @@ function lsWatchFrameHost(fe, fit) {
 # Plain string (not an f-string): it is inserted into the components' f-string templates as a value.
 _CONTROLLER_JS = r"""
 (function installLeadSheetPageFollow() {
-  var V = __V__, HOLD_MS = __HOLD__;
+  var V = __V__, HOLD_MS = __HOLD__, LS_PRIORITY = __LS_PRIO__;
   var top;
   try { top = window.top; void top.document.body; } catch (e) { return; }
   if (top.__lsFollow && Number(top.__lsFollow.v) >= V) return;
@@ -218,10 +218,16 @@ _CONTROLLER_JS = r"""
   }
   // The surface that leads the page: open, lit, highest priority; among equals (one staff per section) the one
   // that asked most recently.
+  // An active Karaoke Set (user, 2026-11-16): the Lead Sheet if open, else the Karaoke lyrics -- a melody staff
+  // never leads then, whatever is on the page.
+  function karaokeSetActive() {
+    try { return doc.body.getAttribute("data-karaoke-session") === "true"; } catch (e) { return false; }
+  }
   function activeProvider() {
-    var best = null;
+    var best = null, karaoke = karaokeSetActive();
     liveProviders().forEach(function (p) {
       if (!shown(p) || !lit(p)) return;
+      if (karaoke && (Number(p.priority) || 0) > LS_PRIORITY) return;
       var pr = Number(p.priority) || 0, bp = best ? (Number(best.priority) || 0) : -1;
       if (!best || pr > bp || (pr === bp && (p.lastAt || p.at || 0) >= (best.lastAt || best.at || 0))) best = p;
     });
@@ -476,7 +482,11 @@ def page_follow_controller_js() -> str:
     """
     import json
 
-    code = _CONTROLLER_JS.replace("__V__", str(CONTROLLER_VERSION)).replace("__HOLD__", str(HOLD_MS))
+    code = (
+        _CONTROLLER_JS.replace("__V__", str(CONTROLLER_VERSION))
+        .replace("__HOLD__", str(HOLD_MS))
+        .replace("__LS_PRIO__", str(LEAD_SHEET_PRIORITY))
+    )
     return (
         "(function () { try { var t = window.top;"
         f" if (t.__lsFollow && Number(t.__lsFollow.v) >= {CONTROLLER_VERSION}) return;"
