@@ -3288,6 +3288,10 @@ class SongSaveConflict(Exception):
     """A save was refused because it would change a saved song that the draft was not derived from."""
 
 
+# Flash text for a refused save: shown as-is (no "error:" repr), starts with the same marker the page already treats as an error.
+SAVE_REFUSED_FLASH_PREFIX = "error:\u26a0 Not saved. "
+
+
 class EmptyDraftOverwriteRefused(SongSaveConflict):
     """A chordless draft was about to replace a saved song that has chords."""
 
@@ -4944,6 +4948,9 @@ def cpl_on_save_library_callback() -> None:
             "state": str(LAST_CLOUD_SAVE_RESULT.get("state") or ""),
             "error": str(LAST_CLOUD_SAVE_RESULT.get("error") or ""),
         }
+    except SongSaveConflict as exc:
+        # A protective refusal, not a crash: say plainly that NOTHING was saved or changed.
+        st.session_state["_cpl_save_library_flash"] = f"{SAVE_REFUSED_FLASH_PREFIX}{exc}"
     except Exception as exc:
         st.session_state["_cpl_save_library_flash"] = f"error:{exc!r}"
 

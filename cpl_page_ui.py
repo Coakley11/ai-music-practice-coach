@@ -1040,7 +1040,9 @@ def render_custom_progression_lab_page() -> None:
         _save_flash = st.session_state.pop("_cpl_save_library_flash", False)
         _cloud_status = st.session_state.pop("_cpl_cloud_save_status", None) or {}
         if _save_flash:
-            if isinstance(_save_flash, str) and str(_save_flash).startswith("error:"):
+            if isinstance(_save_flash, str) and str(_save_flash).startswith("error:\u26a0 Not saved."):
+                st.warning(str(_save_flash).removeprefix("error:"))
+            elif isinstance(_save_flash, str) and str(_save_flash).startswith("error:"):
                 st.error(str(_save_flash))
             else:
                 # Green only when the cloud really holds the song. Anything else is said

@@ -374,5 +374,56 @@ class TestOfflineSaveKeepsTheOldCloudBase(unittest.TestCase):
                 L.save_progression_named(store, "SYN Trial", draft, expected_updated_at=draft["base_updated_at"])
 
 
+class TestRefusedSaveIsSaidPlainlyThroughTheRealCallback(unittest.TestCase):
+    """The Save button's callback: a protective refusal must show a clear warning and change NOTHING."""
+
+    def _run_callback(self, ss):
+        import streamlit
+
+        with mock.patch.object(streamlit, "session_state", ss), mock.patch(
+            "songs.music_source.clear_cpl_intentional_new_song", lambda *_a, **_k: None
+        ):
+            L.cpl_on_save_library_callback()
+
+    def _session(self):
+        _a, _b, store, golden, ss = _world()
+        L.apply_cpl_session_progression(ss, L.load_saved_progression(store, "SYN Trial"), reset_display_key=True)
+        return store, golden, ss
+
+    def test_a_stale_cloud_conflict_shows_a_plain_warning_and_changes_nothing(self) -> None:
+        store, golden, ss = self._session()
+        ss["cpl_bpm_builder"] = 55  # the user edited something, then pressed Save
+        with mock.patch("custom_song_library.cloud_song_state", return_value={"valid": True, "version": 10_000_000_000.0}), mock.patch(
+            "custom_song_library.upsert_custom_song_to_cloud"
+        ) as upload:
+            self._run_callback(ss)
+        flash = ss.get("_cpl_save_library_flash")
+        self.assertTrue(str(flash).startswith(L.SAVE_REFUSED_FLASH_PREFIX), flash)
+        self.assertIn("Nothing was sent to the cloud", str(flash))
+        self.assertNotIn("SongSaveConflict(", str(flash))
+        upload.assert_not_called()
+        self.assertEqual(_canon(store), _canon(golden))  # the saved song is untouched
+
+    def test_a_deleted_elsewhere_song_shows_a_plain_warning(self) -> None:
+        store, golden, ss = self._session()
+        with mock.patch("custom_song_library.cloud_song_state", return_value={"valid": False, "version": 0.0}), mock.patch(
+            "custom_song_library.upsert_custom_song_to_cloud"
+        ) as upload:
+            self._run_callback(ss)
+        self.assertIn("deleted elsewhere", str(ss.get("_cpl_save_library_flash")))
+        upload.assert_not_called()
+        self.assertEqual(_canon(store), _canon(golden))
+
+    def test_an_ordinary_save_still_reports_success(self) -> None:
+        store, _golden, ss = self._session()
+        ss["cpl_bpm_builder"] = 66
+        with mock.patch("custom_song_library.cloud_song_state", return_value=None), mock.patch(
+            "custom_song_library.upsert_custom_song_to_cloud", return_value=(True, "k", None)
+        ):
+            self._run_callback(ss)
+        self.assertIs(ss.get("_cpl_save_library_flash"), True)
+        self.assertEqual(store["SYN Trial"]["bpm"], 66)
+
+
 if __name__ == "__main__":
     unittest.main()
