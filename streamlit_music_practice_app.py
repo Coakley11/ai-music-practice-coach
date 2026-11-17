@@ -11101,6 +11101,14 @@ def render_backing_card_transport_control(*, enabled: bool) -> None:
             theme=_backing_art_play_theme(),
             count_in=_count_in,
         )
+    if _cycle_on:
+        # User, 2026-11-16 (approved wording): the card's Stop rewinds the cycle (by design) -- say so. Shown for as
+        # long as cycling is on, not only while Stop is offered, so the card never jumps as the music starts / stops.
+        st.caption("■ Stop Backing Track: " + BACKING_KC_STOP_HINT)
+
+
+# What the card's / compact bar's Stop does while Key Cycling is on (the restart itself is Key Cycling's design).
+BACKING_KC_STOP_HINT = "Stops playback. The next Play restarts Key Cycling from its first key."
 
 
 def _begin_backing_performance_follow_along(

@@ -126,3 +126,14 @@ def test_scroll_script_never_adds_a_gap_above_the_page() -> None:
     assert "position: absolute !important;" in rule
     # Out of flow, still rendered: never display:none (its timer must run).
     assert "display: none" not in rule
+
+
+def test_stop_explains_the_key_cycling_restart_while_cycling() -> None:
+    """User, 2026-11-16 (approved wording): while Key Cycling is on, Stop says that the next Play starts the cycle
+    from its first key -- the restart itself is unchanged (Key Cycling's design)."""
+    hint = "Stops playback. The next Play restarts Key Cycling from its first key."
+    assert f'if (args.cycle_active && state !== "stopped") btn.title = "{hint}";' in TRANSPORT
+    app = (Path(__file__).resolve().parents[1] / "streamlit_music_practice_app.py").read_text(encoding="utf-8")
+    assert f'BACKING_KC_STOP_HINT = "{hint}"' in app
+    block = app[app.index('with st.container(key="backing_card_transport_row"):'):][:1200]
+    assert "if _cycle_on:" in block and 'st.caption("■ Stop Backing Track: " + BACKING_KC_STOP_HINT)' in block

@@ -545,6 +545,9 @@
         setLabel(btn, state === "stopped" ? LABEL_PLAY : LABEL_STOP);
         btn.setAttribute("aria-pressed", state === "stopped" ? "false" : "true");
         btn.setAttribute("aria-busy", state === "starting" ? "true" : "false");
+        // Key Cycling on and Stop offered: Stop rewinds the cycle (by design), said on the button too.
+        if (args.cycle_active && state !== "stopped") btn.title = "Stops playback. The next Play restarts Key Cycling from its first key.";
+        else btn.removeAttribute("title");
         btn.disabled = state === "stopped" && !args.enabled;
         // Key cycling pauses from its own bar; the card offers Pause / Resume otherwise.
         const showPz = !args.cycle_active && (state === "playing" || state === "paused");

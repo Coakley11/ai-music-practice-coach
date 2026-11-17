@@ -407,6 +407,11 @@ _CONTROLLER_JS = r"""
     var paused = false;
     try { paused = !p.playing(); } catch (e) {}
     var pz = doc.getElementById("ls-mini-pause");
+    var stopBtn = doc.getElementById("ls-mini-stop");
+    if (stopBtn) {
+      if (keyCyclingOn()) stopBtn.title = "Stops playback. The next Play restarts Key Cycling from its first key.";
+      else stopBtn.removeAttribute("title");
+    }
     // Hidden AND disabled: Key Cycling's page-wide click listener matches any "Pause" / "Resume" button by its label,
     // so even a hidden button's click would reach Key Cycling; a disabled button sends no click at all.
     var only = cardStarting() || keyCyclingOn();

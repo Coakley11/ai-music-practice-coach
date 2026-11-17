@@ -262,3 +262,9 @@ def test_compact_bar_stop_says_what_it_stops():
     js = lpf._CONTROLLER_JS
     assert 'stop.textContent = "■ Stop Backing Track";' in js
     assert 'stop.setAttribute("aria-label", "Stop Backing Track");' in js
+
+
+def test_compact_bar_stop_explains_the_key_cycling_restart():
+    js = lpf._CONTROLLER_JS
+    bar = js[js.index("function syncBar()"):js.index("var timer = top.setInterval(")]
+    assert 'if (keyCyclingOn()) stopBtn.title = "Stops playback. The next Play restarts Key Cycling from its first key.";' in bar
