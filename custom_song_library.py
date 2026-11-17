@@ -297,6 +297,32 @@ def delete_custom_song_from_cloud(song_id: str, *, st: Any | None = None) -> tup
         return False, str(exc)
 
 
+def cloud_song_state(song_id: str, *, st: Any | None = None) -> dict[str, Any] | None:
+    """The cloud row's state for one song: ``{"valid": bool, "version": float}`` or ``None``.
+
+    ``None`` also when the cloud is off or cannot be read: a save must still work offline, so an unreadable
+    cloud never blocks it (the cloud write that follows reports its own failure).
+    """
+    sid = str(song_id or "").strip()
+    if not sid or not cloud_enabled():
+        return None
+    try:
+        from suite_account import load_saved_item_state
+
+        row = load_saved_item_state(ITEM_TYPE, _song_item_key(sid), app=APP_ID)
+    except Exception:
+        return None
+    if not isinstance(row, dict):
+        return None
+    payload = row.get("payload") if isinstance(row.get("payload"), dict) else {}
+    prog = payload.get("progression") if isinstance(payload.get("progression"), dict) else {}
+    try:
+        version = float(prog.get("updated_at") or 0)
+    except (TypeError, ValueError):
+        version = 0.0
+    return {"valid": bool(row.get("valid")), "version": version}
+
+
 def _merge_progression_store(local: dict[str, Any], cloud_rows: list[dict[str, Any]]) -> dict[str, Any]:
     merged = copy.deepcopy(local if isinstance(local, dict) else {})
 

@@ -1317,6 +1317,26 @@ def load_invalid_item_keys(*, app: str, item_type: str, limit: int = 1000) -> li
     return [str(r.get("item_key") or "") for r in rows if isinstance(r, dict) and r.get("item_key")]
 
 
+def load_saved_item_state(*, app: str, item_type: str, item_key: str) -> dict[str, Any] | None:
+    """Read-only: one saved item's ``valid`` flag, row ``updated_at`` and payload, whether valid or deleted.
+
+    ``None`` when the row does not exist. Used before a save so a stale session cannot overwrite (or
+    resurrect) a row that was changed or deleted elsewhere.
+    """
+    params = {
+        "select": "item_key,valid,updated_at,payload",
+        "user_id": f"eq.{_scoped_user_id()}",
+        "app": f"eq.{_scoped_storage_app(app)}",
+        "item_type": f"eq.{item_type}",
+        "item_key": f"eq.{item_key}",
+        "limit": "1",
+    }
+    rows = _request("GET", _TABLE_SAVED, params=params, prefer="return=representation")
+    if not isinstance(rows, list):
+        raise RuntimeError("saved-item state unavailable")
+    return rows[0] if rows and isinstance(rows[0], dict) else None
+
+
 def load_saved_items(
     *,
     app: str | None = None,

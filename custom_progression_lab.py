@@ -3307,6 +3307,36 @@ def _record_chord_count(rec) -> int:
     )
 
 
+def _refuse_if_cloud_moved(song_id, expected_updated_at) -> None:
+    """A stale session must not overwrite (or bring back) a cloud row that changed or was deleted elsewhere.
+
+    A song the cloud knows as DELETED is never re-validated by a save, with or without a version (a stale workspace
+    can still carry a deleted song as the active draft). A newer cloud version refuses a draft opened before it."""
+    try:
+        from custom_song_library import cloud_song_state
+
+        state = cloud_song_state(song_id)
+    except Exception:
+        return
+    if not state:
+        return
+    if not state["valid"]:
+        raise SongSaveConflict(
+            "This song was deleted elsewhere, so this save was refused. Nothing was changed."
+        )
+    if expected_updated_at is None:
+        return  # no version to compare (a new or legacy draft): only the deleted-elsewhere rule applies
+    try:
+        mine = float(expected_updated_at)
+    except (TypeError, ValueError):
+        return
+    if state["version"] > mine + 1e-6:
+        raise SongSaveConflict(
+            "This song was changed in the cloud (another tab or device) after it was opened here, so this save "
+            "was refused to protect the newer version. Reload it from the library and try again."
+        )
+
+
 def _same_version(a, b) -> bool:
     try:
         return abs(float(a) - float(b)) < 1e-6
@@ -3349,6 +3379,7 @@ def save_progression_named(store, name, data, *, expected_updated_at=None, allow
         save_name = _unique_library_name(store, save_name, incoming_id)
     existing = store.get(save_name) if isinstance(store.get(save_name), dict) else {}
     song_id = str(data.get("id") or existing.get("id") or "").strip() or str(uuid.uuid4())
+    _refuse_if_cloud_moved(song_id, expected_updated_at)
     if not allow_empty and _record_chord_count(data) == 0:
         for _k, rec in store.items():
             if isinstance(rec, dict) and (

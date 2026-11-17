@@ -252,5 +252,76 @@ class TestEmptyDraftCannotOverwriteAPopulatedSong(unittest.TestCase):
         self.assertEqual(_canon(ss[L.CPL_SAVED_KEY]), _canon(golden))
 
 
+class TestStaleSessionCannotOverwriteTheCloud(unittest.TestCase):
+    """A tab opened before a repair holds an older copy. Its save must not overwrite a newer cloud row, nor bring back
+    a row that was deleted elsewhere. An unreadable cloud never blocks an offline save."""
+
+    def _draft(self, store):
+        return L.load_saved_progression(store, "SYN Trial")
+
+    def test_a_cloud_row_newer_than_the_draft_refuses_the_save(self) -> None:
+        _a, _b, store, golden, _ss = _world()
+        draft = self._draft(store)
+        with mock.patch("custom_song_library.cloud_song_state", return_value={"valid": True, "version": draft["base_updated_at"] + 500}):
+            with self.assertRaises(L.SongSaveConflict):
+                L.save_progression_named(store, "SYN Trial", draft, expected_updated_at=draft["base_updated_at"])
+        self.assertEqual(_canon(store), _canon(golden))
+
+    def test_a_row_deleted_elsewhere_is_not_resurrected_by_a_stale_save(self) -> None:
+        _a, _b, store, golden, _ss = _world()
+        draft = self._draft(store)
+        with mock.patch("custom_song_library.cloud_song_state", return_value={"valid": False, "version": 0.0}):
+            with self.assertRaises(L.SongSaveConflict):
+                L.save_progression_named(store, "SYN Trial", draft, expected_updated_at=draft["base_updated_at"])
+        self.assertEqual(_canon(store), _canon(golden))
+
+    def test_an_unchanged_cloud_row_allows_the_save(self) -> None:
+        _a, _b, store, _golden, _ss = _world()
+        draft = self._draft(store)
+        draft["bpm"] = 90
+        with mock.patch("custom_song_library.cloud_song_state", return_value={"valid": True, "version": draft["base_updated_at"]}):
+            L.save_progression_named(store, "SYN Trial", draft, expected_updated_at=draft["base_updated_at"])
+        self.assertEqual(store["SYN Trial"]["bpm"], 90)
+
+    def test_an_unreadable_cloud_does_not_block_an_offline_save(self) -> None:
+        _a, _b, store, _golden, _ss = _world()
+        draft = self._draft(store)
+        draft["bpm"] = 91
+        with mock.patch("custom_song_library.cloud_song_state", side_effect=RuntimeError("down")):
+            L.save_progression_named(store, "SYN Trial", draft, expected_updated_at=draft["base_updated_at"])
+        self.assertEqual(store["SYN Trial"]["bpm"], 91)
+
+    def test_cloud_song_state_reads_valid_and_version_and_tolerates_failure(self) -> None:
+        import custom_song_library as lib
+
+        row = {"valid": False, "updated_at": "x", "payload": {"progression": {"updated_at": 123.5}}}
+        with mock.patch.object(lib, "cloud_enabled", return_value=True), mock.patch("suite_account.load_saved_item_state", return_value=row):
+            self.assertEqual(lib.cloud_song_state("abc"), {"valid": False, "version": 123.5})
+        with mock.patch.object(lib, "cloud_enabled", return_value=True), mock.patch("suite_account.load_saved_item_state", return_value=None):
+            self.assertIsNone(lib.cloud_song_state("abc"))
+        with mock.patch.object(lib, "cloud_enabled", return_value=True), mock.patch("suite_account.load_saved_item_state", side_effect=RuntimeError("x")):
+            self.assertIsNone(lib.cloud_song_state("abc"))
+        with mock.patch.object(lib, "cloud_enabled", return_value=False):
+            self.assertIsNone(lib.cloud_song_state("abc"))
+
+
+class TestDeletedSongIsNeverRevivedBySaving(unittest.TestCase):
+    def test_a_draft_without_a_version_cannot_revive_a_deleted_cloud_song(self) -> None:
+        _a, _b, store, golden, _ss = _world()
+        phantom = L.load_saved_progression(store, "SYN Trial")
+        phantom.pop("base_updated_at", None)  # e.g. an active draft restored from an old workspace blob
+        with mock.patch("custom_song_library.cloud_song_state", return_value={"valid": False, "version": 0.0}):
+            with self.assertRaises(L.SongSaveConflict):
+                L.save_progression_named(store, "SYN Trial", phantom)
+        self.assertEqual(_canon(store), _canon(golden))
+
+    def test_a_brand_new_song_with_no_cloud_row_still_saves(self) -> None:
+        _a, _b, store, _golden, _ss = _world()
+        fresh = _song("SYN Fresh", "C", ["C", "G"])
+        with mock.patch("custom_song_library.cloud_song_state", return_value=None):
+            L.save_progression_named(store, "SYN Fresh", fresh)
+        self.assertIn("SYN Fresh", store)
+
+
 if __name__ == "__main__":
     unittest.main()
