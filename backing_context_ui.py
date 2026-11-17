@@ -280,7 +280,10 @@ def render_backing_context_banner(
         except ImportError:
             live_bpm = None
 
-    state = resolve_current_backing_musical_state(session, applied_bpm=live_bpm)
+    from backing_musical_state import card_view
+
+    # The banner describes the saved Practice Key; Key Cycling has its own console.
+    state = card_view(resolve_current_backing_musical_state(session, applied_bpm=live_bpm))
     mission_chord = ""
     if ctx is not None and str(getattr(ctx, "source", "") or "") == "mission":
         try:
@@ -561,12 +564,13 @@ def render_backing_creative_context_card(
     """Replace the blue active-song card when Creative backing is active."""
     if ctx.source not in {"entry_jam", "song_improv", "mission"}:
         return
-    from backing_musical_state import resolve_current_backing_musical_state
+    from backing_musical_state import card_view, resolve_current_backing_musical_state
 
-    state = musical_state or resolve_current_backing_musical_state(
+    # The normal card keeps the saved Practice Key while Key Cycling runs.
+    state = card_view(musical_state or resolve_current_backing_musical_state(
         session,
         applied_bpm=applied_bpm,
-    )
+    ))
     theme = _resolve_theme(ctx)
     _head = creative_card_headline(
         ctx, session, practice_key=practice_key, state=state, applied_groove=applied_groove
@@ -845,13 +849,9 @@ def render_backing_creative_context_card(
         and state.show_chart_badge
         and str(state.chart_mode or "").lower() == "shape"
     ):
+        # The saved key's sounding; the cycling capo / sounding key live in the
+        # Key Cycling console, not on the normal card.
         sounding_key = concert_raw
-        try:
-            from backing_key_cycle import temporary_playback_key
-
-            sounding_key = str(temporary_playback_key(session) or concert_raw)
-        except ImportError:
-            pass
         try:
             from guitar_capo import CAPO_SHAPE_KEY, capo_fret_for_shape, shape_tonic_only
 
@@ -948,7 +948,10 @@ def render_backing_custom_progression_context_card(
         return
     from backing_musical_state import resolve_current_backing_musical_state
 
-    state = musical_state or resolve_current_backing_musical_state(session, applied_bpm=applied_bpm)
+    from backing_musical_state import card_view
+
+    # The normal card keeps the saved Practice Key while Key Cycling runs.
+    state = card_view(musical_state or resolve_current_backing_musical_state(session, applied_bpm=applied_bpm))
     title = html.escape(str(ctx.song_title or "Custom progression").strip() or "Custom progression")
     concert_raw = str(state.practice_concert_key or practice_key or ctx.concert_key or "C").strip() or "C"
     try:
@@ -1076,7 +1079,10 @@ def render_backing_composition_song_context_card(
         return
     from backing_musical_state import resolve_current_backing_musical_state
 
-    state = musical_state or resolve_current_backing_musical_state(session, applied_bpm=applied_bpm)
+    from backing_musical_state import card_view
+
+    # The normal card keeps the saved Practice Key while Key Cycling runs.
+    state = card_view(musical_state or resolve_current_backing_musical_state(session, applied_bpm=applied_bpm))
     title = html.escape(str(ctx.song_title or "My Composition").strip() or "My Composition")
     # Same authoritative Practice Key as sidebar / playback (per-pick store + home key).
     concert_raw = str(

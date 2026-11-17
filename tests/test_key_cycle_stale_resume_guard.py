@@ -114,8 +114,18 @@ def test_page_script_refuses_a_user_resume_while_the_hold_is_set() -> None:
     src = inspect.getsource(kc)
     assert 'ui-key-cycle-playbar[data-hold-stale="1"]' in src
     assert "__kcStaleResumeBlocked" in src
-    # Back to loop start keeps its explicit contract (starts immediately).
-    assert "__kcResumeAudio({{ force: true }})" in src
+    # The refusal can still be bypassed explicitly (an opts.force Resume) ...
+    assert "const forced = !!(opts && opts.force);" in src
+    # ... and Back to loop start keeps its explicit contract (starts immediately): it plays through
+    # its own path, never through the refused Resume.
+    seek = src[src.index("parentWin.__kcSeekAndPlay = function"):]
+    seek = seek[:seek.index("    parentWin.__kc", 10)]
+    assert ".play()" in seek and "__kcResumeAudio" not in seek and "hold-stale" not in seek
+    # The Lead Sheet's Resume is the console's own press (one Pause/Resume path), so the hold
+    # covers it too: its fallback is the unforced Resume.
+    live = src[src.index("parentWin.__kcRequestCycleResume = function"):]
+    live = live[:live.index("    }};")]
+    assert "__kcPressCycleTransport()" in live and "__kcResumeAudio();" in live and "force" not in live
 
 
 def test_commands_older_than_a_user_pause_click_cannot_undo_it() -> None:

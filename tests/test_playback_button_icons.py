@@ -2,6 +2,11 @@
 
 Material icons, the convention the Backing card's own buttons set (Lead sheet: On / Off uses menu_book / book).
 The labels stay exactly as they were: the Key Cycling bridge, the transport-label writer and the tests read them.
+
+Adapted 2026-11-15 to the purple/gold Key Cycling console that replaced the four-button row (Previous /
+Pause|Resume / Next / Stop, buttons drawn by its ``_btn`` helper). Same guarantees: an icon beside every
+unchanged label, the browser swaps the pause / play icon with the label, and the bridge decides Pause or Resume
+from kcPauseBtnMode(), never from exact display text.
 """
 from __future__ import annotations
 
@@ -19,6 +24,13 @@ def _button_call(src: str, key: str) -> str:
     return src[start: src.index(")", i) + 1]
 
 
+def _console_button(key: str) -> str:
+    """The console's ``_btn(label, "<key>", icon=..., ...)`` call for this widget key."""
+    i = KC.index(f'"{key}",')
+    start = KC.rindex("_btn(", 0, i)
+    return KC[start: KC.index("\n            )", i) + len("\n            )")]
+
+
 def test_lead_sheet_row_books_match_the_card() -> None:
     show, hide = _button_call(APP, "backing_leadsheet_show_btn"), _button_call(APP, "backing_leadsheet_hide_btn")
     assert '"Open lead sheet"' in show and 'icon=":material/menu_book:"' in show
@@ -27,25 +39,31 @@ def test_lead_sheet_row_books_match_the_card() -> None:
     assert ":material/menu_book:" in card and ":material/book:" in card
 
 
-def test_key_cycling_bar_icons_beside_unchanged_labels() -> None:
+def test_key_cycling_console_icons_beside_unchanged_labels() -> None:
     want = {
-        "backing_key_cycle_prev_btn": ('"Previous key"', ":material/skip_previous:"),
-        "backing_key_cycle_advance_btn": ('"Next key"', ":material/skip_next:"),
-        "backing_key_cycle_stop_btn": ('"Turn off cycling"', ":material/sync_disabled:"),
+        "backing_key_cycle_prev_btn": ('"Previous"', ":material/skip_previous:"),
+        "backing_key_cycle_advance_btn": ('"Next"', ":material/skip_next:"),
+        "backing_key_cycle_stop_btn": ('"Stop"', ":material/stop:"),
     }
     for key, (label, icon) in want.items():
-        call = _button_call(KC, key)
+        call = _console_button(key)
         assert label in call and f'icon="{icon}"' in call, key
-    pause = _button_call(KC, "backing_key_cycle_pause_btn")
+    pause = _console_button("backing_key_cycle_pause_btn")
+    # The label is the plain "Pause" / "Resume" the bridge reads; the icon follows it.
     assert "pause_label," in pause and 'icon=KC_PAUSE_ICON if pause_label != "Resume" else KC_RESUME_ICON' in pause
     assert 'KC_RESUME_ICON = ":material/play_arrow:"' in KC and 'KC_PAUSE_ICON = ":material/pause:"' in KC
+    # The old four-button row is not back.
+    assert '"Turn off cycling"' not in KC and '"Previous key"' not in KC
 
 
 def test_the_browser_swaps_the_pause_icon_with_the_label() -> None:
-    i = KC.index("const want = paused ? 'Resume' : 'Pause';")
-    block = KC[i: i + 900]
+    i = KC.index("const want = (paused && !ended) ? 'Resume' : 'Pause';")
+    block = KC[i: i + 1300]
     assert "if (cur !== want) labelEl.textContent = want;" in block
-    assert "stIconMaterial" in block and "paused ? 'play_arrow' : 'pause'" in block
+    assert "stIconMaterial" in block and "(paused && !ended) ? 'play_arrow' : 'pause'" in block
+    # A cycle that ended on its completed final key never offers an actionable Resume.
+    assert KC[i - 200: i].rstrip().endswith("const ended = finalTakeCompleted();")
+    assert "if (!btn.disabled) {{ btn.disabled = true; btn.setAttribute('data-kc-final-end', '1'); }}" in block
     # The label is still written to the label element only, never over the icon.
     assert re.search(r"const labelEl = btn\.querySelector\('p'\) \|\| btn;", block)
 
@@ -59,7 +77,22 @@ def test_key_cycle_bridge_decides_pause_or_resume_from_a_mode_not_exact_text():
     assert "function kcPauseBtnMode(b)" in js and "function kcPauseBtnLabel(b)" in js
     assert js.index("function kcPauseBtnMode(b)") < js.index("__kcRequestCyclePause = function")
     assert "/^Pause$/i.test(lab" not in js and "/^Resume$/i.test(lab" not in js
-    assert js.count("kcPauseBtnMode(b) !== 'pause'") == 1
-    assert js.count("kcPauseBtnMode(b) !== 'resume'") == 1
-    assert js.count("kcPauseBtnMode(b0) === 'resume'") == 2
+    # Every Pause / Resume decision asks the button's mode (or the console's shared decision), never its text.
+    assert js.count("kcPauseBtnMode(") == 4  # the definition and its three callers below
+    assert js.count("kcPauseBtnMode(b) !== 'resume'") == 1  # Live Resume after an audible kick
+    assert js.count("kcPauseBtnMode(b0) === 'resume'") == 1  # Back to loop start, Held capture
+    # The Lead Sheet and console share one decision (__kcCyclePressPauses); without it the live press
+    # falls back to the button's mode -- never to its text.
+    live = js[js.index("function kcLivePressPauses()"):js.index("function kcLivePressPauses()") + 600]
+    assert "parentWin.__kcCyclePressPauses()" in live
+    assert "kcPauseBtnMode(" in live and "=== 'pause'" in live
+    # Live Pause and Live Resume each press the console's button once, and only when that press does what
+    # was asked (a Pause on a held player, or a Resume on a playing one, does nothing).
+    resume = js[js.index("parentWin.__kcRequestCycleResume = function"):js.index("parentWin.__kcPauseAudio = function")]
+    pause = js[js.index("parentWin.__kcRequestCyclePause = function"):js.index("parentWin.__kcResumeAudio = function")]
+    assert "if (kcLivePressPauses()) return;" in resume and resume.count("__kcPressCycleTransport()") == 1
+    assert "if (!kcLivePressPauses()) return;" in pause and pause.count("__kcPressCycleTransport()") == 1
+    # One gesture is handled once: the document and the button both see it, the second call is dropped.
+    handler = js[js.index("parentWin.__kcPauseBtnHandler = function"):]
+    assert "now - Number(parentWin.__kcPauseToggleAt || 0) < 500) return;" in handler[:1200]
     assert 'stIconMaterial' in js[js.index("function kcPauseBtnLabel(b)"):js.index("function kcPauseBtnMode(b)")]

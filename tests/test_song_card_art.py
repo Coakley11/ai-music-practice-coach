@@ -154,3 +154,36 @@ def test_custom_soul_record_stays_small_beside_the_chord_chart() -> None:
     art = (A.ART_DIR / "custom_soul.svg").read_text(encoding="utf-8")
     assert 'scale(0.5) translate(-1340 -40)' in art
     assert art.count('<circle r="330" fill="url(#gsou_vinyl)"/>') == 1
+
+
+def _hex_luminance(color: str) -> float | None:
+    import re as _re
+
+    m = _re.search(r"#([0-9a-fA-F]{6}|[0-9a-fA-F]{3})\b", color)
+    if not m:
+        return None
+    h = m.group(1)
+    if len(h) == 3:
+        h = "".join(c * 2 for c in h)
+    def chan(v: int) -> float:
+        c = v / 255
+        return c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4
+    r, g, b = (int(h[i:i + 2], 16) for i in (0, 2, 4))
+    return 0.2126 * chan(r) + 0.7152 * chan(g) + 0.0722 * chan(b)
+
+
+@pytest.mark.parametrize("family", sorted({f for f, _ in __import__("re").findall(r"\.g-([\w-]+)\{([^}]*--k-bg[^}]*)\}", A._base_css())}))
+def test_every_key_panel_names_ink_that_reads_on_it(family: str) -> None:
+    """User, 2026-11-16: Ode to Joy's Songs card showed Original Key "D major" in near-white on cream. The Songs
+    card's widget area does not receive a style's --ink (its own base rule sets --ink:#fff more specifically), so a
+    style whose Original Key panel is light must name the panel's ink itself (--k-ink), and it must read on it."""
+    import re as _re
+
+    blocks = _re.findall(r"\.g-" + _re.escape(family) + r"\{([^}]*)\}", A._base_css())
+    decls = dict(_re.findall(r"(--[\w-]+)\s*:\s*([^;]+)", " ".join(blocks)))
+    bg = _hex_luminance(decls["--k-bg"])
+    if bg is None or bg < 0.4:          # a gradient / dark panel: the card's white ink reads on it
+        return
+    assert "--k-ink" in decls, f"{family}: light Original Key panel without its own --k-ink"
+    ink = _hex_luminance(decls["--k-ink"])
+    assert ink is not None and (bg + 0.05) / (ink + 0.05) >= 4.5, f"{family}: --k-ink contrast below 4.5:1"
