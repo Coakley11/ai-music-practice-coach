@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from music_feature_icons import action_label
+
 import html
 import logging
 import re
@@ -2582,7 +2584,7 @@ def _tab_motif(
         g0, g1, g2, g3 = st.columns(4)
         with g0:
             if st.button(
-                f"Generate motif for {gen_chord}",
+                action_label("generate", f"Generate motif for {gen_chord}"),
                 type="primary",
                 key="improv_gen_motif_chord",
                 use_container_width=True,
@@ -2597,7 +2599,7 @@ def _tab_motif(
                 )
                 st.rerun()
         with g1:
-            if st.button("New motif", key="improv_motif_new", use_container_width=True):
+            if st.button(action_label("idea", "New motif"), key="improv_motif_new", use_container_width=True):
                 motif = generate_musical_phrase(
                     gen_chord,
                     key_center=motif_key,
@@ -2613,7 +2615,7 @@ def _tab_motif(
                 _persist_motif_artifact(session_state, interaction="motif_new")
                 st.rerun()
         with g2:
-            if st.button("Harder motif", key="improv_motif_harder", use_container_width=True):
+            if st.button(action_label("harder", "Harder motif"), key="improv_motif_harder", use_container_width=True):
                 motif = generate_musical_phrase(
                     gen_chord,
                     key_center=motif_key,
@@ -2629,7 +2631,7 @@ def _tab_motif(
                 _persist_motif_artifact(session_state, interaction="motif_harder")
                 st.rerun()
         with g3:
-            if st.button("Easier motif", key="improv_motif_easier", use_container_width=True):
+            if st.button(action_label("easier", "Easier motif"), key="improv_motif_easier", use_container_width=True):
                 motif = generate_musical_phrase(
                     gen_chord,
                     key_center=motif_key,
@@ -5877,7 +5879,7 @@ def _tab_missions(
             # Prefer button return over on_click — Playwright clicks the return-True
             # path; on_click alone often misses (same as chord tiles).
             if st.button(
-                "Generate example",
+                action_label("generate", "Generate example"),
                 key="improv_mission_gen",
                 type="primary",
                 use_container_width=True,
@@ -5886,21 +5888,21 @@ def _tab_missions(
                 _on_mission_gen_normal()
         with g2:
             if st.button(
-                "Easier example",
+                action_label("easier", "Easier example"),
                 key="improv_mission_easier",
                 use_container_width=True,
             ):
                 _on_mission_gen_easier()
         with g3:
             if st.button(
-                "Harder example",
+                action_label("harder", "Harder example"),
                 key="improv_mission_harder",
                 use_container_width=True,
             ):
                 _on_mission_gen_harder()
         with g4:
             if st.button(
-                "New idea",
+                action_label("idea", "New idea"),
                 key="improv_mission_new",
                 use_container_width=True,
             ):
