@@ -1,0 +1,26 @@
+worktree : /c/tmp/ai-music-mtfix
+port     : 8693
+cleared  : ignored app state under /c/tmp/ai-music-mtfix/data (tracked fixtures kept)
+data root: /tmp/mtfix-root-CYCTN1
+server pid (shell): 209759
+listener pid(s): 13136 
+  PASS  R1 the app boots
+  PASS  R2 Multitrack opens
+  PASS  R3 a take is recorded  [Guitar, 3s]
+    take size: 522540 bytes (0.50 MiB; the persist cap is 2.00 MiB)
+  PASS  R4 the take is in the live session  [fp=c1597bdc, 522540 bytes]
+    durable copy (persist blob) before the refresh: c1597bdc
+
+    10 trace line(s) after the refresh
+  PASS  R5 THE UNSAVED TAKE SURVIVED A REFRESH  [found=c1597bdc in mt_tracks (recorded c1597bdc)]
+    audio elements on the page after the refresh: 1
+
+======================================================================
+  PASS  R1 the app boots
+  PASS  R2 Multitrack opens
+  PASS  R3 a take is recorded
+  PASS  R4 the take is in the live session
+  PASS  R5 THE UNSAVED TAKE SURVIVED A REFRESH
+
+5/5 gates passed
+stopping the server

@@ -1,0 +1,109 @@
+worktree : /c/tmp/ai-music-mtfix
+port     : 8683
+cleared  : ignored app state under /c/tmp/ai-music-mtfix/data (tracked fixtures kept)
+data root: /tmp/mtfix-root-D5fsWA
+server pid (shell): 207646
+listener pid(s): 52168 
+  PASS  T1 the app boots
+  PASS  T2 Multitrack opens
+  PASS  T3 a take is recorded into the first slot  [Guitar]
+
+  --- trace: after recording the first slot (9 line(s)) ---
+    run:page=multitrack                      page=multitrack   (nothing)
+    multitrack_page:enter                    page=multitrack   (nothing)
+    multitrack_page:after_history_bootstrap  page=multitrack   (nothing)
+    run:page=multitrack                      page=multitrack   Guitar[live=074fabe0 snap=074fabe0 resolved=074fabe0]
+    multitrack_page:enter                    page=multitrack   Guitar[live=074fabe0 snap=074fabe0 resolved=074fabe0]
+    multitrack_page:after_history_bootstrap  page=multitrack   Guitar[live=074fabe0 snap=074fabe0 resolved=074fabe0]
+    run:page=multitrack                      page=multitrack   Guitar[live=074fabe0 snap=074fabe0 resolved=074fabe0]
+    multitrack_page:enter                    page=multitrack   Guitar[live=074fabe0 snap=074fabe0 resolved=074fabe0]
+    multitrack_page:after_history_bootstrap  page=multitrack   Guitar[live=074fabe0 snap=074fabe0 resolved=074fabe0]
+  PASS  T4 the first slot holds audio  [fp=074fabe0]
+
+  --- trace: away (to populate the snapshot) (8 line(s)) ---
+    run:page=multitrack                      page=multitrack   Guitar[live=074fabe0 snap=074fabe0 resolved=074fabe0]
+    run:page=multitrack                      page=multitrack   Guitar[live=074fabe0 snap=074fabe0 resolved=074fabe0]
+    multitrack_page:enter                    page=multitrack   Guitar[live=074fabe0 snap=074fabe0 resolved=074fabe0]
+    multitrack_page:after_history_bootstrap  page=multitrack   Guitar[live=074fabe0 snap=074fabe0 resolved=074fabe0]
+    run:page=multitrack                      page=multitrack   Guitar[live=074fabe0 snap=074fabe0 resolved=074fabe0]
+    page_change_save:entry                   page=practice     Guitar[live=074fabe0 snap=074fabe0 resolved=074fabe0]
+    page_change_save:entry                   page=practice     Guitar[live=074fabe0 snap=074fabe0 resolved=074fabe0]
+    run:page=practice                        page=practice     Guitar[live=074fabe0 snap=074fabe0 resolved=074fabe0]
+
+  --- trace: back (to populate the snapshot) (11 line(s)) ---
+    run:page=practice                        page=practice     Guitar[live=074fabe0 snap=074fabe0 resolved=074fabe0]
+    run:page=practice                        page=practice     Guitar[live=074fabe0 snap=074fabe0 resolved=074fabe0]
+    run:page=practice                        page=practice     Guitar[live=074fabe0 snap=074fabe0 resolved=074fabe0]
+    page_change_save:entry                   page=multitrack   Guitar[live=074fabe0 snap=074fabe0 resolved=074fabe0]
+    page_change_save:entry                   page=multitrack   Guitar[live=074fabe0 snap=074fabe0 resolved=074fabe0]
+    run:page=multitrack                      page=multitrack   Guitar[live=074fabe0 snap=074fabe0 resolved=074fabe0]
+    multitrack_page:enter                    page=multitrack   Guitar[live=074fabe0 snap=074fabe0 resolved=074fabe0]
+    multitrack_page:after_history_bootstrap  page=multitrack   Guitar[live=074fabe0 snap=074fabe0 resolved=074fabe0]
+    run:page=multitrack                      page=multitrack   Guitar[live=074fabe0 snap=074fabe0 resolved=074fabe0]
+    multitrack_page:enter                    page=multitrack   Guitar[live=074fabe0 snap=074fabe0 resolved=074fabe0]
+    multitrack_page:after_history_bootstrap  page=multitrack   Guitar[live=074fabe0 snap=074fabe0 resolved=074fabe0]
+  PASS  T5 the first round trip really left Multitrack
+  PASS  T6 the snapshot now HOLDS the first layer - the case that is not accidental  [snapshot fp=074fabe0]
+  PASS  T7 a second take is recorded into another slot  [Sax / winds]
+
+  --- trace: after recording the second slot (12 line(s)) ---
+    run:page=multitrack                      page=multitrack   Guitar[live=074fabe0 snap=074fabe0 resolved=074fabe0]
+    multitrack_page:enter                    page=multitrack   Guitar[live=074fabe0 snap=074fabe0 resolved=074fabe0]
+    multitrack_page:after_history_bootstrap  page=multitrack   Guitar[live=074fabe0 snap=074fabe0 resolved=074fabe0]
+    run:page=multitrack                      page=multitrack   Guitar[live=074fabe0 snap=074fabe0 resolved=074fabe0]  Sax / winds[live=eaf6ea8c snap=eaf6ea8c resolved=eaf6ea8c]
+    multitrack_page:enter                    page=multitrack   Guitar[live=074fabe0 snap=074fabe0 resolved=074fabe0]  Sax / winds[live=eaf6ea8c snap=eaf6ea8c resolved=eaf6ea8c]
+    multitrack_page:after_history_bootstrap  page=multitrack   Guitar[live=074fabe0 snap=074fabe0 resolved=074fabe0]  Sax / winds[live=eaf6ea8c snap=eaf6ea8c resolved=eaf6ea8c]
+    run:page=multitrack                      page=multitrack   Guitar[live=074fabe0 snap=074fabe0 resolved=074fabe0]  Sax / winds[live=eaf6ea8c snap=eaf6ea8c resolved=eaf6ea8c]
+    multitrack_page:enter                    page=multitrack   Guitar[live=074fabe0 snap=074fabe0 resolved=074fabe0]  Sax / winds[live=eaf6ea8c snap=eaf6ea8c resolved=eaf6ea8c]
+    multitrack_page:after_history_bootstrap  page=multitrack   Guitar[live=074fabe0 snap=074fabe0 resolved=074fabe0]  Sax / winds[live=eaf6ea8c snap=eaf6ea8c resolved=eaf6ea8c]
+    run:page=multitrack                      page=multitrack   Guitar[live=074fabe0 snap=074fabe0 resolved=074fabe0]  Sax / winds[live=eaf6ea8c snap=eaf6ea8c resolved=eaf6ea8c]
+    multitrack_page:enter                    page=multitrack   Guitar[live=074fabe0 snap=074fabe0 resolved=074fabe0]  Sax / winds[live=eaf6ea8c snap=eaf6ea8c resolved=eaf6ea8c]
+    multitrack_page:after_history_bootstrap  page=multitrack   Guitar[live=074fabe0 snap=074fabe0 resolved=074fabe0]  Sax / winds[live=eaf6ea8c snap=eaf6ea8c resolved=eaf6ea8c]
+  PASS  T8 the second slot holds audio before navigating  [fp=eaf6ea8c]
+
+  --- trace: away (the real test) (8 line(s)) ---
+    run:page=multitrack                      page=multitrack   Guitar[live=074fabe0 snap=074fabe0 resolved=074fabe0]  Sax / winds[live=eaf6ea8c snap=eaf6ea8c resolved=eaf6ea8c]
+    run:page=multitrack                      page=multitrack   Guitar[live=074fabe0 snap=074fabe0 resolved=074fabe0]  Sax / winds[live=eaf6ea8c snap=eaf6ea8c resolved=eaf6ea8c]
+    multitrack_page:enter                    page=multitrack   Guitar[live=074fabe0 snap=074fabe0 resolved=074fabe0]  Sax / winds[live=eaf6ea8c snap=eaf6ea8c resolved=eaf6ea8c]
+    multitrack_page:after_history_bootstrap  page=multitrack   Guitar[live=074fabe0 snap=074fabe0 resolved=074fabe0]  Sax / winds[live=eaf6ea8c snap=eaf6ea8c resolved=eaf6ea8c]
+    run:page=multitrack                      page=multitrack   Guitar[live=074fabe0 snap=074fabe0 resolved=074fabe0]  Sax / winds[live=eaf6ea8c snap=eaf6ea8c resolved=eaf6ea8c]
+    page_change_save:entry                   page=practice     Guitar[live=074fabe0 snap=074fabe0 resolved=074fabe0]  Sax / winds[live=eaf6ea8c snap=eaf6ea8c resolved=eaf6ea8c]
+    page_change_save:entry                   page=practice     Guitar[live=074fabe0 snap=074fabe0 resolved=074fabe0]  Sax / winds[live=eaf6ea8c snap=eaf6ea8c resolved=eaf6ea8c]
+    run:page=practice                        page=practice     Guitar[live=074fabe0 snap=074fabe0 resolved=074fabe0]  Sax / winds[live=eaf6ea8c snap=eaf6ea8c resolved=eaf6ea8c]
+
+  --- trace: back (the real test) (13 line(s)) ---
+    run:page=practice                        page=practice     Guitar[live=074fabe0 snap=074fabe0 resolved=074fabe0]  Sax / winds[live=eaf6ea8c snap=eaf6ea8c resolved=eaf6ea8c]
+    run:page=practice                        page=practice     Guitar[live=074fabe0 snap=074fabe0 resolved=074fabe0]  Sax / winds[live=eaf6ea8c snap=eaf6ea8c resolved=eaf6ea8c]
+    run:page=practice                        page=practice     Guitar[live=074fabe0 snap=074fabe0 resolved=074fabe0]  Sax / winds[live=eaf6ea8c snap=eaf6ea8c resolved=eaf6ea8c]
+    page_change_save:entry                   page=multitrack   Guitar[live=074fabe0 snap=074fabe0 resolved=074fabe0]  Sax / winds[live=eaf6ea8c snap=eaf6ea8c resolved=eaf6ea8c]
+    page_change_save:entry                   page=multitrack   Guitar[live=074fabe0 snap=074fabe0 resolved=074fabe0]  Sax / winds[live=eaf6ea8c snap=eaf6ea8c resolved=eaf6ea8c]
+    run:page=multitrack                      page=multitrack   Guitar[live=074fabe0 snap=074fabe0 resolved=074fabe0]  Sax / winds[live=eaf6ea8c snap=eaf6ea8c resolved=eaf6ea8c]
+    multitrack_page:enter                    page=multitrack   Guitar[live=074fabe0 snap=074fabe0 resolved=074fabe0]  Sax / winds[live=eaf6ea8c snap=eaf6ea8c resolved=eaf6ea8c]
+    multitrack_page:after_history_bootstrap  page=multitrack   Guitar[live=074fabe0 snap=074fabe0 resolved=074fabe0]  Sax / winds[live=eaf6ea8c snap=eaf6ea8c resolved=eaf6ea8c]
+    run:page=multitrack                      page=multitrack   Guitar[live=074fabe0 snap=074fabe0 resolved=074fabe0]  Sax / winds[live=eaf6ea8c snap=eaf6ea8c resolved=eaf6ea8c]
+    run:page=multitrack                      page=multitrack   Guitar[live=074fabe0 snap=074fabe0 resolved=074fabe0]  Sax / winds[live=eaf6ea8c snap=eaf6ea8c resolved=eaf6ea8c]
+    run:page=multitrack                      page=multitrack   Guitar[live=074fabe0 snap=074fabe0 resolved=074fabe0]  Sax / winds[live=eaf6ea8c snap=eaf6ea8c resolved=eaf6ea8c]
+    multitrack_page:enter                    page=multitrack   Guitar[live=074fabe0 snap=074fabe0 resolved=074fabe0]  Sax / winds[live=eaf6ea8c snap=eaf6ea8c resolved=eaf6ea8c]
+    multitrack_page:after_history_bootstrap  page=multitrack   Guitar[live=074fabe0 snap=074fabe0 resolved=074fabe0]  Sax / winds[live=eaf6ea8c snap=eaf6ea8c resolved=eaf6ea8c]
+  PASS  T9 the second round trip really left Multitrack
+  PASS  T10 the saved first layer is still there  [fp=074fabe0 (was 074fabe0)]
+  PASS  T11 THE UNSAVED SECOND TAKE SURVIVED  [live=eaf6ea8c (was eaf6ea8c) resolved=eaf6ea8c]
+  PASS  T12 both takes are offered on the page  [2 audio element(s) before, 2 after]
+
+======================================================================
+  PASS  T1 the app boots
+  PASS  T2 Multitrack opens
+  PASS  T3 a take is recorded into the first slot
+  PASS  T4 the first slot holds audio
+  PASS  T5 the first round trip really left Multitrack
+  PASS  T6 the snapshot now HOLDS the first layer - the case that is not accidental
+  PASS  T7 a second take is recorded into another slot
+  PASS  T8 the second slot holds audio before navigating
+  PASS  T9 the second round trip really left Multitrack
+  PASS  T10 the saved first layer is still there
+  PASS  T11 THE UNSAVED SECOND TAKE SURVIVED
+  PASS  T12 both takes are offered on the page
+
+12/12 gates passed
+NOTE: simulated microphone input, not a real instrument.
+stopping the server

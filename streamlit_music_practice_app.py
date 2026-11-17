@@ -15771,6 +15771,14 @@ except ImportError:
     pass
 _studio_page = ensure_studio_page(st.session_state)
 try:
+    # One line per run, on EVERY page: a draft that disappears while the musician is on another
+    # page is invisible to a trace that only fires on the Multitrack branch. (Env-gated.)
+    from multitrack_draft_trace import note as _mt_draft_note_run
+
+    _mt_draft_note_run(st.session_state, "run:page=" + str(_studio_page or ""))
+except Exception:
+    pass
+try:
     from app_ui import note_runtime_sidebar_active_page
 
     note_runtime_sidebar_active_page(_studio_page)
@@ -17993,7 +18001,7 @@ def _on_backing_filter_change() -> None:
         if km.is_voice_mode(st.session_state) and km.is_karaoke_session_active(st.session_state):
             _ov_groove = str(st.session_state.get("backing_groove_style") or "").strip()
             _ov_meter = str(st.session_state.get("backing_time_signature") or "").strip()
-            km.record_entry_feel_override(
+            if km.record_entry_feel_override(
                 st.session_state,
                 groove=_ov_groove
                 if _ov_groove and _ov_groove != km.resolve_karaoke_entry_groove(st.session_state)
@@ -18001,7 +18009,13 @@ def _on_backing_filter_change() -> None:
                 meter=_ov_meter
                 if _ov_meter and _ov_meter != km.resolve_karaoke_entry_meter(st.session_state)
                 else "",
-            )
+            ):
+                # A saved setting of a setlist entry, so a deliberate setlist edit: saved to the
+                # account like every other one, not left to an autosave the strict policy keeps
+                # off the cloud.
+                from karaoke_ui import persist_karaoke_setlist
+
+                persist_karaoke_setlist(st)
     except Exception:
         pass
     # Flush widget → canonical before play-session capture so Feel Pop after
@@ -28563,9 +28577,23 @@ elif _studio_page == "creative":
 elif _studio_page == "multitrack":
 
     try:
+        from multitrack_draft_trace import note as _mt_draft_note
+
+        _mt_draft_note(st.session_state, "multitrack_page:enter")
+    except Exception:
+        pass
+
+    try:
         from studio_history_bootstrap import apply_pending_studio_history
 
         apply_pending_studio_history(st.session_state, page="multitrack", st=st)
+    except Exception:
+        pass
+
+    try:
+        from multitrack_draft_trace import note as _mt_draft_note
+
+        _mt_draft_note(st.session_state, "multitrack_page:after_history_bootstrap")
     except Exception:
         pass
 
@@ -28668,6 +28696,39 @@ elif _studio_page == "multitrack":
         st.session_state.mt_track_filenames = {
             slot: f"{slot.replace(' ', '_').lower()}.wav" for slot in MT_SLOTS
         }
+    # Before adopt_restored_layers_as_saved, on purpose: it treats any audio with no recorded saved
+    # state as a SAVED layer, and after a refresh nothing is recorded - so a restored draft would be
+    # silently promoted. restore_drafts sets each slot's saved state from the file's own record.
+    try:
+        from multitrack_draft_store import restore_drafts
+
+        restore_drafts(st.session_state, MT_SLOTS, st=st)
+    except Exception:
+        pass
+    # A reopened saved project brings back its saved layers. Drafts first: a newer unsaved take
+    # of this project wins its slot; the project fills only the slots still empty. Without this a
+    # reopened project said "loaded" with no audio, hid Load and asked for a new recording.
+    try:
+        from multitrack_project_audio_restore import (
+            failed_slots as _mt_restore_failed,
+            request_retry as _mt_restore_retry,
+            restore_active_project_audio,
+        )
+
+        _mt_restore_report = restore_active_project_audio(st.session_state, MT_SLOTS, st=st)
+        _mt_restore_bad = _mt_restore_failed(_mt_restore_report)
+        if _mt_restore_bad:
+            st.warning(
+                "This project's saved audio for "
+                + ", ".join(_mt_restore_bad)
+                + " could not be brought back just now. Your saved project still has it - "
+                "press **Restore saved audio** to try again."
+            )
+            if st.button("Restore saved audio", key="mt_restore_saved_audio_retry"):
+                _mt_restore_retry(st.session_state)
+                st.rerun()
+    except Exception:
+        pass
     try:
         from multitrack_takes import adopt_restored_layers_as_saved
 
@@ -29094,13 +29155,19 @@ elif _studio_page == "multitrack":
                             _mt_landed_bytes = None
                             _mt_landed_name = ""
                             _mt_landed_source = ""
-                        # Issue 77A: an UPLOAD is decoded before it becomes a layer. The uploader
-                        # accepts a file on its extension and the size guard above accepts anything
-                        # over 512 bytes, so a file no decoder can read used to become a take - and
-                        # then disabled Record on every OTHER layer, because each of those has to
-                        # decode it to play along with it. Takes captured here are not re-checked:
-                        # this app wrote those bytes itself.
-                        if _mt_landed_bytes is not None and _mt_landed_source == "upload":
+                        # Issue 77A: a take is DECODED before it becomes a layer. The size guard
+                        # above accepts anything over 512 bytes, so a file no decoder can read used
+                        # to become a take - and then disabled Record on every OTHER layer, because
+                        # each of those has to decode it to play along with it.
+                        #
+                        # This used to apply to uploads only, on the grounds that "this app wrote
+                        # those bytes itself". It did not, quite: a recorded take is encoded by the
+                        # recorder's JavaScript in the browser and carried back to Python, so a
+                        # capture glitch or a truncated transfer can leave more than 512 bytes that
+                        # no decoder reads - and that is exactly "its audio could not be played by
+                        # this browser" on the NEXT layer. Size is not proof of audio, whoever
+                        # produced the bytes, so every landed take is decoded the same way.
+                        if _mt_landed_bytes is not None and _mt_landed_source:
                             try:
                                 from multitrack_audio_validation import (
                                     check_audio_bytes,
@@ -29127,10 +29194,11 @@ elif _studio_page == "multitrack":
                                             layer_name=str(
                                                 st.session_state.get(f"mt_name_{slot}") or slot
                                             ),
+                                            source=_mt_landed_source,
                                         )
                                     )
                                     # Nothing is deleted or replaced: the layer keeps whatever it
-                                    # already held, and the uploaded file is simply not adopted.
+                                    # already held, and the rejected take is simply not adopted.
                                     _mt_landed_bytes = None
                                     _mt_landed_name = ""
                                     _mt_landed_source = ""
@@ -29204,6 +29272,17 @@ elif _studio_page == "multitrack":
                                 except Exception:
                                     pass
                                 mark_take_unsaved(st.session_state, slot)
+                                # The workspace save drops any layer over 2 MiB - about 12 s of this
+                                # recorder's audio - so a song-length take was kept nowhere but the
+                                # live session. Its own file, outside the workspace state, is what
+                                # lets it survive a refresh or a dropped connection.
+                                try:
+                                    from multitrack_draft_store import write_draft
+
+                                    write_draft(st.session_state, slot, _mt_bytes,
+                                                source=_mt_landed_source, st=st)
+                                except Exception:
+                                    pass
                                 try:
                                     from music_persistent_state import force_save_music_state
                                     from studio_page_persistence import flush_current_page_snapshot
@@ -29273,6 +29352,12 @@ elif _studio_page == "multitrack":
                             if audio_obj is None and st.session_state.mt_tracks.get(slot):
                                 # The take is already held for playback; saving keeps it for good.
                                 mark_take_saved(st.session_state, slot)
+                                try:
+                                    from multitrack_draft_store import mark_draft_saved
+
+                                    mark_draft_saved(st.session_state, slot, st=st)
+                                except Exception:
+                                    pass
                                 st.success(f"{layer_name} saved.")
                                 try:
                                     from music_persistent_state import force_save_music_state
@@ -29287,6 +29372,12 @@ elif _studio_page == "multitrack":
                                     audio_obj, "name", f"{slot}.wav"
                                 )
                                 mark_take_saved(st.session_state, slot)
+                                try:
+                                    from multitrack_draft_store import mark_draft_saved
+
+                                    mark_draft_saved(st.session_state, slot, st=st)
+                                except Exception:
+                                    pass
                                 st.success(f"{layer_name} saved.")
                                 try:
                                     from music_persistent_state import force_save_music_state

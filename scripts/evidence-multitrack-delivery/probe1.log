@@ -1,0 +1,59 @@
+worktree : /c/tmp/ai-music-mtfix
+port     : 8670
+cleared  : ignored app state under /c/tmp/ai-music-mtfix/data (tracked fixtures kept)
+data root: /tmp/mtfix-root-tx03eI
+server pid (shell): 205824
+listener pid(s): 38536 
+on the Multitrack page
+  page offers 'prepare backing': True
+  Prepare backing -> 'clicked'
+  'backing ready' on the page: False
+  'could not be loaded' on the page: False
+
+component arguments:
+  {"src": "http://127.0.0.1:8670/component/mission_recorder.mission_recorder/index.html?streamlitUrl=http%3A%2F%2F127.0.0.1%3A8670%", "frame_url": "http://127.0.0.1:8670/component/mission_recorder.mission_recorder/index.html?streamlitUrl=http%3A%2F%2F127.0.0.1%3A8670%2F", "backing_url": "(args unreadable)", "backing_fp": "", "backing_duration_sec": null, "monitors": null}
+  {"src": "http://127.0.0.1:8670/component/mission_recorder.mission_recorder/index.html?streamlitUrl=http%3A%2F%2F127.0.0.1%3A8670%", "frame_url": "http://127.0.0.1:8670/component/mission_recorder.mission_recorder/index.html?streamlitUrl=http%3A%2F%2F127.0.0.1%3A8670%2F", "backing_url": "(args unreadable)", "backing_fp": "", "backing_duration_sec": null, "monitors": null}
+  {"src": "http://127.0.0.1:8670/component/mission_recorder.mission_recorder/index.html?streamlitUrl=http%3A%2F%2F127.0.0.1%3A8670%", "frame_url": "http://127.0.0.1:8670/component/mission_recorder.mission_recorder/index.html?streamlitUrl=http%3A%2F%2F127.0.0.1%3A8670%2F", "backing_url": "(args unreadable)", "backing_fp": "", "backing_duration_sec": null, "monitors": null}
+  {"src": "http://127.0.0.1:8670/component/mission_recorder.mission_recorder/index.html?streamlitUrl=http%3A%2F%2F127.0.0.1%3A8670%", "frame_url": "http://127.0.0.1:8670/component/mission_recorder.mission_recorder/index.html?streamlitUrl=http%3A%2F%2F127.0.0.1%3A8670%2F", "backing_url": "(args unreadable)", "backing_fp": "", "backing_duration_sec": null, "monitors": null}
+  {"src": "http://127.0.0.1:8670/component/mission_recorder.mission_recorder/index.html?streamlitUrl=http%3A%2F%2F127.0.0.1%3A8670%", "frame_url": "http://127.0.0.1:8670/component/mission_recorder.mission_recorder/index.html?streamlitUrl=http%3A%2F%2F127.0.0.1%3A8670%2F", "backing_url": "(args unreadable)", "backing_fp": "", "backing_duration_sec": null, "monitors": null}
+  {"src": "http://127.0.0.1:8670/component/mission_recorder.mission_recorder/index.html?streamlitUrl=http%3A%2F%2F127.0.0.1%3A8670%", "frame_url": "http://127.0.0.1:8670/component/mission_recorder.mission_recorder/index.html?streamlitUrl=http%3A%2F%2F127.0.0.1%3A8670%2F", "backing_url": "(args unreadable)", "backing_fp": "", "backing_duration_sec": null, "monitors": null}
+  {"src": "", "frame_url": "about:srcdoc", "backing_url": "(args unreadable)", "backing_fp": "", "backing_duration_sec": null, "monitors": null}
+
+direct fetch of the component's own backing_url:
+  {"asked_for": "(args unreadable)", "error": "APIRequestContext.get: Invalid URL"}
+  {"asked_for": "(args unreadable)", "error": "APIRequestContext.get: Invalid URL"}
+  {"asked_for": "(args unreadable)", "error": "APIRequestContext.get: Invalid URL"}
+  {"asked_for": "(args unreadable)", "error": "APIRequestContext.get: Invalid URL"}
+  {"asked_for": "(args unreadable)", "error": "APIRequestContext.get: Invalid URL"}
+  {"asked_for": "(args unreadable)", "error": "APIRequestContext.get: Invalid URL"}
+  {"asked_for": "(args unreadable)", "error": "APIRequestContext.get: Invalid URL"}
+
+every media / component response seen:
+  {"url": ".0.1:8670/component/mission_recorder.mission_recorder/index.html?streamlitUrl=http%3A%2F%2F127.0.0.1%3A8670%2F", "status": 200, "ok": true, "content_type": "text/html; charset=utf-8", "length": "10842", "method": "GET"}
+  {"url": ".0.1:8670/component/mission_recorder.mission_recorder/index.html?streamlitUrl=http%3A%2F%2F127.0.0.1%3A8670%2F", "status": 200, "ok": true, "content_type": "text/html; charset=utf-8", "length": "10842", "method": "GET"}
+  {"url": ".0.1:8670/component/mission_recorder.mission_recorder/index.html?streamlitUrl=http%3A%2F%2F127.0.0.1%3A8670%2F", "status": 200, "ok": true, "content_type": "text/html; charset=utf-8", "length": "10842", "method": "GET"}
+  {"url": ".0.1:8670/component/mission_recorder.mission_recorder/index.html?streamlitUrl=http%3A%2F%2F127.0.0.1%3A8670%2F", "status": 200, "ok": true, "content_type": "text/html; charset=utf-8", "length": "10842", "method": "GET"}
+  {"url": ".0.1:8670/component/mission_recorder.mission_recorder/index.html?streamlitUrl=http%3A%2F%2F127.0.0.1%3A8670%2F", "status": 200, "ok": true, "content_type": "text/html; charset=utf-8", "length": "10842", "method": "GET"}
+  {"url": ".0.1:8670/component/mission_recorder.mission_recorder/index.html?streamlitUrl=http%3A%2F%2F127.0.0.1%3A8670%2F", "status": 200, "ok": true, "content_type": "text/html; charset=utf-8", "length": "10842", "method": "GET"}
+  {"url": ".0.1:8670/component/mission_recorder.mission_recorder/index.html?streamlitUrl=http%3A%2F%2F127.0.0.1%3A8670%2F", "status": 200, "ok": true, "content_type": "text/html; charset=utf-8", "length": "10842", "method": "GET"}
+  {"url": ".0.1:8670/component/mission_recorder.mission_recorder/index.html?streamlitUrl=http%3A%2F%2F127.0.0.1%3A8670%2F", "status": 200, "ok": true, "content_type": "text/html; charset=utf-8", "length": "10842", "method": "GET"}
+  {"url": ".0.1:8670/component/mission_recorder.mission_recorder/index.html?streamlitUrl=http%3A%2F%2F127.0.0.1%3A8670%2F", "status": 200, "ok": true, "content_type": "text/html; charset=utf-8", "length": "10842", "method": "GET"}
+  {"url": ".0.1:8670/component/mission_recorder.mission_recorder/index.html?streamlitUrl=http%3A%2F%2F127.0.0.1%3A8670%2F", "status": 200, "ok": true, "content_type": "text/html; charset=utf-8", "length": "10842", "method": "GET"}
+  {"url": ".0.1:8670/component/mission_recorder.mission_recorder/index.html?streamlitUrl=http%3A%2F%2F127.0.0.1%3A8670%2F", "status": 200, "ok": true, "content_type": "text/html; charset=utf-8", "length": "10842", "method": "GET"}
+  {"url": ".0.1:8670/component/mission_recorder.mission_recorder/index.html?streamlitUrl=http%3A%2F%2F127.0.0.1%3A8670%2F", "status": 200, "ok": true, "content_type": "text/html; charset=utf-8", "length": "10842", "method": "GET"}
+  {"url": ".0.1:8670/component/mission_recorder.mission_recorder/index.html?streamlitUrl=http%3A%2F%2F127.0.0.1%3A8670%2F", "status": 200, "ok": true, "content_type": "text/html; charset=utf-8", "length": "10842", "method": "GET"}
+  {"url": ".0.1:8670/component/mission_recorder.mission_recorder/index.html?streamlitUrl=http%3A%2F%2F127.0.0.1%3A8670%2F", "status": 200, "ok": true, "content_type": "text/html; charset=utf-8", "length": "10842", "method": "GET"}
+  {"url": ".0.1:8670/component/mission_recorder.mission_recorder/index.html?streamlitUrl=http%3A%2F%2F127.0.0.1%3A8670%2F", "status": 200, "ok": true, "content_type": "text/html; charset=utf-8", "length": "10842", "method": "GET"}
+  {"url": ".0.1:8670/component/mission_recorder.mission_recorder/index.html?streamlitUrl=http%3A%2F%2F127.0.0.1%3A8670%2F", "status": 200, "ok": true, "content_type": "text/html; charset=utf-8", "length": "10842", "method": "GET"}
+  {"url": ".0.1:8670/component/mission_recorder.mission_recorder/index.html?streamlitUrl=http%3A%2F%2F127.0.0.1%3A8670%2F", "status": 200, "ok": true, "content_type": "text/html; charset=utf-8", "length": "10842", "method": "GET"}
+  {"url": ".0.1:8670/component/mission_recorder.mission_recorder/index.html?streamlitUrl=http%3A%2F%2F127.0.0.1%3A8670%2F", "status": 200, "ok": true, "content_type": "text/html; charset=utf-8", "length": "10842", "method": "GET"}
+  {"url": "http://127.0.0.1:8670/media/19f9ae1e113666a6668e4a3c6cf5a504.wav", "status": 200, "ok": true, "content_type": "audio/wav", "length": "40359072", "method": "GET", "body_error": "Response.body: Protocol error (Network.getResponseBody): Request content w
+  {"url": "http://127.0.0.1:8670/media/19f9ae1e113666a6668e4a3c6cf5a504.wav", "status": 200, "ok": true, "content_type": "audio/wav", "length": "40359072", "method": "GET", "body_error": "Response.body: Protocol error (Network.getResponseBody): Request content w
+  {"url": "http://127.0.0.1:8670/media/19f9ae1e113666a6668e4a3c6cf5a504.wav", "status": 200, "ok": true, "content_type": "audio/wav", "length": "40359072", "method": "GET", "body_error": "Response.body: Protocol error (Network.getResponseBody): Request content w
+  {"url": "http://127.0.0.1:8670/media/19f9ae1e113666a6668e4a3c6cf5a504.wav", "status": 200, "ok": true, "content_type": "audio/wav", "length": "40359072", "method": "GET", "body_error": "Response.body: Protocol error (Network.getResponseBody): Request content w
+  {"url": "http://127.0.0.1:8670/media/19f9ae1e113666a6668e4a3c6cf5a504.wav", "status": 206, "ok": true, "content_type": "audio/wav", "length": "40359072", "method": "GET", "body_error": "Response.body: Protocol error (Network.getResponseBody): No data found for
+  {"url": "http://127.0.0.1:8670/media/19f9ae1e113666a6668e4a3c6cf5a504.wav", "status": 200, "ok": true, "content_type": "audio/wav", "length": "40359072", "method": "GET", "body_error": "Response.body: Protocol error (Network.getResponseBody): Request content w
+  {"url": "http://127.0.0.1:8670/media/19f9ae1e113666a6668e4a3c6cf5a504.wav", "status": 200, "ok": true, "content_type": "audio/wav", "length": "40359072", "method": "GET", "body_error": "Response.body: Protocol error (Network.getResponseBody): Request content w
+
+wrote C:\tmp\ai-music-mtfix\scripts\evidence-multitrack-delivery\delivery.json
+stopping the server

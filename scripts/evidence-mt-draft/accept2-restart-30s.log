@@ -1,0 +1,32 @@
+worktree : /c/tmp/ai-music-mtfix
+port     : 8716
+cleared  : ignored app state under /c/tmp/ai-music-mtfix/data (tracked fixtures kept)
+data root: /tmp/mtfix-root-OE6f2d
+server pid (shell): 212077
+listener pid(s): 1040 
+  PASS  R1 the app boots
+  PASS  R2 Multitrack opens
+  PASS  R3 a take is recorded  [Guitar, 30s]
+    take size: 3115564 bytes (2.97 MiB; the persist cap is 2.00 MiB)
+  PASS  R4 the take is in the live session  [fp=144f16c2, 3115564 bytes]
+    durable copy (persist blob) before the refresh: NONE
+    draft files on the server before the refresh: 1 (3115564 bytes)
+  PASS  R4c the take was kept as its own file  [1 draft file(s)]
+    wiped the server's draft directory, as a Cloud restart would
+
+    3 trace line(s) after the refresh
+  PASS  R5 A TAKE LOST WITH THE SERVER'S DISK DID NOT COME BACK  [found=None in nowhere]
+    audio elements on the page after the refresh: 0
+  PASS  R6 nothing claims a lost take was saved  [0 audio element(s)]
+
+======================================================================
+  PASS  R1 the app boots
+  PASS  R2 Multitrack opens
+  PASS  R3 a take is recorded
+  PASS  R4 the take is in the live session
+  PASS  R4c the take was kept as its own file
+  PASS  R5 A TAKE LOST WITH THE SERVER'S DISK DID NOT COME BACK
+  PASS  R6 nothing claims a lost take was saved
+
+7/7 gates passed
+stopping the server

@@ -1,0 +1,41 @@
+  PASS  P1 Multitrack opens
+  PASS  P2 a full-length take is recorded  [88s]
+  PASS  P3 the take is in the live session  [fp=3d203427 7127084 bytes (6.80 MiB)]
+    the recorder stopped at 74.24 s of the 88 s asked for
+  FAIL  P4 the recorded take decodes  [{'decodes': True, 'seconds': 74.24, 'rate': 48000, 'channels': 1}]
+  PASS  P5 Save layer pressed  [clicked]
+  PASS  P6 Save project pressed  [name=True save=True]
+    project save message: saved new project - 1 layer saved to your account.
+  PASS  P7 the save message says the layer is in the account  [saved new project - 1 layer saved to your account.]
+    objects in the stand-in bucket: [["music-media\\3017a187-c271-4bbb-8227-4d003f24de09\\daniel\\multitrack\\a1a4fe22-62c4-4642-a2ad-f74d11cd3afc\\9b95acbb-aa2a-4c19-ba08-d8775c7f4655.wav", 7127084]]
+  PASS  C1 the take's exact bytes are in cloud storage  [music-media\3017a187-c271-4bbb-8227-4d003f24de09\daniel\multitrack\a1a4fe22-62c4-4642-a2ad-f74d11cd3afc\9b95acbb-aa2a-4c19-ba08-d8775c7f4655.wav]
+  PASS  C2 the cloud copy decodes, same length as recorded  [{'decodes': True, 'seconds': 74.24, 'rate': 48000, 'channels': 1}]
+  PASS  C3 the project is in the cloud library  [2 saved item(s)]
+    workspace row carries the take inline: False (the 2 MiB cap drops it - expected False)
+  PASS  N1 new session, same server: the saved project is listed
+  PASS  N1 new session, same server: the recording is back WITHOUT pressing anything  [fp=3d203427 want=3d203427 bytes=7127084]
+  PASS  N1 new session, same server: the page does not ask for a new recording
+  PASS  N1 new session, same server: the layer says it is a saved layer
+    outage save message(s): ['saved changes to project, but guitar did not reach your account storage: kept on this server only, which a restart of the app can lose. press save changes to try again.']
+  PASS  O1 a save during a cloud outage is NOT reported as saved to the account  [clicked=True]
+  PASS  R1 after the server was replaced: the saved project is listed
+  PASS  R1 after the server was replaced: the recording is back WITHOUT pressing anything  [fp=3d203427 want=3d203427 bytes=7127084]
+  PASS  R1 after the server was replaced: the page does not ask for a new recording
+  PASS  R1 after the server was replaced: the layer says it is a saved layer
+    R1 after the server was replaced: playback: {'sources': 1, 'layer_started': True, 'label': 'Counting you in — everything starts together on beat 1.', 'layer_dur': 74.24, 'backing_started': False}
+  PASS  R1 after the server was replaced: Play decodes the full 74.24 s recording and starts it  [{'sources': 1, 'layer_started': True, 'label': 'Counting you in — everything starts together on beat 1.', 'layer_dur': 74.24, 'backing_started': False}]
+    R1 after the server was replaced: no backing started with the recording (the project saved no backing audio)
+    restored copies on the new server's disk with the take's SHA-256: 1
+  PASS  R2 the restored audio decodes, same length as recorded  [{'decodes': True, 'seconds': 74.24, 'rate': 48000, 'channels': 1}]
+  PASS  N2 another new session after the restart: the saved project is listed
+    N2 another new session after the restart: restore said refilled_from_session_cache a1a4fe22-62c4-4642-a2ad-f74d11cd3afc  
+  PASS  N2 another new session after the restart: the recording is back WITHOUT pressing anything  [fp=3d203427 want=3d203427 bytes=7127084]
+  PASS  N2 another new session after the restart: the page does not ask for a new recording
+  PASS  N2 another new session after the restart: the layer says it is a saved layer
+  PASS  X1 a second project gets its own take and is saved  [new=True rec=True fp=81e8f611 saved=True]
+  PASS  X2 reopening the first project brings ITS take, not the second project's  [load=True fp=3d203427 want=3d203427 second=81e8f611]
+  PASS  U1 another user does not see the first user's projects
+  PASS  U2 another user gets none of the first user's audio  [fp=None]
+  PASS  U3 the first user's recording was not copied to the other user's disk  [0 cop(y/ies)]
+
+29/30 gates passed

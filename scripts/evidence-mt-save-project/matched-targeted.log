@@ -1,0 +1,9 @@
+[mt-targeted] 93 test files, sequential
+  baseline  50 failed, 1404 passed, 3 skipped, 12 warnings, 181 subtests passed in 82.23s (0:01:22)
+  candidate 50 failed, 1404 passed, 3 skipped, 14 warnings, 181 subtests passed in 83.45s (0:01:23)
+  test ids: baseline=1455 candidate=1455
+  only in baseline (disappeared): 0
+  only in candidate (new): 0
+  outcome changed: 0
+  REGRESSIONS (passed -> not passed): 0
+VERDICT: CLEAN

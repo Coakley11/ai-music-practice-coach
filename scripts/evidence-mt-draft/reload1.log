@@ -1,0 +1,25 @@
+worktree : /c/tmp/ai-music-mtfix
+port     : 8684
+cleared  : ignored app state under /c/tmp/ai-music-mtfix/data (tracked fixtures kept)
+data root: /tmp/mtfix-root-KYNcsj
+server pid (shell): 207855
+listener pid(s): 56348 
+  PASS  R1 the app boots
+  PASS  R2 Multitrack opens
+  PASS  R3 a take is recorded  [Guitar]
+  PASS  R4 the take is in the live session  [fp=de02f303]
+    durable copy (persist blob) before the refresh: de02f303
+
+    12 trace line(s) after the refresh
+  PASS  R5 THE UNSAVED TAKE SURVIVED A REFRESH  [found=de02f303 in mt_tracks (recorded de02f303)]
+    audio elements on the page after the refresh: 1
+
+======================================================================
+  PASS  R1 the app boots
+  PASS  R2 Multitrack opens
+  PASS  R3 a take is recorded
+  PASS  R4 the take is in the live session
+  PASS  R5 THE UNSAVED TAKE SURVIVED A REFRESH
+
+5/5 gates passed
+stopping the server

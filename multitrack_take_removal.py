@@ -249,6 +249,15 @@ def remove_take(
 
     report["caches"] = clear_slot_from_caches(session_state, slot)
 
+    # The take's own file too, with a tombstone of its hash, so a discarded take cannot be
+    # restored - not even from a file that failed to delete.
+    try:
+        from multitrack_draft_store import discard_draft
+
+        report["draft_discarded"] = bool(discard_draft(session_state, slot))
+    except Exception:
+        report["draft_discarded"] = False
+
     try:
         from multitrack_live_recorder import forget_take_timing
 
@@ -259,6 +268,12 @@ def remove_take(
 
     report["deliberately_empty"] = mark_layers_deliberately_empty(session_state, slots)
     report["reset_token"] = request_position_reset(session_state)
+    try:
+        from multitrack_project_audio_restore import note_slot_removed
+
+        note_slot_removed(session_state, slot)
+    except Exception:
+        pass
     return report
 
 

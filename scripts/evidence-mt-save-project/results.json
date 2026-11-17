@@ -1,0 +1,102 @@
+[
+ [
+  "P1 Multitrack opens",
+  true,
+  ""
+ ],
+ [
+  "P2 a full-length take is recorded",
+  true,
+  "86s"
+ ],
+ [
+  "P3 the take is in the live session",
+  true,
+  "fp=da0818b5 8456748 bytes (8.06 MiB)"
+ ],
+ [
+  "P4 the recorded take decodes",
+  true,
+  "{'decodes': True, 'seconds': 88.09, 'rate': 48000, 'channels': 1}"
+ ],
+ [
+  "P5 Save layer pressed",
+  true,
+  "clicked"
+ ],
+ [
+  "P6 Save project pressed",
+  true,
+  "name=True save=True"
+ ],
+ [
+  "C1 the take's exact bytes are in cloud storage",
+  true,
+  "music-media\\5943e8ba-11cb-4f2e-a516-96b49d8e1536\\daniel\\multitrack\\86b950a1-04c3-4778-aa6b-45ce165b3deb\\b89d382f-9382-4cf2-9bc2-97badbec5abd.wav"
+ ],
+ [
+  "C2 the cloud copy decodes, same length as recorded",
+  true,
+  "{'decodes': True, 'seconds': 88.09, 'rate': 48000, 'channels': 1}"
+ ],
+ [
+  "C3 the project is in the cloud library",
+  true,
+  "2 saved item(s)"
+ ],
+ [
+  "N1 new session, same server: the saved project is listed",
+  true,
+  ""
+ ],
+ [
+  "N1 new session, same server: the layer is back WITHOUT pressing anything",
+  false,
+  "fp=None want=da0818b5 bytes=None"
+ ],
+ [
+  "N1 new session, same server: after New Project + Load, the layer comes back with the SAME audio",
+  true,
+  "new=True load=True fp=da0818b5 want=da0818b5 bytes=8456748"
+ ],
+ [
+  "R1 after the server was replaced: the saved project is listed",
+  true,
+  ""
+ ],
+ [
+  "R1 after the server was replaced: the layer is back WITHOUT pressing anything",
+  false,
+  "fp=None want=da0818b5 bytes=None"
+ ],
+ [
+  "R1 after the server was replaced: after New Project + Load, the layer comes back with the SAME audio",
+  true,
+  "new=True load=True fp=da0818b5 want=da0818b5 bytes=8456748"
+ ],
+ [
+  "R2 the restored audio decodes, same length as recorded",
+  true,
+  "{'decodes': True, 'seconds': 88.09, 'rate': 48000, 'channels': 1}"
+ ],
+ [
+  "S1 restored layer + project backing start together",
+  false,
+  "sources=0 spread=0.00 ms backing=none stored errors=[]"
+ ],
+ [
+  "N2 another new session after the restart: the saved project is listed",
+  true,
+  ""
+ ],
+ [
+  "N2 another new session after the restart: the layer is back WITHOUT pressing anything",
+  false,
+  "fp=None want=da0818b5 bytes=None"
+ ],
+ [
+  "N2 another new session after the restart: after New Project + Load, the layer comes back with the SAME audio",
+  true,
+  "new=True load=True fp=da0818b5 want=da0818b5 bytes=8456748"
+ ]
+]
