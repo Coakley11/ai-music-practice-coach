@@ -457,6 +457,21 @@ _CONTROLLER_JS = r"""
         // Paused / stopped: stay put; the next measure change after Resume follows (no hold debt).
         else if (p) C.wasSuspended = false;
       }
+      // Catch-up: playing, not held, no move of ours in flight, and the playing measure entirely outside the window
+      // -> bring it in now. Measured 2026-11-17 (Voice, Blackbird, 360 px): every missed sample was bar 1 just after
+      // Play / Play again / a return / a reload -- its highlight was set before the page followed, so the page
+      // waited ~2 s for the next chord change with the playing bar below the window. A measure on screen is untouched.
+      if (!s && lead && now() >= C.selfScrollUntil) {
+        try {
+          if (lead.playing()) {
+            var ce = lead.current(), rr = ce && rectInTop(ce);
+            if (rr) {
+              var scc = scroller(), vtc = viewTop(scc) + topInset(), vbc = viewBottom(scc) - bottomInset();
+              if (rr.bottom <= vtc || rr.top >= vbc) C.follow(ce, { why: "catchup" });
+            }
+          }
+        } catch (eCu) {}
+      }
       if (C.room > 0) spacer(scroller());   // keep the room below at C.room as the chart / page changes size
       syncBar();
     } catch (e) {}

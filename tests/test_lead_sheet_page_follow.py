@@ -299,3 +299,16 @@ def test_compact_bar_buttons_are_easy_to_tap():
     """User, 2026-11-17: Stop / Pause easy to tap at 360 px. Measured 40 px tall; 44 x 44 px is the comfortable
     minimum."""
     assert "min-height:44px;min-width:44px;" in lpf._CONTROLLER_JS
+
+
+def test_a_playing_measure_out_of_the_window_is_caught_up_on_the_next_tick():
+    """Measured 2026-11-17 (Voice, Blackbird, 360 px): every missed sample was bar 1 right after Play -- its highlight
+    was set before the page followed, and the page waited ~2 s for the next chord change. The clock now brings a
+    playing measure that is ENTIRELY outside the window into view; never while held, never mid-move, and a measure on
+    screen is untouched."""
+    js = lpf._CONTROLLER_JS
+    tick = js[js.index("var timer = top.setInterval("):js.index("C.destroy = function")]
+    cu = tick[tick.index("// Catch-up:"):tick.index("if (C.room > 0) spacer(scroller());")]
+    assert "if (!s && lead && now() >= C.selfScrollUntil) {" in cu
+    assert "if (lead.playing()) {" in cu
+    assert "if (rr.bottom <= vtc || rr.top >= vbc) C.follow(ce, { why: \"catchup\" });" in cu
