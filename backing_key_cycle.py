@@ -5516,6 +5516,9 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       const owner = kcUrlOwner(el);
       return !owner || owner === String(key || '').trim();
     }}
+    function cancelPendingPlays() {{
+      state.playGen = Number(state.playGen || 0) + 1;
+    }}
     // The take the musician is waiting for, which the active element does not hold yet: the key a
     // Previous / Next moved to while the server prepares it ("cold"), or a new take whose start was
     // held by a later Pause. Browser traces 2026-11-17 (390 px, seq390_3 / seq390_11): the silence
@@ -5544,9 +5547,6 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       try {{ parentWin.__kcPendingTake = null; }} catch (eCpt) {{}}
     }}
     parentWin.__kcPendingTakeNow = kcPendingTake;
-    function cancelPendingPlays() {{
-      state.playGen = Number(state.playGen || 0) + 1;
-    }}
     // Prefer parent-realm scheduler (installed by boot script). Iframe timers die
     // when Streamlit destroys the components.html frame.
     function kcSched(fn, ms) {{
