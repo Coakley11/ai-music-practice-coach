@@ -5544,7 +5544,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       }} catch (eSpt) {{}}
     }}
     function kcClearPendingTake() {{
-      try {{ parentWin.__kcPendingTake = null; }} catch (eCpt) {{}}
+      try {{ if (parentWin.__kcPendingTake) parentWin.__kcPendingTake = null; }} catch (eCpt) {{}}
     }}
     parentWin.__kcPendingTakeNow = kcPendingTake;
     // Prefer parent-realm scheduler (installed by boot script). Iframe timers die
@@ -8665,6 +8665,9 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           // under a page that is about to show the new one: silence it and let
           // Python prepare the target, which it then starts from the first chord.
           if (navStale()) return false;
+          // Retries and kicks queued for the old take die with it (one restarted it 0.8 s
+          // later in runs seqfix_3 / seqfix_6, which ended the wait below).
+          cancelPendingPlays();
           try {{
             parentDoc.querySelectorAll('audio[id^="kc-"]').forEach((a) => {{ try {{ a.pause(); }} catch (eP0) {{}} }});
           }} catch (eSil0) {{}}
@@ -9050,7 +9053,22 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         paused = true;
         try {{ parentWin.__kcTransportPaused = true; }} catch (eTPh) {{}}
       }} else if (anyPlaying || playKick || bufferingOrStarting || handoffInFlight) {{
-        if (anyPlaying) kcClearPendingTake();  // a take is heard: the wait is over
+        // The wait is over when the awaited key is heard -- not when the take that was left starts
+        // again for a moment (a stray retry, silenced at once by the one-audible rule).
+        if (anyPlaying) {{
+          const pA = kcPendingTake();
+          let heardAwaited = !pA;
+          if (pA) {{
+            try {{
+              ['kc-buf-0', 'kc-buf-1'].forEach((id) => {{
+                const b = parentDoc.getElementById(id);
+                if (b && bufferIsAudible(b) && (String(b.getAttribute('data-kc-sounding') || '').trim() === pA.key
+                    || (pA.url && urlsMatch(b, pA.url)))) heardAwaited = true;
+              }});
+            }} catch (eHa) {{}}
+          }}
+          if (heardAwaited) kcClearPendingTake();
+        }}
         try {{
           state.userPaused = false;
           parentWin.sessionStorage.setItem('kc_user_paused', '0');
@@ -11893,6 +11911,15 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
             }});
           }}
         }}
+        // The server saw the Previous / Next and kept another key (it refused the move): nothing
+        // is awaited any more; its command plays that key again (see the navigation block below).
+        const pendN = kcPendingTake();
+        const navN = parentWin.__kcNav;
+        if (pendN && pendN.navSeq && navN && Number(navN.seq) === pendN.navSeq && navN.ackSeq
+            && Number(cmd.ackedSwitchSeq || 0) >= Number(navN.ackSeq)
+            && String(cmd.sounding || '').trim() && String(cmd.sounding).trim() !== pendN.key) {{
+          kcClearPendingTake();
+        }}
         // The server names the awaited key's take (a held command after a paused Previous / Next):
         // Resume can play it at once.
         const pendS = kcPendingTake();
@@ -12248,7 +12275,12 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       // the page is playing, has finished that take, is handing off, or holds another
       // take, the answer only refreshes the neighbours. A deliberate restart (Play,
       // Next / Previous) is not an answer and still applies.
-      if (cmd.resume && !cmd.restart && !state.userPaused) {{
+      // Not when the page is waiting for exactly this key (Resume after a cold Previous / Next
+      // left it to this answer, trace seqfix_5): the active element still holds the take that
+      // was left, which read as "moved on" and kept the page silent while the server played.
+      const awaitedE = kcPendingTake();
+      const answersWait = !!(awaitedE && String(cmd.sounding || '').trim() === awaitedE.key);
+      if (cmd.resume && !cmd.restart && !state.userPaused && !answersWait) {{
         const actE = activeAudio();
         const curE = String(cmd.currentUrl || '').trim();
         const srcE = actE ? String(actE.currentSrc || actE.src || '').trim() : '';

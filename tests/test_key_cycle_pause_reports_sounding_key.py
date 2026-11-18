@@ -1702,5 +1702,48 @@ class AColdKeyWaitIsNotAPause(unittest.TestCase):
         self.assertEqual(st["label"], "Pause", st)
 
 
+    # Real-app runs on b0e78269 (seqfix_3 / seqfix_6 / seqfix_5, 2026-11-18) the cases above missed.
+
+    def test_a_retry_queued_for_the_left_take_does_not_restart_it_or_end_the_wait(self) -> None:
+        # The cold Next comes 0.3 s after the take started, while its start's kicks are still queued.
+        snaps = _run_stop_race(self, [
+            ("cmd", _kc_cmd(10, "Gm", restart=True, autoplay=True, forcePlay=True, transportConsumed="tok-play")),
+            ("eval", self._WAIT % 300), ("eval", self._COLD_NEXT % ("Cm", 7, "Cm", 7)),
+            ("eval", self._WAIT % 2500), ("eval", _HEARD_JS), ("eval", self._STATE)])
+        heard, st = snaps[-2]["eval"], snaps[-1]["eval"]
+        self.assertEqual(heard["heard"], [], heard)
+        self.assertEqual((st["label"], st["up"], st["pressPauses"]), ("Pause", False, True), st)
+
+    def test_the_left_take_running_silently_for_a_moment_does_not_end_the_wait(self) -> None:
+        stray = """async () => { const d = window.__kcDual; const a = document.getElementById(d.active === 1 ? 'kc-buf-1' : 'kc-buf-0');
+          a.volume = 0; a.muted = false; await a.play(); await new Promise(r => setTimeout(r, 400)); a.pause(); a.volume = 1;
+          return a.getAttribute('data-kc-sounding'); }"""
+        got = self._run([("eval", stray), ("eval", self._WAIT % 1500), ("eval", _HEARD_JS), ("eval", self._STATE)])
+        self.assertEqual(got[2], "Gm", got)  # the take that was left ran (silently)
+        heard, st = got[-2], got[-1]
+        self.assertEqual(heard["heard"], [], heard)
+        self.assertEqual((st["label"], st["up"], st["pressPauses"]), ("Pause", False, True), st)
+
+    def test_resume_after_a_paused_cold_next_plays_the_servers_answer(self) -> None:
+        # Paused, then Next to a key with no take; Resume before the server has named it. The
+        # server's answer to the Resume (resume + forcePlay, no restart) starts the new key.
+        snaps = _run_stop_race(self, [
+            ("cmd", _kc_cmd(10, "Gm", restart=True, autoplay=True, forcePlay=True, transportConsumed="tok-play")),
+            ("eval", self._WAIT % 2500), ("eval", "() => { window.__backingTransportState = {transport: 'playing'}; return true; }"),
+            ("eval", self._PRESS), ("eval", self._CARD % ("paused", "tok-pause")), ("eval", self._WAIT % 800),
+            ("eval", self._COLD_NEXT % ("Cm", 7, "Cm", 7)), ("eval", self._WAIT % 1000),
+            ("eval", self._PRESS), ("eval", self._CARD % ("playing", "tok-resume")), ("eval", self._WAIT % 1500),
+            ("eval", _HEARD_JS), ("eval", self._STATE),
+            ("cmd", _kc_cmd(12, "Cm", resume=True, forcePlay=True, autoplay=True, transportConsumed="tok-resume",
+                            ackedSwitchSeq=9e15)),
+            ("eval", self._WAIT % 1500), ("eval", _HEARD_JS), ("eval", self._STATE)])
+        got = [s["eval"] for s in snaps if "eval" in s]
+        heard1, st1, heard2, st2 = got[-5], got[-4], got[-2], got[-1]
+        self.assertEqual(heard1["heard"], [], heard1)  # not Gm, the key that was left
+        self.assertEqual((st1["label"], st1["up"]), ("Pause", False), st1)
+        self.assertEqual(heard2["heard"], ["cm.wav"], heard2)
+        self.assertEqual((st2["label"], st2["activeKey"]), ("Pause", "Cm"), st2)
+
+
 if __name__ == "__main__":
     unittest.main()
