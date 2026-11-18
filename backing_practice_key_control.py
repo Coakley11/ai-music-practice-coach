@@ -483,6 +483,23 @@ def canonical_concert_key_for_owner(session: dict[str, Any], owner: str = "") ->
 
 # Catalog song whose Practice Key the shared Catalog Backing widget currently holds.
 CATALOG_BACKING_PK_WIDGET_PICK_KEY = "_catalog_backing_pk_widget_pick"
+# Custom song whose Practice Key the shared Custom Backing widget currently holds. Every Custom song shares ONE
+# widget (display_key_custom_backing): a value left there by the previous song (Trial's D) is foreign to the next
+# song (Blues' Fm) and used to win over it, transposing the chords and writing D into Blues' own sticky key.
+CUSTOM_BACKING_PK_WIDGET_PICK_KEY = "_custom_backing_pk_widget_pick"
+
+
+def _current_custom_pick(session: dict[str, Any]) -> str:
+    try:
+        from custom_progression_lab import CPL_ACTIVE_KEY
+        from songs.music_source import custom_pick_key_for
+
+        active = session.get(CPL_ACTIVE_KEY)
+        if isinstance(active, dict):
+            return str(custom_pick_key_for(active) or "").strip()
+    except Exception:
+        pass
+    return ""
 
 
 def _current_catalog_pick(session: dict[str, Any]) -> str:
@@ -502,9 +519,26 @@ def seed_backing_practice_key_widget(
     """Initialize the current owner's widget from canonical. Never copy a foreign widget."""
     owner = resolve_backing_pk_control_owner(session)
     widget = WIDGET_BY_OWNER[owner]
+    custom_pick_switched = False
+    if owner in (OWNER_CUSTOM, OWNER_SBI_CUSTOM):
+        # (Backing launched from a Custom song seals the sbi_custom owner; the Creative SBI preview uses it too.)
+        # One widget for every Custom song: a leftover value belongs to the PREVIOUS song. Drop it before the
+        # canonical key is resolved (the resolver also falls back to this widget) so the selected song's own
+        # Practice Key (its sticky, else its Original Key) wins. Same song again: the user's value is kept.
+        _cpick = _current_custom_pick(session)
+        _wpick = str(session.get(CUSTOM_BACKING_PK_WIDGET_PICK_KEY) or "").strip()
+        if _cpick and _wpick != _cpick:
+            custom_pick_switched = True
+            # Every holder of a Custom song's Practice Key that is not tied to a song: the Backing widget, the
+            # Creative/SBI widget and the SBI visit key. A saved page snapshot or the Creative workspace mirror can bring
+            # back the PREVIOUS song's value (Trial's D) into a new session, and the canonical resolver reads them all.
+            for _stale in (widget, WIDGET_SBI_CUSTOM, "_sbi_custom_visit_pk"):
+                session.pop(_stale, None)
+        if _cpick:
+            session[CUSTOM_BACKING_PK_WIDGET_PICK_KEY] = _cpick
     canonical = canonical_concert_key_for_owner(session, owner)
     prev = str(session.get(BACKING_PK_CONTROL_OWNER_KEY) or "").strip()
-    switched = bool(prev and prev != owner)
+    switched = bool(prev and prev != owner) or custom_pick_switched
     if owner == OWNER_CATALOG:
         # Every Catalog song shares one Backing widget. A value left there by a
         # previous song (Love Story's D) is foreign to the current song (Shallow G):
