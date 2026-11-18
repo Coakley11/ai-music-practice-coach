@@ -620,6 +620,18 @@ def apply_saved_custom_pick_key_context(
     suffix = str(pick_key or "").strip().removeprefix("custom::").strip()
     if not suffix:
         return False
+    # An explicit Custom selection made in this session outranks a restored pick for ANOTHER song while it is still the
+    # live song: the restore must not swap the draft back and leave the new song's tokens on the old song.
+    try:
+        from songs.music_source import EXPLICIT_CUSTOM_APPLIED_PICK_KEY
+
+        _explicit = str(st.session_state.get(EXPLICIT_CUSTOM_APPLIED_PICK_KEY) or "").strip()
+        if _explicit and _explicit != str(pick_key or "").strip():
+            _live = st.session_state.get(CPL_ACTIVE_KEY)
+            if isinstance(_live, dict) and custom_pick_key_for(_live) == _explicit:
+                return False
+    except ImportError:
+        pass
 
     active: dict[str, Any] | None = None
     cpl_active = st.session_state.get(CPL_ACTIVE_KEY)

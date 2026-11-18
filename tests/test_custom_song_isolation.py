@@ -214,7 +214,7 @@ class TestEmptyDraftCannotOverwriteAPopulatedSong(unittest.TestCase):
         _a, b, store, golden, _ss = _world()
         blank = L.default_active_progression()
         blank["name"] = b["name"]  # no id at all
-        with self.assertRaises(L.EmptyDraftOverwriteRefused):
+        with self.assertRaises(L.SongSaveConflict):  # refused: by the key-ownership check or the empty-draft check
             L.save_progression_named(store, b["name"], blank)
         self.assertEqual(_canon(store), _canon(golden))
 

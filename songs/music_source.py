@@ -112,6 +112,10 @@ CATALOG_RECENT_PICK_KEYS = "catalog_recent_pick_keys"
 CUSTOM_RECENT_ACTIVE_NAMES_KEY = "custom_recent_active_names"
 LAST_RECONCILED_SONG_PICKER_SOURCE_KEY = "_last_reconciled_song_picker_source"
 EXPLICIT_CUSTOM_ACTIVATION_EPOCH_KEY = "_explicit_custom_activation_epoch"
+# The Custom song the user explicitly chose (library row / Set as Active). A later RESTORE of a persisted pick
+# for a DIFFERENT song must not undo it: the restore replayed Blues over a Trial the user had just selected,
+# leaving Trial's commit tokens on a Blues draft (a half-applied handoff).
+EXPLICIT_CUSTOM_APPLIED_PICK_KEY = "_explicit_custom_applied_pick"
 EXPLICIT_CATALOG_SELECTION_EPOCH_KEY = "_explicit_catalog_selection_epoch"
 # Last Music-source radio value we successfully presented (or queued) to the widget.
 # Used to distinguish genuine Catalog clicks from stale Catalog widget callbacks after
@@ -6059,6 +6063,12 @@ def apply_pending_custom_library_action_before_widgets(
         clear_cpl_intentional_new_song(session)
 
     apply_cpl_session_progression(session, active, reset_display_key=True)
+    try:
+        _applied_pick = str(custom_pick_key_for(active) or "").strip()
+    except Exception:
+        _applied_pick = ""
+    if _applied_pick.startswith("custom::"):
+        session[EXPLICIT_CUSTOM_APPLIED_PICK_KEY] = _applied_pick
 
     if action == "activate":
         clear_cpl_intentional_new_song(session)
