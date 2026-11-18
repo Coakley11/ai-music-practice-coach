@@ -3480,7 +3480,9 @@ def apply_music_disk_state(
             try:
                 from active_song_state import _resolve_display_key_from_music_blob
 
-                blob_dk = _resolve_display_key_from_music_blob(payload)
+                # home_key="": no saved Practice Key means the song's own Original Key (apply_pick_key),
+                # never a made-up C (Shallow, Original G, restored and played in C -- 2026-11-18)
+                blob_dk = _resolve_display_key_from_music_blob(payload, home_key="")
                 if blob_dk:
                     core_for_apply["display_key"] = blob_dk
             except ImportError:
@@ -4929,7 +4931,7 @@ def music_active_song_cloud_drift(
         fixed_mode_active = False
 
     if not fixed_mode_active:
-        cloud_dk = _resolve_display_key_from_music_blob(cloud_state)
+        cloud_dk = _resolve_display_key_from_music_blob(cloud_state, home_key="")
         live_dk = str(ss.get("display_key") or "").strip()
         canonical_dk = ""
         if isinstance(cloud_meta, dict):

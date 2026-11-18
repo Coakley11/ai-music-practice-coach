@@ -485,7 +485,11 @@ def _resolve_display_key_from_music_blob(
     ctx: dict[str, Any] | None = None,
     home_key: str = "C",
 ) -> str:
-    """Resolve persisted display/practice key from cloud/disk payload layers."""
+    """Resolve persisted display/practice key from cloud/disk payload layers.
+
+    ``home_key`` is returned when no layer holds a key. Catalog callers pass ``""`` (no saved key -> the song's
+    Original Key decides); only a Custom progression has a home key of its own to fall back on.
+    """
     candidates: list[Any] = []
     if isinstance(ctx, dict):
         candidates.append(ctx.get("display_key"))
@@ -508,7 +512,7 @@ def _resolve_display_key_from_music_blob(
         resolved = str(val or "").strip()
         if resolved:
             return resolved
-    return str(home_key or "C").strip() or "C"
+    return str(home_key or "").strip()
 
 
 def _resolve_custom_display_key_for_session(
@@ -2133,7 +2137,7 @@ def render_active_song_state_debug(st: Any, session: dict[str, Any]) -> None:
     cloud_payload = session.get("_suite_last_cloud_fetch_payload")
     cloud_display_key = ""
     if isinstance(cloud_payload, dict):
-        cloud_display_key = _resolve_display_key_from_music_blob(cloud_payload, ctx=ctx)
+        cloud_display_key = _resolve_display_key_from_music_blob(cloud_payload, ctx=ctx, home_key="")
     home_key = str(ctx.get("custom_home_key") or "").strip()
     if is_custom_progression(session):
         effective_display_key = _resolve_custom_display_key_for_session(

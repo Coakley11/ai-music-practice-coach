@@ -1188,16 +1188,9 @@ def render_guitar_capo_sidebar(
         # Do not sync_capo_widgets_from_canonical here. Widgets already show Capo off;
         # queuing ``_pending_capo_enabled_widget=False`` after instantiate stomps the
         # next user Capo-ON click (widget key rewritten before the checkbox renders).
-        ui.markdown(
-            f'<p class="ui-sidebar-key-caption"><strong>Shape Key:</strong> '
-            f"{html.escape(shape_tonic_only(sounding))} "
-            f"<span style=\"opacity:.75\">(follows sounding while Capo is off)</span></p>",
-            unsafe_allow_html=True,
-        )
-        ui.markdown(
-            '<p class="ui-sidebar-key-caption"><strong>Capo Fret:</strong> open (no capo)</p>',
-            unsafe_allow_html=True,
-        )
+        # Capo Shape Mode off: no Shape Key and no capo line -- there is no shape to show, and an "active-looking"
+        # Shape Key beside the Sounding Key read as a second key (user, 2026-11-18). The Sounding Key above is the
+        # one key that matters; the shape choice appears when Capo Shape Mode is switched on.
         if persist_capo_to_canonical(session_state) or genuine_manual_off or session_state.get(
             "_capo_genuine_user_off"
         ):
