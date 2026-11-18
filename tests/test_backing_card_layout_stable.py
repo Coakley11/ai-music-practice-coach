@@ -27,8 +27,22 @@ def test_transport_stays_on_one_line() -> None:
     assert "#btn, #pz { width: 100%" not in TRANSPORT
 
 
+def test_stop_keeps_its_full_name_when_the_row_has_room() -> None:
+    """User, 2026-11-16: a bare "Stop" -- stop what? Stop says "Stop Backing Track" whenever it fits; a narrow row
+    first shows Pause / Resume as its icon, and only then drops "Backing Track" (measured, not by pairing alone)."""
+    assert 'body[data-pair="1"] .ext { display: none; }' not in TRANSPORT
+    assert 'body[data-pair="1"][data-fit="short"] .ext { display: none; }' in TRANSPORT
+    assert 'body[data-pair="1"][data-fit="icon"] #pz .word' in TRANSPORT
+    # Stop that cannot be full even beside the icon keeps Pause's word: "Stop" + "Pause", never "Stop" + an icon
+    assert '[data-fit="short"] #pz .word' not in TRANSPORT and '[data-fit="short"] #pz {' not in TRANSPORT
+    fit = TRANSPORT[TRANSPORT.index("function fitLabels()"):TRANSPORT.index("let nonce = 0;")]
+    assert fit.index('b.dataset.fit = "icon";') < fit.index('b.dataset.fit = "short";')
+    assert "l.scrollWidth > l.clientWidth + 1" in TRANSPORT
+    assert TRANSPORT.index('document.body.dataset.pair = showPz ? "1" : "";') < TRANSPORT.index("        fitLabels();")
+    assert 'const LABEL_STOP = "■ Stop Backing Track";' in TRANSPORT
+
+
 def test_backing_track_suffix_drops_when_two_buttons_share_the_line() -> None:
-    assert 'body[data-pair="1"] .ext { display: none; }' in TRANSPORT
     assert 'document.body.dataset.pair = showPz ? "1" : "";' in TRANSPORT
     assert "setLabel(btn, state === \"stopped\" ? LABEL_PLAY : LABEL_STOP);" in TRANSPORT
     assert "setLabel(pz, state === \"paused\" ? LABEL_RESUME : LABEL_PAUSE);" in TRANSPORT
@@ -114,3 +128,19 @@ def test_scroll_script_never_adds_a_gap_above_the_page() -> None:
     assert "position: absolute !important;" in rule
     # Out of flow, still rendered: never display:none (its timer must run).
     assert "display: none" not in rule
+
+
+def test_stop_explains_the_key_cycling_restart_while_cycling() -> None:
+    """User, 2026-11-16 (approved wording): while Key Cycling is on, Stop says that the next Play starts the cycle
+    from its first key -- the restart itself is unchanged (Key Cycling's design)."""
+    hint = "Stops playback. The next Play restarts Key Cycling from its first key."
+    assert f'if (args.cycle_active && state !== "stopped") btn.title = "{hint}";' in TRANSPORT
+    app = (Path(__file__).resolve().parents[1] / "streamlit_music_practice_app.py").read_text(encoding="utf-8")
+    assert f'BACKING_KC_STOP_HINT = "{hint}"' in app
+    block = app[app.index('with st.container(key="backing_card_transport_row"):'):][:1200]
+    assert "if _cycle_on:" in block and 'st.caption("■ Stop Backing Track: " + BACKING_KC_STOP_HINT)' in block
+
+
+def test_icon_only_pause_is_easy_to_tap() -> None:
+    """Measured 43 px wide when shown as its icon beside "Stop Backing Track"; at least 44 px."""
+    assert 'body[data-pair="1"][data-fit="icon"] #pz { flex: 0 0 auto; padding: 0 12px; min-width: 44px; }' in TRANSPORT

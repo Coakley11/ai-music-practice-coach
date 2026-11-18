@@ -12,11 +12,11 @@ the Backing timeline); otherwise nothing moves the page. Closing the leader hand
 and among several section staves the one that lit a measure most recently leads. A melody with no measure alignment (an uploaded
 PDF, a staff without a timeline) never registers, so it never claims the page.
 
-That is the only code that moves the page, and it holds still for six seconds after any
-manual scroll, touch, key or click (each new one restarts the six seconds) -- except a click / tap that opens or
-closes a panel, which hands over to the notation that now leads at once -- never moves while a pointer is down,
-and never moves while the music is paused or stopped. When the six seconds run out during playback it returns
-smoothly to the current measure.
+That is the only code that moves the page, and it holds still for three seconds after any
+manual scroll, touch, key or click (each new one restarts the three seconds; user, 2026-11-16: six was too long) --
+except a click / tap that opens or closes a panel, which hands over to the notation that now leads at once --
+never moves while a pointer is down, and never moves while the music is paused or stopped. When the three seconds
+run out during playback it returns smoothly to the current measure.
 
 It only ever reads ``getBoundingClientRect`` and writes the page scroller's ``scrollTop``: it never touches an
 audio element, the follow timeline or the highlight, so it cannot change what is heard or which chord is lit.
@@ -29,8 +29,10 @@ to the Lead Sheet whichever staff the page is following.
 
 from __future__ import annotations
 
-HOLD_MS = 6000
-CONTROLLER_VERSION = 2
+HOLD_MS = 3000
+# Bumped whenever the controller's behaviour changes: an open page keeps the copy it installed (one per top
+# window) and only a newer version replaces it -- v2 pages kept the 6 s hold and the old spacer after a deploy.
+CONTROLLER_VERSION = 3
 # Who leads the page when several are open and playing (higher wins; user, 2026-11-16).
 LEAD_SHEET_PRIORITY = 10
 MELODY_PRIORITY = 20                 # the Practice Melody staff
@@ -73,7 +75,7 @@ function lsWatchFrameHost(fe, fit) {
 # Plain string (not an f-string): it is inserted into the components' f-string templates as a value.
 _CONTROLLER_JS = r"""
 (function installLeadSheetPageFollow() {
-  var V = __V__, HOLD_MS = __HOLD__;
+  var V = __V__, HOLD_MS = __HOLD__, LS_PRIORITY = __LS_PRIO__;
   var top;
   try { top = window.top; void top.document.body; } catch (e) { return; }
   if (top.__lsFollow && Number(top.__lsFollow.v) >= V) return;
@@ -151,7 +153,7 @@ _CONTROLLER_JS = r"""
   }
   var KINDS = ["wheel", "touchstart", "touchmove", "keydown"];
   // Opening or closing a panel (a click / tap on an expander's header) is not scrolling: the page hands over to
-  // the notation that now leads at once instead of holding 6 s (measured: 6.4 s after closing the Practice Melody).
+  // the notation that now leads at once instead of holding (measured: 6.4 s after closing the Practice Melody).
   // A drag or wheel that starts on a header still holds -- touchmove and wheel always count.
   function panelToggle(ev) {
     try { var t = ev && ev.target; return !!(t && t.closest && t.closest("summary")); } catch (e) { return false; }
@@ -216,10 +218,16 @@ _CONTROLLER_JS = r"""
   }
   // The surface that leads the page: open, lit, highest priority; among equals (one staff per section) the one
   // that asked most recently.
+  // An active Karaoke Set (user, 2026-11-16): the Lead Sheet if open, else the Karaoke lyrics -- a melody staff
+  // never leads then, whatever is on the page.
+  function karaokeSetActive() {
+    try { return doc.body.getAttribute("data-karaoke-session") === "true"; } catch (e) { return false; }
+  }
   function activeProvider() {
-    var best = null;
+    var best = null, karaoke = karaokeSetActive();
     liveProviders().forEach(function (p) {
       if (!shown(p) || !lit(p)) return;
+      if (karaoke && (Number(p.priority) || 0) > LS_PRIORITY) return;
       var pr = Number(p.priority) || 0, bp = best ? (Number(best.priority) || 0) : -1;
       if (!best || pr > bp || (pr === bp && (p.lastAt || p.at || 0) >= (best.lastAt || best.at || 0))) best = p;
     });
@@ -336,7 +344,7 @@ _CONTROLLER_JS = r"""
     + "gap:8px;padding:6px;border-radius:999px;background:rgba(15,23,42,.92);box-shadow:0 6px 24px rgba(15,23,42,.28);"
     + "align-items:center;font-family:system-ui,-apple-system,Segoe UI,sans-serif;";
   var BTN_CSS = "border:0;border-radius:999px;padding:9px 16px;font-size:15px;font-weight:600;cursor:pointer;"
-    + "min-height:40px;white-space:nowrap;line-height:1;";
+    + "min-height:44px;min-width:44px;white-space:nowrap;line-height:1;";
   function cardTransportDoc() {
     try {
       var f = doc.querySelector(".st-key-backing_card_transport_row iframe");
@@ -360,7 +368,8 @@ _CONTROLLER_JS = r"""
     pz.type = "button"; pz.id = "ls-mini-pause"; pz.style.cssText = BTN_CSS + "background:#22c55e;color:#04220f;";
     var stop = doc.createElement("button");
     stop.type = "button"; stop.id = "ls-mini-stop"; stop.style.cssText = BTN_CSS + "background:#f1f5f9;color:#0f172a;";
-    stop.textContent = "■ Stop";
+    stop.textContent = "■ Stop Backing Track";   // what it stops (Key Cycling has its own "Stop Key Cycling")
+    stop.setAttribute("aria-label", "Stop Backing Track");
     pz.addEventListener("click", function () {
       var p = transportProvider();
       if (cardStarting() || keyCyclingOn()) { syncBar(); return; }
@@ -404,6 +413,11 @@ _CONTROLLER_JS = r"""
     var paused = false;
     try { paused = !p.playing(); } catch (e) {}
     var pz = doc.getElementById("ls-mini-pause");
+    var stopBtn = doc.getElementById("ls-mini-stop");
+    if (stopBtn) {
+      if (keyCyclingOn()) stopBtn.title = "Stops playback. The next Play restarts Key Cycling from its first key.";
+      else stopBtn.removeAttribute("title");
+    }
     // Hidden AND disabled: Key Cycling's page-wide click listener matches any "Pause" / "Resume" button by its label,
     // so even a hidden button's click would reach Key Cycling; a disabled button sends no click at all.
     var only = cardStarting() || keyCyclingOn();
@@ -440,8 +454,23 @@ _CONTROLLER_JS = r"""
           var el = p.current();
           if (el) C.follow(el, { why: "return" });
         }
-        // Paused / stopped: stay put; the next measure change after Resume follows (no 6 s debt).
+        // Paused / stopped: stay put; the next measure change after Resume follows (no hold debt).
         else if (p) C.wasSuspended = false;
+      }
+      // Catch-up: playing, not held, no move of ours in flight, and the playing measure entirely outside the window
+      // -> bring it in now. Measured 2026-11-17 (Voice, Blackbird, 360 px): every missed sample was bar 1 just after
+      // Play / Play again / a return / a reload -- its highlight was set before the page followed, so the page
+      // waited ~2 s for the next chord change with the playing bar below the window. A measure on screen is untouched.
+      if (!s && lead && now() >= C.selfScrollUntil) {
+        try {
+          if (lead.playing()) {
+            var ce = lead.current(), rr = ce && rectInTop(ce);
+            if (rr) {
+              var scc = scroller(), vtc = viewTop(scc) + topInset(), vbc = viewBottom(scc) - bottomInset();
+              if (rr.bottom <= vtc || rr.top >= vbc) C.follow(ce, { why: "catchup" });
+            }
+          }
+        } catch (eCu) {}
       }
       if (C.room > 0) spacer(scroller());   // keep the room below at C.room as the chart / page changes size
       syncBar();
@@ -468,7 +497,11 @@ def page_follow_controller_js() -> str:
     """
     import json
 
-    code = _CONTROLLER_JS.replace("__V__", str(CONTROLLER_VERSION)).replace("__HOLD__", str(HOLD_MS))
+    code = (
+        _CONTROLLER_JS.replace("__V__", str(CONTROLLER_VERSION))
+        .replace("__HOLD__", str(HOLD_MS))
+        .replace("__LS_PRIO__", str(LEAD_SHEET_PRIORITY))
+    )
     return (
         "(function () { try { var t = window.top;"
         f" if (t.__lsFollow && Number(t.__lsFollow.v) >= {CONTROLLER_VERSION}) return;"

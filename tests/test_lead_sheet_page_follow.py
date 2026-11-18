@@ -1,5 +1,5 @@
 """M4: the Backing Lead Sheet at full height, the page following the music through ONE controller that holds
-still for six seconds after any manual scroll / touch / control interaction, and a compact transport.
+still for three seconds after any manual scroll / touch / control interaction, and a compact transport.
 
 Browser behaviour is proven in the real app (scratchpad probe_m4.py); these pin the wiring so it cannot drift:
 one controller, used by both follow surfaces, never touching audio, off for Karaoke.
@@ -23,9 +23,11 @@ def _app():
     return app
 
 
-def test_hold_is_six_seconds_and_counts_from_the_last_interaction():
+def test_hold_is_three_seconds_and_counts_from_the_last_interaction():
+    """User, 2026-11-16: three seconds after the most recent genuine manual scroll (six was too long)."""
     js = lpf._CONTROLLER_JS
-    assert lpf.HOLD_MS == 6000
+    assert lpf.HOLD_MS == 3000
+    assert lpf.CONTROLLER_VERSION >= 3                    # an open v2 page (6 s hold) is replaced
     assert "now() - C.lastInteraction < HOLD_MS" in js          # measured from the LAST interaction
     assert "C.lastInteraction = now()" in js                    # every interaction restarts it
     for kind in ("wheel", "touchstart", "touchmove", "keydown", "pointerdown"):
@@ -263,3 +265,50 @@ def test_a_follow_staff_is_drawn_at_its_own_height_with_no_inner_scroll_box():
     assert "fe.setAttribute('scrolling', 'no');" in sync
     assert "lsFitFrameHost(fe, Math.round(parseFloat(fe.style.height) || h));" in sync
     assert src.index("if measure_sync:") < src.index("(function pmFullHeight()")
+
+
+def test_compact_bar_stop_says_what_it_stops():
+    """User, 2026-11-16: "Stop Backing Track" (Key Cycling's own button says "Stop Key Cycling"). The "■ Stop"
+    prefix stays: Key Cycling recognises the bar's Stop by it and stops its buffers too."""
+    js = lpf._CONTROLLER_JS
+    assert 'stop.textContent = "■ Stop Backing Track";' in js
+    assert 'stop.setAttribute("aria-label", "Stop Backing Track");' in js
+
+
+def test_compact_bar_stop_explains_the_key_cycling_restart():
+    js = lpf._CONTROLLER_JS
+    bar = js[js.index("function syncBar()"):js.index("var timer = top.setInterval(")]
+    assert 'if (keyCyclingOn()) stopBtn.title = "Stops playback. The next Play restarts Key Cycling from its first key.";' in bar
+
+
+def test_no_melody_leads_while_a_karaoke_set_is_active():
+    """User, 2026-11-16: in an active Karaoke Set the page follows the Lead Sheet if open, else the Karaoke lyrics
+    (registered below the Lead Sheet); a Practice / Original Melody staff never leads then."""
+    js = lpf._CONTROLLER_JS
+    ap = js[js.index("function activeProvider()"):js.index("function transportProvider()")]
+    assert "var best = null, karaoke = karaokeSetActive();" in ap
+    assert "if (karaoke && (Number(p.priority) || 0) > LS_PRIORITY) return;" in ap
+    assert 'doc.body.getAttribute("data-karaoke-session") === "true"' in js
+    code = lpf.page_follow_controller_js()
+    assert "LS_PRIORITY = %d" % lpf.LEAD_SHEET_PRIORITY in code and "__LS_PRIO__" not in code
+    assert lpf.MELODY_PRIORITY > lpf.LEAD_SHEET_PRIORITY and lpf.ORIGINAL_MELODY_PRIORITY > lpf.LEAD_SHEET_PRIORITY
+
+
+
+def test_compact_bar_buttons_are_easy_to_tap():
+    """User, 2026-11-17: Stop / Pause easy to tap at 360 px. Measured 40 px tall; 44 x 44 px is the comfortable
+    minimum."""
+    assert "min-height:44px;min-width:44px;" in lpf._CONTROLLER_JS
+
+
+def test_a_playing_measure_out_of_the_window_is_caught_up_on_the_next_tick():
+    """Measured 2026-11-17 (Voice, Blackbird, 360 px): every missed sample was bar 1 right after Play -- its highlight
+    was set before the page followed, and the page waited ~2 s for the next chord change. The clock now brings a
+    playing measure that is ENTIRELY outside the window into view; never while held, never mid-move, and a measure on
+    screen is untouched."""
+    js = lpf._CONTROLLER_JS
+    tick = js[js.index("var timer = top.setInterval("):js.index("C.destroy = function")]
+    cu = tick[tick.index("// Catch-up:"):tick.index("if (C.room > 0) spacer(scroller());")]
+    assert "if (!s && lead && now() >= C.selfScrollUntil) {" in cu
+    assert "if (lead.playing()) {" in cu
+    assert "if (rr.bottom <= vtc || rr.top >= vbc) C.follow(ce, { why: \"catchup\" });" in cu
