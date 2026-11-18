@@ -17805,8 +17805,12 @@ else:
                     if tok:
                         if _pk_widget_key == "display_key_sbi_custom":
                             try:
-                                from source_session_state import persist_sbi_custom_practice_key_edit
+                                from source_session_state import (
+                                    persist_sbi_custom_practice_key_edit,
+                                    record_sbi_custom_explicit_pk_edit,
+                                )
 
+                                record_sbi_custom_explicit_pk_edit(st.session_state, tok)
                                 persist_sbi_custom_practice_key_edit(st.session_state, tok)
                             except ImportError:
                                 st.session_state["_sbi_custom_visit_pk"] = tok
