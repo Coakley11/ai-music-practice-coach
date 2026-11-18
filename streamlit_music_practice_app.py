@@ -28914,7 +28914,7 @@ elif _studio_page == "multitrack":
                 + " could not be brought back just now. Your saved project still has it - "
                 "press **Restore saved audio** to try again."
             )
-            if st.button("Restore saved audio", key="mt_restore_saved_audio_retry"):
+            if st.button(action_label("load", "Restore saved audio"), key="mt_restore_saved_audio_retry"):
                 _mt_restore_retry(st.session_state)
                 st.rerun()
     except Exception:

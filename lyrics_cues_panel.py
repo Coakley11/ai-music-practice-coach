@@ -194,7 +194,7 @@ def render_lyrics_and_cues_panel(
                 st.rerun()
 
         if song_data is not None and chart_sections is not None:
-            with st.expander("Manage sections", expanded=False):
+            with st.expander(action_label("edit", "Manage sections"), expanded=False):
                 add_opts = optional_sections_to_add(ordered_all)
                 if add_opts:
                     ac1, ac2 = st.columns([2, 1])

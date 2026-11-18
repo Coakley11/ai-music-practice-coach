@@ -259,7 +259,7 @@ def render_upload_history_panel(st_obj: Any) -> None:
             with save_cols[0]:
                 save_label = "Save Changes" if editing_saved else "Save to History"
                 if st_obj.button(
-                    save_label,
+                    action_label("save", save_label),
                     type="primary",
                     key="upload_history_save_btn",
                     use_container_width=True,
@@ -285,7 +285,7 @@ def render_upload_history_panel(st_obj: Any) -> None:
             if editing_saved:
                 with save_cols[1]:
                     if st_obj.button(
-                        "Save as New Copy",
+                        action_label("save", "Save as New Copy"),
                         key="upload_history_save_as_new_btn",
                         use_container_width=True,
                     ):
