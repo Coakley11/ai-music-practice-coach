@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import copy
+
 from typing import Any
 
 from song_catalog import (
@@ -618,6 +620,18 @@ def apply_saved_custom_pick_key_context(
     suffix = str(pick_key or "").strip().removeprefix("custom::").strip()
     if not suffix:
         return False
+    # An explicit Custom selection made in this session outranks a restored pick for ANOTHER song while it is still the
+    # live song: the restore must not swap the draft back and leave the new song's tokens on the old song.
+    try:
+        from songs.music_source import EXPLICIT_CUSTOM_APPLIED_PICK_KEY
+
+        _explicit = str(st.session_state.get(EXPLICIT_CUSTOM_APPLIED_PICK_KEY) or "").strip()
+        if _explicit and _explicit != str(pick_key or "").strip():
+            _live = st.session_state.get(CPL_ACTIVE_KEY)
+            if isinstance(_live, dict) and custom_pick_key_for(_live) == _explicit:
+                return False
+    except ImportError:
+        pass
 
     active: dict[str, Any] | None = None
     cpl_active = st.session_state.get(CPL_ACTIVE_KEY)
@@ -633,15 +647,24 @@ def apply_saved_custom_pick_key_context(
     if active is None:
         saved_lib = st.session_state.get("cpl_saved_progressions") or {}
         if isinstance(saved_lib, dict):
+            def _label_matches(prog_row: Any, key: Any) -> bool:
+                return str(key).strip() == suffix or str((prog_row or {}).get("name") or "").strip() == suffix
+
+            _name_hits = sum(
+                1 for k, v in saved_lib.items() if isinstance(v, dict) and _label_matches(v, k)
+            )
             for name, prog in saved_lib.items():
                 if not isinstance(prog, dict):
                     continue
-                cand = ensure_original_structure(prog)
+                # A COPY: the draft must never be the stored library record itself.
+                cand = ensure_original_structure(copy.deepcopy(prog))
+                cand["base_updated_at"] = prog.get("updated_at")
+                # The stable id decides. A title is only trusted when exactly one saved song carries it
+                # (two songs titled alike must never be chosen by name).
                 if (
                     custom_pick_key_for(cand) == pick_key
-                    or str(name).strip() == suffix
                     or str(cand.get("id") or "").strip() == suffix
-                    or str(cand.get("name") or "").strip() == suffix
+                    or (_name_hits == 1 and _label_matches(cand, name))
                 ):
                     active = cand
                     break

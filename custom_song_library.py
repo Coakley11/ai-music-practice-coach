@@ -246,6 +246,7 @@ def upsert_custom_song_to_cloud(
     if not cloud_enabled():
         return False, "", cloud_block_reason() or "cloud_disabled"
     prog = _json_safe(progression if isinstance(progression, dict) else {})
+    prog = {k: v for k, v in prog.items() if k != "cloud_base_updated_at"}  # session-only marker
     save_name = str(prog.get("name") or name or "").strip()
     if not save_name:
         return False, "", "missing_title"
@@ -297,6 +298,32 @@ def delete_custom_song_from_cloud(song_id: str, *, st: Any | None = None) -> tup
         return False, str(exc)
 
 
+def cloud_song_state(song_id: str, *, st: Any | None = None) -> dict[str, Any] | None:
+    """The cloud row's state for one song: ``{"valid": bool, "version": float}`` or ``None``.
+
+    ``None`` also when the cloud is off or cannot be read: a save must still work offline, so an unreadable
+    cloud never blocks it (the cloud write that follows reports its own failure).
+    """
+    sid = str(song_id or "").strip()
+    if not sid or not cloud_enabled():
+        return None
+    try:
+        from suite_account import load_saved_item_state
+
+        row = load_saved_item_state(ITEM_TYPE, _song_item_key(sid), app=APP_ID)
+    except Exception:
+        return None
+    if not isinstance(row, dict):
+        return None
+    payload = row.get("payload") if isinstance(row.get("payload"), dict) else {}
+    prog = payload.get("progression") if isinstance(payload.get("progression"), dict) else {}
+    try:
+        version = float(prog.get("updated_at") or 0)
+    except (TypeError, ValueError):
+        version = 0.0
+    return {"valid": bool(row.get("valid")), "version": version}
+
+
 def _merge_progression_store(local: dict[str, Any], cloud_rows: list[dict[str, Any]]) -> dict[str, Any]:
     merged = copy.deepcopy(local if isinstance(local, dict) else {})
 
@@ -335,6 +362,7 @@ def _merge_progression_store(local: dict[str, Any], cloud_rows: list[dict[str, A
         local_ts = float(local_row.get("updated_at") or 0) if isinstance(local_row, dict) else 0.0
         if not local_row or cloud_ts >= local_ts:
             merged[store_key] = copy.deepcopy(prog)
+            merged[store_key]["cloud_base_updated_at"] = cloud_ts
     return merged
 
 
@@ -398,6 +426,15 @@ def push_unsynced_custom_songs(session_state: dict[str, Any], *, st: Any | None 
         # Not every cloud id is known, so "absent from the cloud" cannot be trusted.
         return 0, "cloud_listing_truncated"
     cloud_ids = set(LAST_CLOUD_ALL_IDS)
+    # The listing above only holds VALID rows, so a song the owner deleted looks "missing from the cloud".
+    # Uploading it would set valid back to true and resurrect it. Skip every deleted key; if the deleted keys
+    # cannot be read, upload nothing (safe default).
+    try:
+        from suite_account import load_deleted_item_keys
+
+        deleted_keys = load_deleted_item_keys(ITEM_TYPE, app=APP_ID)
+    except Exception as exc:
+        return 0, f"cloud_deleted_keys_unavailable:{type(exc).__name__}"
     from custom_progression_lab import CPL_SAVED_KEY
 
     store = session_state.get(CPL_SAVED_KEY) if isinstance(session_state.get(CPL_SAVED_KEY), dict) else {}
@@ -407,7 +444,7 @@ def push_unsynced_custom_songs(session_state: dict[str, Any], *, st: Any | None 
         if not isinstance(data, dict):
             continue
         sid = str(data.get("id") or "").strip()
-        if not sid or sid in cloud_ids:
+        if not sid or sid in cloud_ids or _song_item_key(sid) in deleted_keys:
             continue
         ok, _key, e = upsert_custom_song_to_cloud(str(data.get("name") or name), data, st=st)
         if ok:

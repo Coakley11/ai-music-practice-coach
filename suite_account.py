@@ -100,6 +100,22 @@ def load_saved_items(
     return storage.load_saved_items(app=app_key, item_type=item_type, limit=limit)
 
 
+def load_deleted_item_keys(item_type: str, *, app: str | None = None) -> set[str]:
+    """Read-only: item keys of this account's DELETED (invalid) saved items of ``item_type``."""
+    import suite_storage as storage
+
+    app_key = _scoped_storage_app(app) or str(app or "").strip()
+    return set(storage.load_invalid_item_keys(app=app_key, item_type=item_type))
+
+
+def load_saved_item_state(item_type: str, item_key: str, *, app: str | None = None) -> dict[str, Any] | None:
+    """Read-only state of one saved item (valid or deleted), or ``None`` if it does not exist."""
+    import suite_storage as storage
+
+    app_key = _scoped_storage_app(app) or str(app or "").strip()
+    return storage.load_saved_item_state(app=app_key, item_type=item_type, item_key=item_key)
+
+
 def count_saved_items_by_storage_app(item_type: str, *, app_prefix: str = "music") -> dict[str, int]:
     """Read-only counts of this account's valid ``item_type`` rows per workspace-scoped app key."""
     import suite_storage as storage

@@ -10979,19 +10979,20 @@ def backing_lead_sheet_preference(session: Any) -> bool:
     return bool(pref)
 
 
-def _toggle_backing_lead_sheet_from_card(ready: bool, set_leadsheet_open: Any) -> None:
+def _toggle_backing_lead_sheet_from_card(ready: bool, set_leadsheet_open: Any, visible: bool | None = None) -> None:
     """The card's Lead sheet button. With a take to follow it is exactly the Open / Close click (same callback,
-    so the playhead handoff is the same); before there is one it only sets the preference Play reads."""
+    so the playhead handoff is the same) -- decided by what is on screen, so a press always does what the label
+    says; before there is one it only sets the preference Play reads."""
     on = not backing_lead_sheet_preference(st.session_state)
     if ready:
-        set_leadsheet_open(on)
+        set_leadsheet_open((not visible) if visible is not None else on)
         return
     st.session_state[BACKING_LEAD_SHEET_ON_PLAY_KEY] = on
     if not on:
         st.session_state["backing_lead_sheet_open"] = False
 
 
-def _render_backing_art_actions(*, leadsheet_ready: bool, set_leadsheet_open: Any) -> bool:
+def _render_backing_art_actions(*, leadsheet_ready: bool, set_leadsheet_open: Any, sheet_visible: bool = False) -> bool:
     """Lead sheet, Advanced settings and Key Cycling on the album-cover card; each drives the existing feature.
 
     Returns True when the row was drawn (album-cover card only). Drawn late in the run, so the Lead sheet and
@@ -11007,20 +11008,28 @@ def _render_backing_art_actions(*, leadsheet_ready: bool, set_leadsheet_open: An
     except Exception:
         kc_allowed = False
     kc_on = str(st.session_state.get("backing_key_cycle_enabled_ui") or "Off") == "On"
-    sheet_on = backing_lead_sheet_preference(st.session_state)
+    # "On" only when the sheet is on screen (user, 2026-11-16: the card said On while the sheet was closed).
+    # Closed with the open-on-Play preference set, it says so; else Off.
+    sheet_pref = backing_lead_sheet_preference(st.session_state)
+    sheet_shown = bool(sheet_visible)
+    if sheet_shown:
+        sheet_label, sheet_help = "Lead sheet: On", None
+    elif sheet_pref:
+        sheet_label = "Lead sheet: Opens on Play"
+        sheet_help = "The lead sheet opens when you press Play Backing Track. Press to turn this off."
+    else:
+        sheet_label = "Lead sheet: Off"
+        sheet_help = None if leadsheet_ready else "Press to open the lead sheet when you press Play Backing Track."
     with slot:
         cols = st.columns(3 if kc_allowed else 2, gap="small")
         with cols[0]:
             st.button(
-                f"Lead sheet: {'On' if sheet_on else 'Off'}", key="backing_art_lead_sheet_btn",
-                icon=":material/menu_book:" if sheet_on else ":material/book:",
-                use_container_width=True, type="primary" if sheet_on else "secondary",
-                on_click=_toggle_backing_lead_sheet_from_card, args=(bool(leadsheet_ready), set_leadsheet_open),
-                help=(
-                    "On: the lead sheet opens with the backing track when you press Play."
-                    if not leadsheet_ready
-                    else None
-                ),
+                sheet_label, key="backing_art_lead_sheet_btn",
+                icon=":material/menu_book:" if (sheet_shown or sheet_pref) else ":material/book:",
+                use_container_width=True, type="primary" if sheet_shown else "secondary",
+                on_click=_toggle_backing_lead_sheet_from_card,
+                args=(bool(leadsheet_ready), set_leadsheet_open, sheet_shown),
+                help=sheet_help,
             )
         with cols[1]:
             st.button(
@@ -11242,6 +11251,14 @@ def render_backing_card_transport_control(*, enabled: bool) -> None:
             theme=_backing_art_play_theme(),
             count_in=_count_in,
         )
+    if _cycle_on:
+        # User, 2026-11-16 (approved wording): the card's Stop rewinds the cycle (by design) -- say so. Shown for as
+        # long as cycling is on, not only while Stop is offered, so the card never jumps as the music starts / stops.
+        st.caption("■ Stop Backing Track: " + BACKING_KC_STOP_HINT)
+
+
+# What the card's / compact bar's Stop does while Key Cycling is on (the restart itself is Key Cycling's design).
+BACKING_KC_STOP_HINT = "Stops playback. The next Play restarts Key Cycling from its first key."
 
 
 def _begin_backing_performance_follow_along(
@@ -23100,7 +23117,12 @@ elif _studio_page == "backing":
         # Read first -- a new source's presentation starts with the sheet closed.
         _sheet_on_play = backing_lead_sheet_preference(st.session_state)
         initialize_backing_presentation(st.session_state, _bpm_sync_id)
-        if _sheet_on_play and not km.is_voice_mode(st.session_state):
+        # Voice is an instrument like any other (user, 2026-11-16): only an active Karaoke Set (started with
+        # Start Karaoke Set) has its own presentation. Measured on dev 6e9da78b: with Voice selected and Lead sheet
+        # On, Play never opened the sheet -- not after Play, a return from Songs or a reload.
+        if _sheet_on_play and not (
+            km.is_voice_mode(st.session_state) and km.is_karaoke_session_active(st.session_state)
+        ):
             st.session_state["backing_lead_sheet_open"] = True
         try:
             from backing_owner_identity_trace import snapshot_backing_identity
@@ -24853,7 +24875,9 @@ elif _studio_page == "backing":
                         st.rerun()
 
     if _play_clicked:
-        _karaoke_voice_play = bool(km.is_voice_mode(st.session_state))
+        _karaoke_voice_play = bool(
+            km.is_voice_mode(st.session_state) and km.is_karaoke_session_active(st.session_state)
+        )
         _begin_backing_performance_follow_along(
             st,
             follow_key_prefix=_follow_key_prefix,
@@ -26266,6 +26290,7 @@ elif _studio_page == "backing":
     _render_backing_art_actions(
         leadsheet_ready=_leadsheet_controls_ready,
         set_leadsheet_open=_set_backing_lead_sheet_open,
+        sheet_visible=bool(_leadsheet_controls_ready and _leadsheet_open),
     )
     if _leadsheet_controls_ready:
         _ls_col_a, _ls_col_b = st.columns([1, 5])

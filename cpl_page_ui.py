@@ -594,6 +594,7 @@ def render_custom_progression_lab_page() -> None:
         CPL_KEY_OPTIONS,
         invalidate_cpl_derived_outputs,
         list_saved_progression_names,
+        saved_progression_label,
         load_saved_progression,
         migrate_cpl_builder_version,
         normalize_chord_symbol,
@@ -1039,7 +1040,9 @@ def render_custom_progression_lab_page() -> None:
         _save_flash = st.session_state.pop("_cpl_save_library_flash", False)
         _cloud_status = st.session_state.pop("_cpl_cloud_save_status", None) or {}
         if _save_flash:
-            if isinstance(_save_flash, str) and str(_save_flash).startswith("error:"):
+            if isinstance(_save_flash, str) and str(_save_flash).startswith("error:\u26a0 Not saved."):
+                st.warning(str(_save_flash).removeprefix("error:"))
+            elif isinstance(_save_flash, str) and str(_save_flash).startswith("error:"):
                 st.error(str(_save_flash))
             else:
                 # Green only when the cloud really holds the song. Anything else is said
@@ -1089,7 +1092,12 @@ def render_custom_progression_lab_page() -> None:
             if not saved_names:
                 st.caption("No saved songs yet — build chords below, then save.")
             else:
-                load_pick = st.selectbox("Saved songs", saved_names, key="cpl_load_pick")
+                load_pick = st.selectbox(
+                    "Saved songs",
+                    saved_names,
+                    key="cpl_load_pick",
+                    format_func=lambda _k, _s=saved: saved_progression_label(_s, _k),
+                )
                 if st.button("📂 Load selected", key="cpl_load_btn", use_container_width=True):
                     try:
                         from songs.music_source import clear_cpl_intentional_new_song

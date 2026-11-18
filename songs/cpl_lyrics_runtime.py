@@ -120,7 +120,7 @@ def _persist_cpl_lyrics_library_copy(session_state: dict[str, Any], active: dict
 
     """Mirror lyrics into the saved custom song library entry when one exists."""
 
-    from custom_progression_lab import CPL_SAVED_KEY, save_progression
+    from custom_progression_lab import CPL_SAVED_KEY, SongSaveConflict, save_progression
 
 
 
@@ -139,27 +139,25 @@ def _persist_cpl_lyrics_library_copy(session_state: dict[str, Any], active: dict
     active_id = str(active.get("id") or "").strip()
 
     target_name = ""
-
-    if song_name in store:
-
-        target_name = song_name
-
-    elif active_id:
-
+    # The stable id decides which saved song receives the lyrics. A title is only used for a draft that has
+    # no id at all (a title can be shared by, or stamped onto, another saved song).
+    if active_id:
         for name, blob in store.items():
-
             if isinstance(blob, dict) and str(blob.get("id") or "").strip() == active_id:
-
                 target_name = str(name)
-
                 break
-
+    elif song_name in store:
+        target_name = song_name
     if not target_name:
 
         return
 
-    save_progression(store, target_name, active)
-
+    try:
+        save_progression(store, target_name, active)
+    except SongSaveConflict:
+        # A lyrics-only save must never replace saved chords with a chordless/stale draft; the lyrics stay on
+        # the working draft and the saved song is left exactly as it was.
+        return
     session_state[CPL_SAVED_KEY] = store
 
 

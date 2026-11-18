@@ -87,6 +87,15 @@ PENDING_CPL_ORIGINAL_KEY = "_pending_cpl_original_key"
 CPL_ORIGINAL_KEY_COMMIT = "_cpl_original_key_commit"
 PENDING_CPL_TITLE = "_pending_cpl_title"
 CPL_TITLE_COMMIT = "_cpl_title_commit"
+# Which song the pending/commit title + Original Key tokens were written for. A token written for another
+# song (the previous one) must never be applied to this draft.
+CPL_COMMIT_OWNER_ID_KEY = "_cpl_commit_owner_id"
+# Same literal as songs.music_source.EXPLICIT_CUSTOM_APPLIED_PICK_KEY: the Custom song the user explicitly installed (Load
+# selected, demo charts, New song, a Songs row). A later RESTORE of a persisted pick for a different song must not undo it.
+CPL_EXPLICIT_APPLIED_PICK_KEY = "_explicit_custom_applied_pick"
+# The song id for which the USER deliberately changed the Original Key / the title in this edit.
+CPL_EXPLICIT_KEY_EDIT_ID_KEY = "_cpl_explicit_key_edit_id"
+CPL_EXPLICIT_RENAME_ID_KEY = "_cpl_explicit_rename_id"
 CPL_TITLE_MOUNTED_KEY = "_cpl_title_mounted_this_run"
 PENDING_CPL_OPEN_BACKING = "_pending_cpl_open_backing"
 _GENERIC_CPL_TITLES = frozenset({"", "My Progression", "My progression"})
@@ -1204,9 +1213,10 @@ def commit_user_original_key(
     )
     stored = str(cpl_draft_written_key(active) or "").strip()
     stored_n = _normalize_cpl_key_token(stored) or stored
+    _own_commit = str(session_state.get(CPL_COMMIT_OWNER_ID_KEY) or "").strip()
+    _same_song = _own_commit in ("", str(active.get("id") or "").strip())
     pending = str(
-        session_state.get(PENDING_CPL_ORIGINAL_KEY)
-        or session_state.get(CPL_ORIGINAL_KEY_COMMIT)
+        ((session_state.get(PENDING_CPL_ORIGINAL_KEY) or session_state.get(CPL_ORIGINAL_KEY_COMMIT)) if _same_song else "")
         or ""
     ).strip()
     pending_n = _normalize_cpl_key_token(pending) or pending
@@ -1268,15 +1278,20 @@ def apply_pending_custom_original_key(session_state: dict, active: dict | None =
         active if isinstance(active, dict) else session_state.get(CPL_ACTIVE_KEY)
         or default_active_progression()
     )
+    # Tokens and the key box are trusted only when they were written for THIS draft: after a song switch they still hold the
+    # previous song's Original Key, and applying it here transposed the draft (Trial D-Bm-A-G became F-Dm-C-Bb under Fm).
+    _id = str(active.get("id") or "").strip()
+    _commit_ok = str(session_state.get(CPL_COMMIT_OWNER_ID_KEY) or "").strip() in ("", _id)
+    _widget_ok = str(session_state.get(CPL_WIDGET_OWNER_ID_KEY) or "").strip() in ("", _id)
     pending = str(
-        session_state.get(PENDING_CPL_ORIGINAL_KEY)
-        or session_state.get(CPL_ORIGINAL_KEY_COMMIT)
+        (session_state.get(PENDING_CPL_ORIGINAL_KEY) if _commit_ok else "")
+        or (session_state.get(CPL_ORIGINAL_KEY_COMMIT) if _commit_ok else "")
         or ""
     ).strip()
     pending_n = _normalize_cpl_key_token(pending) or pending
     stored = str(cpl_draft_written_key(active) or "").strip()
     stored_n = _normalize_cpl_key_token(stored) or stored
-    widget = str(session_state.get("cpl_original_key") or "").strip()
+    widget = str((session_state.get("cpl_original_key") if _widget_ok else "") or "").strip()
     widget_n = _normalize_cpl_key_token(widget) or widget
     token = ""
     if widget_n and widget_n not in _REMOUNT_ORIGINAL_KEYS:
@@ -1822,7 +1837,7 @@ def load_saved_progression(store: dict, name: str) -> dict:
     raw = store.get(name)
     if not raw:
         return default_active_progression()
-    out = ensure_original_structure(dict(raw))
+    out = ensure_original_structure(copy.deepcopy(dict(raw)))
     out["name"] = str(raw.get("name") or name)
     out["user_locked_home_key"] = True
     out["original_key_center"] = str(raw.get("original_key_center") or out.get("original_key_center") or "C")
@@ -1839,6 +1854,7 @@ def load_saved_progression(store: dict, name: str) -> dict:
     out["id"] = str(raw.get("id") or out.get("id") or "").strip()
     out["artist"] = str(raw.get("artist") or out.get("artist") or "").strip()
     out["lyrics_by_section"] = dict(raw.get("lyrics_by_section") or out.get("lyrics_by_section") or {})
+    out["base_updated_at"] = raw.get("updated_at")
     return out
 
 
@@ -1873,7 +1889,7 @@ def clear_cpl_widget_state(session_state: dict) -> None:
             session_state.pop(key, None)
         if is_cpl_ephemeral_widget_key(key):
             session_state.pop(key, None)
-    for key in ("_cpl_editing_display_key", "cpl_finished", "_cpl_last_bar_apply"):
+    for key in ("_cpl_editing_display_key", "cpl_finished", "_cpl_last_bar_apply", "_cpl_widget_owner_id", "_cpl_user_emptied_song_id"):
         session_state.pop(key, None)
     cpl_clear_pending_chord(session_state)
 
@@ -2119,6 +2135,17 @@ def apply_cpl_session_progression(
     previous_saved = str(session_state.get(CPL_LIBRARY_SAVED_SONG_ID_KEY) or "").strip()
     keep_library_saved = bool(incoming_id and incoming_id == previous_saved)
     session_state[CPL_ACTIVE_KEY] = incoming
+    session_state[CPL_COMMIT_OWNER_ID_KEY] = incoming_id
+    try:
+        from songs.music_source import custom_pick_key_for as _pick_for
+
+        _chosen = str(_pick_for(incoming) or "").strip()
+    except Exception:
+        _chosen = ""
+    if _chosen.startswith("custom::"):
+        session_state[CPL_EXPLICIT_APPLIED_PICK_KEY] = _chosen
+    session_state.pop(CPL_EXPLICIT_KEY_EDIT_ID_KEY, None)
+    session_state.pop(CPL_EXPLICIT_RENAME_ID_KEY, None)
     session_state.pop("cpl_finished", None)
     if keep_library_saved:
         mark_cpl_library_saved(session_state, incoming_id)
@@ -2287,6 +2314,12 @@ CPL_DRAFT_WIDGET_KEYS: tuple[str, ...] = (
 )
 
 
+# The song id the live CPL widgets were last seeded for. Widgets belong to ONE song; copying them into a
+# different song's draft stamped the previous song's title/artist/key/tempo/style onto it (and a changed
+# Original Key then transposed its saved chords).
+CPL_WIDGET_OWNER_ID_KEY = "_cpl_widget_owner_id"
+
+
 def seed_cpl_draft_widgets_from_active(
     session_state: dict,
     active: dict,
@@ -2295,6 +2328,7 @@ def seed_cpl_draft_widgets_from_active(
 ) -> None:
     """Seed Streamlit widget keys from canonical draft fields before widgets render."""
     active = ensure_original_structure(active)
+    session_state[CPL_WIDGET_OWNER_ID_KEY] = str(active.get("id") or "").strip()
     values = {
         "cpl_title_input": str(active.get("name") or "My Progression"),
         "cpl_artist_input": str(active.get("artist") or ""),
@@ -2348,6 +2382,7 @@ def commit_user_title(
         return active
     session_state[CPL_TITLE_COMMIT] = name
     session_state[PENDING_CPL_TITLE] = name
+    session_state[CPL_COMMIT_OWNER_ID_KEY] = str(active.get("id") or "").strip()
     active["name"] = name
     session_state[CPL_ACTIVE_KEY] = active
     if assign_widget and not session_state.get(CPL_TITLE_MOUNTED_KEY):
@@ -2382,12 +2417,26 @@ def on_cpl_title_input_change() -> None:
     import streamlit as st
 
     title = str(st.session_state.get("cpl_title_input") or "").strip()
+    _draft = cpl_active_from_session(st.session_state)
+    _own = str(st.session_state.get(CPL_WIDGET_OWNER_ID_KEY) or "").strip()
+    if _own and _own != str(_draft.get("id") or "").strip():
+        return  # the title box still shows another song
+    _was = str(_draft.get("name") or "").strip()
     commit_user_title(st.session_state, title, assign_widget=False)
+    if title and not is_generic_cpl_title(title) and title != _was:
+        st.session_state[CPL_EXPLICIT_RENAME_ID_KEY] = str(_draft.get("id") or "").strip()
 
 
 def sync_cpl_draft_widgets_to_active(session_state: dict, active: dict) -> dict:
     """Copy live CPL widget values into the canonical draft blob."""
-    active = ensure_original_structure(active)
+    active = ensure_original_structure(_detached_draft(session_state, active))
+    owner = str(session_state.get(CPL_WIDGET_OWNER_ID_KEY) or "").strip()
+    draft_id = str(active.get("id") or "").strip()
+    if owner and draft_id and owner != draft_id:
+        # These widgets still show ANOTHER song. Never copy them into this draft; ask for a re-seed
+        # from the draft (the page consumes this flag before its widgets render).
+        session_state["_cpl_reseed_widgets_from_active"] = True
+        return active
     if "cpl_title_input" in session_state or "cpl_name" in session_state:
         title = resolve_cpl_saved_title(session_state, active)
         active["name"] = title
@@ -2424,6 +2473,9 @@ def sync_cpl_draft_widgets_to_active(session_state: dict, active: dict) -> dict:
         )
     else:
         pending = str(session_state.get(PENDING_CPL_ORIGINAL_KEY) or "").strip()
+        _own = str(session_state.get(CPL_COMMIT_OWNER_ID_KEY) or "").strip()
+        if pending and _own and _own != str(active.get("id") or "").strip():
+            pending = ""  # written for another song: never applied to this draft
         if pending:
             active = commit_user_original_key(
                 session_state,
@@ -2478,8 +2530,46 @@ def persist_cpl_draft_state(st) -> bool:
     return ok
 
 
+def detach_active_from_library(session_state: dict) -> dict | None:
+    """Make sure the working draft is NOT a stored library record.
+
+    Some install paths (Songs-page restore, last-Custom restore) hand the library record itself to
+    ``CPL_ACTIVE_KEY``. Every later edit of the draft (title, key, tempo, style, transposition) then
+    rewrote the SAVED song in place - no save, no new timestamp. The draft is replaced by a deep copy so
+    a saved song changes only through an intentional save that targets it.
+    """
+    active = session_state.get(CPL_ACTIVE_KEY)
+    store = session_state.get(CPL_SAVED_KEY)
+    if not isinstance(active, dict) or not isinstance(store, dict):
+        return active if isinstance(active, dict) else None
+    shared = active.get("original_sections")
+    for rec in store.values():
+        if not isinstance(rec, dict):
+            continue
+        if rec is active or (shared is not None and rec.get("original_sections") is shared):
+            clone = copy.deepcopy(active)
+            session_state[CPL_ACTIVE_KEY] = clone
+            return clone
+    return active
+
+
+def _detached_draft(session_state: dict, active: dict) -> dict:
+    """``active`` itself unless it is a stored library record, in which case a deep copy that replaces it as the draft."""
+    store = session_state.get(CPL_SAVED_KEY)
+    if isinstance(store, dict) and isinstance(active, dict):
+        shared = active.get("original_sections")
+        for rec in store.values():
+            if isinstance(rec, dict) and (rec is active or (shared is not None and rec.get("original_sections") is shared)):
+                clone = copy.deepcopy(active)
+                if session_state.get(CPL_ACTIVE_KEY) is active:
+                    session_state[CPL_ACTIVE_KEY] = clone
+                return clone
+    return active
+
+
 def cpl_active_from_session(session_state: dict) -> dict:
-    """Read the canonical CPL draft from session_state."""
+    """Read the canonical CPL draft from session_state (never a stored library record)."""
+    detach_active_from_library(session_state)
     return ensure_original_structure(session_state.get(CPL_ACTIVE_KEY) or default_active_progression())
 
 
@@ -2492,13 +2582,18 @@ def cpl_save_draft(
     st: Any | None = None,
 ) -> dict:
     """Single write path: widgets → draft blob → session → optional cloud persist."""
+    detach_active_from_library(session_state)
     active = ensure_original_structure(session_state.get(CPL_ACTIVE_KEY) or active)
+    chords_before = _record_chord_count(active)
     active = sync_cpl_draft_widgets_to_active(session_state, active)
     home = (
         ensure_all_cpl_sections(sections)
         if sections is not None
         else ensure_all_cpl_sections(active.get("original_sections"))
     )
+    if chords_before > 0 and _record_chord_count({"original_sections": home}) == 0:
+        # This draft HAD chords and the user's edit removed them: a deliberate emptying of THIS song.
+        session_state[USER_EMPTIED_SONG_ID_KEY] = str(active.get("id") or "").strip()
     active["user_locked_home_key"] = True
     active = commit_home_sections(active, home)
     session_state[CPL_ACTIVE_KEY] = active
@@ -2510,6 +2605,21 @@ def cpl_save_draft(
 
 def list_saved_progression_names(store: dict) -> list[str]:
     return sorted(str(k) for k in (store or {}).keys())
+
+
+def saved_progression_label(store: dict, key: str) -> str:
+    """Picker label for a library key. Two songs must never look alike: when a record's title differs from its
+    library key, or another song shows the same title, the label carries the stable id suffix."""
+    store = store if isinstance(store, dict) else {}
+    rec = store.get(key) if isinstance(store.get(key), dict) else {}
+    title = str(rec.get("name") or key).strip() or str(key)
+    sid = str(rec.get("id") or "").strip()
+    titles = [
+        str((r.get("name") if isinstance(r, dict) else "") or k).strip() for k, r in store.items()
+    ]
+    if titles.count(title) > 1 or title != str(key):
+        return f"{key} → {title} · #{sid[:6]}" if title != str(key) and sid else (f"{title} · #{sid[:6]}" if sid else title)
+    return title
 
 
 _QUALITY_REPLACING_EDITS: frozenset[str] = frozenset([
@@ -3211,13 +3321,135 @@ def _unique_library_name(store, name, song_id):
         n += 1
 
 
-def save_progression(store, name, data):
-    save_progression_named(store, name, data)
+class SongSaveConflict(Exception):
+    """A save was refused because it would change a saved song that the draft was not derived from."""
+
+
+# Flash text for a refused save: shown as-is (no "error:" repr), starts with the same marker the page already treats as an error.
+SAVE_REFUSED_FLASH_PREFIX = "error:\u26a0 Not saved. "
+
+
+class InconsistentDraftRefused(SongSaveConflict):
+    """The draft's key / name does not belong to the saved song it claims to be, and the user did not change it."""
+
+
+def _key_token(rec) -> str:
+    raw = str((rec or {}).get("original_key_center") or "").strip()
+    return _normalize_cpl_key_token(raw) or raw
+
+
+def _flat_chords(rec) -> list:
+    secs = (rec or {}).get("original_sections") if isinstance(rec, dict) else None
+    out = []
+    for name in sorted(secs or {}):
+        for e in secs[name] or []:
+            if isinstance(e, dict):
+                out.append((e.get("chord"), e.get("bars"), bool(e.get("repeat"))))
+    return out
+
+
+def _is_uniform_transposition(prior, draft) -> bool:
+    """True when every chord of ``draft`` is the matching chord of ``prior`` moved by one non-zero interval."""
+    a, b = _flat_chords(prior), _flat_chords(draft)
+    if not a or len(a) != len(b) or a == b:
+        return False
+    try:
+        steps = {semitone_distance(_key_token_of_chord(x[0]), _key_token_of_chord(y[0])) for x, y in zip(a, b) if x[0] and y[0]}
+    except Exception:
+        return False
+    return len(steps) == 1 and 0 not in steps and all((x[1], x[2]) == (y[1], y[2]) for x, y in zip(a, b))
+
+
+def _key_token_of_chord(chord) -> str:
+    import re as _re
+
+    m = _re.match(r"^([A-G][#b♯♭]?)", str(chord or "").strip())
+    return m.group(1).replace("♯", "#").replace("♭", "b") if m else ""
+
+
+class EmptyDraftOverwriteRefused(SongSaveConflict):
+    """A chordless draft was about to replace a saved song that has chords."""
+
+
+USER_EMPTIED_SONG_ID_KEY = "_cpl_user_emptied_song_id"
+
+
+def _record_chord_count(rec) -> int:
+    secs = (rec or {}).get("original_sections") if isinstance(rec, dict) else None
+    if not isinstance(secs, dict):
+        return 0
+    return sum(
+        1
+        for entries in secs.values()
+        for e in (entries or [])
+        if isinstance(e, dict) and (e.get("repeat") or str(e.get("chord") or "").strip())
+    )
+
+
+def _refuse_if_cloud_moved(song_id, expected_updated_at) -> None:
+    """A stale session must not overwrite (or bring back) a cloud row that changed or was deleted elsewhere.
+
+    A song the cloud knows as DELETED is never re-validated by a save, with or without a version (a stale workspace
+    can still carry a deleted song as the active draft). A newer cloud version refuses a draft opened before it."""
+    try:
+        from custom_song_library import cloud_song_state
+
+        state = cloud_song_state(song_id)
+    except Exception:
+        return
+    if not state:
+        return
+    if not state["valid"]:
+        raise SongSaveConflict(
+            "This song was deleted elsewhere, so this save was refused. Nothing was changed."
+        )
+    if expected_updated_at is None:
+        return  # no version to compare (a new or legacy draft): only the deleted-elsewhere rule applies
+    try:
+        mine = float(expected_updated_at)
+    except (TypeError, ValueError):
+        return
+    if state["version"] > mine + 1e-6:
+        raise SongSaveConflict(
+            "This song was changed in the cloud (another tab or device) after this tab last synced it, so this save "
+            "was refused to protect the newer version. Nothing was sent to the cloud. Your version stays in this tab "
+            "only: copy anything you need, then reload the page to get the cloud version."
+        )
+
+
+def _same_version(a, b) -> bool:
+    try:
+        return abs(float(a) - float(b)) < 1e-6
+    except (TypeError, ValueError):
+        return False
+
+
+def save_progression(store, name, data, *, expected_updated_at=None, allow_empty=False, cloud_base_updated_at=None, explicit_edits=None):
+    save_progression_named(
+        store, name, data, expected_updated_at=expected_updated_at, allow_empty=allow_empty,
+        cloud_base_updated_at=cloud_base_updated_at, explicit_edits=explicit_edits,
+    )
     return store
 
 
-def save_progression_named(store, name, data):
+def save_progression_named(store, name, data, *, expected_updated_at=None, allow_empty=False, cloud_base_updated_at=None, explicit_edits=None):
     """Save ``data`` into the library and return the library name it was stored under.
+
+    ``expected_updated_at`` is the version of the saved song the draft was loaded from (the draft's
+    ``base_updated_at``). When given, the save only goes ahead if the song with this id still has exactly
+    that version, so a draft can never overwrite a record it was not derived from, and a stale copy that
+    holds the same id under another title can only be re-identified by a draft proven to descend from it.
+
+    ``cloud_base_updated_at`` is the cloud version this draft last agreed with (a song saved while the cloud was
+    unreachable keeps its OLD base, so a later reconnect cannot overwrite a newer cloud copy it never saw).
+
+    ``explicit_edits`` says what the USER deliberately changed for THIS song in this edit
+    (``{"original_key": bool, "name": bool}``). A saved song's Original Key changes only when the user changed it, and
+    (when the caller reports intent) its name only when the user renamed it; otherwise the draft carries another
+    song's key or title and the save is refused (InconsistentDraftRefused) without touching anything.
+
+    ``allow_empty`` is the deliberate "I emptied this song" signal. Without it a draft with NO chords is refused
+    when it would replace a saved song that has chords (a blank default-shaped draft once emptied a saved song).
 
     Never overwrites a different song: a new song (different id) whose title matches
     an existing entry is stored as ``Title (2)``. If a rename leaves another entry
@@ -3236,8 +3468,60 @@ def save_progression_named(store, name, data):
         save_name = _unique_library_name(store, save_name, incoming_id)
     existing = store.get(save_name) if isinstance(store.get(save_name), dict) else {}
     song_id = str(data.get("id") or existing.get("id") or "").strip() or str(uuid.uuid4())
+    _cloud_base = cloud_base_updated_at
+    if _cloud_base is None:
+        _cloud_base = data.get("cloud_base_updated_at")
+    if _cloud_base is None:
+        _cloud_base = next((r.get("cloud_base_updated_at") for r in store.values()
+                            if isinstance(r, dict) and str(r.get("id") or "").strip() == song_id), None)
+    if _cloud_base is None:
+        _cloud_base = expected_updated_at
+    _refuse_if_cloud_moved(song_id, _cloud_base)
+    _prior = next((r for r in store.values() if isinstance(r, dict) and str(r.get("id") or "").strip() == song_id), None) if song_id else None
+    if _prior is not None and _prior.get("user_locked_home_key", True) and _record_chord_count(_prior) > 0:
+        _explicit = explicit_edits or {}
+        _key_changed = bool(_key_token(_prior) and _key_token(data) and _key_token(_prior) != _key_token(data))
+        if not _explicit.get("original_key"):
+            if _key_changed:
+                raise InconsistentDraftRefused(
+                    "This song's Original Key would change from %s to %s, but the Original Key was not changed for this "
+                    "song. It looks like another song's key was carried over, so nothing was saved. Reload the song "
+                    "from the library and try again." % (_key_token(_prior), _key_token(data))
+                )
+            if _is_uniform_transposition(_prior, data):
+                raise InconsistentDraftRefused(
+                    "Every chord of this song would move to a different key, but the Original Key was not changed for "
+                    "this song. It looks like another song's Practice Key was applied, so nothing was saved."
+                )
+        if explicit_edits is not None and not _explicit.get("name"):
+            _pn, _dn = str(_prior.get("name") or "").strip(), str(data.get("name") or "").strip()
+            if _pn and _dn and _pn != _dn:
+                raise InconsistentDraftRefused(
+                    "This song is saved as '%s' but the draft is named '%s' and the title was not changed for this "
+                    "song, so nothing was saved. Reload the song from the library and try again." % (_pn, _dn)
+                )
+    if not allow_empty and _record_chord_count(data) == 0:
+        for _k, rec in store.items():
+            if isinstance(rec, dict) and (
+                str(rec.get("id") or "").strip() == song_id or (_k == save_name and not incoming_id)
+            ) and _record_chord_count(rec) > 0:
+                raise EmptyDraftOverwriteRefused(
+                    "This draft has no chords but the saved song does, so the save was refused to protect "
+                    "the saved chords. Clear the song on purpose first if you want it empty."
+                )
+    if expected_updated_at is not None:
+        for _k, rec in store.items():
+            if isinstance(rec, dict) and str(rec.get("id") or "").strip() == song_id:
+                if not _same_version(rec.get("updated_at"), expected_updated_at):
+                    raise SongSaveConflict(
+                        "This song changed after it was opened here, so this save was refused to protect it. "
+                        "Reload it from the library and try again."
+                    )
     for other_name, other in list(store.items()):
         if other_name != save_name and isinstance(other, dict) and str(other.get("id") or "").strip() == song_id:
+            if expected_updated_at is not None and not _same_version(other.get("updated_at"), expected_updated_at):
+                raise SongSaveConflict("Another saved song already owns this song id; nothing was saved.")
+            # Intentional rename of exactly that record: the stale copy keeps its content under a fresh id.
             other["id"] = str(uuid.uuid4())
     now = time.time()
     store[save_name] = {
@@ -3260,10 +3544,14 @@ def save_progression_named(store, name, data):
         "created_at": existing.get("created_at") or now,
         "updated_at": now,
     }
+    if _cloud_base is not None:
+        store[save_name]["cloud_base_updated_at"] = _cloud_base
     try:
         from custom_song_library import upsert_custom_song_to_cloud
 
         ok, _key, err = upsert_custom_song_to_cloud(save_name, store[save_name])
+        if ok:
+            store[save_name]["cloud_base_updated_at"] = store[save_name]["updated_at"]  # in sync again
         from custom_song_library import cloud_storage_status
 
         status = cloud_storage_status()
@@ -4609,12 +4897,17 @@ def on_cpl_original_key_chip(token: str) -> None:
     picked = str(token or "").strip()
     if not picked:
         return
+    _draft = cpl_active_from_session(st.session_state)
+    _before = _normalize_cpl_key_token(str(cpl_draft_written_key(_draft) or "")) or str(cpl_draft_written_key(_draft) or "")
     commit_user_original_key(
         st.session_state,
         picked,
-        active=cpl_active_from_session(st.session_state),
+        active=_draft,
         source="chip",
     )
+    if (_normalize_cpl_key_token(picked) or picked) != _before:
+        st.session_state[CPL_EXPLICIT_KEY_EDIT_ID_KEY] = str(_draft.get("id") or "").strip()
+        st.session_state[CPL_COMMIT_OWNER_ID_KEY] = str(_draft.get("id") or "").strip()
 
 
 def on_cpl_original_key_change() -> None:
@@ -4628,12 +4921,21 @@ def on_cpl_original_key_change() -> None:
     picked = str(st.session_state.get("cpl_original_key") or "").strip()
     if not picked:
         return
+    _draft = cpl_active_from_session(st.session_state)
+    _own = str(st.session_state.get(CPL_WIDGET_OWNER_ID_KEY) or "").strip()
+    if _own and _own != str(_draft.get("id") or "").strip():
+        return  # the widget still shows another song: its value is not a choice for this one
+    _before = _normalize_cpl_key_token(str(cpl_draft_written_key(_draft) or "")) or str(cpl_draft_written_key(_draft) or "")
     commit_user_original_key(
         st.session_state,
         picked,
-        active=cpl_active_from_session(st.session_state),
+        active=_draft,
         source="widget",
     )
+    _after = _normalize_cpl_key_token(picked) or picked
+    if _after != _before and _after not in _REMOUNT_ORIGINAL_KEYS:  # a remount to the default C is not a choice
+        st.session_state[CPL_EXPLICIT_KEY_EDIT_ID_KEY] = str(_draft.get("id") or "").strip()
+        st.session_state[CPL_COMMIT_OWNER_ID_KEY] = str(_draft.get("id") or "").strip()
 
 
 def cpl_on_save_library_callback() -> None:
@@ -4650,16 +4952,20 @@ def cpl_on_save_library_callback() -> None:
         active = sync_cpl_draft_widgets_to_active(
             st.session_state, cpl_active_from_session(st.session_state)
         )
-        title = resolve_cpl_saved_title(st.session_state, active)
+        _draft_id = str(active.get("id") or "").strip()
+        # Pending/commit tokens and the live widgets are only trusted when they were written for THIS draft.
+        _commit_ok = str(st.session_state.get(CPL_COMMIT_OWNER_ID_KEY) or "").strip() in ("", _draft_id)
+        _widget_ok = str(st.session_state.get(CPL_WIDGET_OWNER_ID_KEY) or "").strip() in ("", _draft_id)
+        title = resolve_cpl_saved_title(st.session_state, active) if (_commit_ok and _widget_ok) else str(active.get("name") or "").strip()
         if not is_generic_cpl_title(title):
             active = commit_user_title(
                 st.session_state, title, active=active, assign_widget=False
             )
         # Chip / pending / commit D outranks a remounted selectbox C at save time.
         chosen = str(
-            st.session_state.get(PENDING_CPL_ORIGINAL_KEY)
-            or st.session_state.get(CPL_ORIGINAL_KEY_COMMIT)
-            or st.session_state.get("cpl_original_key")
+            (st.session_state.get(PENDING_CPL_ORIGINAL_KEY) if _commit_ok else "")
+            or (st.session_state.get(CPL_ORIGINAL_KEY_COMMIT) if _commit_ok else "")
+            or (st.session_state.get("cpl_original_key") if _widget_ok else "")
             or cpl_draft_written_key(active)
             or ""
         ).strip()
@@ -4690,7 +4996,23 @@ def cpl_on_save_library_callback() -> None:
             ).strip()
         saved = st.session_state.setdefault(CPL_SAVED_KEY, {})
         name = str(active.get("name") or title or "My Progression").strip() or "My Progression"
-        name = save_progression_named(saved, name, active)
+        _emptied = str(st.session_state.get(USER_EMPTIED_SONG_ID_KEY) or "").strip()
+        _sid = str(active.get("id") or "").strip()
+        name = save_progression_named(
+            saved,
+            name,
+            active,
+            expected_updated_at=active.get("base_updated_at"),
+            cloud_base_updated_at=active.get("cloud_base_updated_at"),
+            allow_empty=bool(_emptied and _emptied == _sid),
+            explicit_edits={
+                "original_key": bool(_sid and str(st.session_state.get(CPL_EXPLICIT_KEY_EDIT_ID_KEY) or "").strip() == _sid),
+                "name": bool(_sid and str(st.session_state.get(CPL_EXPLICIT_RENAME_ID_KEY) or "").strip() == _sid),
+            },
+        )
+        st.session_state.pop(CPL_EXPLICIT_KEY_EDIT_ID_KEY, None)
+        st.session_state.pop(CPL_EXPLICIT_RENAME_ID_KEY, None)
+        st.session_state.pop(USER_EMPTIED_SONG_ID_KEY, None)
         stored = saved.get(name) if isinstance(saved.get(name), dict) else {}
         song_id = str((stored or {}).get("id") or "").strip()
         if not song_id:
@@ -4702,6 +5024,8 @@ def cpl_on_save_library_callback() -> None:
             stored.get("original_key_center") or live.get("original_key_center") or "C"
         ).strip() or "C"
         live["user_locked_home_key"] = True
+        live["base_updated_at"] = stored.get("updated_at")
+        live["cloud_base_updated_at"] = stored.get("cloud_base_updated_at")
         if not is_generic_cpl_title(live["name"]):
             commit_user_title(
                 st.session_state, live["name"], active=live, assign_widget=False
@@ -4752,6 +5076,9 @@ def cpl_on_save_library_callback() -> None:
             "state": str(LAST_CLOUD_SAVE_RESULT.get("state") or ""),
             "error": str(LAST_CLOUD_SAVE_RESULT.get("error") or ""),
         }
+    except SongSaveConflict as exc:
+        # A protective refusal, not a crash: say plainly that NOTHING was saved or changed.
+        st.session_state["_cpl_save_library_flash"] = f"{SAVE_REFUSED_FLASH_PREFIX}{exc}"
     except Exception as exc:
         st.session_state["_cpl_save_library_flash"] = f"error:{exc!r}"
 
