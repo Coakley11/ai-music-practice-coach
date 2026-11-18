@@ -84,6 +84,9 @@ class TestSongsPageRestoreSequence(unittest.TestCase):
         a, b, store, golden, ss = _world()
         st = types.SimpleNamespace(session_state=ss)
         L.apply_cpl_session_progression(ss, L.load_saved_progression(store, "SYN Blues"), reset_display_key=True)
+        # A RESTORE of the persisted pick (startup / cloud re-apply): the Blues draft above came from a restore as well, so no explicit
+        # choice is on record. (An explicit Load selected / Songs row would block this restore: see test_custom_load_selected_workflow.)
+        ss.pop(L.CPL_EXPLICIT_APPLIED_PICK_KEY, None)
         ok = S.apply_saved_custom_pick_key_context(st, "custom::" + a["id"], {}, song_picker_catalog={})
         self.assertTrue(ok)
         if keep_aliasing:

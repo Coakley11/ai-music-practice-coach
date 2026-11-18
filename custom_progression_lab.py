@@ -90,6 +90,9 @@ CPL_TITLE_COMMIT = "_cpl_title_commit"
 # Which song the pending/commit title + Original Key tokens were written for. A token written for another
 # song (the previous one) must never be applied to this draft.
 CPL_COMMIT_OWNER_ID_KEY = "_cpl_commit_owner_id"
+# Same literal as songs.music_source.EXPLICIT_CUSTOM_APPLIED_PICK_KEY: the Custom song the user explicitly installed (Load
+# selected, demo charts, New song, a Songs row). A later RESTORE of a persisted pick for a different song must not undo it.
+CPL_EXPLICIT_APPLIED_PICK_KEY = "_explicit_custom_applied_pick"
 # The song id for which the USER deliberately changed the Original Key / the title in this edit.
 CPL_EXPLICIT_KEY_EDIT_ID_KEY = "_cpl_explicit_key_edit_id"
 CPL_EXPLICIT_RENAME_ID_KEY = "_cpl_explicit_rename_id"
@@ -1210,9 +1213,10 @@ def commit_user_original_key(
     )
     stored = str(cpl_draft_written_key(active) or "").strip()
     stored_n = _normalize_cpl_key_token(stored) or stored
+    _own_commit = str(session_state.get(CPL_COMMIT_OWNER_ID_KEY) or "").strip()
+    _same_song = _own_commit in ("", str(active.get("id") or "").strip())
     pending = str(
-        session_state.get(PENDING_CPL_ORIGINAL_KEY)
-        or session_state.get(CPL_ORIGINAL_KEY_COMMIT)
+        ((session_state.get(PENDING_CPL_ORIGINAL_KEY) or session_state.get(CPL_ORIGINAL_KEY_COMMIT)) if _same_song else "")
         or ""
     ).strip()
     pending_n = _normalize_cpl_key_token(pending) or pending
@@ -1274,15 +1278,20 @@ def apply_pending_custom_original_key(session_state: dict, active: dict | None =
         active if isinstance(active, dict) else session_state.get(CPL_ACTIVE_KEY)
         or default_active_progression()
     )
+    # Tokens and the key box are trusted only when they were written for THIS draft: after a song switch they still hold the
+    # previous song's Original Key, and applying it here transposed the draft (Trial D-Bm-A-G became F-Dm-C-Bb under Fm).
+    _id = str(active.get("id") or "").strip()
+    _commit_ok = str(session_state.get(CPL_COMMIT_OWNER_ID_KEY) or "").strip() in ("", _id)
+    _widget_ok = str(session_state.get(CPL_WIDGET_OWNER_ID_KEY) or "").strip() in ("", _id)
     pending = str(
-        session_state.get(PENDING_CPL_ORIGINAL_KEY)
-        or session_state.get(CPL_ORIGINAL_KEY_COMMIT)
+        (session_state.get(PENDING_CPL_ORIGINAL_KEY) if _commit_ok else "")
+        or (session_state.get(CPL_ORIGINAL_KEY_COMMIT) if _commit_ok else "")
         or ""
     ).strip()
     pending_n = _normalize_cpl_key_token(pending) or pending
     stored = str(cpl_draft_written_key(active) or "").strip()
     stored_n = _normalize_cpl_key_token(stored) or stored
-    widget = str(session_state.get("cpl_original_key") or "").strip()
+    widget = str((session_state.get("cpl_original_key") if _widget_ok else "") or "").strip()
     widget_n = _normalize_cpl_key_token(widget) or widget
     token = ""
     if widget_n and widget_n not in _REMOUNT_ORIGINAL_KEYS:
@@ -2127,6 +2136,14 @@ def apply_cpl_session_progression(
     keep_library_saved = bool(incoming_id and incoming_id == previous_saved)
     session_state[CPL_ACTIVE_KEY] = incoming
     session_state[CPL_COMMIT_OWNER_ID_KEY] = incoming_id
+    try:
+        from songs.music_source import custom_pick_key_for as _pick_for
+
+        _chosen = str(_pick_for(incoming) or "").strip()
+    except Exception:
+        _chosen = ""
+    if _chosen.startswith("custom::"):
+        session_state[CPL_EXPLICIT_APPLIED_PICK_KEY] = _chosen
     session_state.pop(CPL_EXPLICIT_KEY_EDIT_ID_KEY, None)
     session_state.pop(CPL_EXPLICIT_RENAME_ID_KEY, None)
     session_state.pop("cpl_finished", None)
