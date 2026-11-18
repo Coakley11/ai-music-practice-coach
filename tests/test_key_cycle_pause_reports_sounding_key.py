@@ -1568,5 +1568,139 @@ class StopOutranksAnEarlierResume(unittest.TestCase):
         self.assertFalse(after["stopped"], after)
 
 
+class AColdKeyWaitIsNotAPause(unittest.TestCase):
+    """Browser traces 2026-11-17 (390 px, combined candidate f108fff5, runs seq390_3 and seq390_11).
+
+    Next went to a key with no prepared take ("cold"): the page silenced the old key and waited for
+    the server to prepare the new one. Half a second of that silence was taken for a Pause (the
+    console turned to Resume, the hold was set), so the musician's own Pause -- handled late on a
+    busy phone -- resumed the old key instead. The server's start of the new key, built before the
+    Pause, then played after it. The wait is not a Pause; a start built before a Pause waits for
+    Resume; Resume plays the new key, never the one that was left."""
+
+    _WAIT = "async () => { await new Promise(r => setTimeout(r, %d)); return true; }"
+    _STATE = """() => { const d = window.__kcDual || {};
+      const b = document.querySelector('[class*="st-key-backing_key_cycle_pause_btn"] button');
+      const a = document.getElementById(d.active === 1 ? 'kc-buf-1' : 'kc-buf-0');
+      const nav = (window.__kcPendingPlayingAckQueue || []).filter(x => x && x.manualSwitch).map(x => x.playingKey);
+      return {up: !!d.userPaused, ss: sessionStorage.getItem('kc_user_paused'),
+              label: b ? String((b.querySelector('p') || b).textContent).trim() : '',
+              pressPauses: typeof window.__kcCyclePressPauses === 'function' ? window.__kcCyclePressPauses() : null,
+              activeKey: a ? a.getAttribute('data-kc-sounding') : '', activeCt: a ? Number(a.currentTime) : -1, nav}; }"""
+    # The page's navigator moving to ``key`` (navigation ``seq``) when that key has no take yet.
+    _COLD_NEXT = """() => { const W = window; W.__backingTransportState = {transport: 'playing'};
+      W.__kcNav = {target: '%s', seq: %d, at: Date.now(), settled: false, ackSeq: 0};
+      W.__kcSwitchPrepared(1, {target: '%s', navSeq: %d});
+      return (W.__kcLastSwitch || {}).hitKind; }"""
+    # What the card's Pause / Resume leaves for the player (the component's local intent).
+    _CARD = """() => { window.__backingTransportLocal = {intent: '%s', token: '%s', until: Date.now() + 20000}; return true; }"""
+    _PRESS = "() => { window.__kcPauseToggleAt = 0; window.__kcPauseBtnHandler(); return true; }"
+    # Apply a command that acknowledges the FIRST Previous / Next ack only (a later one is still unseen).
+    _APPLY_AFTER_FIRST_NAV = """() => { const c = %s;
+      const nav = (window.__kcPendingPlayingAckQueue || []).filter(a => a && a.manualSwitch);
+      c.ackedSwitchSeq = nav.length ? nav[0].switchSeq : 0; window.__kcApplyCmd(c); return c.ackedSwitchSeq; }"""
+
+    def _start(self) -> list:
+        # Gm plays with nothing prepared after it, so Next to Cm is cold.
+        return [("cmd", _kc_cmd(10, "Gm", restart=True, autoplay=True, forcePlay=True, transportConsumed="tok-play")),
+                ("eval", self._WAIT % 2500), ("eval", self._COLD_NEXT % ("Cm", 7, "Cm", 7))]
+
+    @staticmethod
+    def _cm_start(epoch: int, consumed: str) -> dict:
+        # The server prepared Cm and starts it (the answer to the cold Next).
+        return _kc_cmd(epoch, "Cm", restart=True, autoplay=True, forcePlay=True,
+                       transportConsumed=consumed, ackedSwitchSeq=9e15)
+
+    def _run(self, ops: list) -> list:
+        return [s["eval"] for s in _run_stop_race(self, self._start() + ops) if "eval" in s]
+
+    def test_t1_a_cold_key_wait_is_not_a_pause(self) -> None:
+        got = self._run([("eval", self._WAIT % 1500), ("eval", _HEARD_JS), ("eval", self._STATE)])
+        self.assertEqual(got[1], "cold", got)
+        heard, st = got[-2], got[-1]
+        self.assertEqual(heard["heard"], [], heard)
+        self.assertFalse(st["up"], st)
+        self.assertNotEqual(st["ss"], "1", st)
+        self.assertEqual(st["label"], "Pause", st)
+        self.assertTrue(st["pressPauses"], st)  # a press now is a Pause
+        self.assertEqual(st["nav"], ["Cm"], st)  # the Next still reaches the server
+
+    def test_a_cold_key_slower_than_15_s_still_plays_when_it_arrives(self) -> None:
+        got = self._run([("eval", self._WAIT % 16000), ("eval", self._STATE),
+                         ("cmd", self._cm_start(11, "tok-play")), ("eval", self._WAIT % 1500),
+                         ("eval", _HEARD_JS), ("eval", self._STATE)])
+        waiting, heard, st = got[-4], got[-2], got[-1]
+        self.assertEqual((waiting["up"], waiting["label"], waiting["pressPauses"]), (False, "Pause", True), waiting)
+        self.assertEqual(heard["heard"], ["cm.wav"], heard)
+        self.assertEqual((st["label"], st["up"]), ("Pause", False), st)
+
+    def _pause_then_late_start(self) -> list:
+        return [("eval", self._WAIT % 1500), ("eval", self._PRESS), ("eval", self._CARD % ("paused", "tok-pause")),
+                ("eval", self._WAIT % 300), ("eval", _HEARD_JS), ("eval", self._STATE),
+                ("cmd", self._cm_start(11, "tok-play")), ("eval", self._WAIT % 1500),
+                ("eval", _HEARD_JS), ("eval", self._STATE)]
+
+    def test_t2_a_start_built_before_the_pause_does_not_play_after_it(self) -> None:
+        got = self._run(self._pause_then_late_start())
+        at_pause, after_pause, heard, st = got[-5], got[-4], got[-2], got[-1]
+        self.assertEqual(at_pause["heard"], [], at_pause)  # the Pause did not resume Gm
+        self.assertEqual((after_pause["label"], after_pause["up"]), ("Resume", True), after_pause)
+        self.assertEqual(heard["heard"], [], heard)  # the earlier start of Cm waits
+        self.assertEqual((st["label"], st["up"]), ("Resume", True), st)
+
+    def test_t3_resume_then_plays_the_new_key_from_its_start(self) -> None:
+        got = self._run(self._pause_then_late_start() + [
+            ("eval", self._WAIT % 600), ("eval", self._PRESS), ("eval", self._CARD % ("playing", "tok-resume")),
+            ("eval", self._WAIT % 1500), ("eval", _HEARD_JS), ("eval", self._STATE),
+            # The server's answer to the Resume.
+            ("cmd", _kc_cmd(12, "Cm", resume=True, transportConsumed="tok-resume", ackedSwitchSeq=9e15)),
+            ("eval", self._WAIT % 1000), ("eval", _HEARD_JS), ("eval", self._STATE)])
+        heard1, st1, heard2, st2 = got[-5], got[-4], got[-2], got[-1]
+        self.assertEqual(heard1["heard"], ["cm.wav"], heard1)  # never Gm, the key that was left
+        self.assertEqual(st1["activeKey"], "Cm", st1)
+        self.assertLess(st1["activeCt"], 2.5, st1)  # from its first chord
+        self.assertEqual((st1["label"], st1["up"]), ("Pause", False), st1)
+        self.assertEqual(heard2["heard"], ["cm.wav"], heard2)  # the server's answer changes nothing
+        self.assertEqual(st2["label"], "Pause", st2)
+
+    def test_resume_before_the_cold_key_arrives_never_plays_the_old_key(self) -> None:
+        got = self._run([
+            ("eval", self._WAIT % 1500), ("eval", self._PRESS), ("eval", self._CARD % ("paused", "tok-pause")),
+            ("eval", self._WAIT % 800), ("eval", self._PRESS), ("eval", self._CARD % ("playing", "tok-resume")),
+            ("eval", self._WAIT % 1500), ("eval", _HEARD_JS), ("eval", self._STATE),
+            # Cm is ready: the server starts it (built after the Resume, so it echoes it).
+            ("cmd", self._cm_start(11, "tok-resume")), ("eval", self._WAIT % 1500),
+            ("eval", _HEARD_JS), ("eval", self._STATE)])
+        heard1, st1, heard2, st2 = got[-5], got[-4], got[-2], got[-1]
+        self.assertEqual(heard1["heard"], [], heard1)  # not Gm
+        self.assertEqual((st1["label"], st1["up"]), ("Pause", False), st1)  # Resume stands while Cm loads
+        self.assertEqual(heard2["heard"], ["cm.wav"], heard2)
+        self.assertEqual(st2["label"], "Pause", st2)
+
+    def test_stop_while_the_cold_key_is_pending_stays_silent(self) -> None:
+        got = self._run([("eval", self._WAIT % 500), ("eval", "() => { window.__kcHardStop(); return true; }"),
+                         ("eval", self._WAIT % 300), ("cmd", self._cm_start(11, "tok-play")),
+                         ("eval", self._WAIT % 1500), ("eval", _HEARD_JS)])
+        self.assertEqual(got[-1]["heard"], [], got[-1])
+
+    def test_a_new_next_replaces_the_pending_one_and_the_left_key_stays_silent(self) -> None:
+        got = self._run([
+            ("eval", self._WAIT % 400), ("eval", self._COLD_NEXT % ("Fm", 8, "Fm", 8)),
+            ("eval", self._WAIT % 1500), ("eval", self._STATE),
+            # The superseded key's start arrives late: built when the server had seen the first Next only.
+            ("eval", self._APPLY_AFTER_FIRST_NAV % __import__("json").dumps(
+                _kc_cmd(11, "Cm", restart=True, autoplay=True, forcePlay=True, transportConsumed="tok-play"))),
+            ("eval", self._WAIT % 1200), ("eval", _HEARD_JS),
+            ("cmd", _kc_cmd(12, "Fm", restart=True, autoplay=True, forcePlay=True, transportConsumed="tok-play",
+                            ackedSwitchSeq=9e15)),
+            ("eval", self._WAIT % 1500), ("eval", _HEARD_JS), ("eval", self._STATE)])
+        waiting, acked, heard_cm, heard_fm, st = got[-7], got[-6], got[-4], got[-2], got[-1]
+        self.assertGreater(acked, 0, got)  # the late command acknowledges the first Next only
+        self.assertEqual((waiting["label"], waiting["up"], waiting["pressPauses"]), ("Pause", False, True), waiting)
+        self.assertEqual(heard_cm["heard"], [], heard_cm)
+        self.assertEqual(heard_fm["heard"], ["fm.wav"], heard_fm)
+        self.assertEqual(st["label"], "Pause", st)
+
+
 if __name__ == "__main__":
     unittest.main()

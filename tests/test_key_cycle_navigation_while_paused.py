@@ -91,5 +91,23 @@ class NavigationWhilePausedStaysPaused(unittest.TestCase):
         self.assertEqual(transport_intent(self.ss), PLAYING)
 
 
+    def test_a_next_made_while_playing_but_applied_after_a_pause_stays_paused(self) -> None:
+        # Next, then Pause before the server took the Next: one run applies the card's Pause first
+        # (it is handled earlier in the page) and the Next after it. The Next must not undo the Pause.
+        self._pause()
+        self._apply(self._nav_ack("D", stay_paused=False))
+        self._assert_held_on("D")
+
+    def test_a_paused_next_applied_after_a_resume_plays(self) -> None:
+        # The mirror order: Next while paused, then Resume before the server took the Next.
+        self._pause()
+        kc._toggle_key_cycle_pause_resume(self.ss)  # the Resume, applied first
+        self._apply(self._nav_ack("D", stay_paused=True))
+        data = kc.get_owner_cycle_session(self.ss)
+        self.assertEqual(data["current_playback_key"], "D")
+        self.assertEqual(data["status"], kc.STATUS_RUNNING)
+        self.assertEqual(transport_intent(self.ss), PLAYING)
+
+
 if __name__ == "__main__":
     unittest.main()

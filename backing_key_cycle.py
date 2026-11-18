@@ -5516,6 +5516,34 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       const owner = kcUrlOwner(el);
       return !owner || owner === String(key || '').trim();
     }}
+    // The take the musician is waiting for, which the active element does not hold yet: the key a
+    // Previous / Next moved to while the server prepares it ("cold"), or a new take whose start was
+    // held by a later Pause. Browser traces 2026-11-17 (390 px, seq390_3 / seq390_11): the silence
+    // of that wait was taken for a Pause, so the musician's own Pause resumed the old key; and
+    // Resume un-paused the take that was left. While one is pending its silence is not a Pause,
+    // and Resume plays it, never the old take. ``url`` is empty until the server has named it.
+    function kcPendingTake() {{
+      try {{
+        const p = parentWin.__kcPendingTake;
+        if (!p || !p.key) return null;
+        if (p.cycleId && state.cycleId && String(p.cycleId) !== String(state.cycleId)) return null;
+        // A newer Previous / Next replaced it.
+        if (p.navSeq && parentWin.__kcNav && Number(parentWin.__kcNav.seq || 0) !== Number(p.navSeq)) return null;
+        return p;
+      }} catch (ePt) {{ return null; }}
+    }}
+    function kcSetPendingTake(key, url, navSeq, why) {{
+      try {{
+        parentWin.__kcPendingTake = {{
+          key: String(key || '').trim(), url: String(url || '').trim(), navSeq: Number(navSeq || 0),
+          cycleId: String(state.cycleId || ''), at: Date.now(), why: String(why || ''),
+        }};
+      }} catch (eSpt) {{}}
+    }}
+    function kcClearPendingTake() {{
+      try {{ parentWin.__kcPendingTake = null; }} catch (eCpt) {{}}
+    }}
+    parentWin.__kcPendingTakeNow = kcPendingTake;
     function cancelPendingPlays() {{
       state.playGen = Number(state.playGen || 0) + 1;
     }}
@@ -7579,10 +7607,12 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       state.swapStartedAt = 0;
       state._kcLatePrepAt = 0;
       try {{
-        // In-flight acks of automatic handoffs die with the Pause. A Previous / Next pressed while
-        // paused (stayPaused) is the musician's move after the Pause and must still reach Python:
-        // this hold enforcement runs every tick while paused and used to erase it.
-        const keepNav = (parentWin.__kcPendingPlayingAckQueue || []).filter((a) => a && a.manualSwitch && a.stayPaused);
+        // In-flight acks of automatic handoffs die with the Pause. A Previous / Next is the
+        // musician's move and must still reach Python, also one pressed just before the Pause
+        // (a cold Next the server has not taken yet: dropping it left the server on the old key,
+        // trace seq390_3): this hold enforcement runs every tick while paused and used to erase it.
+        // Python keeps the transport as the musician left it (see _apply_manual_nav_ack).
+        const keepNav = (parentWin.__kcPendingPlayingAckQueue || []).filter((a) => a && a.manualSwitch);
         parentWin.__kcPendingPlayingAckQueue = keepNav;
         parentWin.__kcPendingPlayingAck = keepNav.length ? keepNav[keepNav.length - 1] : null;
         parentWin.__backingKeyCyclePassConsumed = null;
@@ -7603,6 +7633,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
     }}
     parentWin.__kcHardStop = function () {{
       const t0 = Number(parentWin.__kcClickT0 || kcNow());
+      kcClearPendingTake();  // Stop ends the wait too: nothing is played when it arrives
       abortTransportPlayback({{ seekZero: false }});
       // Commands up to this epoch were built before the Stop (see applyCmd), and
       // so is every running command of this same cycle until the server's own off.
@@ -8004,6 +8035,36 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         }} catch (eFb) {{ act = null; }}
       }}
       if (!act) return;
+      // A take the musician is waiting for (a cold Previous / Next, or a start a Pause held):
+      // Resume plays that key from its start. The active element still holds the key that was
+      // left, and un-pausing it played that key (trace seq390_11). Not named by the server yet:
+      // nothing plays now; its start, when it comes, plays (the hold is cleared above).
+      const pendR = kcPendingTake();
+      if (pendR) {{
+        if (!pendR.url) {{
+          try {{
+            parentWin.__kcPlayDiag = parentWin.__kcPlayDiag || [];
+            parentWin.__kcPlayDiag.push({{ t: kcNow(), ev: 'resume_waits_for_pending_take', key: pendR.key }});
+          }} catch (eRw) {{}}
+          try {{ syncVisibleTransport(); }} catch (eRwv) {{}}
+          return;
+        }}
+        try {{
+          act.pause();
+          act.setAttribute('data-kc-url', pendR.url);
+          act.setAttribute('data-kc-sounding', pendR.key);
+          act.preload = 'auto';
+          act.src = pendR.url;
+          state.playingUrl = pendR.url;
+          act.load();
+          parentWin.__kcForceResumeFromStart = true;
+          parentWin.__kcLastSounding = pendR.key;
+          try {{ syncHighlight(pendR.key); }} catch (eRhl) {{}}
+          parentWin.__kcPlayDiag = parentWin.__kcPlayDiag || [];
+          parentWin.__kcPlayDiag.push({{ t: kcNow(), ev: 'resume_plays_pending_take', key: pendR.key }});
+        }} catch (eRp) {{}}
+        kcClearPendingTake();
+      }}
       // Fresh-session Resume often has empty buffers; load last known URL.
       try {{
         const want = String(
@@ -8415,6 +8476,8 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       // (a navigator switch is already one per settled target).
       if (!navSeq && now - Number(parentWin.__kcSwitchAt || 0) < 350) return false;
       parentWin.__kcSwitchAt = now;
+      // This move replaces any key still awaited from an earlier one (a cold target sets it below).
+      kcClearPendingTake();
       const t0 = parentWin.__kcClickT0 || now;
       // Next / Previous while paused stays paused (user decision 2026-11-17): the new key is shown
       // everywhere and waits at its start; Resume plays it. The hold flag alone is not enough (it
@@ -8605,6 +8668,9 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           try {{
             parentDoc.querySelectorAll('audio[id^="kc-"]').forEach((a) => {{ try {{ a.pause(); }} catch (eP0) {{}} }});
           }} catch (eSil0) {{}}
+          // The musician now waits for this key: that silence is not a Pause, and a Resume plays
+          // this key, not the one just silenced (see kcPendingTake).
+          kcSetPendingTake(target, '', navSeq, 'cold_nav');
           kcNavAck(target, audible, navSeq, true, stayPaused);
           return true;
         }}
@@ -8984,6 +9050,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         paused = true;
         try {{ parentWin.__kcTransportPaused = true; }} catch (eTPh) {{}}
       }} else if (anyPlaying || playKick || bufferingOrStarting || handoffInFlight) {{
+        if (anyPlaying) kcClearPendingTake();  // a take is heard: the wait is over
         try {{
           state.userPaused = false;
           parentWin.sessionStorage.setItem('kc_user_paused', '0');
@@ -8994,6 +9061,11 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       }} else if (userHold) {{
         state._silentSince = 0;
         paused = true;
+      }} else if (kcPendingTake()) {{
+        // Waiting for a key the musician moved to (its take is being prepared): not a Pause,
+        // however long it takes. Only the musician's Pause, a Stop or the server holds it.
+        state._silentSince = 0;
+        paused = false;
       }} else if (parentWin.__kcHadAudible) {{
         const nowMs = Date.now();
         if (!state._silentSince) state._silentSince = nowMs;
@@ -9330,6 +9402,9 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         let tpIntent = '';
         try {{ tpIntent = String(((parentWin.__backingTransportState || {{}}).transport) || ''); }} catch (eTp) {{ tpIntent = ''; }}
         if (!prog && !running && !held && tpIntent === 'playing') running = true;
+        // Waiting for the key a Previous / Next moved to: the musician has not paused, so this
+        // press is a Pause (trace seq390_11: it resumed the key that was left).
+        if (!prog && !running && !held && kcPendingTake()) running = true;
         return !prog && running;
       }}
       parentWin.__kcCyclePressPauses = function () {{
@@ -9383,6 +9458,11 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           // Programmatic live-Resume must never flip to Pause mid-gesture.
           const prog = !!parentWin.__kcProgrammaticResumeClick;
           const running = kcCyclePressPauses(label);
+          // Whether this press paused: a start command built before a Pause is held (applyCmd).
+          try {{
+            parentWin.__kcPauseGuard.pause = !(prog || !running);
+            parentWin.__kcPauseGuard.cycle = String(state.cycleId || '');
+          }} catch (ePgM) {{}}
           // Simplify: running (audible) → Pause; otherwise → Resume.
           if (prog || !running) {{
             // A setting changed while paused: the paused take is obsolete and
@@ -9431,6 +9511,10 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
                   }}
                 }}
               }} catch (eGap) {{ pauseKey = ''; pauseFrom = ''; }}
+              // Paused while waiting for the key a Previous / Next moved to: that is the paused
+              // position, not the take that was left (still the active element).
+              const pendP = kcPendingTake();
+              if (pendP) {{ pauseKey = pendP.key; pauseFrom = ''; }}
               parentWin.__kcPauseSounding = {{
                 key: pauseKey
                   || (typeof parentWin.__kcLiveKey === 'function' ? String(parentWin.__kcLiveKey() || '') : '')
@@ -11769,6 +11853,53 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           return;
         }}
       }} catch (eStale) {{}}
+      // A start built before the musician's Pause -- the new key after a cold Previous / Next, a
+      // restart, a rebuilt arrangement -- does not play after it (trace seq390_3: the server's
+      // start of D-flat played 1.5 s after the Pause). The guards below let such starts through
+      // whatever their age. Built before the Pause: older than the epoch applied at the press, or
+      // not yet answering the card's Pause (``transportConsumed``); neither has a time limit, as
+      // a key can take longer than 20 s to prepare. The command still applies, as a paused one;
+      // its take, when new, is the one Resume plays (kcPendingTake). Stop is never held.
+      try {{
+        if (!cmd.enabled || cmd.hardStop) kcClearPendingTake();
+        let heldNow = !!state.userPaused;
+        try {{ heldNow = heldNow || parentWin.sessionStorage.getItem('kc_user_paused') === '1'; }} catch (eHn) {{}}
+        // Only the kinds the guards below exempt; a plain resume / autoplay is already held there.
+        const starts = !!(cmd.restart || cmd.forcePlay || cmd.arrangementReload || cmd.forceArrangementReplace);
+        if (heldNow && starts && cmd.enabled && !cmd.hardStop) {{
+          const pgS = parentWin.__kcPauseGuard;
+          const tlS = parentWin.__backingTransportLocal;
+          const beforePress = !!(pgS && pgS.pause && Number(cmd.epoch || 0) <= Number(pgS.epoch || 0)
+            && (!pgS.cycle || !cmd.cycleId || String(cmd.cycleId) === String(pgS.cycle)));
+          const beforeCardPause = !!(tlS && tlS.token && tlS.intent === 'paused'
+            && String(cmd.transportConsumed || '') !== String(tlS.token));
+          if (beforePress || beforeCardPause) {{
+            const actS = activeAudio();
+            const urlS = String(cmd.currentUrl || '').trim();
+            const keyS = String(cmd.sounding || '').trim();
+            if (urlS && keyS && !(actS && urlsMatch(actS, urlS))) {{
+              const prevS = kcPendingTake();
+              kcSetPendingTake(keyS, urlS, prevS && prevS.key === keyS ? prevS.navSeq : 0, 'start_before_pause');
+            }}
+            try {{
+              const bagS = parentWin.__kcApplyTrace || (parentWin.__kcApplyTrace = []);
+              bagS.push({{ t: Date.now(), reason: 'start_before_pause_held', epoch: cmd.epoch, sounding: keyS,
+                restart: !!cmd.restart, force: !!cmd.forcePlay, reload: !!cmd.arrangementReload,
+                byEpoch: beforePress, byEcho: beforeCardPause }});
+              if (bagS.length > 40) bagS.shift();
+            }} catch (eTrS) {{}}
+            cmd = Object.assign({{}}, cmd, {{
+              restart: false, forcePlay: false, autoplay: false, resume: false, paused: true,
+            }});
+          }}
+        }}
+        // The server names the awaited key's take (a held command after a paused Previous / Next):
+        // Resume can play it at once.
+        const pendS = kcPendingTake();
+        if (pendS && !pendS.url && cmd.currentUrl && String(cmd.sounding || '').trim() === pendS.key) {{
+          pendS.url = String(cmd.currentUrl).trim();
+        }}
+      }} catch (eStartHeld) {{}}
       try {{
         const pg = parentWin.__kcPauseGuard;
         if (
@@ -14204,7 +14335,14 @@ def _apply_manual_nav_ack(
         return reason not in ("duplicate_ack", "transport_stopped")
     # Pressing Previous / Next plays the target -- unless the musician was paused: then the cycle
     # moves to the target and stays paused at its start until Resume (user decision 2026-11-17).
-    stay_paused = bool(ack.get("stayPaused"))
+    # Paused or not is the transport's state as this run finds it, not the page's flag at the
+    # press: the card's Pause / Resume is applied earlier in the same run, so a Pause pressed just
+    # after a Next is already in it when that Next arrives and must not be undone by the Next
+    # (browser trace 2026-11-17, seq390), and a Resume pressed just after a paused Next must not be
+    # undone by the hold. The page's ``stayPaused`` only records what it saw at the press.
+    from backing_transport_intent import PAUSED as _T_PAUSED, transport_intent as _t_now
+
+    stay_paused = _t_now(session) == _T_PAUSED
     if not stay_paused:
         continue_playback(session, reason="key_cycle_nav")
     try:
