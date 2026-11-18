@@ -25,5 +25,17 @@ class Icons(unittest.TestCase):
         self.assertIn('action_label("load", "Restore saved audio")', src("streamlit_music_practice_app.py"))
 
 
+class RemainingUserFacingButtons(unittest.TestCase):
+    def test_composition_dismiss_uses_the_ami_dismiss_icon(self):
+        s = src("composition_studio_page.py")
+        self.assertIn('icon=AMI_ACTION_ICONS["dismiss"]', s)
+
+    def test_download_this_reference(self):
+        self.assertIn('_dl_label("download", "Download this reference")', src("song_document_panel.py"))
+
+    def test_practice_log_open_upload_analysis(self):
+        self.assertIn('page_feature_label("analysis", "Open Upload Analysis")', src("practice_log_coach.py"))
+
+
 if __name__ == "__main__":
     unittest.main()

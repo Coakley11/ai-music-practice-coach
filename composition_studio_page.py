@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import copy
-from music_feature_icons import action_label
+from music_feature_icons import AMI_ACTION_ICONS, action_label
 import html
 from typing import Any
 
@@ -3777,6 +3777,7 @@ def _render_melody_upload_panel(
         with u2:
             if proposal and st.button(
                 "Dismiss",
+                icon=AMI_ACTION_ICONS["dismiss"],  # same ❌ as the AMI "Dismiss insight"
                 key=f"composer_upload_dismiss_{active_id}",
                 use_container_width=True,
             ):
