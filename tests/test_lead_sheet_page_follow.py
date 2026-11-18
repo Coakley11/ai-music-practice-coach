@@ -1,5 +1,5 @@
 """M4: the Backing Lead Sheet at full height, the page following the music through ONE controller that holds
-still for three seconds after any manual scroll / touch / control interaction, and a compact transport.
+holds still while the person scrolls and for three seconds after their LAST manual scroll, and a compact transport.
 
 Browser behaviour is proven in the real app (scratchpad probe_m4.py); these pin the wiring so it cannot drift:
 one controller, used by both follow surfaces, never touching audio, off for Karaoke.
@@ -27,26 +27,67 @@ def test_hold_is_three_seconds_and_counts_from_the_last_interaction():
     """User, 2026-11-16: three seconds after the most recent genuine manual scroll (six was too long)."""
     js = lpf._CONTROLLER_JS
     assert lpf.HOLD_MS == 3000
-    assert lpf.CONTROLLER_VERSION >= 3                    # an open v2 page (6 s hold) is replaced
-    assert "now() - C.lastInteraction < HOLD_MS" in js          # measured from the LAST interaction
-    assert "C.lastInteraction = now()" in js                    # every interaction restarts it
-    for kind in ("wheel", "touchstart", "touchmove", "keydown", "pointerdown"):
-        assert kind in js
+    assert lpf.CONTROLLER_VERSION >= 4                    # an open v3 page (holds on plain clicks) is replaced
+    assert "now() - C.lastInteraction < HOLD_MS" in js          # measured from the LAST manual scroll
+    assert "C.lastInteraction = t; C.lastSignal = t;" in js     # every manual scroll restarts it
     assert "C.pointerDown ||" in js                              # never moves while a press is held
+
+
+def _watch(js):
+    return js[js.index("// ---- manual scrolling:"):js.index("// The page and every same-origin iframe")]
+
+
+def test_the_three_seconds_start_when_manual_scrolling_stops_however_long_it_lasted():
+    """User, 2026-11-18: no limit on how long someone scrolls; the countdown starts after the LAST genuine manual
+    scroll and restarts when they scroll again. Wheel and a finger dragging count on every event; a scrollbar drag and
+    the glide after a flick count through the page's own scroll events, chained while they keep coming."""
+    w = _watch(lpf._CONTROLLER_JS)
+    assert 'd.addEventListener("wheel", function () { interact("wheel"); }, opts);' in w
+    assert 'd.addEventListener("touchmove", function () { interact("touchmove"); }, opts);' in w
+    assert 'if (d === doc) d.addEventListener("scroll", pageScrolled, opts);' in w
+    ps = w[w.index("function pageScrolled(ev)"):w.index("var seen = new WeakSet();")]
+    assert "if (C.pointerDown || t - C.lastSignal < GLIDE_MS) interact(\"scroll\");" in ps
+    assert "var GLIDE_MS = 400;" in w
+    # a press that scrolled (dragging the page or the scrollbar) starts the three seconds when it is released
+    rel = w[w.index("function release(kind)"):w.index("var SCROLL_KEYS")]
+    assert "if (C.pressScrolled) interact(kind);" in rel
+    assert "if (C.pointerDown) C.pressScrolled = true;" in w
+    # a release the page never heard does not leave the page held for ever
+    assert 'if (C.pointerDown && ev.pointerType === "mouse" && ev.buttons === 0) release("pointermove");' in w
+
+
+def test_hover_clicks_highlighting_and_our_own_scrolling_never_hold():
+    """User, 2026-11-18: mouse movement, hovering, chord highlighting and automatic scrolling are not manual
+    scrolling. A click or tap that does not scroll only holds while it is down; a scroll key only opens the window
+    (the hold starts if the page then really moves); a page scroll with no input of the person's just before it
+    (this controller's return, a re-render) is ignored."""
+    js = lpf._CONTROLLER_JS
+    w = _watch(js)
+    assert 'addEventListener("mousemove"' not in js and 'addEventListener("mouseover"' not in js
+    pr = w[w.index("function press(ev)"):w.index("function release(kind)")]
+    assert "C.pointerDown = true; C.pressScrolled = false;" in pr
+    assert "interact(" not in pr.replace('if (now() - C.lastSignal < GLIDE_MS) interact("press-stops-glide");', "")
+    assert 'd.addEventListener("keydown", function (ev) { if (scrollKey(ev)) C.lastSignal = now(); }, opts);' in w
+    sk = w[w.index("function scrollKey(ev)"):w.index("function pageScrolled(ev)")]
+    assert 'tag === "input" || tag === "textarea" || tag === "select"' in sk
+    # the controller's own follow never counts: it is not an input, and no input preceded it within GLIDE_MS
+    assert "interact(" not in js[js.index("C.follow = function"):js.index("// A surface asks to follow")]
 
 
 def test_opening_or_closing_a_panel_hands_over_without_the_hold():
     """Measured: closing the Practice Melody kept the page still for 6.4 s, because the header click counted as
-    manual scrolling. A tap / click on an expander header (<summary>) no longer starts the hold; a drag or wheel that
-    starts there still does (touchmove and wheel are never excused)."""
-    js = lpf._CONTROLLER_JS
-    w = js[js.index("function panelToggle(ev)"):js.index("// The page and every same-origin iframe")]
+    manual scrolling. A tap / click on an expander header (<summary>) is not a press at all, so the page scroll its
+    new height causes is not the person's; a drag or wheel that starts there still holds."""
+    w = _watch(lpf._CONTROLLER_JS)
     assert 't.closest("summary")' in w
-    assert "var TOGGLE_KINDS = { touchstart: 1 };" in w            # only the tap's start, never touchmove / wheel
-    assert "if (TOGGLE_KINDS[k] && panelToggle(ev)) return; interact(k);" in w
-    assert 'if (panelToggle(ev)) return;\n      C.pointerDown = true; interact("pointerdown");' in w
-    assert "C.pointerDown = false; if (!panelToggle(ev)) interact(k);" in w
-    assert 'C.pointerDown = false; if (!panelToggle(ev)) interact("touchend");' in w
+    pr = w[w.index("function press(ev)"):w.index("function release(kind)")]
+    assert pr.index("if (panelToggle(ev)) return;") < pr.index("C.pointerDown = true;")
+    # touch presses come from the touch events (a finger that scrolls cancels its pointer at once)
+    assert 'd.addEventListener("pointerdown", function (ev) { if (ev.pointerType !== "touch") press(ev); }, opts);' in w
+    assert 'd.addEventListener("touchstart", function (ev) { press(ev); }, opts);' in w
+    # a mouse press that becomes a native drag is cancelled with the button still down: held until the drag ends
+    assert 'd.addEventListener("pointercancel", function (ev) { if (ev.pointerType === "pen") release("pointercancel"); }, opts);' in w
+    assert '["dragend", "drop"].forEach(function (k) { d.addEventListener(k, function () { release(k); }, opts); });' in w
 
 
 def test_controller_only_scrolls_never_touches_audio_or_the_highlight():
@@ -304,11 +345,30 @@ def test_compact_bar_buttons_are_easy_to_tap():
 def test_a_playing_measure_out_of_the_window_is_caught_up_on_the_next_tick():
     """Measured 2026-11-17 (Voice, Blackbird, 360 px): every missed sample was bar 1 right after Play -- its highlight
     was set before the page followed, and the page waited ~2 s for the next chord change. The clock now brings a
-    playing measure that is ENTIRELY outside the window into view; never while held, never mid-move, and a measure on
-    screen is untouched."""
+    playing measure that is not GENUINELY visible into view (user, 2026-11-18): outside the window, cut by its edge, or
+    covered (under the header, the compact bar or an overlay); never while held, never mid-move, and a measure that
+    can be read is untouched."""
     js = lpf._CONTROLLER_JS
     tick = js[js.index("var timer = top.setInterval("):js.index("C.destroy = function")]
     cu = tick[tick.index("// Catch-up:"):tick.index("if (C.room > 0) spacer(scroller());")]
     assert "if (!s && lead && now() >= C.selfScrollUntil) {" in cu
     assert "if (lead.playing()) {" in cu
-    assert "if (rr.bottom <= vtc || rr.top >= vbc) C.follow(ce, { why: \"catchup\" });" in cu
+    assert "var ce = lead.current(), nv = ce && C.notVisible(ce);" in cu
+    assert 'if (nv && (nv.why === "outside" || nv.why === "edge" || nv.why === "covered")) {' in cu
+    assert 'C.follow(ce, { why: "catchup-" + nv.why, force: true, pinned: nv.pinned });' in cu
+
+
+def test_genuinely_visible_means_inside_clear_and_uncovered():
+    """User, 2026-11-18: the highlighted chord must be clearly visible -- not above / below the screen, not under the
+    sticky bar or the header, not covered by an overlay, not clipped. Hit-tested through the frames it is drawn in."""
+    js = lpf._CONTROLLER_JS
+    nv = js[js.index("C.notVisible = function (el)"):js.index("// ---- following ----")]
+    assert "vt = viewTop(sc) + topInset(), vb = viewBottom(sc) - bottomInset();" in nv
+    assert 'return { why: r.bottom <= vt || r.top >= vb ? "outside" : "edge" };' in nv
+    assert 'return { why: "covered", pinned: pinnedBox(cov) };' in nv
+    assert 'return { why: "clipped" };' in nv
+    ca = js[js.index("function coverAt(el, x, y)"):js.index("function pinnedBox(e)")]
+    assert "d.elementFromPoint(x - ox, y - oy)" in ca and "chain.unshift(w.frameElement)" in ca
+    f = js[js.index("C.follow = function"):js.index("// A surface asks to follow")]
+    assert "if (!opts.force && r.top >= bandTop && r.bottom <= bandBottom) return false;" in f
+    assert "var pin = opts.pinned;" in f
