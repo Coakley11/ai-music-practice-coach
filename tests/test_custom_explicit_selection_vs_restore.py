@@ -60,13 +60,16 @@ class TestExplicitSelectionOutranksARestore(unittest.TestCase):
         self.assertTrue(S.apply_saved_custom_pick_key_context(st, "custom::" + BLUES_ID, {}, song_picker_catalog={}))
         self.assertEqual(L.cpl_active_from_session(ss)["id"], BLUES_ID)
 
-    def test_the_guard_ends_when_the_explicitly_chosen_song_is_no_longer_live(self) -> None:
+    def test_the_latest_explicit_install_is_the_one_that_is_protected(self) -> None:
         store, ss, st = _world()
         ss[M.PENDING_CUSTOM_LIBRARY_ACTION_KEY] = {"action": "load", "name": "Smoke Trial"}
         M.apply_pending_custom_library_action_before_widgets(st, invalidate_backing=lambda *a, **k: None)
-        # the live draft moves to another song by another route (e.g. Load Selected on the Custom page)
+        # the user then loads Blues by another route (Load selected on the Custom page): THAT is now the explicit choice
         L.apply_cpl_session_progression(ss, L.load_saved_progression(store, "Smoke Blues"), reset_display_key=True)
-        self.assertTrue(S.apply_saved_custom_pick_key_context(st, "custom::" + TRIAL_ID, {}, song_picker_catalog={}))
+        self.assertEqual(ss[M.EXPLICIT_CUSTOM_APPLIED_PICK_KEY], "custom::" + BLUES_ID)
+        self.assertFalse(S.apply_saved_custom_pick_key_context(st, "custom::" + TRIAL_ID, {}, song_picker_catalog={}))  # a restore of Trial is refused
+        self.assertEqual(L.cpl_active_from_session(ss)["id"], BLUES_ID)
+        self.assertTrue(S.apply_saved_custom_pick_key_context(st, "custom::" + BLUES_ID, {}, song_picker_catalog={}))  # a restore of Blues is fine
 
 
 if __name__ == "__main__":
