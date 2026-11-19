@@ -174,6 +174,8 @@ class SetStartBringsThePanelIntoView(unittest.TestCase):
         self.assertIn('document.getElementById("karaoke-lyric-panel")', js)
         self.assertNotIn("scrollIntoView", js)
         self.assertNotIn("scrollTo", js)
+        # Never overrides a manual hold: a singer scrolling at set start keeps the page for 3 s.
+        self.assertNotIn("force", js)
 
     def test_only_while_a_set_is_shown_with_the_hold_install(self) -> None:
         block = _APP[_APP.index("    if (KARAOKE_HOLD) {{"):]
