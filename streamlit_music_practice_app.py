@@ -11205,13 +11205,15 @@ def _render_backing_card_practice_key(original_key: str, practice_key: str) -> N
         and _sing_pick != str(st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
     ):
         # During a set this card is the Now Singing entry, sung in ITS key (the audio is built in
-        # it). When another song is Now Editing, the Practice Key control holds THAT song's key -
-        # Blackbird E read "I'm playing in C" because Jazz tune was being edited - so the entry's
-        # key is shown as text and the control keeps its sidebar slot. When the two are the same
-        # song the control below stays: it is how a performance is retuned (Issue 69).
+        # it). When another song is Now Editing, the sidebar's Practice Key control holds THAT
+        # song's key - Blackbird E read "I'm playing in C" because Jazz tune was being edited. So
+        # the card gets its own control showing the sung entry's effective key; changing it is a
+        # temporary retune of this performance (the same path every Practice Key control takes),
+        # never a change to the song or the setlist. The sidebar control keeps its slot, for the
+        # song it belongs to. When the two are the same song the owner control below stays.
         _sing_key = str(km.current_session_practice_key(st.session_state) or "").strip()
         if _sing_key:
-            _backing_card_key_text_row(original_key, _sing_key, orig_cell=orig_cell, pk_label=pk_label)
+            _render_backing_card_performance_key(original_key, _sing_key, orig_cell=orig_cell, pk_label=pk_label)
             return
     proxy = globals().get("_sidebar_pk_proxy")
     if not proxy or proxy.get("rendered"):
@@ -11246,6 +11248,50 @@ def _render_backing_card_practice_key(original_key: str, practice_key: str) -> N
                 _cap = "Concert pitch" + (f' · {html.escape(_rel)}' if _rel else "")
             st.markdown(
                 f'<p class="ui-skp-cap">{_cap}</p>',
+                unsafe_allow_html=True,
+            )
+
+
+def _render_backing_card_performance_key(original_key: str, sing_key: str, *, orig_cell: str, pk_label: str) -> None:
+    """Original | the Now Singing entry's key, as a control that retunes THIS performance only."""
+    from song_card_keys import KEY_SEARCH_FILTER_MODE, key_relation_caption, pretty_key_name
+
+    try:
+        from music_theory import conventional_key_options
+
+        options = list(conventional_key_options(original_key or sing_key, sing_key))
+    except Exception:
+        options = []
+    if sing_key not in options:
+        options = [sing_key] + options
+    # Keyed by the performed take: a new song, a new set or End Set never inherits a stale value.
+    wkey = f"karaoke_card_perf_key_{km.render_generation(st.session_state)}"
+    if st.session_state.get(wkey) not in options:
+        st.session_state.pop(wkey, None)
+
+    def _on_perf_key_change() -> None:
+        _karaoke_retune_after_explicit_key_change(str(st.session_state.get(wkey) or ""))
+
+    with st.container(key="backing_card_key_row"):
+        c_orig, c_pk = st.columns(2, gap="small")
+        with c_orig:
+            st.markdown(orig_cell, unsafe_allow_html=True)
+        with c_pk:
+            st.markdown(pk_label, unsafe_allow_html=True)
+            st.selectbox(
+                "Key for this performance",
+                options,
+                index=options.index(sing_key),
+                key=wkey,
+                format_func=lambda k: pretty_key_name(k) or str(k),
+                filter_mode=KEY_SEARCH_FILTER_MODE,
+                on_change=_on_perf_key_change,
+                label_visibility="collapsed",
+                help="This performance only: the song and your setlist keep their saved key.",
+            )
+            _rel = key_relation_caption(original_key, str(st.session_state.get(wkey) or sing_key))
+            st.markdown(
+                f'<p class="ui-skp-cap">{html.escape(_rel) if _rel else "This performance only"}</p>',
                 unsafe_allow_html=True,
             )
 

@@ -131,7 +131,19 @@ class BackingCardKeyDuringASet(unittest.TestCase):
         self.assertIn("km.is_karaoke_session_active(st.session_state)", body)
         self.assertIn("_sing_pick != str(st.session_state.get(ACTIVE_CATALOG_PICK_KEY)", body)
         self.assertIn("km.current_session_practice_key(st.session_state)", body)
-        self.assertIn("_backing_card_key_text_row(original_key, _sing_key", body)
+        self.assertIn("_render_backing_card_performance_key(original_key, _sing_key", body)
+
+    def test_the_card_control_retunes_this_performance_only(self) -> None:
+        """Test A needs a way to retune the sung song from the card even while another song is
+        edited: its own control, seeded with the entry's effective key, through the one retune path."""
+        body = _APP[_APP.index("def _render_backing_card_performance_key("):]
+        body = body[: body.index("\ndef ")]
+        self.assertIn("_karaoke_retune_after_explicit_key_change(", body)
+        self.assertIn("km.render_generation(st.session_state)", body)
+        self.assertIn("index=options.index(sing_key)", body)
+        self.assertNotIn("set_practice_concert_key", body)
+        self.assertNotIn("commit_entry_practice_key", body)
+        self.assertNotIn("_write_queue", body)
 
     def test_the_retune_control_stays_when_the_sung_song_is_the_edited_song(self) -> None:
         """Issue 69: the card's Practice Key control retunes the performance; only the
@@ -158,6 +170,30 @@ class SetStartBringsThePanelIntoView(unittest.TestCase):
         block = _APP[_APP.index("    if (KARAOKE_HOLD) {{"):]
         block = block[: block.index("    }}")]
         self.assertIn("bringKaraokePanelIntoView();", block)
+
+
+class SetLevelLeadSheetChoiceIsSetScoped(unittest.TestCase):
+    """The Lead Sheet choice made during a set carries across its songs (Backing reads it); a fresh
+    set and End Set both start clean, so last night's choice never opens tonight's first song."""
+
+    def _queue(self):
+        import karaoke_mode as km
+
+        state: dict = {}
+        km.add_to_queue(state, "RockBlackbird — The Beatles", practice_key="E", title="Blackbird")
+        km.add_to_queue(state, "PopSay — John Mayer", practice_key="D", title="Say")
+        return km, state
+
+    def test_start_and_stop_clear_it_and_advance_does_not(self) -> None:
+        km, state = self._queue()
+        state[km.KARAOKE_SET_LEAD_SHEET_OPEN_KEY] = True
+        km.start_session(state)
+        self.assertNotIn(km.KARAOKE_SET_LEAD_SHEET_OPEN_KEY, state)
+        state[km.KARAOKE_SET_LEAD_SHEET_OPEN_KEY] = True
+        km.advance_session(state) if hasattr(km, "advance_session") else None
+        self.assertTrue(state.get(km.KARAOKE_SET_LEAD_SHEET_OPEN_KEY))
+        km.stop_session(state)
+        self.assertNotIn(km.KARAOKE_SET_LEAD_SHEET_OPEN_KEY, state)
 
 
 if __name__ == "__main__":

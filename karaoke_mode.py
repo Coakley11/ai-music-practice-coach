@@ -85,6 +85,9 @@ KARAOKE_ENTRY_PLAYS_LEFT_KEY = "_karaoke_entry_plays_left"
 KARAOKE_ACTIVE_ENTRY_ID_KEY = "_karaoke_active_entry_id"
 KARAOKE_EDITING_ENTRY_ID_KEY = "_karaoke_editing_entry_id"
 KARAOKE_EDITING_PICK_KEY = "_karaoke_editing_pick_key"
+#: The Lead Sheet choice made DURING a set, carried across its songs (Backing reads it when the
+#: next song's source is initialised). Set-scoped: a fresh set and End Set both start clean.
+KARAOKE_SET_LEAD_SHEET_OPEN_KEY = "_karaoke_set_lead_sheet_open"
 """Pick key the user was editing on the Songs page before karaoke overrode the active song."""
 
 PENDING_KARAOKE_LYRICS_NAV_KEY = "_pending_karaoke_lyrics_nav"
@@ -1364,6 +1367,20 @@ def _activate_entry_at(session_state: Any, index: int) -> str | None:
     return str(entry.get("pick_key") or "") or None
 
 
+def _backing_set_scope_hook(name: str, session_state: Any) -> None:
+    """Backing's set-scoped Playback Scope layer (backing_track_state): snapshot the musician's
+    scope when a set starts, give it back when the set ends, so a mid-song "Intro only" stays a
+    temporary choice and ordinary Backing never inherits it. Absent the hook, nothing happens."""
+    try:
+        import backing_track_state as _bts
+
+        fn = getattr(_bts, name, None)
+        if callable(fn):
+            fn(session_state)
+    except Exception:
+        pass
+
+
 def start_session(
     session_state: Any,
     *,
@@ -1388,6 +1405,9 @@ def start_session(
                 start_idx = i
                 break
     session_state[KARAOKE_SESSION_ACTIVE_KEY] = True
+    # A fresh set starts from each song's saved data, not from a previous set's display choice.
+    session_state.pop(KARAOKE_SET_LEAD_SHEET_OPEN_KEY, None)
+    _backing_set_scope_hook("snapshot_pre_set_scope", session_state)
     session_state.pop(KARAOKE_SONG_ENDED_KEY, None)
     session_state.pop(PENDING_KARAOKE_ADVANCE_KEY, None)
     session_state.setdefault(KARAOKE_AUTO_ADVANCE_KEY, True)
@@ -1411,6 +1431,8 @@ def stop_session(session_state: Any) -> None:
     release_performance_key_display(session_state)
     clear_performance_keys(session_state)
     session_state[KARAOKE_SESSION_ACTIVE_KEY] = False
+    session_state.pop(KARAOKE_SET_LEAD_SHEET_OPEN_KEY, None)
+    _backing_set_scope_hook("restore_pre_set_scope", session_state)
     session_state.pop(KARAOKE_ENTRY_PLAYS_LEFT_KEY, None)
     session_state.pop(KARAOKE_SONG_ENDED_KEY, None)
     session_state.pop(PENDING_KARAOKE_ADVANCE_KEY, None)
