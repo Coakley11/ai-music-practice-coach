@@ -4213,6 +4213,9 @@ def _seal_cycle_at_final_key(
     """
     session["_kc_at_final_key"] = True
     session["_kc_cycle_finished_final"] = True
+    # Which cycle finished: the flags above are session-wide, and a song change in a Karaoke Set
+    # starts a new cycle (restart_key_cycle_for_entry) that must not read as finished.
+    session["_kc_finished_cycle_id"] = str(data.get("cycle_id") or "")
     pause_key_cycle(session)
     # The cycle has played every key: the session is over and the next
     # Play starts again from the first key.
@@ -4232,6 +4235,116 @@ def _seal_cycle_at_final_key(
         pass_id=data.get("pass_id"),
         extra=dict(extra or {}),
     )
+
+
+def key_cycle_sequence_complete(session: dict[str, Any], cycle_id: str | None = None) -> bool:
+    """The cycle played its whole sequence: the final key's take ended (``_seal_cycle_at_final_key``).
+
+    True only while Key Cycling is still On and held at that end, for the cycle that finished (and,
+    when given, only for ``cycle_id``). A Pause (held, not finished), a key still playing, or a Stop
+    (Key Cycling Off) is never complete. Read-only; the Karaoke Set advance uses
+    ``consume_key_cycle_completion`` so that it happens once.
+    """
+    data = get_owner_cycle_session(session)
+    if not data or not data.get("enabled") or str(data.get("status") or "") != STATUS_HELD:
+        return False
+    if not session.get("_kc_cycle_finished_final"):
+        return False
+    cid = str(data.get("cycle_id") or "")
+    if not cid or str(session.get("_kc_finished_cycle_id") or "") != cid:
+        return False
+    return cycle_id is None or str(cycle_id) == cid
+
+
+def consume_key_cycle_completion(session: dict[str, Any]) -> bool:
+    """True once per finished cycle: the Karaoke Set's cue to move to the next song.
+
+    A delayed or repeated final-key confirmation, or a later run that still sees the finished
+    cycle, returns False: the set advances at most once per cycle.
+    """
+    if not key_cycle_sequence_complete(session):
+        return False
+    cid = str((get_owner_cycle_session(session) or {}).get("cycle_id") or "")
+    if str(session.get("_kc_completion_consumed") or "") == cid:
+        return False
+    session["_kc_completion_consumed"] = cid
+    return True
+
+
+def restart_key_cycle_for_entry(session: dict[str, Any], entry_key: str) -> dict[str, Any] | None:
+    """A Karaoke Set moved to another song: cycle that song from its own key.
+
+    Key Cycling stays On with its Interval, Direction and Key Spelling (taken from the cycle that
+    was On, even when the new song belongs to another cycle owner). The position always starts
+    again at the first key, ``entry_key``, under a new cycle identity -- also when the new song
+    is in the same key as the last one, whose position must not carry over. The finished /
+    consumed markers and prepared takes of the previous song are cleared. Does nothing when Key
+    Cycling is Off (ordinary Karaoke is unchanged).
+    """
+    entry = str(entry_key or "").strip()
+    if not entry:
+        return None
+    owner = resolve_cycle_owner(session)
+    src = get_owner_cycle_session(session, owner)
+    if not (src and src.get("enabled")):
+        src = None
+        for raw in _sessions_bag(session).values():
+            if isinstance(raw, dict) and raw.get("enabled"):
+                src = dict(raw)
+                break
+    if not src:
+        return None
+    old_cur = str(src.get("current_playback_key") or "").strip()
+    prefs = (
+        dict(src["spelling_prefs"])
+        if isinstance(src.get("spelling_prefs"), dict)
+        else spelling_prefs_from_session(session)
+    )
+    _bt, base_mode = split_key_center(entry)
+    st_tonic, st_mode = split_key_center(entry)
+    start = entry
+    if not st_mode and base_mode:
+        start = key_center_token(st_tonic, base_mode)
+    data = _empty_session(
+        owner=owner,
+        base_key=entry,
+        start_key=start,
+        interval=normalize_cycle_interval(src.get("interval")),
+        direction="down" if str(src.get("direction") or "up").lower() == "down" else "up",
+        spelling_prefs=prefs,
+    )
+    data["status"] = STATUS_RUNNING
+    data["enabled"] = True
+    data["current_playback_key"] = start
+    data["offset_semitones"] = 0
+    _note_cycle_session_over_if_stopped(session, data)
+    data = _bump_cycle_identity(session, data)
+    _put_owner_cycle_session(session, owner, data)
+    session["backing_key_cycle_enabled"] = True
+    for k in ("_kc_at_final_key", "_kc_cycle_finished_final", "_kc_finished_cycle_id",
+              "_kc_completion_consumed", "_kc_last_playing_confirm"):
+        session.pop(k, None)
+    clear_key_cycle_prepared_audio(session, clear_current_url=True)
+    session["_kc_cycle_settings_applied"] = (
+        int(data.get("interval") or 1),
+        str(data.get("direction") or "up"),
+        str(data.get("cycle_id") or ""),
+    )
+    _queue_key_cycle_widget_seed(
+        session,
+        interval=int(data.get("interval") or 1),
+        direction=str(data.get("direction") or "up"),
+    )
+    _log_cycle_key_write(
+        session,
+        trigger="karaoke_entry_restart",
+        old_key=old_cur,
+        new_key=start,
+        cycle_id=str(data.get("cycle_id") or ""),
+        pass_id=0,
+        extra={"entry_key": entry},
+    )
+    return data
 
 
 def seal_final_key_from_ack(session: dict[str, Any], ack: dict[str, Any]) -> bool:
