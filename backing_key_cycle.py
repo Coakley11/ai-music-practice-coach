@@ -8066,7 +8066,9 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         const all = [...parentDoc.querySelectorAll('[class*="st-key-backing_key_cycle_pause_btn"] button')];
         const b = all.find((x) => x.offsetParent !== null) || all[0];
         if (!b || b.disabled) return false;
-        b.click();
+        // A press of its own, even while a touch press on the button is still open (kcGesturePress).
+        parentWin.__kcCodePress = true;
+        try {{ b.click(); }} finally {{ parentWin.__kcCodePress = false; }}
         return true;
       }} catch (ePress) {{ return false; }}
     }};
@@ -9581,16 +9583,107 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         }} catch (eL) {{}}
         return kcCyclePressPauses(label);
       }};
-      parentWin.__kcPauseBtnHandler = function () {{
+      // One press, one action (browser diagnosis 2026-11-18, dev and the KC candidate alike). A press
+      // reaches the console's handlers as pointerdown, mousedown and click, through both the document
+      // and the button hooks. On a busy phone its click can be handled seconds after its pointerdown --
+      // or the press is simply held -- and the old time windows (Next / Previous 1200 ms, Pause 500 ms)
+      // then counted that click as a second press: one Next moved two keys, one Pause paused and
+      // resumed. A press is known by identity instead: its pointerdown (or keydown) opens it and acts;
+      // its mousedown and click belong to it however late they come; it ends at its click, at a
+      // release off the button, at pointercancel, or when the next press opens. A click with no open
+      // press (keyboard, assistive technology, a script) is a press of its own.
+      try {{
+        if (!parentWin.__kcGestureEndBound) {{
+          // Page main world, like the transport capture: these listeners outlive this bridge frame.
+          parentWin.eval(`(function () {{
+            if (window.__kcGestureEndBound) return;
+            window.__kcGestureEndBound = true;
+            var end = function (ev) {{
+              try {{
+                var G = window.__kcGest || {{}};
+                Object.keys(G).forEach(function (root) {{
+                  var g = G[root];
+                  if (!g || !g.open) return;
+                  if (ev.type === 'keydown' || ev.type === 'contextmenu') {{
+                    // A key press, or a long press that opened a menu instead of clicking, is not
+                    // part of an open pointer press: that press will not click any more.
+                    if (!g.kbd && (ev.type === 'contextmenu' || ev.key === 'Enter' || ev.key === ' ')) g.open = false;
+                    return;
+                  }}
+                  if (ev.type === 'keyup') {{
+                    // A key press's click (if the browser makes one) comes before its keyup ends.
+                    if (g.kbd) setTimeout(function () {{ if (G[root] === g) g.open = false; }}, 0);
+                    return;
+                  }}
+                  if (g.kbd) return;
+                  if (g.pid != null && ev.pointerId != null && ev.pointerId !== g.pid) return;
+                  var t = ev.target;
+                  var on = !!(t && ((g.el && g.el.contains && g.el.contains(t))
+                    || (t.closest && t.closest('[class*="' + root + '"]'))));
+                  if (ev.type === 'pointercancel' || !on) g.open = false;  // no click will follow
+                }});
+              }} catch (e) {{}}
+            }};
+            document.addEventListener('pointerup', end, true);
+            document.addEventListener('pointercancel', end, true);
+            document.addEventListener('keyup', end, true);
+            document.addEventListener('keydown', end, true);
+            document.addEventListener('contextmenu', end, true);
+          }})();`);
+        }}
+      }} catch (eGe) {{}}
+      // True when ``ev`` starts a new press of the control ``root`` (act on it); false when it is a
+      // later event of a press already acted on. Calls from code (no event) always act.
+      function kcGesturePress(root, ev) {{
+        const real = (ev && ev.orig) || ev;
+        const ty = String((real && real.type) || (ev && ev.type) || '');
+        if (!ty) return true;
+        const G = parentWin.__kcGest || (parentWin.__kcGest = {{}});
+        const g = G[root];
+        const open = () => {{
+          let el = null;
+          try {{ el = real && real.target && real.target.closest ? real.target.closest('button') : null; }} catch (eEl) {{}}
+          const ng = {{ open: true, kbd: ty === 'keydown', el: el,
+                       pid: (ty === 'pointerdown' && real.pointerId != null) ? real.pointerId : null, at: Date.now() }};
+          G[root] = ng;
+          try {{ real.__kcGestureOf = ng; }} catch (eM) {{}}
+          return true;
+        }};
+        if (ty === 'pointerdown' || ty === 'keydown') return open();
+        if (ty === 'mousedown') {{
+          if (g && g.open && !g.kbd) {{ try {{ real.__kcGestureOf = g; }} catch (eM2) {{}} return false; }}
+          return open();  // a mouse without pointer events
+        }}
+        if (ty === 'click') {{
+          // The Lead Sheet's Pause / Resume presses the console's button from code: always a press.
+          if (parentWin.__kcCodePress) {{ if (g) g.open = false; return true; }}
+          if (g && g.open) {{
+            g.open = false;  // the open press's own click, however late it is handled
+            try {{ real.__kcGestureOf = g; }} catch (eM3) {{}}
+            return false;
+          }}
+          return true;
+        }}
+        return true;
+      }}
+      parentWin.__kcGesturePress = kcGesturePress;
+      parentWin.__kcPauseBtnHandler = function (ev) {{
         const now = kcNow();
         // Live Stop already paused buffers and is clicking Streamlit only to
         // enter Held — do not toggle audio again (that immediately Resumed).
         if (parentWin.__kcProgrammaticPauseClick) return;
         // Streamlit-only Resume click after client already started audio.
         if (parentWin.__kcSkipPauseHandler) return;
-        // Document capture and the button capture both see one gesture.
-        // A second call resumes immediately and made Pause look delayed.
-        if (now - Number(parentWin.__kcPauseToggleAt || 0) < 500) return;
+        // Document capture and the button capture both see one gesture: one press, one toggle
+        // (kcGesturePress). A call from code, with no event, keeps the 500 ms guard.
+        const realP = (ev && ev.orig) || ev;
+        if (realP && realP.type) {{
+          try {{
+            if (realP.__kcPauseSeen) return;
+            realP.__kcPauseSeen = true;
+          }} catch (eSeenP) {{}}
+          if (!kcGesturePress('backing_key_cycle_pause_btn', ev)) return;
+        }} else if (now - Number(parentWin.__kcPauseToggleAt || 0) < 500) return;
         parentWin.__kcPauseToggleAt = now;
         parentWin.__kcClickT0 = now;
         // The cycle ended on its completed final key: there is nothing to pause or resume, and a
@@ -9708,6 +9801,8 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
             if (live && typeof parentWin.__backingTransportReport === 'function') {{
               parentWin.__backingTransportReport((prog || !running) ? 'resume' : 'pause', {{ handled: true }});
               parentWin.__kcPauseRoutedAt = kcNow();
+              // The press itself, so its own late click is kept from the Streamlit button too.
+              try {{ parentWin.__kcPauseRoutedGesture = (realP && realP.__kcGestureOf) || null; }} catch (eRg) {{}}
             }}
           }} catch (eRoute) {{ parentWin.__kcPauseRoutedAt = 0; }}
         }} catch (eP) {{
@@ -9717,7 +9812,13 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       // The gesture went to the card channel: the Streamlit button must not
       // toggle the cycle a second time.
       parentWin.__kcPauseRouted = function (ev) {{
-        if (kcNow() - Number(parentWin.__kcPauseRoutedAt || 0) > 1500) return false;
+        // Any event of the routed press (its click may be handled seconds later), else the old window.
+        let ofRouted = false;
+        try {{
+          const realR = (ev && ev.orig) || ev;
+          ofRouted = !!(realR && realR.__kcGestureOf && realR.__kcGestureOf === parentWin.__kcPauseRoutedGesture);
+        }} catch (eOr) {{}}
+        if (!ofRouted && kcNow() - Number(parentWin.__kcPauseRoutedAt || 0) > 1500) return false;
         try {{ ev.preventDefault(); }} catch (eRp) {{}}
         try {{ ev.stopPropagation(); }} catch (eRs) {{}}
         try {{ if (ev.stopImmediatePropagation) ev.stopImmediatePropagation(); }} catch (eRi) {{}}
@@ -9741,16 +9842,6 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           if (real && real.__kcStepSeen) return;
           if (real) real.__kcStepSeen = true;
         }} catch (eSeen) {{}}
-        const evType = String((ev && ev.type) || (real && real.type) || 'click');
-        if (evType === 'pointerdown') {{
-          parentWin.__kcPressPendingAt = now;
-        }} else if (now - Number(parentWin.__kcPressPendingAt || 0) < 1200) {{
-          // mousedown / click of a press its pointerdown already stepped.
-          if (evType === 'click') parentWin.__kcPressPendingAt = 0;
-          return;
-        }}
-        parentWin.__kcStepAt = now;
-        parentWin.__kcClickT0 = now;
         let btn = ev && (ev.currentTarget || ev.target);
         try {{
           if (btn && btn.closest) {{
@@ -9786,6 +9877,11 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           }} catch (eLab) {{}}
         }}
         if (!delta) return;
+        // One press, one step (kcGesturePress): the mousedown and click of a press its pointerdown
+        // already stepped never step again, however late they are handled or however long it is held.
+        if (!kcGesturePress(delta > 0 ? 'backing_key_cycle_advance_btn' : 'backing_key_cycle_prev_btn', ev)) return;
+        parentWin.__kcStepAt = now;
+        parentWin.__kcClickT0 = now;
         try {{ btn.__kcStepDelta = delta; }} catch (eSet) {{}}
         try {{
           if (typeof parentWin.__kcNavStep === 'function') {{
