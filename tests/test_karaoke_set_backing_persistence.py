@@ -148,13 +148,25 @@ class ScopeSnapshotRestore(unittest.TestCase):
             bts.restore_pre_set_scope(s)
         self.assertEqual(s["_pending_backing_multi_sections"], ["Verse 1", "Chorus 1"])
 
-    def test_a_different_song_on_backing_after_the_set_keeps_its_own_defaults(self) -> None:
+    def test_ending_on_another_song_drops_its_performance_scope_too(self) -> None:
+        """End Set while the last sung song (not the pre-set one) is on Backing, its scope changed to Intro."""
+        from backing_play_session import BACKING_PLAY_SESSION_KEY
+
         s = self._session()
         with self._owner("sync-shallow"):
             bts.snapshot_pre_set_scope(s)
+        s[bts.BACKING_STATE_KEY]["backing_track_multi_sections"] = ["Intro"]
+        s[BACKING_PLAY_SESSION_KEY]["overrides"]["multi_sections"] = ["Intro"]
+        s["_pending_backing_multi_sections"] = ["Intro"]
         with self._owner("sync-blackbird"):
             bts.restore_pre_set_scope(s)
-        self.assertNotIn("_pending_backing_scope", s)
+        self.assertEqual(s["_pending_backing_scope"], "Full song")
+        self.assertNotIn("_pending_backing_multi_sections", s)
+        self.assertEqual(s[bts.BACKING_STATE_KEY]["backing_track_scope"], "Full song")
+        self.assertEqual(s[bts.BACKING_STATE_KEY]["backing_track_multi_sections"], [])
+        self.assertNotIn("multi_sections", s[BACKING_PLAY_SESSION_KEY]["overrides"])
+        self.assertNotIn("scope", s[BACKING_PLAY_SESSION_KEY]["overrides"])
+        self.assertEqual(s[BACKING_PLAY_SESSION_KEY]["overrides"]["bpm"], 96)
         self.assertNotIn(bts.KARAOKE_PRE_SET_SCOPE_KEY, s)
 
 
