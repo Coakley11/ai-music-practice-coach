@@ -5709,13 +5709,69 @@ def live_follow_along_component_html(
         )
     else:
         chart_root_html = f'<div id="live-chart-root">{chart_html}</div>'
+    # Performance-first (user, 2026-11-18): on the Backing page the music sits right under the controls. The
+    # compact player keeps Pause / Resume (Key Cycling's Lead Sheet path asks the console through it) and Back to
+    # loop start, and the Now playing / Current chord / Bar / Next chord row; it drops the explanatory hint, the
+    # native audio bar (the card and the compact bar are the transport), the duplicate player title and chart
+    # "Now Playing" banner, and shows the timing debug line only with ?dev=1. Everything stays in the DOM, so
+    # the scripts that read or click these elements are untouched. Karaoke keeps its own layout.
+    shell_class = "live-follow-shell lf-compact" if page_follow else "live-follow-shell"
     return f"""
-<div class="live-follow-shell">
+<div class="{shell_class}">
   <style>
     .live-follow-shell {{
       font-family: system-ui, -apple-system, Segoe UI, sans-serif;
       color: #0f172a;
     }}
+    .lf-compact .live-player {{
+      position: static;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 6px 8px;
+      padding: 8px 10px;
+      margin-bottom: 8px;
+      border-radius: 12px;
+      box-shadow: none;
+    }}
+    .lf-compact .live-player-head {{ order: 2; margin-left: auto; }}
+    .lf-compact .live-player-head > strong {{ display: none; }}
+    .lf-compact .live-player-toolbar {{ order: 1; margin: 0; }}
+    .lf-compact .live-player audio, .lf-compact .live-stop-hint {{ display: none; }}
+    .lf-compact .live-stop-btn {{ min-width: 0; min-height: 36px; }}
+    .lf-compact .live-loop-start-btn {{ min-height: 36px; }}
+    .lf-compact .live-status-grid {{
+      order: 3;
+      flex: 1 1 100%;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 6px;
+      margin-top: 0;
+    }}
+    .lf-compact .live-status-card {{ padding: 5px 8px; border-radius: 10px; min-width: 0; }}
+    .lf-compact .live-label {{ font-size: 0.64rem; }}
+    .lf-compact .live-value {{ margin-top: 2px; font-size: 1rem; overflow-wrap: anywhere; }}
+    .lf-compact #live-detail {{ order: 4; flex: 1 1 100%; margin-top: 0; font-size: 0.74rem; }}
+    .lf-compact:not(.lf-dev) #live-detail {{ display: none; }}
+    .lf-compact .backing-chart-sheet .lead-header {{ padding: 4px 10px; margin-bottom: 6px; border-radius: 10px; }}
+    .lf-compact .backing-chart-sheet .lead-title {{ font-size: 1.02rem; margin-bottom: 2px; }}
+    /* The song card above already names the song: while following, only the key line stays. */
+    .lf-compact:not(.lf-dev) .backing-chart-sheet .lead-title {{ display: none; }}
+    /* Key, tempo, meter and feel stay; the coaching sentence beside them is for reading, not
+       playing - it stays on the chart outside the follow view and with ?dev=1. */
+    .lf-compact:not(.lf-dev) .backing-chart-sheet .lead-coach {{ display: none; }}
+    .lf-compact .backing-chart-sheet .lead-subtitle {{ margin-bottom: 0; font-size: 0.8rem; line-height: 1.3; }}
+    .lf-compact .backing-chart-sheet .section-card {{ padding: 8px 10px; margin-bottom: 8px; border-radius: 12px; }}
+    .lf-compact .backing-chart-sheet .section-head {{ margin-bottom: 4px; }}
+    /* "Intro - 4 bars" and its feel on one line straight above the chords; the head's own
+       "Now Playing" tag repeats the player's Now Playing (the current section keeps its outline). */
+    .lf-compact .backing-chart-sheet .section-head > div:first-child {{
+      display: flex; align-items: baseline; gap: 4px 8px; flex-wrap: wrap; min-width: 0;
+    }}
+    .lf-compact .backing-chart-sheet .section-head > .section-meta {{ display: none; }}
+    .lf-compact .backing-chart-sheet .section-title {{ font-size: 0.98rem; }}
+    .lf-compact .backing-chart-sheet .section-meta {{ font-size: 0.78rem; }}
+    .lf-compact .backing-chart-sheet .meta-row {{ display: none; }}
+    .lf-compact .backing-chart-sheet .now-playing {{ display: none; }}
     .live-player {{
       position: sticky;
       top: 0;
@@ -5825,6 +5881,23 @@ def live_follow_along_component_html(
     }}
     @media (max-width: 760px) {{
       .live-status-grid {{ grid-template-columns: repeat(2, minmax(120px, 1fr)); }}
+      .lf-compact .live-status-grid {{ grid-template-columns: repeat(4, minmax(0, 1fr)); }}
+      .lf-compact .live-value {{ font-size: 0.94rem; }}
+    }}
+    /* Phones: Pause and Back to loop start stay on one row (they wrapped to two at 360 px), and each
+       status card is one line - label beside value - in two rows, instead of four cards whose
+       labels wrapped. Same buttons, ids and words: KC finds the Pause button by its label. */
+    @media (max-width: 600px) {{
+      .lf-compact .live-player-toolbar {{ flex-wrap: nowrap; gap: 6px; min-width: 0; flex: 1 1 100%; }}
+      .lf-compact .live-stop-btn, .lf-compact .live-loop-start-btn {{
+        flex: 1 1 auto; min-width: 0; padding: 6px 7px; font-size: 0.78rem;
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      }}
+      .lf-compact .live-status-grid {{ grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 6px; }}
+      /* Label above value: beside it, "CURRENT CHORD" left the chord 28 px at 360 and clipped it. */
+      .lf-compact .live-status-card {{ padding: 3px 8px; }}
+      .lf-compact .live-label {{ white-space: nowrap; line-height: 1.15; }}
+      .lf-compact .live-value {{ margin-top: 0; line-height: 1.25; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }}
     }}
 
     .karaoke-countdown-overlay {{
@@ -6432,6 +6505,13 @@ def live_follow_along_component_html(
     window.__karaokeTimeline = timeline;
     // M4 full-height sheet + page follow (set before anything can call updateHighlight).
     const PAGE_FOLLOW = {page_follow_flag_js};
+    // Diagnostic access: the timing line is shown again with ?dev=1 on the app's own address.
+    try {{
+      if (/[?&]dev=1(&|$)/.test(String(window.top.location.search || ""))) {{
+        const _lfShell = document.querySelector(".live-follow-shell");
+        if (_lfShell) _lfShell.classList.add("lf-dev");
+      }}
+    }} catch (eDev) {{}}
     const KARAOKE_HOLD = {karaoke_hold_flag_js};
     {hold_only_js}
 
@@ -26317,42 +26397,72 @@ elif _studio_page == "backing":
                     args=(True,),
                 )
         with _ls_col_b:
-            st.caption(
-                "Optional chord follow-along — opens on demand to keep the page light."
-                if not _leadsheet_open
-                else "Live chord highlighting while the backing track plays."
-            )
+            # One always-present line beside Close lead sheet (performance-first, 2026-11-18: the sheet sits
+            # right under the controls). It says what the separate hint row above the sheet used to say, so
+            # that row and its gap are gone. Only its words follow the transport: Pause / Resume never change
+            # its height, so nothing below jumps, and the element is never added or removed (that once made
+            # Streamlit re-create the sheet and stop the resumed take).
+            with st.container(key="backing_leadsheet_play_hint_slot"):
+                st.markdown(
+                    "<style>.st-key-backing_leadsheet_play_hint_slot [data-testid='stCaptionContainer'] p,"
+                    ".st-key-backing_leadsheet_play_hint_slot [data-testid='stCaptionContainer']"
+                    "{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}"
+                    ".st-key-backing_leadsheet_play_hint_slot{min-height:38px;justify-content:center;}"
+                    # Phones stack Streamlit columns; this one row stays a row, so the line beside
+                    # Close lead sheet does not become a row of its own above the sheet.
+                    "@media (max-width:640px){"
+                    "[data-testid='stHorizontalBlock']:has(.st-key-backing_leadsheet_hide_btn,"
+                    ".st-key-backing_leadsheet_show_btn){flex-wrap:nowrap!important;gap:8px!important;}"
+                    "[data-testid='stHorizontalBlock']:has(.st-key-backing_leadsheet_hide_btn,"
+                    ".st-key-backing_leadsheet_show_btn)>[data-testid='stColumn']:first-child"
+                    "{flex:0 0 auto!important;width:auto!important;min-width:0!important;}"
+                    "[data-testid='stHorizontalBlock']:has(.st-key-backing_leadsheet_hide_btn,"
+                    ".st-key-backing_leadsheet_show_btn)>[data-testid='stColumn']:last-child"
+                    "{flex:1 1 0!important;width:auto!important;min-width:0!important;}"
+                    ".st-key-backing_leadsheet_play_hint_slot [data-testid='stCaptionContainer'] p{font-size:0.8rem;}}"
+                    # The switch's channel is an invisible messenger: out of the flow, so it adds no height.
+                    ".st-key-chord_tone_hints_channel{position:absolute!important;width:1px!important;"
+                    "height:1px!important;overflow:hidden!important;opacity:0;pointer-events:none;}</style>",
+                    unsafe_allow_html=True,
+                )
+                _hint_intent = str(transport_intent(st.session_state) or "")
+                _hint_feedback = str(st.session_state.get(BACKING_PLAY_FEEDBACK_KEY, "") or "").strip()
+                if not _leadsheet_open:
+                    st.caption("Optional chord follow-along — opens on demand to keep the page light.")
+                elif _hint_feedback and _surface_owns_audio:
+                    # The transport's one-line feedback ("Key Cycle — next key ready.", "Playback stopped").
+                    st.caption(_hint_feedback)
+                elif st.session_state.get(BACKING_AUTOPLAY, False) or not _surface_owns_audio:
+                    st.caption(" ")
+                elif _hint_intent == "paused":
+                    st.caption("Paused — Resume on the song card continues from here.")
+                else:
+                    # Not "stopped": the open click carries the current playhead over.
+                    st.caption("▶ Play Backing Track on the song card plays the track with this chart.")
             if _leadsheet_open and not km.is_karaoke_session_active(st.session_state):
                 _render_chord_tone_hints_sync()
 
     if _leadsheet_controls_ready and _surface_owns_audio:
+        # Performance-first (2026-11-18): three page elements between the controls and the chart
+        # draw nothing - this card (KC re-homes its parent-page sheet host into it; empty
+        # otherwise), the follow-along scroll anchor and the Lead Sheet state marker - yet each
+        # cost a 16 px column gap (78 px measured at 1500 with the empty card's padding). They stay
+        # in the page, at their place, so KC and the scroll anchor still find them; they just
+        # take no room while empty. The rules ride in this element's own markdown, adding none.
         st.markdown(
+            "<style>"
+            ".ui-backing-leadsheet-card:not(:has(#kc-lead-sheet-host *)){padding:0;margin:0;border:0;"
+            "box-shadow:none;background:none;min-height:0;}"
+            # One rule per element: :has() may not nest, and one invalid selector in a list drops
+            # the whole rule (measured: the gaps stayed until these were split).
+            '[data-testid="stElementContainer"]:has(.ui-backing-leadsheet-card):not(:has(#kc-lead-sheet-host *))'
+            "{margin-bottom:-1rem;}"
+            '[data-testid="stElementContainer"]:has(#anchor_backing_follow_along){margin-bottom:-1rem;}'
+            '[data-testid="stElementContainer"]:has(.ks-ls-state){margin-bottom:-1rem;}'
+            "</style>"
             '<div class="ui-backing-leadsheet-card" data-state="open" id="backing-lead-sheet-anchor">',
             unsafe_allow_html=True,
         )
-        # One always-present element, shown or not: Resume hid this caption, the sheet
-        # moved up one place, Streamlit re-created it and the resumed take stopped.
-        with st.container(key="backing_leadsheet_play_hint_slot"):
-            # M4: the sheet is on the page itself now, so this line must never change height: Pause showed it
-            # (38 px) and Resume removed it, and the whole chart jumped each time. One line, always present;
-            # only its words follow the transport (and Pause no longer says "Play").
-            st.markdown(
-                "<style>.st-key-backing_leadsheet_play_hint_slot [data-testid='stCaptionContainer'] p,"
-                ".st-key-backing_leadsheet_play_hint_slot [data-testid='stCaptionContainer']"
-                "{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}"
-                # The blank caption collapses (measured: slot 16 px playing, 38 px paused), so the slot keeps
-                # the one-line height itself.
-                ".st-key-backing_leadsheet_play_hint_slot{min-height:38px;}</style>",
-                unsafe_allow_html=True,
-            )
-            _hint_intent = str(transport_intent(st.session_state) or "")
-            if st.session_state.get(BACKING_AUTOPLAY, False):
-                st.caption(" ")
-            elif _hint_intent == "paused":
-                st.caption("Paused — Resume on the song card continues from here.")
-            else:
-                # Not "stopped": the open click carries the current playhead over.
-                st.caption("▶ Play Backing Track on the song card plays the track with this chart.")
         _karaoke_active = km.is_karaoke_session_active(st.session_state)
         _karaoke_voice = km.is_voice_mode(st.session_state)
         _karaoke_engaged = _karaoke_active and _karaoke_voice
@@ -26484,11 +26594,9 @@ elif _studio_page == "backing":
         )
         record_backing_timing_event(st.session_state, "audio_load_complete")
         render_scroll_anchor_marker(st, ANCHOR_BACKING_FOLLOW_ALONG)
-        _play_feedback = str(
-            st.session_state.get(BACKING_PLAY_FEEDBACK_KEY, "") or ""
-        ).strip()
-        if _play_feedback:
-            st.info(_play_feedback)
+        # The transport's one-line feedback ("Key Cycle — next key ready.") is shown in the hint line beside
+        # Close lead sheet (performance-first, 2026-11-18). An info box here, appearing and vanishing above the
+        # sheet, cost 56-68 px and moved the sheet's place in the page every time it came and went.
         # Always mount the same live-follow lead sheet as cycling Off.
         # Cycle handoffs update #live-chart-root inside this iframe in place —
         # never substitute a parent #kc-lead-sheet-host "Backing chart" dump.
