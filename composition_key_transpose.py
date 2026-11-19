@@ -250,6 +250,10 @@ def _invalidate_key_sensitive_session_state(session: dict[str, Any]) -> None:
         "composer_chord_suggest_",
         "composer_melody_suggest_",
         "composer_melody_ed_nl_choice_",
+        # Manual chord editor draft + its per-section undo stack hold the OLD key's chords: after D -> E the editor
+        # still listed D-Bm-G-A, warned about edits the user never made, and Accept wrote them into the E song.
+        "composer_chord_editor_draft_",
+        "composer_chord_editor_undo_",
     )
     for key in list(session.keys()):
         sk = str(key)
@@ -273,4 +277,6 @@ def apply_undo_key_change(session: dict[str, Any], doc: dict[str, Any]) -> bool:
     if not isinstance(snap, dict):
         return False
     restore_composition_from_key_undo(doc, snap)
+    # The undo restores the previous key: drafts/proposals made in the undone key are stale too.
+    _invalidate_key_sensitive_session_state(session)
     return True

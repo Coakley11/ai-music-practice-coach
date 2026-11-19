@@ -4906,6 +4906,14 @@ def _render_structure_column(session_state: dict, doc: dict[str, Any]) -> None:
                 st.rerun()
 
 
+def _chord_bars_widget_key(section_id: str, index: int, n_rows: int, row: dict[str, Any]) -> str:
+    """Bars input key that changes whenever the row it edits changes (position, row count, chord or length)."""
+    import hashlib
+
+    sig = hashlib.sha1(f"{n_rows}|{row.get('chord')}|{row.get('bars')}".encode("utf-8")).hexdigest()[:10]
+    return f"composer_ch_bars_{section_id}_{index}_{sig}"
+
+
 def _render_chords_lane(
     session_state: dict,
     doc: dict[str, Any],
@@ -4981,12 +4989,15 @@ def _render_chords_lane(
                     session_state.pop(insert_key, None)
                     st.rerun()
             with c6:
+                # Keyed by the row's content, not just its position: after Delete/Insert the rows shift, and a
+                # position-keyed input kept the old row's value and wrote it onto the chord that moved into that
+                # slot (delete D from D | Bm(2 bars) | G -> Bm lost its 2 bars and G gained them).
                 bars = st.number_input(
                     "Bars",
                     min_value=1,
                     max_value=8,
                     value=int(row.get("bars") or 1),
-                    key=f"composer_ch_bars_{sid}_{i}",
+                    key=_chord_bars_widget_key(sid, i, len(draft), row),
                     label_visibility="collapsed",
                     disabled=_is_split,
                 )
