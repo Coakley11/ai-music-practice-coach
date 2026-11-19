@@ -1469,6 +1469,22 @@ if pp.is_demo_mode(st) and not pp.demo_applied(st, "practice"):
     pdemo.load_practice_demo(st, SONG_PICKER_CATALOG, SONG_LIBRARY, ALL_SONG_RECORDS)
     st.rerun()
 
+def _karaoke_entry_own_catalog_key(pick: str) -> str:
+    """A Catalog song's own Practice Key: what the musician saved for it, else its original key."""
+    try:
+        from songs.practice_key_state import saved_practice_concert_key
+
+        own = str(saved_practice_concert_key(st.session_state, pick, default="") or "").strip()
+    except Exception:
+        own = ""
+    if own:
+        return own
+    _sel = st.session_state.get("selected_song")
+    if isinstance(_sel, dict) and str(_sel.get("pick_key") or "").strip() == pick:
+        return str(_sel.get("key") or "").strip()
+    return ""
+
+
 def _activate_karaoke_entry(entry: dict | None, *, apply_entry_key: bool = True) -> None:
     """Now Editing: a setlist row click makes that entry the global active song.
 
@@ -1528,6 +1544,19 @@ def _activate_karaoke_entry(entry: dict | None, *, apply_entry_key: bool = True)
     except Exception:
         pass
     _entry_key = km.commit_entry_practice_key(st.session_state, row) if apply_entry_key else ""
+    if not apply_entry_key and not pick.startswith(("custom::", "composition::")):
+        # The song's OWN key, not the setlist's and not the previous song's: a setlist key is a
+        # performance key for that entry, and the live key still belongs to whatever was active
+        # before (Jazz tune C would otherwise be carried onto Blackbird).
+        _entry_key = _karaoke_entry_own_catalog_key(pick)
+        if _entry_key:
+            try:
+                from songs.key_state import request_display_key as _req_dk
+
+                _req_dk(st.session_state, _entry_key)
+            except Exception:
+                pass
+            st.session_state["concert_key"] = _entry_key
     if not pick.startswith(("custom::", "composition::")):
         # Durable commit, same as other catalog activations: the canonical
         # active-song blob carries this song at the entry's key and is saved
@@ -1575,10 +1604,11 @@ except ImportError:
 # exists, then the Lyrics & Cues editor opens for that song.
 _pending_entry_activation = st.session_state.pop(km.PENDING_KARAOKE_ENTRY_ACTIVATION_KEY, None)
 if isinstance(_pending_entry_activation, dict):
-    _activate_karaoke_entry(_pending_entry_activation)
-    from picker_song_editor import open_picker_editor as _pea_open_editor
-
-    _pea_open_editor(st.session_state, "Lyrics & Cues")
+    # Now Editing only: the song at its OWN Practice Key. The setlist key is the entry's
+    # performance key and is never saved as the song's own (it overwrote Blackbird's key with
+    # the setlist's E). And no jump to the Lyrics & Cues editor: it scrolled the setlist off
+    # screen on a phone, which read as Karaoke disappearing. The editor stays one tap away.
+    _activate_karaoke_entry(_pending_entry_activation, apply_entry_key=False)
 
 # === DEFERRED KARAOKE LYRICS NAVIGATION =======================================
 # Consumed BEFORE any page widgets are created so that navigate_studio_page
@@ -5618,6 +5648,14 @@ def live_follow_along_component_html(
     )
     page_follow_flag_js = "true" if page_follow else "false"
     karaoke_hold_flag_js = "true" if karaoke_hold_from_shared_controller else "false"
+    # One token per performed take (entry + key + set position): the set-start bring-into-view
+    # below fires once per new song, never again when a rerun re-creates the same take's panel.
+    try:
+        karaoke_take_token_js = json.dumps(
+            km.render_generation(st.session_state) if km.is_karaoke_session_active(st.session_state) else ""
+        )
+    except Exception:
+        karaoke_take_token_js = json.dumps("")
     # Opened over a live take: start the native autoplay at the handed-over playhead.
     sheet_open_handoff_js = "true" if sheet_open_handoff else "false"
     timeline_json = json.dumps(timeline)
@@ -6521,6 +6559,45 @@ def live_follow_along_component_html(
       return !!sc || pageMoved;
     }}
     window.__karaokeBoxFollow = followInsideBox;
+    // Set start and each new song, Lead Sheet OFF: put the performance display in front of the
+    // singer once, so the countdown (drawn inside this frame) and the first lyric are on screen.
+    // Measured before this: the panel sat ~1800 px (desktop) / ~2100 px (phone) below the top of
+    // Backing and the 5-4-3-2-1 ran where nobody could see it. Through the ONE page controller,
+    // so it obeys the manual-scroll hold; retried for ~4 s because on the v3 controller the
+    // Start click itself opens a 3 s hold. With the Lead Sheet ON the sheet leads instead.
+    const KARAOKE_TAKE_TOKEN = {karaoke_take_token_js};
+    function bringKaraokePanelIntoView() {{
+      if (!KARAOKE_TAKE_TOKEN) return;
+      try {{
+        if (window.top.__karaokePanelShownTake === KARAOKE_TAKE_TOKEN) return;
+      }} catch (eTk) {{ return; }}
+      let tries = 0;
+      function attempt() {{
+        tries += 1;
+        try {{
+          const top = window.top;
+          if (top.__karaokePanelShownTake === KARAOKE_TAKE_TOKEN) return;
+          if (top.document.body.getAttribute("data-karaoke-session") !== "true") return;
+          if (leadSheetOpenOnPage()) {{ top.__karaokePanelShownTake = KARAOKE_TAKE_TOKEN; return; }}
+          const el = document.getElementById("karaoke-lyric-panel") || document.getElementById("live-chord");
+          if (el && top.__lsFollow && top.__lsFollow.request
+              && window.top.__lsFollow.request("karaoke-lyrics", el, {{ why: "karaoke-set-start" }})) {{
+            top.__karaokePanelShownTake = KARAOKE_TAKE_TOKEN;
+            return;
+          }}
+          if (el && frameInView()) {{ top.__karaokePanelShownTake = KARAOKE_TAKE_TOKEN; return; }}
+        }} catch (eBp) {{}}
+        if (tries < 10) window.setTimeout(attempt, 420);
+      }}
+      window.setTimeout(attempt, 120);
+    }}
+    function frameInView() {{
+      try {{
+        const r = window.frameElement.getBoundingClientRect();
+        const vh = window.top.innerHeight || 0;
+        return r.top >= -4 && r.top < vh * 0.5;
+      }} catch (eFv) {{ return false; }}
+    }}
     window.__karaokeFollowTarget = karaokeFollowTarget;
     // Registering makes this surface one the page controller will move the page for. Only the
     // leading surface moves it, and only this one is registered from this frame, so the lyrics
@@ -7468,6 +7545,7 @@ def live_follow_along_component_html(
       if (!registerKaraokeFollow()) window.setTimeout(registerKaraokeFollow, 400);
       syncChartFold();
       window.setInterval(syncChartFold, 300);
+      bringKaraokePanelIntoView();
     }}
     window.setInterval(() => {{
       const playing = sheetIsPlaying();
@@ -11119,6 +11197,22 @@ def _render_backing_card_practice_key(original_key: str, practice_key: str) -> N
 
         orig_cell = backing_key_label("original") + f'<div class="ui-skp-value">{html.escape(orig_name)}</div>'
         pk_label = backing_key_label("practice")
+    _sing_pick = str(km.now_singing_pick_key(st.session_state) or "").strip()
+    if (
+        km.is_voice_mode(st.session_state)
+        and km.is_karaoke_session_active(st.session_state)
+        and _sing_pick
+        and _sing_pick != str(st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
+    ):
+        # During a set this card is the Now Singing entry, sung in ITS key (the audio is built in
+        # it). When another song is Now Editing, the Practice Key control holds THAT song's key -
+        # Blackbird E read "I'm playing in C" because Jazz tune was being edited - so the entry's
+        # key is shown as text and the control keeps its sidebar slot. When the two are the same
+        # song the control below stays: it is how a performance is retuned (Issue 69).
+        _sing_key = str(km.current_session_practice_key(st.session_state) or "").strip()
+        if _sing_key:
+            _backing_card_key_text_row(original_key, _sing_key, orig_cell=orig_cell, pk_label=pk_label)
+            return
     proxy = globals().get("_sidebar_pk_proxy")
     if not proxy or proxy.get("rendered"):
         # No owner widget this run (Fixed Key, or the sidebar drew it): the keys as text.
@@ -23592,26 +23686,30 @@ elif _studio_page == "backing":
     # in before performing. The CTA only renders for Voice / Vocals /
     # Singer; instrument mode never sees it.
     def _open_lyrics_editor_from_backing() -> None:
-        _singing_pk = km.now_singing_pick_key(st.session_state)
-        _singing_eid = km.now_singing_entry_id(st.session_state)
-        if _singing_pk:
-            st.session_state[km.KARAOKE_EDITING_PICK_KEY] = _singing_pk
-        if _singing_eid:
-            st.session_state[km.KARAOKE_EDITING_ENTRY_ID_KEY] = _singing_eid
-        # Carry the entry's identity and key: without them the consumer cannot
-        # build a complete selected_song, and an incomplete selection is
-        # re-resolved back to the previous song by pick-key reconciliation.
-        _sing_entry = (
-            km.entry_by_id(st.session_state, _singing_eid) if _singing_eid else None
-        ) or km.current_session_entry(st.session_state) or {}
-        km.record_lyrics_target_request(st.session_state, _singing_pk or "", _singing_eid or "")
+        # The song ON THIS CARD, by its own id and source. This prompt only shows when no set is
+        # running, and Now Singing is then the setlist's FIRST entry (stop_session rewinds to it),
+        # so following Now Singing opened Blackbird under a card that said Jazz tune.
+        _card_pk = str(st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
+        if not _card_pk:
+            return
+        km.record_lyrics_target_request(st.session_state, _card_pk, "")
+        if _card_pk.startswith("composition::"):
+            # A Composition's lyrics live in Composition Studio: open that exact saved song on its
+            # Lyrics step (the existing Songs -> Studio edit handoff), not a Songs-page editor.
+            from composition_songs_bridge import open_saved_composition_for_studio_edit
+
+            if open_saved_composition_for_studio_edit(st, _card_pk, phase="lyrics"):
+                st.rerun()
+            return
+        _card_sel = st.session_state.get("selected_song")
+        _card_sel = _card_sel if isinstance(_card_sel, dict) else {}
         st.session_state[km.PENDING_KARAOKE_LYRICS_NAV_KEY] = {
-            "pick_key": _singing_pk or "",
-            "entry_id": _singing_eid or "",
+            "pick_key": _card_pk,
+            "entry_id": "",
             "target_page": "picker",
-            "practice_key": str(_sing_entry.get("practice_key") or ""),
-            "title": str(_sing_entry.get("title") or ""),
-            "genre": str(_sing_entry.get("genre") or ""),
+            "practice_key": "",
+            "title": str(song_data.get("title") or _card_sel.get("title") or ""),
+            "genre": str(_card_sel.get("genre") or ""),
         }
         st.rerun()
 

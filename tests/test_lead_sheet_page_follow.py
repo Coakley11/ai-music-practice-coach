@@ -104,7 +104,10 @@ def test_no_other_page_scroller_was_added():
     # and the controller keeps one provider per frame, so the lyrics and the chart cannot both
     # claim the page. Spelled out at each site on purpose - a call behind a local alias would
     # pass this count by being invisible to it.
-    assert len(re.findall(r"__lsFollow\.request\(", APP)) == 3
+    # A fourth: Karaoke's once-per-song set-start request ("karaoke-lyrics"), which puts the
+    # countdown and first lyric in front of the singer through this same controller and its hold.
+    assert len(re.findall(r"__lsFollow\.request\(", APP)) == 4
+    assert 'window.top.__lsFollow.request("karaoke-lyrics", el, {{ why: "karaoke-set-start" }})' in APP
 
 
 def test_compact_bar_offers_only_stop_while_the_card_is_starting():
