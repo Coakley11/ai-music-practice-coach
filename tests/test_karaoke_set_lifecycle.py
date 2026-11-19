@@ -49,7 +49,8 @@ def hooks(monkeypatch):
                                "restore_pre_set_loops")),
                        (kc, ("key_cycle_karaoke_set_started", "key_cycle_karaoke_set_ended"))):
         for n in names:
-            setattr(mod, n, (lambda name: (lambda s: calls.append(name)))(n))
+            setattr(mod, n, (lambda name: (lambda s: calls.append(
+                f"{name}@{'active' if s.get(km.KARAOKE_SESSION_ACTIVE_KEY) else 'inactive'}")))(n))
     monkeypatch.setitem(sys.modules, "backing_track_state", bts)
     monkeypatch.setitem(sys.modules, "backing_key_cycle", kc)
     return calls
@@ -60,7 +61,9 @@ def test_fresh_start_initialises_the_set_level_settings(hooks) -> None:
     km.start_session(s)
     assert km.karaoke_set_loops(s) == 1
     assert s[km.KARAOKE_SET_LEAD_SHEET_OPEN_KEY] is False
-    assert hooks[:3] == ["snapshot_pre_set_scope", "snapshot_pre_set_loops", "key_cycle_karaoke_set_started"]
+    # Key Cycling's hook before the set flag goes up (its owner's order); Backing's after.
+    assert hooks[:3] == ["key_cycle_karaoke_set_started@inactive", "snapshot_pre_set_scope@active",
+                         "snapshot_pre_set_loops@active"]
 
 
 def test_each_entry_starts_in_its_saved_key() -> None:
@@ -136,7 +139,9 @@ def test_repeat_count_is_set_level_and_a_new_set_starts_at_one(hooks) -> None:
     km.stop_session(s)
     assert km.karaoke_set_loops(s) == 0
     assert km.KARAOKE_SET_LOOPS_KEY not in s
-    assert "restore_pre_set_loops" in hooks and "key_cycle_karaoke_set_ended" in hooks
+    # End Set: every restore runs after the set flag has dropped.
+    assert hooks[-3:] == ["restore_pre_set_scope@inactive", "restore_pre_set_loops@inactive",
+                          "key_cycle_karaoke_set_ended@inactive"]
     km.start_session(s)
     assert km.karaoke_set_loops(s) == 1
 

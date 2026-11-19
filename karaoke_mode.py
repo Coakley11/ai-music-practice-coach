@@ -1551,12 +1551,14 @@ def start_session(
     # Every entry starts in its saved key with its song's own groove; Repeat 1, Lead Sheet Off and
     # Key Cycling Off until the singer changes them during this set.
     clear_performance_keys(session_state)
+    # Key Cycling's snapshot + Off runs BEFORE the set flag goes up (its owner's tested order: while
+    # a set is active Key Cycling adopts song changes silently, which must not apply to this call).
+    _set_lifecycle_hook("backing_key_cycle", "key_cycle_karaoke_set_started", session_state)
     session_state[KARAOKE_SESSION_ACTIVE_KEY] = True
     session_state[KARAOKE_SET_LEAD_SHEET_OPEN_KEY] = False
     session_state[KARAOKE_SET_LOOPS_KEY] = KARAOKE_SET_LOOPS_DEFAULT
     _backing_set_scope_hook("snapshot_pre_set_scope", session_state)
     _set_lifecycle_hook("backing_track_state", "snapshot_pre_set_loops", session_state)
-    _set_lifecycle_hook("backing_key_cycle", "key_cycle_karaoke_set_started", session_state)
     session_state.pop(KARAOKE_SONG_ENDED_KEY, None)
     session_state.pop(PENDING_KARAOKE_ADVANCE_KEY, None)
     session_state.setdefault(KARAOKE_AUTO_ADVANCE_KEY, True)
