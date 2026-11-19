@@ -18975,6 +18975,22 @@ try:
 except ImportError:
     pass
 
+if _studio_page == "backing":
+    # Before the sidebar draws the live cycle key: another song never inherits a cycle position (a
+    # new cycle from its own first key), and a browser refresh restores the cycle from disk without
+    # autoplay -- rewound to the first key unless the musician had paused it. Run here, not inside
+    # the Backing branch below, so the sidebar's Sounding Key / Capo Fret never show the stale key.
+    try:
+        from backing_key_cycle import (
+            ensure_key_cycle_follows_active_song,
+            normalize_key_cycle_after_browser_restore,
+        )
+
+        ensure_key_cycle_follows_active_song(st.session_state)
+        normalize_key_cycle_after_browser_restore(st.session_state)
+    except Exception:
+        pass
+
 if instrument == "Guitar":
     sidebar_section("Guitar Capo / Chord Shapes", icon="🎸", tone="session", target=_working_sidebar)
     render_guitar_capo_sidebar(
@@ -21654,19 +21670,7 @@ elif _studio_page == "backing":
         trace_before_render_backing(st.session_state, dispatch_local=_studio_page)
     except ImportError:
         pass
-    # Browser refresh restores cycle key/settings from disk but must not
-    # autoplay. Hold at the start of the current key's pass until Resume.
-    try:
-        from backing_key_cycle import (
-            ensure_key_cycle_follows_active_song,
-            normalize_key_cycle_after_browser_restore,
-        )
-
-        # Another song never inherits a cycle position (a new cycle from its own first key).
-        ensure_key_cycle_follows_active_song(st.session_state)
-        normalize_key_cycle_after_browser_restore(st.session_state)
-    except Exception:
-        pass
+    # Key Cycling song-follow + refresh hold run before the sidebar (see above the Guitar Capo panel).
 
     try:
         from music_workflow_backing_mixed_context_guard import (

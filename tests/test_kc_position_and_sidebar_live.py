@@ -338,6 +338,20 @@ class SidebarFollowsTheLiveCycle(_Base):
         self.assertIn("sounds[ix]", block)
         self.assertIn("capos[ix]", block)
 
+    def test_a_refresh_rewinds_the_cycle_before_the_sidebar_is_drawn(self) -> None:
+        # Browser 2026-11-19: a no-Pause refresh left the sidebar on the old key (A-flat / Fret 1)
+        # while the console had already rewound to 1/12 -- the restore ran after the sidebar.
+        src = (_ROOT / "streamlit_music_practice_app.py").read_text(encoding="utf-8")
+        sidebar = src.index("render_guitar_capo_sidebar(")
+        first = src.index("ensure_key_cycle_follows_active_song(st.session_state)")
+        for call in ("ensure_key_cycle_follows_active_song(st.session_state)",
+                     "normalize_key_cycle_after_browser_restore(st.session_state)"):
+            self.assertEqual(src.count(call), 1, call)
+            self.assertLess(src.index(call), sidebar, call)
+        # Still Backing-only: the guard sits just above the calls.
+        guard = src.rindex('if _studio_page == "backing":', 0, first)
+        self.assertLess(first - guard, 1200)
+
 
 if __name__ == "__main__":
     unittest.main()

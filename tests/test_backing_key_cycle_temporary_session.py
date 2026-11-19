@@ -1085,6 +1085,8 @@ class TestAudibleArrangementHold(unittest.TestCase):
         advance_key_cycle_now(session)
         cur = temporary_playback_key(session)
         self.assertTrue(cur)
+        # Only the musician's own Pause keeps the key across a refresh (user rule 2026-11-19).
+        pause_key_cycle(session, user=True)
         session.pop("_kc_session_live", None)
         self.assertTrue(normalize_key_cycle_after_browser_restore(session))
         data = get_owner_cycle_session(session)
@@ -1170,6 +1172,8 @@ class TestAudibleArrangementHold(unittest.TestCase):
         cur = temporary_playback_key(session)
         self.assertTrue(cur)
         self.assertNotEqual(cur, "Bm")
+        # Only the musician's own Pause keeps the key across a refresh (user rule 2026-11-19).
+        pause_key_cycle(session, user=True)
         pk_before = dict(session["practice_key_by_source"])
 
         with tempfile.TemporaryDirectory() as td:
