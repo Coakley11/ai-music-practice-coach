@@ -30,6 +30,12 @@ class TestCrossFamilyStoredKeyIsIgnoredOnRead(unittest.TestCase):
         self.assertEqual(get_practice_concert_key(ss, TRIAL, default="D"), "D")
         self.assertEqual(SS.resolve_sbi_custom_practice_key(ss), "D")
 
+    def test_the_fallback_is_the_original_key_even_without_a_caller_default(self) -> None:
+        ss = _session(trial_key="Fm")
+        self.assertEqual(get_practice_concert_key(ss, TRIAL), "D")  # not "" and never a generic "C"
+        ss = _session(blues_key="F", active="blues")
+        self.assertEqual(get_practice_concert_key(ss, BLUES), "Fm")
+
     def test_the_guard_never_writes(self) -> None:
         ss = _session(trial_key="Fm")
         before = copy.deepcopy(ss)

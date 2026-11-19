@@ -889,7 +889,10 @@ def get_practice_concert_key(
             from source_session_state import practice_key_fits_custom_song
 
             if not practice_key_fits_custom_song(session, _guard_pick, key):
-                key = str(default or "").strip()
+                # Fall back to the song's OWN Original Key (never to a caller default that may be a generic "C").
+                from source_session_state import _live_custom_home_key
+
+                key = _live_custom_home_key(session, _guard_pick) or str(default or "").strip()
         except ImportError:
             pass
     # A karaoke performance in tonight's key: the song plays in it while its own saved key
