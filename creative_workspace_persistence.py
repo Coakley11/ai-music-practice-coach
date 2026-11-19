@@ -109,6 +109,7 @@ def sync_creative_workspace_before_persist(session: dict[str, Any]) -> None:
         from source_session_state import (
             genuine_sbi_active_leave,
             get_sbi_preview_source,
+            consume_sbi_custom_explicit_pk_edit,
             persist_sbi_custom_practice_key_edit,
         )
 
@@ -119,7 +120,10 @@ def sync_creative_workspace_before_persist(session: dict[str, Any]) -> None:
                 or session.get("_sbi_custom_visit_pk")
                 or ""
             ).strip()
-            if tok:
+            # Only a key the musician explicitly chose for THIS song is written. A widget value that was merely restored,
+            # remounted or left over from another song / an earlier session is not an edit (it used to be stamped onto the
+            # active Custom song's saved Practice Key on every save).
+            if tok and consume_sbi_custom_explicit_pk_edit(session, tok):
                 persist_sbi_custom_practice_key_edit(session, tok)
     except ImportError:
         pass

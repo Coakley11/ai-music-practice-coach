@@ -125,12 +125,14 @@ class TestCustomPracticeKeyAliasesStayOnOneSong(unittest.TestCase):
         self.assertEqual(get_practice_concert_key(ss, "custom::swing-1"), "C")
         self.assertEqual(get_practice_concert_key(ss, "custom::blues-1"), "Fm")
 
-    def test_unknown_alias_ids_still_count_as_the_same_song(self) -> None:
+    def test_unknown_alias_ids_do_not_count_as_the_same_song(self) -> None:
+        """P0d: a pick that cannot be proven to be this song (unknown / deleted / phantom id) never receives its Practice Key."""
         from source_session_state import _same_custom_song
 
         ss = self._session()
-        self.assertTrue(_same_custom_song(ss, "custom::swing-1", "custom::seed-id-not-in-library"))
+        self.assertFalse(_same_custom_song(ss, "custom::swing-1", "custom::seed-id-not-in-library"))
         self.assertFalse(_same_custom_song(ss, "custom::swing-1", "custom::blues-1"))
+        self.assertTrue(_same_custom_song(ss, "custom::swing-1", "custom::swing-1"))
 
 
 class TestInstallingAnotherCustomDropsTheSbiKeyCache(unittest.TestCase):

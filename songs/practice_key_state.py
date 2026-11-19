@@ -881,6 +881,20 @@ def get_practice_concert_key(
     major or minor side (from the song's mode) is what every reader sees.
     """
     key = saved_practice_concert_key(session, pick_key, default=default)
+    # Read-time guard (never a write): a stored key of the other tonal family than the live Custom song's Original Key
+    # (stale Fm on a D-major song) is ignored, so the song reads at its Original Key like every other surface.
+    _guard_pick = str(pick_key or "").strip() or str(resolve_practice_source_pick(session) or "").strip()
+    if key and _guard_pick.startswith("custom::"):
+        try:
+            from source_session_state import practice_key_fits_custom_song
+
+            if not practice_key_fits_custom_song(session, _guard_pick, key):
+                # Fall back to the song's OWN Original Key (never to a caller default that may be a generic "C").
+                from source_session_state import _live_custom_home_key
+
+                key = _live_custom_home_key(session, _guard_pick) or str(default or "").strip()
+        except ImportError:
+            pass
     # A karaoke performance in tonight's key: the song plays in it while its own saved key
     # stays underneath, exactly as Fixed Key does below. Checked first because it is cheap
     # when no set is running, and Fixed Key - a deliberate global mode - still outranks it.
@@ -997,6 +1011,27 @@ def set_practice_concert_key(
     # is what lost it.
     if _karaoke_released_key_blocks(session, pk, key):
         return
+    # The read guard (see source_session_state.practice_key_fits_custom_song) makes a stored key of the wrong tonal family read as
+    # the song's Original Key. Render-time sync routines then try to "store what they read": that would turn a READ-time
+    # fallback into a database write. Skip exactly that write - the fallback (the song's own Original Key) over a stored
+    # wrong-family key, with no deliberate commit behind it. A deliberate choice (commit token == key) or any other key writes.
+    if str(pk).startswith("custom::"):
+        try:
+            from source_session_state import _live_custom_home_key, practice_key_fits_custom_song
+
+            raw = ""
+            _store = _practice_key_store(session)
+            for _alias in _practice_pick_aliases(pk):
+                raw = str(_store.get(_alias, "") or "").strip()
+                if raw:
+                    break
+            if raw and not practice_key_fits_custom_song(session, pk, raw):
+                home = _live_custom_home_key(session, pk)
+                commit = str(session.get("_pk_user_commit_token") or "").strip()
+                if home and key == home and commit != key:
+                    return
+        except ImportError:
+            pass
     # Gate 12 leave: leftover Mission tokens must not stamp a different catalog
     # sticky. A genuine sidebar Practice Key edit on Missions / Mission Backing
     # *is* this catalog song's pick-scoped Practice Key and must persist.

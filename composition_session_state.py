@@ -66,6 +66,13 @@ def set_active_document(
     """
     prepared = touch_composition(deep_copy_document(doc))
     ensure_workflow(prepared)
+    previous = session_state.get(COMPOSER_ACTIVE_KEY)
+    previous_id = str(previous.get("id") or "").strip() if isinstance(previous, dict) else ""
+    prepared_id = str(prepared.get("id") or "").strip()
+    # A preview belongs to the song it was armed for: a different song (loaded, activated or bridged in) must never
+    # inherit - or keep playing - the previous song's audition. Same song (routine saves) keeps it.
+    if previous_id and prepared_id and previous_id != prepared_id:
+        clear_preview = True
     session_state[COMPOSER_ACTIVE_KEY] = prepared
     session_state[COMPOSER_NEEDS_SEED_KEY] = False
     if clear_preview:
