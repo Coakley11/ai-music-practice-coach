@@ -2,8 +2,9 @@
 
 Stop ends the playback session. Before this fix the browser restore always
 re-created a paused session from a held cycle, so the card offered "Stop" with
-nothing playing and no take for the lead sheet. A refresh during playback or
-while paused still restores the paused session at that key.
+nothing playing and no take for the lead sheet. Position rule (user 2026-11-19):
+only the musician's own Pause survives a refresh -- that restores the paused
+session at that key; a refresh during playback starts again at the first key.
 """
 
 from __future__ import annotations
@@ -103,30 +104,34 @@ def test_restore_after_turning_cycling_on_while_stopped_is_stopped() -> None:
     assert transport_intent(fresh) == STOPPED
 
 
-def test_restore_during_playback_is_still_a_paused_session_at_that_key() -> None:
+def test_restore_during_playback_starts_again_at_the_first_key() -> None:
     s = _session()
     start_key_cycle(s, start_key="Bm")
     _play(s)
     advance_key_cycle_now(s)
-    cur = temporary_playback_key(s)
-    fresh = _fresh(s)  # the tab closed while playing
+    assert temporary_playback_key(s) != "Bm"
+    fresh = _fresh(s)  # the tab closed while playing (no Pause)
     assert normalize_key_cycle_after_browser_restore(fresh)
-    assert transport_intent(fresh) == PAUSED
-    assert temporary_playback_key(fresh) == cur
-    assert fresh.get("_kc_refresh_resume_from_start")
+    assert transport_intent(fresh) == STOPPED
+    assert temporary_playback_key(fresh) == "Bm"
+    assert not fresh.get("_kc_refresh_resume_from_start")
 
 
 def test_restore_while_paused_is_still_a_paused_session() -> None:
     s = _session()
     start_key_cycle(s, start_key="Bm")
     _play(s)
-    pause_key_cycle(s)
+    advance_key_cycle_now(s)
+    cur = temporary_playback_key(s)
+    pause_key_cycle(s, user=True)  # the musician's own Pause
     fresh = _fresh(s)
     assert normalize_key_cycle_after_browser_restore(fresh)
     assert transport_intent(fresh) == PAUSED
+    assert temporary_playback_key(fresh) == cur
+    assert fresh.get("_kc_refresh_resume_from_start")
 
 
-def test_play_after_stop_clears_the_marker_so_a_later_refresh_restores_paused() -> None:
+def test_play_after_stop_clears_the_marker_so_a_later_paused_refresh_restores_paused() -> None:
     s = _session()
     start_key_cycle(s, start_key="Bm")
     _play(s)
@@ -134,6 +139,7 @@ def test_play_after_stop_clears_the_marker_so_a_later_refresh_restores_paused() 
     assert get_owner_cycle_session(s).get(CYCLE_SESSION_OVER)
     _play(s)
     assert not get_owner_cycle_session(s).get(CYCLE_SESSION_OVER)
+    pause_key_cycle(s, user=True)
     fresh = _fresh(s)
     assert normalize_key_cycle_after_browser_restore(fresh)
     assert transport_intent(fresh) == PAUSED
