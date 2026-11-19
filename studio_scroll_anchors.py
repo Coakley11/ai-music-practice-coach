@@ -221,12 +221,32 @@ def render_pending_scroll_script(st: Any) -> None:
         <script data-studio-scroll-anchor="1">
         (function() {{
           const target = "{safe}";
+          // Scroll ONLY Streamlit's page scroller (stMain), never with scrollIntoView. P0 2026-11-19: an anchor
+          // near the bottom of a still-short page (the Lead Sheet mounting under it) could not reach the top of
+          // stMain, so scrollIntoView scrolled the next box up -- stAppViewContainer, overflow hidden -- and the
+          // whole app stayed shifted up out of view: a strip of music at the top, blank white below, and no wheel or
+          // scrollbar could bring it back. Any such shift already present is undone here too.
+          const unshift = (doc, sc) => {{
+            for (let n = sc && sc.parentElement; n && n !== doc.documentElement; n = n.parentElement) {{
+              if (n.scrollTop) n.scrollTop = 0;
+              if (n.scrollLeft) n.scrollLeft = 0;
+            }}
+          }};
           const tryScroll = () => {{
             try {{
               const doc = window.parent ? window.parent.document : document;
               const el = doc.getElementById(target);
               if (el) {{
-                el.scrollIntoView({{ behavior: 'smooth', block: 'start' }});
+                const sc = doc.querySelector('[data-testid="stMain"]');
+                if (sc && sc.contains(el)) {{
+                  unshift(doc, sc);
+                  const margin = parseFloat(doc.defaultView.getComputedStyle(el).scrollMarginTop) || 0;
+                  const top = sc.scrollTop + el.getBoundingClientRect().top - sc.getBoundingClientRect().top - margin;
+                  const max = Math.max(0, sc.scrollHeight - sc.clientHeight);
+                  sc.scrollTo({{ top: Math.max(0, Math.min(top, max)), behavior: 'smooth' }});
+                }} else {{
+                  el.scrollIntoView({{ behavior: 'smooth', block: 'nearest' }});
+                }}
                 return true;
               }}
             }} catch (e) {{ /* parent doc may be inaccessible during init */ }}
