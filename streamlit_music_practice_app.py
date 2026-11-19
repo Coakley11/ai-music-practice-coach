@@ -1509,11 +1509,24 @@ def _activate_karaoke_entry(entry: dict | None, *, apply_entry_key: bool = True)
     # During a set the Backing cache IS the Now Singing take. A Now Editing change dropping it
     # left the set with no take: back on Backing the Karaoke panel was gone ("Press Play Backing
     # Track to generate and play") while the set said Song 1 of 3. Outside a set, unchanged.
-    _invalidate = (
-        (lambda _st: None)
-        if km.is_voice_mode(st.session_state) and km.is_karaoke_session_active(st.session_state)
-        else invalidate_backing_cache
-    )
+    _in_set = bool(km.is_voice_mode(st.session_state) and km.is_karaoke_session_active(st.session_state))
+    _invalidate = (lambda _st: None) if _in_set else invalidate_backing_cache
+    # During a set Backing belongs to Now Singing. The identity change itself reaches into it from
+    # shared code - tempo priming and the Backing defaults reset to the EDITED song (measured: Trial
+    # Song's 100 BPM / Pop groove landed on Blackbird's performance), and the cache clears that
+    # dropped the sung take. So Backing's state is put back exactly as it was afterwards, and the
+    # debt is recorded so End Set regenerates Backing for the edited song.
+    _kept_take: dict = {}
+    if _in_set:
+        try:
+            from songs.key_state import _BACKING_CACHE_KEYS as _take_keys
+
+            for _k in list(st.session_state.keys()):
+                _ks = str(_k)
+                if _ks in _take_keys or _ks.startswith(("backing_", "_backing_")):
+                    _kept_take[_ks] = st.session_state[_k]
+        except Exception:
+            _kept_take = {}
     st.session_state[km.EXPLICIT_GLOBAL_CHANGE_KEY] = True
     try:
         if not pick.startswith(("custom::", "composition::")):
@@ -1589,6 +1602,14 @@ def _activate_karaoke_entry(entry: dict | None, *, apply_entry_key: bool = True)
     st.session_state[km.KARAOKE_EDITING_PICK_KEY] = pick
     st.session_state[km.KARAOKE_EDITING_ENTRY_ID_KEY] = entry_id
     _invalidate(st)
+    if _kept_take:
+        for _k, _v in _kept_take.items():
+            try:
+                if st.session_state.get(_k) != _v:
+                    st.session_state[_k] = _v
+            except Exception:
+                pass
+        km.now_editing_change_spares_sung_take(st.session_state)
 
 
 # === DEFERRED MULTITRACK PROJECT KEY ==========================================
@@ -1607,6 +1628,8 @@ try:
 except ImportError:
     pass
 
+
+
 # === DEFERRED KARAOKE SETLIST ROW ACTIVATION ==================================
 # A setlist row click queues its entry; it is activated here, before any widget
 # exists, then the Lyrics & Cues editor opens for that song.
@@ -1622,6 +1645,18 @@ if isinstance(_pending_entry_activation, dict):
 # Consumed BEFORE any page widgets are created so that navigate_studio_page
 # (which may expire the backing play session and reset widget-backed keys)
 # runs in a clean render cycle — never after Backing widgets exist.
+# Add Lyrics for a Composition song: open that exact saved composition in Composition Studio on
+# its Lyrics step. Before any widget exists, like the other Karaoke editing handoffs.
+PENDING_KARAOKE_COMPOSITION_LYRICS_KEY = "_pending_karaoke_composition_lyrics"
+_pending_comp_lyrics = str(st.session_state.pop(PENDING_KARAOKE_COMPOSITION_LYRICS_KEY, "") or "").strip()
+if _pending_comp_lyrics.startswith("composition::"):
+    try:
+        from composition_songs_bridge import open_saved_composition_for_studio_edit as _open_comp_edit
+
+        _open_comp_edit(st, _pending_comp_lyrics, phase="lyrics")
+    except Exception:
+        pass
+
 _pending_lyrics_nav = st.session_state.pop(km.PENDING_KARAOKE_LYRICS_NAV_KEY, None)
 if isinstance(_pending_lyrics_nav, dict):
     _pln_pk = str(_pending_lyrics_nav.get("pick_key") or "").strip()
@@ -23763,11 +23798,11 @@ elif _studio_page == "backing":
         km.record_lyrics_target_request(st.session_state, _card_pk, "")
         if _card_pk.startswith("composition::"):
             # A Composition's lyrics live in Composition Studio: open that exact saved song on its
-            # Lyrics step (the existing Songs -> Studio edit handoff), not a Songs-page editor.
-            from composition_songs_bridge import open_saved_composition_for_studio_edit
-
-            if open_saved_composition_for_studio_edit(st, _card_pk, phase="lyrics"):
-                st.rerun()
+            # Lyrics step (the existing Songs -> Studio edit handoff). Queued for the next run's
+            # pre-widget consumer: loading the document here, mid-script, wrote widget-backed
+            # Backing keys after their widgets existed and raised (backing_groove_style).
+            st.session_state[PENDING_KARAOKE_COMPOSITION_LYRICS_KEY] = _card_pk
+            st.rerun()
             return
         _card_sel = st.session_state.get("selected_song")
         _card_sel = _card_sel if isinstance(_card_sel, dict) else {}

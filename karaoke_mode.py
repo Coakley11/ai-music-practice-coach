@@ -1403,6 +1403,11 @@ def _pay_edit_regen_owed(session_state: Any) -> None:
             session_state.pop(key, None)
         invalidate_backing_cache(session_state)
         session_state[BACKING_NEEDS_REGEN] = True
+        # And the Backing set-up the edited song skipped during the set: its tempo and defaults are
+        # re-derived on the next Backing render (the same markers an ordinary song change clears).
+        for key in ("last_backing_defaults_song_id", "_last_bpm_song", "_active_bpm_sync_id",
+                    "_backing_trace_sync_id"):
+            session_state.pop(key, None)
     except Exception:
         pass
 

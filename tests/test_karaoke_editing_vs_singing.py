@@ -39,7 +39,14 @@ class AddLyricsTargetsTheCardSong(unittest.TestCase):
     def test_a_composition_opens_composition_studio_on_its_lyrics(self) -> None:
         body = _fn("_open_lyrics_editor_from_backing")
         self.assertIn('_card_pk.startswith("composition::")', body)
-        self.assertIn('open_saved_composition_for_studio_edit(st, _card_pk, phase="lyrics")', body)
+        # Queued, never loaded mid-script: loading there wrote Backing widget keys after their widgets
+        # existed (measured: StreamlitAPIException on backing_groove_style).
+        self.assertIn("st.session_state[PENDING_KARAOKE_COMPOSITION_LYRICS_KEY] = _card_pk", body)
+        self.assertNotIn("open_saved_composition_for_studio_edit(", body)
+        consumer = _APP[_APP.index("_pending_comp_lyrics = str(st.session_state.pop(PENDING_KARAOKE_COMPOSITION_LYRICS_KEY"):]
+        consumer = consumer[:600]
+        self.assertIn('_open_comp_edit(st, _pending_comp_lyrics, phase="lyrics")', consumer)
+        self.assertLess(_APP.index("_pending_comp_lyrics = str("), _APP.index('_pk_widget_key = "display_key"'))
 
     def test_no_setlist_key_rides_along(self) -> None:
         body = _fn("_open_lyrics_editor_from_backing")
@@ -182,6 +189,11 @@ class NowEditingKeepsTheSungTake(unittest.TestCase):
         fn = fn[: fn.index("\n# === ")]
         self.assertIn("km.is_karaoke_session_active(st.session_state)", fn)
         self.assertIn("(lambda _st: None)", fn)
+        # Shared code inside the identity change clears the cache too (tempo priming, Backing
+        # defaults): the sung take is saved before and put back after, and the debt recorded.
+        self.assertIn('if _ks in _take_keys or _ks.startswith(("backing_", "_backing_")):', fn)
+        self.assertLess(fn.index("_kept_take[_ks] = st.session_state[_k]"), fn.index("_activate_pk("))
+        self.assertIn("km.now_editing_change_spares_sung_take(st.session_state)", fn)
         self.assertNotIn("invalidate_backing=invalidate_backing_cache", fn)
         self.assertNotIn("    invalidate_backing_cache(st)", fn)
 
@@ -261,6 +273,36 @@ class CustomSongsSayThereIsNoLyricsEditor(unittest.TestCase):
         fn = fn[: fn.index("\ndef ")]
         self.assertLess(fn.index("if editor_unavailable_note:"), fn.index('key="karaoke_open_lyrics_editor"'))
         self.assertIn('if str(st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").startswith("custom::")', _APP)
+
+
+class TheSharedSongChangeLeavesBackingToTheSetDuringASet(unittest.TestCase):
+    """Measured in the browser: the shared active-song handler re-set Backing for the EDITED song
+    mid-set (Trial Song's 100 BPM / Pop groove, the take dropped) - no Karaoke panel after a tap.
+    During a Voice set it now applies identity and Practice Key only; End Set pays the rest."""
+
+    def test_the_backing_side_reset_is_skipped_during_a_set(self) -> None:
+        src = (_ROOT / "songs" / "music_source.py").read_text(encoding="utf-8")
+        block = src[src.index("_karaoke_set_owns_backing = False"):]
+        block = block[: block.index("active_song_meter=str(default_meter),")]
+        self.assertIn("_km.now_editing_change_spares_sung_take(session)", block)
+        skipped = block[block.index("else:"):]
+        for step in ("retarget_backing_tempo_ownership(", "invalidate_backing(st)", "prime_active_song_bpm(",
+                     "canonicalize_backing_defaults_for_song(", 'session.pop("last_backing_defaults_song_id", None)'):
+            self.assertIn(step, skipped)
+        self.assertLess(src.index("_karaoke_set_owns_backing = False"), src.index("retarget_backing_tempo_ownership(session, sync_id)"))
+
+    def test_end_set_clears_the_markers_so_backing_sets_up_for_the_edited_song(self) -> None:
+        import karaoke_mode as km
+
+        state: dict = {"instrument": "Voice"}
+        km.add_to_queue(state, "RockBlackbird — The Beatles", practice_key="E", title="Blackbird")
+        km.start_session(state)
+        state.update({"last_backing_defaults_song_id": "blackbird", "_last_bpm_song": "blackbird",
+                      "_active_bpm_sync_id": "pk::blackbird", "_last_backing_wav_path": "x.wav"})
+        self.assertTrue(km.now_editing_change_spares_sung_take(state))
+        km.stop_session(state)
+        for key in ("last_backing_defaults_song_id", "_last_bpm_song", "_active_bpm_sync_id", "_last_backing_wav_path"):
+            self.assertNotIn(key, state)
 
 
 class SetLevelLeadSheetChoiceIsSetScoped(unittest.TestCase):
