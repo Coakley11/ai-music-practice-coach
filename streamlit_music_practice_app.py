@@ -5756,10 +5756,20 @@ def live_follow_along_component_html(
     .lf-compact .backing-chart-sheet .lead-title {{ font-size: 1.02rem; margin-bottom: 2px; }}
     /* The song card above already names the song: while following, only the key line stays. */
     .lf-compact:not(.lf-dev) .backing-chart-sheet .lead-title {{ display: none; }}
+    /* Key, tempo, meter and feel stay; the coaching sentence beside them is for reading, not
+       playing - it stays on the chart outside the follow view and with ?dev=1. */
+    .lf-compact:not(.lf-dev) .backing-chart-sheet .lead-coach {{ display: none; }}
     .lf-compact .backing-chart-sheet .lead-subtitle {{ margin-bottom: 0; font-size: 0.8rem; line-height: 1.3; }}
     .lf-compact .backing-chart-sheet .section-card {{ padding: 8px 10px; margin-bottom: 8px; border-radius: 12px; }}
     .lf-compact .backing-chart-sheet .section-head {{ margin-bottom: 4px; }}
+    /* "Intro - 4 bars" and its feel on one line straight above the chords; the head's own
+       "Now Playing" tag repeats the player's Now Playing (the current section keeps its outline). */
+    .lf-compact .backing-chart-sheet .section-head > div:first-child {{
+      display: flex; align-items: baseline; gap: 4px 8px; flex-wrap: wrap; min-width: 0;
+    }}
+    .lf-compact .backing-chart-sheet .section-head > .section-meta {{ display: none; }}
     .lf-compact .backing-chart-sheet .section-title {{ font-size: 0.98rem; }}
+    .lf-compact .backing-chart-sheet .section-meta {{ font-size: 0.78rem; }}
     .lf-compact .backing-chart-sheet .meta-row {{ display: none; }}
     .lf-compact .backing-chart-sheet .now-playing {{ display: none; }}
     .live-player {{
@@ -5884,9 +5894,10 @@ def live_follow_along_component_html(
         white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
       }}
       .lf-compact .live-status-grid {{ grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 6px; }}
-      .lf-compact .live-status-card {{ display: flex; align-items: baseline; gap: 6px; padding: 4px 8px; }}
-      .lf-compact .live-label {{ white-space: nowrap; flex: 0 0 auto; }}
-      .lf-compact .live-value {{ margin-top: 0; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }}
+      /* Label above value: beside it, "CURRENT CHORD" left the chord 28 px at 360 and clipped it. */
+      .lf-compact .live-status-card {{ padding: 3px 8px; }}
+      .lf-compact .live-label {{ white-space: nowrap; line-height: 1.15; }}
+      .lf-compact .live-value {{ margin-top: 0; line-height: 1.25; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }}
     }}
 
     .karaoke-countdown-overlay {{
@@ -26397,6 +26408,18 @@ elif _studio_page == "backing":
                     ".st-key-backing_leadsheet_play_hint_slot [data-testid='stCaptionContainer']"
                     "{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}"
                     ".st-key-backing_leadsheet_play_hint_slot{min-height:38px;justify-content:center;}"
+                    # Phones stack Streamlit columns; this one row stays a row, so the line beside
+                    # Close lead sheet does not become a row of its own above the sheet.
+                    "@media (max-width:640px){"
+                    "[data-testid='stHorizontalBlock']:has(.st-key-backing_leadsheet_hide_btn,"
+                    ".st-key-backing_leadsheet_show_btn){flex-wrap:nowrap!important;gap:8px!important;}"
+                    "[data-testid='stHorizontalBlock']:has(.st-key-backing_leadsheet_hide_btn,"
+                    ".st-key-backing_leadsheet_show_btn)>[data-testid='stColumn']:first-child"
+                    "{flex:0 0 auto!important;width:auto!important;min-width:0!important;}"
+                    "[data-testid='stHorizontalBlock']:has(.st-key-backing_leadsheet_hide_btn,"
+                    ".st-key-backing_leadsheet_show_btn)>[data-testid='stColumn']:last-child"
+                    "{flex:1 1 0!important;width:auto!important;min-width:0!important;}"
+                    ".st-key-backing_leadsheet_play_hint_slot [data-testid='stCaptionContainer'] p{font-size:0.8rem;}}"
                     # The switch's channel is an invisible messenger: out of the flow, so it adds no height.
                     ".st-key-chord_tone_hints_channel{position:absolute!important;width:1px!important;"
                     "height:1px!important;overflow:hidden!important;opacity:0;pointer-events:none;}</style>",
