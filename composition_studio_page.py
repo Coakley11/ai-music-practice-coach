@@ -1809,6 +1809,11 @@ def _attach_synced_score_preview(
     bpm = int(pg.get("bpm") or 96)
     meter = str(pg.get("time_signature") or "4/4")
     key = str(pg.get("key_center") or "C")
+    if chord_syms and events:
+        # Repeated melody passes keep their chords (symbols above the staff + chord highlight).
+        from composition_melody_preview import harmony_covering_melody
+
+        chord_syms = [str(c) for c in harmony_covering_melody(list(chord_syms), list(events), meter=meter)]
 
     lyric_tl: list[dict[str, Any]] = []
     if lyrics_alignment and events:
@@ -2964,6 +2969,11 @@ def _render_melody_staff(
     lyrics_alignment: dict[str, Any] | None = None,
 ) -> None:
     """Primary score: chord symbols above staff, with optional aligned lyrics."""
+    if chords and events:
+        # Melody repeats x2-x4: show the progression above every repeated pass, not just the first.
+        from composition_melody_preview import harmony_covering_melody
+
+        chords = harmony_covering_melody(list(chords), list(events), meter=meter)
     score = build_section_score_model(
         events=events,
         chords=chords,
