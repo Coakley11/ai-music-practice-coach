@@ -148,6 +148,7 @@ KEY_CYCLE_TOOLTIP = (
 # Keys persisted across browser refresh (not CONTINUE_PLAY / prepared WAV blobs).
 KEY_CYCLE_PERSIST_KEYS: tuple[str, ...] = (
     BACKING_KEY_CYCLE_SESSIONS_KEY,
+    "_kc_settings_activation_epoch",
     "backing_key_cycle_enabled",
     BACKING_KEY_CYCLE_STEP_KEY,
     BACKING_KEY_CYCLE_DIRECTION_KEY,
@@ -169,6 +170,13 @@ STATUS_STOPPED = "stopped"
 # stopped, not as a paused session. Play, Resume, Next / Previous and a jump
 # clear it.
 CYCLE_SESSION_OVER = "transport_session_over"
+
+# Position rule (user 2026-11-19): a cycle keeps its position only after the musician's own Pause.
+# ``user_paused`` is set by an explicit Pause (card / console) and cleared by Resume and by every new
+# cycle; a refresh or reopen without it starts at the first key. ``song_id`` binds a cycle to the song
+# it was started for: another song never inherits its position, even in the same key.
+CYCLE_USER_PAUSED = "user_paused"
+CYCLE_SONG_ID = "song_id"
 
 # Owner ids — isolated cycle bags
 OWNER_CATALOG = "catalog"
@@ -1191,6 +1199,88 @@ def _note_cycle_session_over_if_stopped(session: dict[str, Any], data: dict[str,
         pass
 
 
+_SONG_CYCLE_OWNERS: frozenset[str] = frozenset({OWNER_CATALOG, OWNER_CUSTOM, OWNER_COMPOSITION})
+
+
+def _active_song_cycle_identity(session: dict[str, Any]) -> str:
+    """The song a song-owned cycle belongs to (the app's one active-song identity), or ''."""
+    try:
+        from songs.music_source import resolve_active_song_identity
+
+        return str(resolve_active_song_identity(session) or "").strip()
+    except Exception:
+        return ""
+
+
+KC_SETTINGS_ACTIVATION_EPOCH_KEY = "_kc_settings_activation_epoch"
+
+
+def _reset_key_cycle_settings_to_defaults(session: dict[str, Any]) -> None:
+    """Interval Semitone, Direction Ascending, the app's default Key Spelling (a new song activation)."""
+    session[BACKING_KEY_CYCLE_STEP_KEY] = CYCLE_STEP_SEMITONE
+    session[BACKING_KEY_CYCLE_DIRECTION_KEY] = "up"
+    session[BACKING_KEY_SPELLING_PREFS_KEY] = default_spelling_prefs()
+    _queue_key_cycle_widget_seed(session, interval=1, direction="up")
+    # Spelling radios remount from the defaults.
+    for sharp, flat in ENHARMONIC_SPELLING_PAIRS:
+        session.pop(f"backing_key_spell__{sharp}/{flat}", None)
+
+
+def ensure_key_cycle_follows_active_song(session: dict[str, Any]) -> bool:
+    """Key Cycling belongs to one activation of the active song (user rules 2026-11-19).
+
+    * Same song (page visits, reruns, Pause / Resume / Next / Previous): settings and position kept.
+    * Another song became active (active_song_transition's activation epoch moved -- also an earlier
+      song chosen again, and two songs in the same key): Interval Semitone, Direction Ascending, the
+      default Key Spelling; a running cycle starts again from the new song's first key; nothing
+      autoplays.
+    * A cycle never carries a position to another song: it records the song it was started for, and a
+      different active song restarts it the same way even if no epoch change was seen.
+    Returns True when it reset. The saved Practice Key and the song's data are never written.
+    """
+    try:
+        try:
+            from active_song_transition import active_song_activation_epoch
+
+            epoch = active_song_activation_epoch(session)
+        except ImportError:
+            epoch = 0
+        seen = session.get(KC_SETTINGS_ACTIVATION_EPOCH_KEY)
+        new_activation = seen is not None and int(seen) != int(epoch)
+        session[KC_SETTINGS_ACTIVATION_EPOCH_KEY] = int(epoch)
+
+        owner = resolve_cycle_owner(session)
+        data = get_owner_cycle_session(session, owner) if owner in _SONG_CYCLE_OWNERS else None
+        live = bool(data and data.get("enabled"))
+        now = _active_song_cycle_identity(session) if live else ""
+        was = str((data or {}).get(CYCLE_SONG_ID) or "").strip()
+        other_song = bool(live and now and was and was != now)
+        if live and now and not was:
+            _put_owner_cycle_session(session, owner, dict(data, **{CYCLE_SONG_ID: now}))
+        if not (new_activation or other_song):
+            return False
+        _reset_key_cycle_settings_to_defaults(session)
+        if live:
+            fresh = start_key_cycle(session, interval=1, direction="up", spelling_prefs=default_spelling_prefs())
+            if fresh:
+                _log_cycle_key_write(
+                    session,
+                    trigger="song_changed_new_cycle",
+                    old_key=str(data.get("current_playback_key") or ""),
+                    new_key=str(fresh.get("current_playback_key") or ""),
+                    cycle_id=str(fresh.get("cycle_id") or ""),
+                    pass_id=0,
+                    extra={"old_song": was[:80], "new_song": now[:80], "epoch": int(epoch)},
+                )
+        try:
+            persist_key_cycle_position(session)
+        except Exception:
+            pass
+        return True
+    except Exception:
+        return False
+
+
 def normalize_key_cycle_after_browser_restore(session: dict[str, Any]) -> bool:
     """On a fresh Streamlit process/session with a restored cycle: hold at pass start.
 
@@ -1211,6 +1301,12 @@ def normalize_key_cycle_after_browser_restore(session: dict[str, Any]) -> bool:
     data["status"] = STATUS_HELD
     session_over = bool(data.get(CYCLE_SESSION_OVER))
     _put_owner_cycle_session(session, owner, data)
+    if not data.get(CYCLE_USER_PAUSED):
+        # Position rule: only the musician's own Pause is resumed after a refresh / reopen.
+        # Anything else (playing, stopped, a finished final key) starts again at the first key
+        # and the card offers Play -- the established first-key rule.
+        rewind_key_cycle_to_first_key(session)
+        session_over = True
     session["_backing_autoplay"] = False
     session.pop(BACKING_KEY_CYCLE_CONTINUE_PLAY_KEY, None)
     session.pop("_kc_seamless_handoff", None)
@@ -3182,17 +3278,23 @@ def _put_owner_cycle_session(session: dict[str, Any], owner: str, data: dict[str
     bag = _sessions_bag(session)
     prev = bag.get(owner) if isinstance(bag.get(owner), dict) else {}
     data = dict(data)
+    # A cycle belongs to the song it was started for (see ensure_key_cycle_follows_active_song).
+    if owner in _SONG_CYCLE_OWNERS and not str(data.get(CYCLE_SONG_ID) or "").strip():
+        _sid = _active_song_cycle_identity(session)
+        if _sid:
+            data[CYCLE_SONG_ID] = _sid
     # Every position change gets the next sequence number, so the disk merge can
     # tell an intentional move (Previous, Stop's rewind) from a stale behind-write.
     # Ending or starting a playback session counts too: a stale write must not
-    # bring back a session Stop ended.
+    # bring back a session Stop ended. So does the musician's own Pause (the only
+    # hold a refresh resumes).
     try:
         _seq = int((prev or {}).get("position_seq") or 0)
     except (TypeError, ValueError):
         _seq = 0
     _session_over_changed = bool((prev or {}).get(CYCLE_SESSION_OVER)) != bool(
         data.get(CYCLE_SESSION_OVER)
-    )
+    ) or bool((prev or {}).get(CYCLE_USER_PAUSED)) != bool(data.get(CYCLE_USER_PAUSED))
     if (
         str((prev or {}).get("current_playback_key") or "")
         != str(data.get("current_playback_key") or "")
@@ -3227,6 +3329,10 @@ def _put_owner_cycle_session(session: dict[str, Any], owner: str, data: dict[str
 
 _CYCLE_DISK_SESSION_KEYS: tuple[str, ...] = (
     BACKING_KEY_CYCLE_SESSIONS_KEY,
+    # The song activation these settings belong to, written with them (a refresh is not a change).
+    "_kc_settings_activation_epoch",
+    "_active_song_activation_identity",
+    "_active_song_activation_epoch",
     "backing_key_cycle_enabled",
     BACKING_KEY_CYCLE_STEP_KEY,
     BACKING_KEY_CYCLE_DIRECTION_KEY,
@@ -3450,6 +3556,30 @@ def temporary_playback_key(session: dict[str, Any], owner: str = "") -> str:
     return str(data.get("current_playback_key") or "").strip()
 
 
+def key_cycle_live_sidebar(session: dict[str, Any]) -> dict[str, Any] | None:
+    """The key Key Cycling is playing now, for the sidebar's CURRENT readouts (user rule 2026-11-19).
+
+    While a cycle is On on Backing, the sidebar's Sounding Key and Capo Fret describe the live cycle
+    key (the console's labels), not the saved song: one current key everywhere. None otherwise -- the
+    sidebar then shows the saved-song context. Display only: the saved Practice Key and the fixed
+    guitar Shape Key are never written here. The page script keeps the marked readouts in step on
+    a key change made in the browser (see the console update).
+    """
+    try:
+        if str(session.get("studio_page") or "").strip().lower() != "backing":
+            return None
+        if not is_cycle_active(session):
+            return None
+        key = temporary_playback_key(session)
+        if not key:
+            return None
+        from key_cycle_console import _concert_display, _pretty, key_label
+
+        return {"key": key, "label": _pretty(key_label(_concert_display(session, key)))}
+    except Exception:
+        return None
+
+
 def effective_backing_playback_key(session: dict[str, Any], base_key: str = "") -> str:
     """Key used for Backing audio + temporary charts. Never writes Practice Key."""
     base = str(base_key or current_backing_owner_practice_key(session) or "C").strip() or "C"
@@ -3548,13 +3678,16 @@ def start_key_cycle(
     return data
 
 
-def pause_key_cycle(session: dict[str, Any]) -> dict[str, Any] | None:
+def pause_key_cycle(session: dict[str, Any], *, user: bool = False) -> dict[str, Any] | None:
+    """Hold the cycle. ``user``: the musician's own Pause -- the only hold a refresh resumes."""
     owner = resolve_cycle_owner(session)
     data = get_owner_cycle_session(session, owner)
     if not data or not data.get("enabled"):
         return data
     data = dict(data)
     data["status"] = STATUS_HELD
+    if user:
+        data[CYCLE_USER_PAUSED] = True
     _put_owner_cycle_session(session, owner, data)
     session["_kc_player_cmd_epoch"] = int(session.get("_kc_player_cmd_epoch") or 0) + 1
     try:
@@ -3595,6 +3728,7 @@ def resume_key_cycle(session: dict[str, Any]) -> dict[str, Any] | None:
     data = dict(data)
     data["status"] = STATUS_RUNNING
     data.pop(CYCLE_SESSION_OVER, None)
+    data.pop(CYCLE_USER_PAUSED, None)
     _put_owner_cycle_session(session, owner, data)
     session["_kc_player_cmd_epoch"] = int(session.get("_kc_player_cmd_epoch") or 0) + 1
     try:
@@ -3673,6 +3807,7 @@ def arm_key_cycle_for_explicit_play(session: dict[str, Any]) -> dict[str, Any] |
         data["status"] = STATUS_RUNNING
         data["pass_id"] = int(data.get("pass_id") or 0) + 1
         data.pop(CYCLE_SESSION_OVER, None)
+        data.pop(CYCLE_USER_PAUSED, None)
         _put_owner_cycle_session(session, owner, data)
         try:
             promote_prepared_cycle_audio(
@@ -3770,6 +3905,7 @@ def rewind_key_cycle_to_first_key(session: dict[str, Any]) -> dict[str, Any] | N
     data["status"] = STATUS_HELD
     data["pending_pass_advance"] = False
     data[CYCLE_SESSION_OVER] = True
+    data.pop(CYCLE_USER_PAUSED, None)
     _put_owner_cycle_session(session, owner, data)
     if first and not _keys_equivalent(before, first) and not promote_prepared_cycle_audio(session, first):
         # The stopped key's take must not stand in for the first key: Play saw
@@ -3862,6 +3998,7 @@ def jump_key_cycle_to_key(
     data["pending_pass_advance"] = False
     data["pass_id"] = int(data.get("pass_id") or 0) + 1
     data.pop(CYCLE_SESSION_OVER, None)
+    data.pop(CYCLE_USER_PAUSED, None)
     _put_owner_cycle_session(session, owner, data)
     for flag in (
         "_kc_at_final_key",
@@ -4245,6 +4382,7 @@ def _step_owner_cycle(
     data["pending_pass_advance"] = False
     if status == STATUS_HELD and force:
         data["status"] = STATUS_RUNNING
+        data.pop(CYCLE_USER_PAUSED, None)
     if force:
         data.pop(CYCLE_SESSION_OVER, None)
     _put_owner_cycle_session(session, owner, data)
@@ -7533,6 +7671,17 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
                 put('.kc-console-next-capo', 'Fret ' + capos[nx]);
               }}
               put('.kc-console-position', String(ix + 1) + ' / ' + String(nC));
+              // The sidebar's CURRENT readouts (Sounding Key, Capo Fret) move with the console.
+              try {{
+                parentDoc.querySelectorAll('[data-kc-live="sounding"]').forEach((el) => {{
+                  if (sounds[ix]) el.textContent = String(sounds[ix]);
+                }});
+                if (capos.length === nC && capos[ix] !== '') {{
+                  parentDoc.querySelectorAll('[data-kc-live="capo"]').forEach((el) => {{
+                    el.textContent = String(capos[ix]);
+                  }});
+                }}
+              }} catch (eSide) {{}}
               try {{
                 const ring = bar.querySelector('.kc-ring');
                 if (ring) ring.style.setProperty('--kc-p', String((100 * (ix + 1)) / nC) + '%');
@@ -14414,7 +14563,7 @@ def _hold_after_paused_navigation(session: dict[str, Any]) -> None:
     """
     from backing_transport_intent import pause_playback
 
-    pause_key_cycle(session)
+    pause_key_cycle(session, user=True)
     pause_playback(session, reason="key_cycle_nav_paused")
 
 
@@ -14924,7 +15073,7 @@ def _toggle_key_cycle_pause_resume(session: dict[str, Any]) -> None:
         resume_key_cycle(session)
     else:
         pause_playback(session, reason="key_cycle_pause")
-        pause_key_cycle(session)
+        pause_key_cycle(session, user=True)
 
 
 def _stop_key_cycle_from_button(session: dict[str, Any]) -> None:
@@ -15381,6 +15530,11 @@ __all__ = [
     "FOLLOW_TIMELINE_SPACE_CONCERT",
     "FOLLOW_TIMELINE_SPACE_DISPLAY",
     "normalize_key_cycle_after_browser_restore",
+    "ensure_key_cycle_follows_active_song",
+    "key_cycle_live_sidebar",
+    "CYCLE_USER_PAUSED",
+    "CYCLE_SONG_ID",
+    "KC_SETTINGS_ACTIVATION_EPOCH_KEY",
     "stash_audible_arrangement_after_generate",
     "current_backing_owner_practice_key",
     "cycle_chart_mode",

@@ -676,6 +676,11 @@ _PERSIST_KEYS: tuple[str, ...] = (
     "_backing_play_session",
     "_backing_play_session_expired",
     "_backing_current_bpm_lock",
+    # Song activation epoch (active_song_transition): a refresh is not a song change.
+    "_active_song_activation_identity",
+    "_active_song_activation_epoch",
+    # Key Cycling settings belong to one song activation (reset to defaults on a new one).
+    "_kc_settings_activation_epoch",
     # Key Cycle Practice — refresh restores On/Off, prefs, position, held (not CONTINUE_PLAY).
     "_backing_key_cycle_sessions",
     "backing_key_cycle_enabled",

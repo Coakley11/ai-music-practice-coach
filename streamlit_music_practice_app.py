@@ -16003,6 +16003,14 @@ except ImportError:
     pass
 _studio_page = ensure_studio_page(st.session_state)
 try:
+    # Once per run, on every page: a real active-song change starts a new activation (temporary
+    # playback settings reset to defaults); page visits and reruns do not.
+    from active_song_transition import note_active_song_activation as _note_song_activation
+
+    _note_song_activation(st.session_state)
+except Exception:
+    pass
+try:
     # One line per run, on EVERY page: a draft that disappears while the musician is on another
     # page is invisible to a trace that only fires on the Multitrack branch. (Env-gated.)
     from multitrack_draft_trace import note as _mt_draft_note_run
@@ -21649,8 +21657,13 @@ elif _studio_page == "backing":
     # Browser refresh restores cycle key/settings from disk but must not
     # autoplay. Hold at the start of the current key's pass until Resume.
     try:
-        from backing_key_cycle import normalize_key_cycle_after_browser_restore
+        from backing_key_cycle import (
+            ensure_key_cycle_follows_active_song,
+            normalize_key_cycle_after_browser_restore,
+        )
 
+        # Another song never inherits a cycle position (a new cycle from its own first key).
+        ensure_key_cycle_follows_active_song(st.session_state)
         normalize_key_cycle_after_browser_restore(st.session_state)
     except Exception:
         pass
