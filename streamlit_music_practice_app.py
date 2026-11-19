@@ -1506,6 +1506,14 @@ def _activate_karaoke_entry(entry: dict | None, *, apply_entry_key: bool = True)
     pick = str(row.get("pick_key") or "").strip()
     if not pick:
         return
+    # During a set the Backing cache IS the Now Singing take. A Now Editing change dropping it
+    # left the set with no take: back on Backing the Karaoke panel was gone ("Press Play Backing
+    # Track to generate and play") while the set said Song 1 of 3. Outside a set, unchanged.
+    _invalidate = (
+        (lambda _st: None)
+        if km.is_voice_mode(st.session_state) and km.is_karaoke_session_active(st.session_state)
+        else invalidate_backing_cache
+    )
     st.session_state[km.EXPLICIT_GLOBAL_CHANGE_KEY] = True
     try:
         if not pick.startswith(("custom::", "composition::")):
@@ -1538,7 +1546,7 @@ def _activate_karaoke_entry(entry: dict | None, *, apply_entry_key: bool = True)
                 pick,
                 SONG_PICKER_CATALOG,
                 song_library=SONG_LIBRARY,
-                invalidate_backing=invalidate_backing_cache,
+                invalidate_backing=_invalidate,
                 origin="user",
             )
     except Exception:
@@ -1572,7 +1580,7 @@ def _activate_karaoke_entry(entry: dict | None, *, apply_entry_key: bool = True)
                     selected_song=_sel,
                     original_key=str(_sel.get("key") or "").strip(),
                     display_key=_entry_key or str(st.session_state.get("display_key") or ""),
-                    invalidate_backing=invalidate_backing_cache,
+                    invalidate_backing=_invalidate,
                     reason="karaoke_selection",
                 )
         except Exception:
@@ -1580,7 +1588,7 @@ def _activate_karaoke_entry(entry: dict | None, *, apply_entry_key: bool = True)
     entry_id = str(row.get("entry_id") or "")
     st.session_state[km.KARAOKE_EDITING_PICK_KEY] = pick
     st.session_state[km.KARAOKE_EDITING_ENTRY_ID_KEY] = entry_id
-    invalidate_backing_cache(st)
+    _invalidate(st)
 
 
 # === DEFERRED MULTITRACK PROJECT KEY ==========================================
@@ -6577,7 +6585,6 @@ def live_follow_along_component_html(
         try {{
           const top = window.top;
           if (top.__karaokePanelShownTake === KARAOKE_TAKE_TOKEN) return;
-          if (top.document.body.getAttribute("data-karaoke-session") !== "true") return;
           if (leadSheetOpenOnPage()) {{ top.__karaokePanelShownTake = KARAOKE_TAKE_TOKEN; return; }}
           const el = document.getElementById("karaoke-lyric-panel") || document.getElementById("live-chord");
           if (el && top.__lsFollow && top.__lsFollow.request
@@ -21868,14 +21875,29 @@ elif _studio_page == "backing":
         pass
     st.session_state.pop("_active_bpm_sync_id", None)
     st.session_state.pop("_backing_trace_sync_id", None)
+    # During a Voice set this page plays Now Singing, so its source identity is the SUNG entry's.
+    # It took is_custom from the song being EDITED: with Trial Song (Custom) as Now Editing while
+    # Blackbird was sung, the id became a Custom one, Backing found no presentation for it and hid
+    # the player and the Karaoke panel mid-set ("Press Play Backing Track to generate and play").
+    _kr_sync_pick = km.effective_catalog_pick_key(st.session_state)
+    _kr_sync_set = bool(km.is_voice_mode(st.session_state) and km.is_karaoke_session_active(st.session_state))
+    if _kr_sync_set:
+        _kr_sync_custom = _kr_sync_pick.startswith("custom::")
+        _kr_sync_entry = km.current_session_entry(st.session_state) or {}
+        _kr_sync_name = str(_kr_sync_entry.get("title") or "") if _kr_sync_custom else ""
+        _kr_sync_rev = _kr_sync_pick.removeprefix("custom::") if _kr_sync_custom else ""
+    else:
+        _kr_sync_custom = cpl_session_is_active(st.session_state)
+        _kr_sync_name = str(_cpl_active.get("name", "") if _cpl_active else "")
+        _kr_sync_rev = str(_cpl_active.get("id", "") if _cpl_active else "")
     _song_bpm_sync_id = resolve_active_bpm_sync_id(
         st.session_state,
         song_title=str(song),
         song_artist=str(song_data.get("artist", "")),
-        custom_name=str(_cpl_active.get("name", "") if _cpl_active else ""),
-        custom_revision=str(_cpl_active.get("id", "") if _cpl_active else ""),
-        is_custom=cpl_session_is_active(st.session_state),
-        pick_key=km.effective_catalog_pick_key(st.session_state),
+        custom_name=_kr_sync_name,
+        custom_revision=_kr_sync_rev,
+        is_custom=_kr_sync_custom,
+        pick_key=_kr_sync_pick,
     )
     _creative_backing_ctx = None
     try:
@@ -23765,6 +23787,14 @@ elif _studio_page == "backing":
             song_data=song_data,
             active_song_title=str(song_data.get("title") or song),
             on_open_editor=_open_lyrics_editor_from_backing,
+            # Custom songs have no lyrics editor yet (the app's own help says so): say it plainly
+            # rather than open a page with nothing to edit.
+            editor_unavailable_note=(
+                "Custom songs don't have a lyrics editor yet, so there is nothing to open for this one. "
+                "Catalog songs use Lyrics & Cues on Songs; Composition songs use Composition Studio."
+                if str(st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").startswith("custom::")
+                else ""
+            ),
         )
 
     def _open_setlist_lyrics_editor(pick_key: str, entry_id: str) -> None:

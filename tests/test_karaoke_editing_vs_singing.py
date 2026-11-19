@@ -159,7 +159,9 @@ class SetStartBringsThePanelIntoView(unittest.TestCase):
         js = _APP[_APP.index("function bringKaraokePanelIntoView()"):]
         js = js[: js.index("function frameInView()")]
         self.assertIn("__karaokePanelShownTake === KARAOKE_TAKE_TOKEN", js)
-        self.assertIn('getAttribute("data-karaoke-session") !== "true"', js)
+        # The token itself is the set gate (empty outside a set): the page attribute it used to
+        # check is not set on Backing (measured null), which silently skipped every request.
+        self.assertNotIn("data-karaoke-session", js)
         self.assertIn("if (leadSheetOpenOnPage())", js)
         self.assertIn('window.top.__lsFollow.request("karaoke-lyrics", el', js)
         self.assertIn('document.getElementById("karaoke-lyric-panel")', js)
@@ -170,6 +172,95 @@ class SetStartBringsThePanelIntoView(unittest.TestCase):
         block = _APP[_APP.index("    if (KARAOKE_HOLD) {{"):]
         block = block[: block.index("    }}")]
         self.assertIn("bringKaraokePanelIntoView();", block)
+
+
+class NowEditingKeepsTheSungTake(unittest.TestCase):
+    def test_a_mid_set_now_editing_change_does_not_drop_the_backing_take(self) -> None:
+        """Measured: a mid-set setlist tap cleared the Backing cache - which during a set holds the
+        Now Singing take - and Backing came back with no Karaoke panel and "Press Play"."""
+        fn = _APP[_APP.index("def _activate_karaoke_entry("):]
+        fn = fn[: fn.index("\n# === ")]
+        self.assertIn("km.is_karaoke_session_active(st.session_state)", fn)
+        self.assertIn("(lambda _st: None)", fn)
+        self.assertNotIn("invalidate_backing=invalidate_backing_cache", fn)
+        self.assertNotIn("    invalidate_backing_cache(st)", fn)
+
+
+class SungTakeSurvivesNowEditingChangesAndTheDebtIsPaid(unittest.TestCase):
+    def _set_running_on_blackbird(self):
+        import karaoke_mode as km
+
+        state: dict = {"instrument": "Voice", "karaoke_mode_instrument": "Voice"}
+        km.add_to_queue(state, "RockBlackbird — The Beatles", practice_key="E", title="Blackbird")
+        km.add_to_queue(state, "custom::trial-song-1", practice_key="D", title="Trial Song")
+        km.start_session(state)
+        state["_last_backing_wav"] = b"RIFF-blackbird-E"
+        state["_last_backing_signature"] = "blackbird|E"
+        return km, state
+
+    def test_a_now_editing_key_change_keeps_the_sung_take(self) -> None:
+        from songs.key_state import BACKING_NEEDS_REGEN, _karaoke_spares_sung_take
+
+        km, state = self._set_running_on_blackbird()
+        self.assertTrue(km.is_voice_mode(state) and km.is_karaoke_session_active(state))
+        # Trial Song (Custom D) becomes Now Editing: both shared PK sites ask this first.
+        self.assertTrue(_karaoke_spares_sung_take(state))
+        self.assertEqual(state["_last_backing_wav"], b"RIFF-blackbird-E")
+        self.assertTrue(state.get(km.KARAOKE_EDIT_REGEN_OWED_KEY))
+        self.assertFalse(state.get(BACKING_NEEDS_REGEN))
+
+    def test_end_set_pays_it_so_backing_regenerates_for_the_edited_song(self) -> None:
+        from songs.key_state import BACKING_NEEDS_REGEN, _karaoke_spares_sung_take
+
+        km, state = self._set_running_on_blackbird()
+        _karaoke_spares_sung_take(state)
+        km.stop_session(state)
+        self.assertNotIn("_last_backing_wav", state)
+        self.assertNotIn("_last_backing_signature", state)
+        self.assertTrue(state.get(BACKING_NEEDS_REGEN))
+        self.assertNotIn(km.KARAOKE_EDIT_REGEN_OWED_KEY, state)
+
+    def test_outside_a_set_nothing_is_spared(self) -> None:
+        import karaoke_mode as km
+        from songs.key_state import _karaoke_spares_sung_take
+
+        state: dict = {"instrument": "Voice", "_last_backing_wav": b"x"}
+        self.assertFalse(_karaoke_spares_sung_take(state))
+        self.assertNotIn(km.KARAOKE_EDIT_REGEN_OWED_KEY, state)
+
+    def test_end_set_without_a_spared_change_leaves_backing_alone(self) -> None:
+        from songs.key_state import BACKING_NEEDS_REGEN
+
+        km, state = self._set_running_on_blackbird()
+        km.stop_session(state)
+        self.assertEqual(state.get("_last_backing_wav"), b"RIFF-blackbird-E")
+        self.assertFalse(state.get(BACKING_NEEDS_REGEN))
+
+    def test_both_shared_sites_ask_before_invalidating(self) -> None:
+        src = (_ROOT / "songs" / "key_state.py").read_text(encoding="utf-8")
+        self.assertEqual(src.count("if not _karaoke_spares_sung_take(st.session_state):"), 2)
+
+
+class BackingFollowsTheSungEntryDuringASet(unittest.TestCase):
+    def test_the_backing_source_identity_is_the_sung_entrys(self) -> None:
+        """Measured: with Trial Song (Custom) as Now Editing while Blackbird was sung, the Backing
+        source id was built as a Custom one, so Backing found no presentation and hid the player."""
+        block = _APP[_APP.index("_kr_sync_pick = km.effective_catalog_pick_key(st.session_state)"):]
+        block = block[: block.index("_creative_backing_ctx = None")]
+        self.assertIn('_kr_sync_custom = _kr_sync_pick.startswith("custom::")', block)
+        self.assertIn("is_custom=_kr_sync_custom", block)
+        self.assertIn("pick_key=_kr_sync_pick", block)
+        # Outside a set it is exactly what it was.
+        self.assertIn("_kr_sync_custom = cpl_session_is_active(st.session_state)", block)
+
+
+class CustomSongsSayThereIsNoLyricsEditor(unittest.TestCase):
+    def test_the_prompt_says_so_instead_of_a_dead_button(self) -> None:
+        ui = (_ROOT / "karaoke_ui.py").read_text(encoding="utf-8")
+        fn = ui[ui.index("def render_karaoke_missing_lyrics_cta("):]
+        fn = fn[: fn.index("\ndef ")]
+        self.assertLess(fn.index("if editor_unavailable_note:"), fn.index('key="karaoke_open_lyrics_editor"'))
+        self.assertIn('if str(st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").startswith("custom::")', _APP)
 
 
 class SetLevelLeadSheetChoiceIsSetScoped(unittest.TestCase):

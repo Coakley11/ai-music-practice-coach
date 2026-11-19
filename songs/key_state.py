@@ -755,6 +755,16 @@ def invalidate_backing_cache(session_or_st: Any) -> None:
 
 
 
+def _karaoke_spares_sung_take(session: Any) -> bool:
+    """A Karaoke set's Backing take belongs to Now Singing: Now Editing key changes leave it alone."""
+    try:
+        import karaoke_mode as km
+
+        return km.now_editing_change_spares_sung_take(session)
+    except Exception:
+        return False
+
+
 def _request_normal_key_rebuild_if_playing(session: Any) -> None:
     """Continue an authorized normal Backing performance in its newly saved key."""
     from backing_transport_intent import playback_allowed
@@ -1763,7 +1773,8 @@ def apply_display_key_for_active_song(
             pass
         _apply_display_key_before_widget(st, target, source="active_song_change")
         st.session_state[LAST_DISPLAY_KEY] = target
-        invalidate_backing_cache(st)
+        if not _karaoke_spares_sung_take(st.session_state):
+            invalidate_backing_cache(st)
         st.session_state[BACKING_NEEDS_REGEN] = False
         try:
             from practice_key_mode import is_fixed_practice_key_mode
@@ -2182,8 +2193,9 @@ def note_display_key_change(st: Any, display_key: str) -> bool:
                 pass
     except Exception:
         pass
-    invalidate_backing_cache(st)
-    st.session_state[BACKING_NEEDS_REGEN] = True
+    if not _karaoke_spares_sung_take(st.session_state):
+        invalidate_backing_cache(st)
+        st.session_state[BACKING_NEEDS_REGEN] = True
     _request_normal_key_rebuild_if_playing(st.session_state)
     from custom_progression_lab import on_global_display_key_change
 

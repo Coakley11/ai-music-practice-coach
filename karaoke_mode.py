@@ -1367,6 +1367,46 @@ def _activate_entry_at(session_state: Any, index: int) -> str | None:
     return str(entry.get("pick_key") or "") or None
 
 
+#: Set when a Now Editing change during a set left the Backing take alone (it is the Now Singing
+#: take). Paid at the end of the set: Backing is invalidated so it regenerates for the edited song.
+KARAOKE_EDIT_REGEN_OWED_KEY = "_karaoke_edit_regen_owed"
+
+
+def now_editing_change_spares_sung_take(session_state: Any) -> bool:
+    """During a Voice Karaoke set the Backing take IS the Now Singing take. A Now Editing song or
+    Practice Key change must not drop it - measured: a mid-set tap on Trial Song cleared it and
+    Backing came back with no Karaoke panel and "Press Play" on song 1 of 3. True means: skip the
+    Backing invalidation (only that); the debt is recorded and paid by ``stop_session``. Retune and
+    advance clear the take themselves, so they never needed this invalidation."""
+    try:
+        if not (is_voice_mode(session_state) and is_karaoke_session_active(session_state)):
+            return False
+        session_state[KARAOKE_EDIT_REGEN_OWED_KEY] = True
+        return True
+    except Exception:
+        return False
+
+
+def _pay_edit_regen_owed(session_state: Any) -> None:
+    """End of set: if an editing change was spared, Backing now regenerates for the edited song."""
+    try:
+        owed = session_state.pop(KARAOKE_EDIT_REGEN_OWED_KEY, None)
+    except Exception:
+        owed = None
+    if not owed:
+        return
+    try:
+        from songs.key_state import BACKING_NEEDS_REGEN, invalidate_backing_cache
+
+        for key in ("_last_backing_wav", "_last_backing_wav_b64", "_last_backing_wav_path",
+                    "_last_backing_signature", "_last_backing_timeline"):
+            session_state.pop(key, None)
+        invalidate_backing_cache(session_state)
+        session_state[BACKING_NEEDS_REGEN] = True
+    except Exception:
+        pass
+
+
 def _backing_set_scope_hook(name: str, session_state: Any) -> None:
     """Backing's set-scoped Playback Scope layer (backing_track_state): snapshot the musician's
     scope when a set starts, give it back when the set ends, so a mid-song "Intro only" stays a
@@ -1432,6 +1472,7 @@ def stop_session(session_state: Any) -> None:
     clear_performance_keys(session_state)
     session_state[KARAOKE_SESSION_ACTIVE_KEY] = False
     session_state.pop(KARAOKE_SET_LEAD_SHEET_OPEN_KEY, None)
+    _pay_edit_regen_owed(session_state)
     _backing_set_scope_hook("restore_pre_set_scope", session_state)
     session_state.pop(KARAOKE_ENTRY_PLAYS_LEFT_KEY, None)
     session_state.pop(KARAOKE_SONG_ENDED_KEY, None)
