@@ -685,6 +685,37 @@ body[data-studio-page="composer"] .block-container {
 .composer-suggestion-card.is-active h4 {
   color: #1d4ed8;
 }
+/* Melody idea cards: the keyed wrapper is the card (title + staff + controls); the header inside it is borderless.
+   ACTIVE (blue) and PREVIEWING (amber) frames follow the header's markers and are mutually exclusive. */
+[class*="st-key-composer_mel_card_"] {
+  background: #ffffff;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  border-radius: 12px;
+  padding: 0.6rem 0.75rem 0.55rem;
+  margin-bottom: 0.6rem;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04);
+  gap: 0.45rem;
+  box-sizing: border-box;
+}
+[class*="st-key-composer_mel_card_"] .composer-suggestion-card {
+  border: none !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+  margin: 0 !important;
+}
+[class*="st-key-composer_mel_card_"]:has([data-composer-active-melody="1"]) {
+  border: 2px solid #2563eb;
+  background: linear-gradient(180deg, #eff6ff 0%, #ffffff 120px);
+  box-shadow: 0 4px 14px rgba(37, 99, 235, 0.12);
+}
+[class*="st-key-composer_mel_card_"]:has([data-composer-previewing="1"]) {
+  border: 2px solid #f59e0b;
+  box-shadow: 0 4px 14px rgba(245, 158, 11, 0.14);
+}
+@media (max-width: 480px) {
+  [class*="st-key-composer_mel_card_"] { padding: 0.5rem 0.5rem 0.45rem; }
+}
 @media (max-width: 640px) {
   [class*="st-key-composer_melody_repeats_row_"] [data-testid="stHorizontalBlock"] {
     flex-direction: row !important;
@@ -4044,108 +4075,111 @@ def _render_melody_concept_card(
     # Match Chords active marker so Streamlit keeps the attribute and QA can find it.
     active_attr = ' data-composer-active="1" data-composer-active-melody="1"' if is_active else ""
 
-    # Header is filled after the Preview button below is handled, so the card that is being auditioned in THIS run is
-    # labelled "Previewing" (the Preview click runs after the header would otherwise already be drawn).
-    header_box = st.empty()
-    # ONE score per candidate.  The score lives in a placeholder rendered above the Preview
-    # control; once this candidate's preview is armed the placeholder shows the *same* score
-    # as the synced (highlighting) version instead of a second copy underneath.
-    concept_slot = f"melody:{section_id}:{cid}"
-    chord_syms = expanded_section_chords(doc, section_id) if chords else []
-    score_box = st.container()
-    p1, p2 = st.columns(2)
-    with p1:
-        preview_label = "▶ Preview with chords" if chords else "▶ Preview melody"
-        if st.button(preview_label, key=f"{prefix}_preview_{cid}", use_container_width=True):
-            result = play_composer_preview(
-                session_state,
-                doc,
-                section_id=section_id,
-                include_melody=True,
-                melody_override=events or None,
-                loops=1,
-                melody_gain=float(session_state.get("composer_melody_mix_gain") or 0.45),
-                backing_gain=float(session_state.get("composer_backing_mix_gain") or 0.85),
-                chord_override=list(chord_syms),
-                slot=concept_slot,
-                label=(
-                    f"Playing melody + chords · {name}"
-                    if chords
-                    else f"Playing melody · {name}"
-                ),
-            )
-            if not result.get("ok"):
-                st.warning(str(result.get("reason") or "Could not generate preview."))
-    previewing = (
-        not is_active
-        and composer_preview_slot(session_state) == concept_slot
-        and bool(session_state.get(COMPOSER_PREVIEW_WAV_KEY))
-    )
-    preview_badge = '<span class="composer-preview-badge">Previewing</span>' if previewing else ""
-    preview_attr = ' data-composer-previewing="1"' if previewing else ""
-    header_box.markdown(
-        f"""
-<div class="{card_class}"{active_attr}{preview_attr}>
-  <h4>{html.escape(name)}{badge}{preview_badge}</h4>
-  {"" if is_active else f'<p class="composer-suggestion-why">{html.escape(contour)}</p>'}
-</div>
-        """,
-        unsafe_allow_html=True,
-    )
-    with score_box:
-        mounted = False
-        if events:
-            _align = get_alignment(sec) if is_active else None
-            mounted = _attach_synced_score_preview(
-                session_state,
-                doc,
-                slot=concept_slot,
-                events=events,
-                chord_syms=chord_syms or None,
-                caption="Follow the highlighted note and chord",
-                dom_id=f"mel_{cid[:16]}",
-                lyrics_alignment=_align if (_align and str(_align.get("status") or "") != "unaligned") else None,
-                transport="custom",
-            )
-        if events and not mounted:
-            n_ev = len(events)
-            staff_h = 220 if n_ev <= 12 else (260 if n_ev <= 24 else 300)
-            _render_melody_staff(
-                events,
-                key=str(pg.get("key_center") or "C"),
-                meter=str(pg.get("time_signature") or "4/4"),
-                bpm=int(pg.get("bpm") or 96),
-                title="",  # the card's <h4> already names the idea; avoid a second title
-                height=staff_h,
-                chords=chords,
-                lyrics_text=lyrics_text if is_active else "",
-            )
-        elif not events:
-            _attach_synced_score_preview(
-                session_state, doc, slot=concept_slot, events=None,
-                chord_syms=chord_syms or None, caption="Preview", dom_id=f"mel_{cid[:16]}",
-            )
-    with p2:
-        if is_active:
-            st.caption("In use — preview other ideas freely.")
-        elif st.button("Use this melody", key=f"{prefix}_use_{cid}", type="primary", use_container_width=True):
-            if events:
-                apply_melody_events(
+    # The whole idea (title, staff, Preview / Use this melody) is ONE bordered card: the header box alone used to carry the
+    # border, so on desktop the ACTIVE frame held only the title with the staff and buttons outside it.
+    with st.container(key=f"composer_mel_card_{prefix}_{cid}"):
+        # Header is filled after the Preview button below is handled, so the card that is being auditioned in THIS run is
+        # labelled "Previewing" (the Preview click runs after the header would otherwise already be drawn).
+        header_box = st.empty()
+        # ONE score per candidate.  The score lives in a placeholder rendered above the Preview
+        # control; once this candidate's preview is armed the placeholder shows the *same* score
+        # as the synced (highlighting) version instead of a second copy underneath.
+        concept_slot = f"melody:{section_id}:{cid}"
+        chord_syms = expanded_section_chords(doc, section_id) if chords else []
+        score_box = st.container()
+        p1, p2 = st.columns(2)
+        with p1:
+            preview_label = "▶ Preview with chords" if chords else "▶ Preview melody"
+            if st.button(preview_label, key=f"{prefix}_preview_{cid}", use_container_width=True):
+                result = play_composer_preview(
+                    session_state,
                     doc,
-                    section_id,
-                    events,
-                    concept=concept,
-                    replace=True,
+                    section_id=section_id,
+                    include_melody=True,
+                    melody_override=events or None,
+                    loops=1,
+                    melody_gain=float(session_state.get("composer_melody_mix_gain") or 0.45),
+                    backing_gain=float(session_state.get("composer_backing_mix_gain") or 0.85),
+                    chord_override=list(chord_syms),
+                    slot=concept_slot,
+                    label=(
+                        f"Playing melody + chords · {name}"
+                        if chords
+                        else f"Playing melody · {name}"
+                    ),
                 )
-            else:
-                apply_melody_concept(doc, section_id, concept)
-            session_state[f"composer_melody_active_source_{section_id}"] = cid
-            session_state[f"composer_melody_just_accepted_{section_id}"] = True
-            # Reset widget so repeats control seeds from the newly accepted pattern.
-            session_state.pop(f"composer_melody_repeats_{section_id}", None)
-            invalidate_composer_preview(session_state)
-            _save_doc(session_state, doc)
-            st.rerun()
+                if not result.get("ok"):
+                    st.warning(str(result.get("reason") or "Could not generate preview."))
+        previewing = (
+            not is_active
+            and composer_preview_slot(session_state) == concept_slot
+            and bool(session_state.get(COMPOSER_PREVIEW_WAV_KEY))
+        )
+        preview_badge = '<span class="composer-preview-badge">Previewing</span>' if previewing else ""
+        preview_attr = ' data-composer-previewing="1"' if previewing else ""
+        header_box.markdown(
+            f"""
+    <div class="{card_class}"{active_attr}{preview_attr}>
+      <h4>{html.escape(name)}{badge}{preview_badge}</h4>
+      {"" if is_active else f'<p class="composer-suggestion-why">{html.escape(contour)}</p>'}
+    </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        with score_box:
+            mounted = False
+            if events:
+                _align = get_alignment(sec) if is_active else None
+                mounted = _attach_synced_score_preview(
+                    session_state,
+                    doc,
+                    slot=concept_slot,
+                    events=events,
+                    chord_syms=chord_syms or None,
+                    caption="Follow the highlighted note and chord",
+                    dom_id=f"mel_{cid[:16]}",
+                    lyrics_alignment=_align if (_align and str(_align.get("status") or "") != "unaligned") else None,
+                    transport="custom",
+                )
+            if events and not mounted:
+                n_ev = len(events)
+                staff_h = 220 if n_ev <= 12 else (260 if n_ev <= 24 else 300)
+                _render_melody_staff(
+                    events,
+                    key=str(pg.get("key_center") or "C"),
+                    meter=str(pg.get("time_signature") or "4/4"),
+                    bpm=int(pg.get("bpm") or 96),
+                    title="",  # the card's <h4> already names the idea; avoid a second title
+                    height=staff_h,
+                    chords=chords,
+                    lyrics_text=lyrics_text if is_active else "",
+                )
+            elif not events:
+                _attach_synced_score_preview(
+                    session_state, doc, slot=concept_slot, events=None,
+                    chord_syms=chord_syms or None, caption="Preview", dom_id=f"mel_{cid[:16]}",
+                )
+        with p2:
+            if is_active:
+                st.caption("In use — preview other ideas freely.")
+            elif st.button("Use this melody", key=f"{prefix}_use_{cid}", type="primary", use_container_width=True):
+                if events:
+                    apply_melody_events(
+                        doc,
+                        section_id,
+                        events,
+                        concept=concept,
+                        replace=True,
+                    )
+                else:
+                    apply_melody_concept(doc, section_id, concept)
+                session_state[f"composer_melody_active_source_{section_id}"] = cid
+                session_state[f"composer_melody_just_accepted_{section_id}"] = True
+                # Reset widget so repeats control seeds from the newly accepted pattern.
+                session_state.pop(f"composer_melody_repeats_{section_id}", None)
+                invalidate_composer_preview(session_state)
+                _save_doc(session_state, doc)
+                st.rerun()
 
 
 def _render_active_melody_phrase_editor(session_state: dict, doc: dict[str, Any], section_id: str) -> None:
