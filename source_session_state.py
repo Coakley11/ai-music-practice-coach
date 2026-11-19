@@ -99,6 +99,46 @@ def resolve_sbi_custom_practice_key(
     session: dict[str, Any],
     custom: dict[str, Any] | None = None,
 ) -> str:
+    """SBI Custom / Backing Practice Key. READ-only guard: a key of the other tonal family than the live song's
+    Original Key (stale Fm on a D-major song) is not honoured - the song's Original Key is returned instead."""
+    tok = _resolve_sbi_custom_practice_key_raw(session, custom)
+    if not tok:
+        return tok
+    for pick in _sbi_custom_candidate_picks(session, custom):
+        home = _live_custom_home_key(session, pick)
+        if home:
+            return tok if practice_key_fits_custom_song(session, pick, tok) else home
+    return tok
+
+
+def _sbi_custom_candidate_picks(session: dict[str, Any], custom: dict[str, Any] | None) -> list[str]:
+    picks: list[str] = []
+    for raw in (
+        (custom or {}).get("pick_key") if isinstance(custom, dict) else "",
+        session.get(SBI_CUSTOM_IDENTITY_PICK_KEY),
+        session.get("active_catalog_pick_key"),
+    ):
+        t = str(raw or "").strip()
+        if t.startswith("custom::") and t not in picks:
+            picks.append(t)
+    try:
+        from custom_progression_lab import CPL_ACTIVE_KEY
+        from songs.music_source import custom_pick_key_for
+
+        live = session.get(CPL_ACTIVE_KEY)
+        if isinstance(live, dict):
+            t = str(custom_pick_key_for(live) or "").strip()
+            if t.startswith("custom::") and t not in picks:
+                picks.append(t)
+    except Exception:
+        pass
+    return picks
+
+
+def _resolve_sbi_custom_practice_key_raw(
+    session: dict[str, Any],
+    custom: dict[str, Any] | None = None,
+) -> str:
     """Practice concert key for SBI Custom preview / sidebar.
 
     CASE A (Custom is also Global Active): current active Custom Practice Key.
@@ -436,6 +476,49 @@ def _known_custom_song_id(session: dict[str, Any], pick: str) -> str:
         if str(b.get("id") or "").strip() and str(b.get("name") or "").strip() == suffix
     }
     return next(iter(named)) if len(named) == 1 else ""
+
+
+def _live_custom_home_key(session: dict[str, Any], pick: str) -> str:
+    """Original Key of the LIVE Custom song a pick names ("" when the song cannot be proven live)."""
+    sid = _known_custom_song_id(session, pick)
+    if not sid:
+        return ""
+    try:
+        from custom_progression_lab import CPL_ACTIVE_KEY
+    except ImportError:
+        return ""
+    blobs: list[Any] = []
+    saved_lib = session.get("cpl_saved_progressions")
+    if isinstance(saved_lib, dict):
+        blobs.extend(saved_lib.values())
+    blobs.append(session.get(CPL_ACTIVE_KEY))
+    for b in blobs:  # the saved record first, then the live draft
+        if isinstance(b, dict) and str(b.get("id") or "").strip() == sid:
+            home = str(b.get("original_key_center") or b.get("original_key") or "").strip()
+            if home:
+                return home
+    return ""
+
+
+def practice_key_fits_custom_song(session: dict[str, Any], pick: str, key: str) -> bool:
+    """False only when ``key`` is a different tonal family (major/minor) than the LIVE Custom song's Original Key.
+
+    A READ-time check: it never writes, never edits override flags and never fabricates an explicit-edit marker.
+    Unknown / non-Custom / phantom picks and empty keys are not judged (True), so a legitimate key is never dropped on
+    a guess. Same-family transpositions (D major -> F or E-flat major) are always valid.
+    """
+    tok = str(key or "").strip()
+    if not tok or not str(pick or "").strip().startswith("custom::"):
+        return True
+    home = _live_custom_home_key(session, pick)
+    if not home:
+        return True
+    try:
+        from music_theory import key_is_minor
+
+        return bool(key_is_minor(tok)) == bool(key_is_minor(home))
+    except Exception:
+        return True
 
 
 def _same_custom_song(session: dict[str, Any], a: str, b: str) -> bool:
