@@ -1856,6 +1856,10 @@ def entry_jam_practice_key_authority_active(session: dict[str, Any]) -> bool:
     page = str(session.get("studio_page") or "").strip().lower()
     if page not in {"creative", "backing"}:
         return False
+    if page == "backing" and not _backing_plays_entry_jam(session):
+        # On Backing the jam owns the key only while Backing plays it (generated_backing_owns_left_panel_key
+        # above). Leftover Style Jam state -- its entry mode, its key -- must not take a song's key over.
+        return False
     entry = str(session.get("improv_entry_mode") or "").strip()
     if entry not in CREATIVE_MAJOR_JAM_MODES:
         try:
@@ -2727,6 +2731,17 @@ def _sidebar_key_options_including(session: dict[str, Any], key: str) -> list[st
     return options
 
 
+def _backing_plays_entry_jam(session: dict[str, Any]) -> bool:
+    """True when the Backing context is a Style Jam / Jam Session take (not a song)."""
+    try:
+        from backing_context import get_backing_context
+
+        ctx = get_backing_context(session)
+        return ctx is not None and str(getattr(ctx, "source", "") or "") == "entry_jam"
+    except Exception:
+        return False
+
+
 def is_creative_major_jam_active(session: dict[str, Any]) -> bool:
     """True when Style Jam or Jam Session Generator owns major-key context."""
     # A jam's working key only applies on Creative and on its own Backing. On
@@ -2764,6 +2779,11 @@ def is_creative_major_jam_active(session: dict[str, Any]) -> bool:
     entry = str(session.get("improv_entry_mode") or "").strip()
     page = str(session.get("studio_page") or "").strip().lower()
     if page in {"creative", "backing"} and entry in CREATIVE_MAJOR_JAM_MODES and tab in {"", "Entry & Jam"}:
+        # On Backing a jam owns the key only while Backing is playing that jam. A Style Jam used earlier leaves
+        # its entry mode behind; with a Catalog song on Backing that made the Guitar sidebar say "Sounding Key: C"
+        # (the jam's key) beside Shallow in G (user report 2026-11-18).
+        if page == "backing" and not _backing_plays_entry_jam(session):
+            return False
         return True
     try:
         from musical_context_authority import catalog_song_should_own_sidebar_practice_key, song_catalog_context_owns_practice_key

@@ -111,3 +111,53 @@ def test_capo_shape_mode_off_shows_the_sounding_key_and_no_shape_key():
     assert "<strong>Sounding Key:</strong> G" in text
     assert "Shape Key" not in text
     assert "Capo Fret" not in text
+
+
+def _shallow_on_backing(leftover_style_jam: bool) -> dict:
+    from song_catalog.catalog import load_song_catalog
+    from songs.music_source import begin_explicit_catalog_selection, ensure_song_picker_catalog, set_catalog_source
+    from songs.state import activate_active_song_by_pick_key
+
+    library, picker, _g, _r = load_song_catalog()
+    pick = next(d.get("pick_key") or f"{g}\x1f{l}" for g, s in picker.items() for l, d in s.items()
+                if l.startswith("Shallow "))
+    session: dict = {"studio_page": "picker", "instrument": "Guitar"}
+    ensure_song_picker_catalog(session, picker)
+    begin_explicit_catalog_selection(session)
+    session["active_catalog_pick_key"] = pick
+    set_catalog_source(session)
+    activate_active_song_by_pick_key(SimpleNamespace(session_state=session), pick, picker, song_library=library,
+                                     origin="user")
+    session["studio_page"] = "backing"
+    if leftover_style_jam:  # what a Style Jam in C used earlier leaves behind
+        session.update({"improv_entry_mode": "Style Jam Mode", "improv_intelligence_tab": "Entry & Jam",
+                        "improv_style_key": "C"})
+    return session
+
+
+@pytest.mark.parametrize("leftover", [False, True])
+def test_leftover_style_jam_state_does_not_take_a_songs_key_on_backing(monkeypatch, tmp_path, leftover):
+    """User screenshot 2026-11-18: Shallow in G on Backing, Guitar sidebar "Sounding Key: C". A Style Jam used
+    earlier left its entry mode and key behind, and the sidebar took the jam's key for the song's."""
+    monkeypatch.setenv("MUSIC_APP_DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.chdir(ROOT)
+    from creative_key_sync import entry_jam_practice_key_authority_active, is_creative_major_jam_active
+    from guitar_capo import live_capo_shape_source_id
+
+    s = _shallow_on_backing(leftover)
+    assert not is_creative_major_jam_active(s)
+    assert not entry_jam_practice_key_authority_active(s)
+    assert not live_capo_shape_source_id(s).startswith("generated::jam")
+
+
+def test_a_jam_playing_on_backing_still_owns_the_key(monkeypatch):
+    """The guard is about LEFTOVER state: while Backing plays the Style Jam, the jam's key is the key."""
+    import backing_context
+    from creative_key_sync import _backing_plays_entry_jam, is_creative_major_jam_active
+
+    monkeypatch.setattr(backing_context, "get_backing_context",
+                        lambda _s: SimpleNamespace(source="entry_jam", entry_mode="Style Jam Mode"))
+    s = {"studio_page": "backing", "improv_entry_mode": "Style Jam Mode", "improv_intelligence_tab": "Entry & Jam",
+         "improv_style_key": "C"}
+    assert _backing_plays_entry_jam(s)
+    assert is_creative_major_jam_active(s)
