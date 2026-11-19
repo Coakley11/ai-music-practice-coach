@@ -418,7 +418,8 @@ class TestCatalogBackingOverrides(unittest.TestCase):
         self.assertIn("Blues", str(session["backing_groove_style"]))
         self.assertEqual(session["backing_time_signature"], "3/4")
 
-    def test_leave_reenter_expires_ephemeral_overrides(self) -> None:
+    def test_leave_reenter_keeps_overrides_for_the_same_song(self) -> None:
+        """User spec 2026-11-19: leaving Backing with the same song active keeps its temporary BPM (was: expired)."""
         session = {
             "studio_page": "backing",
             "backing_track_bpm": 96,
@@ -440,7 +441,7 @@ class TestCatalogBackingOverrides(unittest.TestCase):
         expire_backing_play_session_on_page_exit(
             session, previous_page="backing", new_page="practice"
         )
-        self.assertFalse(backing_play_session_has_override(session, "bpm"))
+        self.assertTrue(backing_play_session_has_override(session, "bpm"))
 
 
 class TestLaunchIdOnSignatureChange(unittest.TestCase):
