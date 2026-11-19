@@ -185,6 +185,36 @@ class KaraokeSetLifecycle(unittest.TestCase):
         self.assertIn(kc.KC_PRE_KARAOKE_SET_KEY, kc._CYCLE_DISK_SESSION_KEYS)
         self.assertIn(kc.KC_PRE_KARAOKE_SET_KEY, mps._PERSIST_KEYS)
 
+    # 3b. leaving the Backing page during a set (e.g. back to the setlist) stops audio only
+    def test_a_page_leave_in_a_set_keeps_key_cycling_on_with_its_settings(self) -> None:
+        self._start_set()
+        self._choose(FOURTHS, "down", {"F#/Gb": "Gb"})
+        self._turn_on("D")
+        want = self._settings()
+        kc.end_key_cycle_on_page_leave(self.ss)
+        self.assertTrue(kc.is_cycle_active(self.ss))
+        self.assertTrue(self.ss.get("backing_key_cycle_enabled"))
+        self.assertNotEqual(self.ss.get("backing_key_cycle_enabled_ui"), "Off")
+        self.assertTrue(kc.get_owner_cycle_session(self.ss))  # the cycle sessions are not wiped
+        self.assertEqual(self._settings(), want)
+        self.assertEqual(kc.temporary_playback_key(self.ss), "D")  # held at its first key
+        self._run()  # back on Backing: the set's Key Cycling continues
+        self.assertTrue(kc.is_cycle_active(self.ss))
+        self.assertEqual(self._settings(), want)
+
+    def test_a_page_leave_in_a_set_with_key_cycling_off_leaves_it_off(self) -> None:
+        self._start_set()
+        self._choose(FOURTHS, "down")
+        kc.end_key_cycle_on_page_leave(self.ss)
+        self.assertFalse(kc.is_cycle_active(self.ss))
+        self.assertEqual(self._settings()[:2], (FOURTHS, "down"))
+
+    def test_a_page_leave_outside_a_set_still_turns_key_cycling_off(self) -> None:
+        self._turn_on("D")
+        kc.end_key_cycle_on_page_leave(self.ss)
+        self.assertFalse(kc.is_cycle_active(self.ss))
+        self.assertFalse(self.ss.get("backing_key_cycle_enabled"))
+
     # 4. outside a set nothing changes
     def test_outside_a_set_a_song_change_still_resets_to_defaults(self) -> None:
         self._choose(FOURTHS, "down")

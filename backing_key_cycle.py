@@ -4189,7 +4189,20 @@ def end_key_cycle_on_page_leave(session: dict[str, Any]) -> None:
 
     Interval, Direction and Key Spelling are kept: turning cycling On again, here or after coming back, reuses them.
     Semitone / Up and the default spellings apply only when nothing was ever chosen.
+
+    During a Karaoke Set (user rule 2026-11-19) a page leave only stops the audio, as the transport
+    Stop does: Key Cycling stays On (or Off) with its Interval / Direction / Key Spelling, and the
+    cycle holds at its first key. Leaving the page never silently changes the set's Key Cycling.
     """
+    if key_cycle_in_karaoke_set(session):
+        try:
+            if is_cycle_active(session):
+                hard_stop_key_cycle_audio(session)
+                rewind_key_cycle_to_first_key(session)
+        except Exception:
+            pass
+        clear_key_cycle_prepared_audio(session, stop_player=True)
+        return
     try:
         if is_cycle_active(session):
             stop_key_cycle(session)
