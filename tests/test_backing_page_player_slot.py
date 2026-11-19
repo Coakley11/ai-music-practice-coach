@@ -44,17 +44,25 @@ def test_play_hint_above_the_sheet_is_always_present() -> None:
     slot = 'with st.container(key="backing_leadsheet_play_hint_slot"):\n'
     assert APP.count(slot) == 1
     before, after = APP.split(slot, 1)
-    assert before.endswith("\n        ")
-    body = after.split("_karaoke_active", 1)[0]
-    # M4: the slot always holds exactly one caption line (a blank one while playing), so Pause / Resume never
-    # change its height and the on-page chart below does not jump; only the words follow the transport.
-    assert body.count("st.caption(") == 3
-    assert "if st.session_state.get(BACKING_AUTOPLAY, False):" in body
+    # Performance-first (2026-11-18): the hint line lives beside Close lead sheet, not in a row of its own above
+    # the sheet -- same always-present slot, one row less between the controls and the music.
+    assert before.endswith(" " * 12)
+    assert "with _ls_col_b:\n" in before[-900:]
+    body = after.split("_render_chord_tone_hints_sync()", 1)[0]
+    # The slot always holds exactly one caption line (a blank one while playing), so Pause / Resume never change
+    # its height and the on-page chart below does not jump; only the words follow the transport.
+    assert body.count("st.caption(") == 5
+    # The transport's one-line feedback lives here too, not in an info box above the sheet.
+    assert "elif _hint_feedback and _surface_owns_audio:" in body
+    assert "st.info(_play_feedback)" not in APP
+    assert "elif st.session_state.get(BACKING_AUTOPLAY, False) or not _surface_owns_audio:" in body
     assert 'elif _hint_intent == "paused":' in body
     assert "white-space:nowrap" in body
+    assert "min-height:38px" in body
     assert "▶ Play Backing Track on the song card plays the track with this chart." in body
-    # No second, unwrapped copy of the caption.
+    # No second, unwrapped copy of the caption, and no separate hint row any more.
     assert APP.count("▶ Play Backing Track on the song card plays the track with this chart.") == 1
+    assert "Live chord highlighting while the backing track plays." not in APP
 
 
 def test_sheet_opened_over_a_paused_take_takes_its_place() -> None:
