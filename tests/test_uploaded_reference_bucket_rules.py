@@ -70,12 +70,21 @@ class BucketRules(unittest.TestCase):
         self.tmp = tempfile.mkdtemp(prefix="um-bucket-")
         self._env = os.environ.get("MUSIC_APP_DATA_DIR")
         os.environ["MUSIC_APP_DATA_DIR"] = self.tmp
+        # The data root is fixed at import; every workspace path is built from this global at
+        # call time, so pointing it at the temp folder keeps the checkout's data/ untouched.
+        import suite_workspace
+
+        self._data_dir = suite_workspace.DATA_DIR
+        suite_workspace.DATA_DIR = Path(self.tmp)
         self.store = RuleStore()
         self._orig = (media_storage._cloud_storage_enabled, media_storage._service_storage_client)
         media_storage._cloud_storage_enabled = lambda: True
         media_storage._service_storage_client = lambda: Client(self.store)
 
     def tearDown(self):
+        import suite_workspace
+
+        suite_workspace.DATA_DIR = self._data_dir
         media_storage._cloud_storage_enabled, media_storage._service_storage_client = self._orig
         if self._env is None:
             os.environ.pop("MUSIC_APP_DATA_DIR", None)
