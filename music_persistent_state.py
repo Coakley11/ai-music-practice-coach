@@ -681,6 +681,8 @@ _PERSIST_KEYS: tuple[str, ...] = (
     "_active_song_activation_epoch",
     # Key Cycling settings belong to one song activation (reset to defaults on a new one).
     "_kc_settings_activation_epoch",
+    # Key Cycling as it was before a running Karaoke Set (restored at End Set).
+    "_kc_pre_karaoke_set",
     # Key Cycle Practice — refresh restores On/Off, prefs, position, held (not CONTINUE_PLAY).
     "_backing_key_cycle_sessions",
     "backing_key_cycle_enabled",

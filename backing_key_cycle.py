@@ -149,6 +149,7 @@ KEY_CYCLE_TOOLTIP = (
 KEY_CYCLE_PERSIST_KEYS: tuple[str, ...] = (
     BACKING_KEY_CYCLE_SESSIONS_KEY,
     "_kc_settings_activation_epoch",
+    "_kc_pre_karaoke_set",
     "backing_key_cycle_enabled",
     BACKING_KEY_CYCLE_STEP_KEY,
     BACKING_KEY_CYCLE_DIRECTION_KEY,
@@ -1248,6 +1249,11 @@ def ensure_key_cycle_follows_active_song(session: dict[str, Any]) -> bool:
         seen = session.get(KC_SETTINGS_ACTIVATION_EPOCH_KEY)
         new_activation = seen is not None and int(seen) != int(epoch)
         session[KC_SETTINGS_ACTIVATION_EPOCH_KEY] = int(epoch)
+        if key_cycle_in_karaoke_set(session):
+            # Karaoke Set exception (user rule 2026-11-19): a song change inside a running set keeps
+            # the set's Key Cycling (On/Off, Interval, Direction, Key Spelling); each entry restarts
+            # its own cycle (restart_key_cycle_for_entry). The activation is adopted silently above.
+            return False
 
         owner = resolve_cycle_owner(session)
         data = get_owner_cycle_session(session, owner) if owner in _SONG_CYCLE_OWNERS else None
@@ -3331,6 +3337,7 @@ _CYCLE_DISK_SESSION_KEYS: tuple[str, ...] = (
     BACKING_KEY_CYCLE_SESSIONS_KEY,
     # The song activation these settings belong to, written with them (a refresh is not a change).
     "_kc_settings_activation_epoch",
+    "_kc_pre_karaoke_set",
     "_active_song_activation_identity",
     "_active_song_activation_epoch",
     "backing_key_cycle_enabled",
@@ -4345,6 +4352,110 @@ def restart_key_cycle_for_entry(session: dict[str, Any], entry_key: str) -> dict
         extra={"entry_key": entry},
     )
     return data
+
+
+KC_PRE_KARAOKE_SET_KEY = "_kc_pre_karaoke_set"
+
+
+def key_cycle_in_karaoke_set(session: dict[str, Any]) -> bool:
+    """A Karaoke Set is running (Voice + an active set): its Key Cycling outlives song changes."""
+    try:
+        import karaoke_mode as km
+
+        return bool(km.is_voice_mode(session) and km.is_karaoke_session_active(session))
+    except Exception:
+        return False
+
+
+def _key_cycle_settings_snapshot(session: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "enabled": bool(is_cycle_active(session)),
+        "step": normalize_cycle_step_name(session.get(BACKING_KEY_CYCLE_STEP_KEY)) or CYCLE_STEP_SEMITONE,
+        "direction": "down" if str(session.get(BACKING_KEY_CYCLE_DIRECTION_KEY) or "up").lower() == "down" else "up",
+        "spelling": dict(spelling_prefs_from_session(session)),
+    }
+
+
+def _adopt_current_song_activation(session: dict[str, Any]) -> None:
+    """The settings now belong to the activation that is current: no reset on the next Backing run."""
+    try:
+        from active_song_transition import active_song_activation_epoch
+
+        session[KC_SETTINGS_ACTIVATION_EPOCH_KEY] = int(active_song_activation_epoch(session))
+    except Exception:
+        pass
+
+
+def key_cycle_karaoke_set_started(session: dict[str, Any]) -> bool:
+    """A Karaoke Set begins: remember the Key Cycling state from before it, then Key Cycling Off.
+
+    User rule 2026-11-19: a fresh set starts with Key Cycling Off; turned On during the set it stays
+    On (Interval / Direction / Key Spelling) for every later song until it is turned Off.
+    The snapshot is taken once per set: a second call while a set is already remembered keeps the
+    first (pre-set) state. Widget-safe: the Off/On control follows on its next render. Returns True
+    when a snapshot was taken.
+    """
+    if isinstance(session.get(KC_PRE_KARAOKE_SET_KEY), dict):
+        return False
+    session[KC_PRE_KARAOKE_SET_KEY] = _key_cycle_settings_snapshot(session)
+    try:
+        if is_cycle_active(session):
+            stop_key_cycle(session)
+        else:
+            session["backing_key_cycle_enabled"] = False
+            session["_key_cycle_force_ui_off"] = True
+    except Exception:
+        session["backing_key_cycle_enabled"] = False
+        session["_key_cycle_force_ui_off"] = True
+    try:
+        persist_key_cycle_position(session)
+    except Exception:
+        pass
+    return True
+
+
+def key_cycle_karaoke_set_ended(session: dict[str, Any]) -> bool:
+    """End Set: the set's Key Cycling ends with it; ordinary Backing gets its pre-set state back.
+
+    Interval / Direction / Key Spelling and On/Off are restored from the snapshot. A restored On
+    starts a new cycle at the current song's own first key, stopped (nothing autoplays; no set
+    position is inherited). Safe without a snapshot (Key Cycling is left Off). The current song
+    activation is adopted so the song-change reset does not undo the restore on the next run.
+    Returns True when a snapshot was restored.
+    """
+    snap = session.pop(KC_PRE_KARAOKE_SET_KEY, None)
+    try:
+        if is_cycle_active(session):
+            stop_key_cycle(session)
+    except Exception:
+        pass
+    session["backing_key_cycle_enabled"] = False
+    for k in ("_kc_at_final_key", "_kc_cycle_finished_final", "_kc_finished_cycle_id",
+              "_kc_completion_consumed", "_kc_last_playing_confirm"):
+        session.pop(k, None)
+    _adopt_current_song_activation(session)
+    restored = isinstance(snap, dict)
+    if restored:
+        step = normalize_cycle_step_name(snap.get("step")) or CYCLE_STEP_SEMITONE
+        direction = "down" if str(snap.get("direction") or "up").lower() == "down" else "up"
+        spelling = dict(default_spelling_prefs(), **(snap.get("spelling") or {}))
+        session[BACKING_KEY_CYCLE_STEP_KEY] = step
+        session[BACKING_KEY_CYCLE_DIRECTION_KEY] = direction
+        session[BACKING_KEY_SPELLING_PREFS_KEY] = spelling
+        interval = cycle_interval_for_step_name(step)
+        _queue_key_cycle_widget_seed(session, interval=interval, direction=direction)
+        if snap.get("enabled"):
+            try:
+                start_key_cycle(session, interval=interval, direction=direction, spelling_prefs=spelling)
+            except Exception:
+                pass
+    if not is_cycle_active(session):
+        session["_key_cycle_force_ui_off"] = True
+    try:
+        persist_key_cycle_position(session)
+    except Exception:
+        pass
+    return restored
 
 
 def seal_final_key_from_ack(session: dict[str, Any], ack: dict[str, Any]) -> bool:
@@ -15591,6 +15702,10 @@ def html_escape(text: str) -> str:
 
 
 __all__ = [
+    "KC_PRE_KARAOKE_SET_KEY",
+    "key_cycle_in_karaoke_set",
+    "key_cycle_karaoke_set_started",
+    "key_cycle_karaoke_set_ended",
     "BACKING_KEY_CYCLE_CONTINUE_PLAY_KEY",
     "BACKING_KEY_CYCLE_DIRECTION_KEY",
     "BACKING_KEY_CYCLE_PASS_FINISHED_KEY",
