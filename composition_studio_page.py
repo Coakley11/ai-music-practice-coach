@@ -1854,7 +1854,24 @@ def _attach_synced_score_preview(
         chord_roman_labels=chord_romans,
         transport=transport,
     )
+    _render_preview_close_button(session_state, slot=slot, dom_id=dom_id)
     return True
+
+
+def _render_preview_close_button(session_state: dict, *, slot: str, dom_id: str = "") -> bool:
+    """Close the mounted preview: unmount the player (audio stops) and forget the armed WAV.
+
+    Only the transient preview keys are cleared - never the composition document, accepted melody,
+    chords or lyrics. In-player Stop only stops and rewinds; this removes the player entirely.
+    """
+    from composition_preview import _safe_preview_key
+
+    key = f"composer_preview_close_{_safe_preview_key(slot)}_{_safe_preview_key(dom_id)}"[:120]
+    if st.button("✕ Close preview", key=key, help="Stop the audio and hide this preview"):
+        invalidate_composer_preview(session_state)
+        st.rerun()
+        return True
+    return False
 
 
 def _chord_row_lives_in_player(session_state: dict, slot: str, *, has_melody: bool) -> bool:
