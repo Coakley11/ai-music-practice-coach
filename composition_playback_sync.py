@@ -765,9 +765,11 @@ def mount_synced_score_playback(
         if abc_text:
             bars = max(1, str(abc_text).count("|") - 1)
             systems = -(-bars // 2)  # two measures per system on a phone
-            per_system = 165 if "\nw:" in str(abc_text) else 130
-            # caption + score + audio control
-            frame_height = 40 + systems * per_system + 80
+            # Measured (desktop + 390px): a 2-bar system with its chord row is ~95 px (~130 px with an aligned lyric
+            # line) and the transport row ~45 px. The old 130/165 + 80 left a ~150 px blank band above Close preview.
+            per_system = 140 if "\nw:" in str(abc_text) else 108
+            # caption + score + transport
+            frame_height = 40 + systems * per_system + 56
         elif str(bundle.get("mode") or "") == "chords":
             # Compact chord-chip row + transport (4 chips per phone row), no score.
             n_chords = len([s for s in (bundle.get("chord_spans") or []) if int(s.get("loop") or 0) == 0]) or 1

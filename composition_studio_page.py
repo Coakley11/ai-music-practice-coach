@@ -685,6 +685,32 @@ body[data-studio-page="composer"] .block-container {
 .composer-suggestion-card.is-active h4 {
   color: #1d4ed8;
 }
+@media (max-width: 640px) {
+  [class*="st-key-composer_melody_repeats_row_"] [data-testid="stHorizontalBlock"] {
+    flex-direction: row !important;
+    flex-wrap: nowrap !important;
+    gap: 0.4rem !important;
+  }
+  [class*="st-key-composer_melody_repeats_row_"] [data-testid="stColumn"],
+  [class*="st-key-composer_melody_repeats_row_"] [data-testid="column"] {
+    flex: 1 1 0 !important;
+    min-width: 0 !important;
+    width: auto !important;
+  }
+}
+.composer-preview-badge {
+  display: inline-block;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #92400e;
+  background: #fef3c7;
+  border-radius: 999px;
+  padding: 0.12rem 0.55rem;
+  margin-left: 0.35rem;
+  vertical-align: middle;
+}
 .composer-active-badge {
   display: inline-block;
   font-size: 0.72rem;
@@ -2948,7 +2974,8 @@ def _render_melody_staff(
         lyrics_text=lyrics_text,
         lyrics_alignment=lyrics_alignment,
     )
-    st.markdown('<div class="composer-score-wrap">', unsafe_allow_html=True)
+    # (No split '<div class="composer-score-wrap">' ... '</div>' markdown pair: Streamlit renders each call as its own
+    # element, so the opening div drew an empty bordered bar above every score instead of wrapping it.)
     if score["has_melody"]:
         try:
             import streamlit.components.v1 as components
@@ -2974,7 +3001,6 @@ def _render_melody_staff(
             f'<div class="composer-score-lyrics">{html.escape(str(score["lyrics_text"]))}</div>',
             unsafe_allow_html=True,
         )
-    st.markdown("</div>", unsafe_allow_html=True)
 
 
 def _section_lyrics_text(section: dict[str, Any] | None) -> str:
@@ -4008,15 +4034,9 @@ def _render_melody_concept_card(
     # Match Chords active marker so Streamlit keeps the attribute and QA can find it.
     active_attr = ' data-composer-active="1" data-composer-active-melody="1"' if is_active else ""
 
-    st.markdown(
-        f"""
-<div class="{card_class}"{active_attr}>
-  <h4>{html.escape(name)}{badge}</h4>
-  {"" if is_active else f'<p class="composer-suggestion-why">{html.escape(contour)}</p>'}
-</div>
-        """,
-        unsafe_allow_html=True,
-    )
+    # Header is filled after the Preview button below is handled, so the card that is being auditioned in THIS run is
+    # labelled "Previewing" (the Preview click runs after the header would otherwise already be drawn).
+    header_box = st.empty()
     # ONE score per candidate.  The score lives in a placeholder rendered above the Preview
     # control; once this candidate's preview is armed the placeholder shows the *same* score
     # as the synced (highlighting) version instead of a second copy underneath.
@@ -4046,6 +4066,22 @@ def _render_melody_concept_card(
             )
             if not result.get("ok"):
                 st.warning(str(result.get("reason") or "Could not generate preview."))
+    previewing = (
+        not is_active
+        and composer_preview_slot(session_state) == concept_slot
+        and bool(session_state.get(COMPOSER_PREVIEW_WAV_KEY))
+    )
+    preview_badge = '<span class="composer-preview-badge">Previewing</span>' if previewing else ""
+    preview_attr = ' data-composer-previewing="1"' if previewing else ""
+    header_box.markdown(
+        f"""
+<div class="{card_class}"{active_attr}{preview_attr}>
+  <h4>{html.escape(name)}{badge}{preview_badge}</h4>
+  {"" if is_active else f'<p class="composer-suggestion-why">{html.escape(contour)}</p>'}
+</div>
+        """,
+        unsafe_allow_html=True,
+    )
     with score_box:
         mounted = False
         if events:
@@ -5921,18 +5957,20 @@ def _render_active_melody_repeat_controls(
         # Keep widget key aligned with durable section state (section-scoped).
         session_state[repeats_key] = int(repeats)
         # Explicit 1–4 choices — more visible/usable than a thin Streamlit slider.
-        choice_cols = st.columns(MELODY_REPEAT_MAX - MELODY_REPEAT_MIN + 1)
+        # One short row of 1-4 on every width (a phone used to stack four full-width buttons, ~250 px of scrolling).
         chosen: int | None = None
-        for i, n in enumerate(range(MELODY_REPEAT_MIN, MELODY_REPEAT_MAX + 1)):
-            with choice_cols[i]:
-                if st.button(
-                    str(n),
-                    key=f"composer_melody_repeats_btn_{section_id}_{n}",
-                    type="primary" if n == int(repeats) else "secondary",
-                    use_container_width=True,
-                    help=f"Tile this melody phrase {n} time(s) for this section.",
-                ):
-                    chosen = int(n)
+        with st.container(key=f"composer_melody_repeats_row_{section_id}"):
+            choice_cols = st.columns(MELODY_REPEAT_MAX - MELODY_REPEAT_MIN + 1)
+            for i, n in enumerate(range(MELODY_REPEAT_MIN, MELODY_REPEAT_MAX + 1)):
+                with choice_cols[i]:
+                    if st.button(
+                        str(n),
+                        key=f"composer_melody_repeats_btn_{section_id}_{n}",
+                        type="primary" if n == int(repeats) else "secondary",
+                        use_container_width=True,
+                        help=f"Tile this melody phrase {n} time(s) for this section.",
+                    ):
+                        chosen = int(n)
         if chosen is not None and chosen != int(repeats):
             if set_section_melody_repeats(doc, section_id, int(chosen)):
                 session_state[repeats_key] = int(chosen)
