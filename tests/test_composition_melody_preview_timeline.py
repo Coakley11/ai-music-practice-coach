@@ -181,6 +181,21 @@ def _card_script():
 
 
 class TestCardAppTest(unittest.TestCase):
+    def setUp(self) -> None:
+        # _card_script swaps module functions for counting fakes inside this process; put the real ones back so
+        # later tests render real staffs (a leaked fake_staff broke tests that ran after this one).
+        import streamlit.components.v1 as components
+
+        import composition_studio_page as page
+
+        orig_staff, orig_html = page._render_melody_staff, components.html
+
+        def _restore() -> None:
+            page._render_melody_staff = orig_staff
+            components.html = orig_html
+
+        self.addCleanup(_restore)
+
     def test_score_once_then_synced_replaces_it_and_covers_every_note(self) -> None:
         from streamlit.testing.v1 import AppTest
 
