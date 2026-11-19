@@ -9847,10 +9847,26 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
             // Key Cycling Stop retry (see __kcOnTransportClick).
             if (parentWin.__kcStopWanted) {{
               const consoleUp = !!parentDoc.querySelector('.ui-key-cycle-playbar.kc-console');
+              // Re-press only a press the server never received: while a script run is in
+              // progress (or one is requested), the Stop is being handled -- a run takes
+              // 2-5 s on a busy page, and re-pressing then queued 1-2 more full Stop runs
+              // (~4 MB each) behind it. The page must also have been idle for 1 s, so the
+              // finished run's console removal had time to render.
+              let runBusy = false;
+              try {{
+                const appEl = parentDoc.querySelector('[data-testid="stApp"]');
+                const rs = String((appEl && appEl.getAttribute('data-test-script-state')) || '');
+                runBusy = rs === 'running' || rs === 'rerunRequested';
+              }} catch (eRs) {{ runBusy = false; }}
+              if (runBusy) parentWin.__kcStopIdleSince = 0;
+              else if (!parentWin.__kcStopIdleSince) parentWin.__kcStopIdleSince = Date.now();
+              const idleMs = parentWin.__kcStopIdleSince ? Date.now() - Number(parentWin.__kcStopIdleSince) : 0;
               if (!consoleUp) {{
                 parentWin.__kcStopWanted = 0;
                 parentWin.__kcStopTries = 0;
-              }} else if (Date.now() - Number(parentWin.__kcStopWanted) > 2500) {{
+                parentWin.__kcStopIdleSince = 0;
+              }} else if (Date.now() - Number(parentWin.__kcStopWanted) > 2500 && idleMs >= 1000) {{
+                parentWin.__kcStopIdleSince = 0;
                 const tries = Number(parentWin.__kcStopTries || 0);
                 if (tries >= 5) {{
                   parentWin.__kcStopWanted = 0;
