@@ -350,6 +350,31 @@ def _validate_audio_bytes(audio: Any) -> tuple[bytes | None, str]:
     return data, ""
 
 
+def validate_document_bytes(data: Any) -> tuple[bytes | None, str, str]:
+    """``(bytes, mime_type, error)`` for any reference a musician may keep: a PDF or a photo.
+
+    The type comes from the CONTENT, never the name: PDFs get the full PDF check below,
+    JPEG / PNG / HEIC / HEIF photos are identified by their signature and size-checked.
+    """
+    from upload_media import DOCUMENT_MAX_SIZE_BYTES, document_mime_type
+
+    if data is None or data == b"":
+        return None, "", "missing_document"
+    if isinstance(data, bytearray):
+        data = bytes(data)
+    if not isinstance(data, bytes):
+        return None, "", "invalid_document_type"
+    mime = document_mime_type(data)  # content only: a renamed file is not trusted
+    if mime == "application/pdf":
+        raw, err = validate_pdf_bytes(data)
+        return raw, (mime if raw is not None else ""), err
+    if mime.startswith("image/"):
+        if len(data) > DOCUMENT_MAX_SIZE_BYTES:
+            return None, "", "document_too_large"
+        return data, mime, ""
+    return None, "", "unsupported_document_type"
+
+
 def validate_pdf_bytes(data: Any) -> tuple[bytes | None, str]:
     """Is this really a PDF, and is it a sane size?
 

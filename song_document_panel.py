@@ -249,6 +249,7 @@ def _explain_failure(filename: Any, error: Any, size_bytes: Any = 0) -> str:
 def _explain(error: Any) -> str:
     return {
         "not_a_pdf": "that file is not a PDF.",
+        "unsupported_document_type": "that file is not a PDF or a JPEG, PNG or HEIC photo.",
         "pdf_truncated": "that PDF looks incomplete - try uploading it again.",
         "document_too_large": "that file is too large.",
         "too_many_pages": "that PDF has too many pages to keep as a reference.",
@@ -335,6 +336,21 @@ def _preview(st: Any, row: dict, *, compact: bool, reader: str = "") -> None:
     did = str(row.get("document_id") or "")
     digest = str(row.get("sha256") or "")
     fetch, render, pages = _cached_helpers(st)
+    mime = str(row.get("mime_type") or "application/pdf").strip().lower()
+    if mime.startswith("image/"):
+        data = fetch(did, digest)
+        if not data:
+            st.error("That reference could not be loaded from storage.")
+            return
+        if mime in ("image/jpeg", "image/png"):
+            st.image(data, use_container_width=True)
+            return
+        # HEIC/HEIF: most browsers cannot draw it inline, so say so and hand it over.
+        st.info("This photo is in HEIC format, which this browser cannot show here. Download it to view it.")
+        st.download_button("Download this reference", data=data,
+                           file_name=str(row.get("filename") or "reference.heic"),
+                           mime=mime, key=f"{KEY_PREFIX}dl_{did}")
+        return
 
     total = pages(did, digest, row.get("page_count") or 1)
     page = int(st.session_state.get(PAGE_KEY + reader) or 0)
