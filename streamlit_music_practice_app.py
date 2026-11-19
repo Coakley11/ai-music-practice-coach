@@ -11244,8 +11244,10 @@ def _render_backing_card_practice_key(original_key: str, practice_key: str) -> N
         km.is_voice_mode(st.session_state)
         and km.is_karaoke_session_active(st.session_state)
         and _sing_pick
-        and _sing_pick != str(st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
     ):
+        # 2026-11-19: ALSO when the sung song is the Now Editing song. The sidebar control
+        # then holds that song's own Practice Key, which can differ from the setlist entry's
+        # (Trial Song saved in E on Songs, queued in D): the card read E while D played.
         # During a set this card is the Now Singing entry, sung in ITS key (the audio is built in
         # it). When another song is Now Editing, the sidebar's Practice Key control holds THAT
         # song's key - Blackbird E read "I'm playing in C" because Jazz tune was being edited. So
@@ -18329,13 +18331,14 @@ def _on_backing_filter_change() -> None:
             capture_live_backing_scope_override(st.session_state)
         except ImportError:
             pass
-        # During a Karaoke set an explicit Feel / meter change belongs to the
-        # entry being sung: the next entry keeps its own style, and returning
-        # here restores this choice.
+        # During a Karaoke set an explicit Feel / meter change is TEMPORARY: it belongs to
+        # the current performance of the entry being sung (user rule 2026-11-19). It is not a
+        # setlist edit and is never saved - the next entry, Previous Song back to this one and
+        # a new set all start from the song's own groove.
         if km.is_voice_mode(st.session_state) and km.is_karaoke_session_active(st.session_state):
             _ov_groove = str(st.session_state.get("backing_groove_style") or "").strip()
             _ov_meter = str(st.session_state.get("backing_time_signature") or "").strip()
-            if km.record_entry_feel_override(
+            km.record_entry_feel_override(
                 st.session_state,
                 groove=_ov_groove
                 if _ov_groove and _ov_groove != km.resolve_karaoke_entry_groove(st.session_state)
@@ -18343,13 +18346,7 @@ def _on_backing_filter_change() -> None:
                 meter=_ov_meter
                 if _ov_meter and _ov_meter != km.resolve_karaoke_entry_meter(st.session_state)
                 else "",
-            ):
-                # A saved setting of a setlist entry, so a deliberate setlist edit: saved to the
-                # account like every other one, not left to an autosave the strict policy keeps
-                # off the cloud.
-                from karaoke_ui import persist_karaoke_setlist
-
-                persist_karaoke_setlist(st)
+            )
     except Exception:
         pass
     # Flush widget → canonical before play-session capture so Feel Pop after

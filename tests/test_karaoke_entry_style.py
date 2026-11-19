@@ -1,4 +1,4 @@
-"""Each Karaoke entry plays its own style; an explicit Feel stays with its entry.
+"""Each Karaoke entry plays its own style; an explicit Feel lasts that performance only.
 
 A set started with Shallow (Ballad) generated every later entry -- Blue Bossa,
 Shape of You -- as a Ballad: groove came from Now Editing / the live Feel
@@ -50,16 +50,17 @@ def test_each_entry_resolves_its_own_groove_not_the_live_widget(karaoke_set) -> 
     assert all(km.resolve_karaoke_entry_meter(karaoke_set, e) == "4/4" for e in queue)
 
 
-def test_override_is_stored_on_the_sung_entry_only(karaoke_set) -> None:
+def test_override_is_temporary_for_the_sung_entry_and_never_saved(karaoke_set) -> None:
+    """User rule 2026-11-19: a Feel change during a song is that performance's only."""
     karaoke_set[km.KARAOKE_SESSION_INDEX_KEY] = 1
     assert km.record_entry_feel_override(karaoke_set, groove="Samba")
     queue = km.get_queue(karaoke_set)
-    assert [e["groove"] for e in queue] == ["", "Samba", ""]
+    # The saved setlist entries are untouched ...
+    assert [e["groove"] for e in queue] == ["", "", ""]
+    assert [e["groove"] for e in km.normalize_karaoke_queue(karaoke_set[km.KARAOKE_QUEUE_KEY])] == ["", "", ""]
+    # ... the sung entry plays Samba for now, the next keeps its own style.
     assert km.resolve_karaoke_entry_groove(karaoke_set, queue[1]) == "Samba"
-    # The next entry keeps its own style; the overridden one survives a reload.
     assert km.resolve_karaoke_entry_groove(karaoke_set, queue[2]) == "Pop groove"
-    restored = km.normalize_karaoke_queue(karaoke_set[km.KARAOKE_QUEUE_KEY])
-    assert restored[1]["groove"] == "Samba"
 
 
 def test_no_override_outside_an_active_set() -> None:

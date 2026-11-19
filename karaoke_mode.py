@@ -666,11 +666,84 @@ def performance_song_pick(session_state: Any) -> str:
 
 def clear_performance_keys(session_state: Any) -> None:
     """Forget every temporary key. The saved entries were never touched, so nothing is restored."""
-    for state_key in (KARAOKE_PERFORMANCE_KEYS_KEY, KARAOKE_PERFORMANCE_RETUNED_KEY):
+    for state_key in (KARAOKE_PERFORMANCE_KEYS_KEY, KARAOKE_PERFORMANCE_RETUNED_KEY, KARAOKE_PERFORMANCE_FEEL_KEY):
         try:
             session_state.pop(state_key, None)
         except Exception:
             pass
+
+
+#: Temporary Feel (groove / meter) chosen while an entry is being sung, by entry id. Session-only:
+#: user rule 2026-11-19 - a groove change during a performance is that performance's, the saved
+#: setlist entry and the song keep their own, and the entry starts again from the song's normal
+#: groove whenever it begins (next song, Previous Song, a new set). The old design wrote it INTO
+#: the setlist entry and persisted it, so one experiment came back in every later set.
+KARAOKE_PERFORMANCE_FEEL_KEY = "_karaoke_performance_feel"
+
+
+def performance_feel_for_entry(session_state: Any, entry: Any = None) -> dict[str, str]:
+    """The temporary groove / meter of this entry's current performance ({} when none)."""
+    row = entry if isinstance(entry, Mapping) else current_session_entry(session_state)
+    entry_id = str((row or {}).get("entry_id") or "").strip()
+    raw = _state(session_state).get(KARAOKE_PERFORMANCE_FEEL_KEY)
+    if not entry_id or not isinstance(raw, Mapping):
+        return {}
+    got = raw.get(entry_id)
+    if not isinstance(got, Mapping):
+        return {}
+    return {k: str(got.get(k) or "").strip() for k in ("groove", "meter") if str(got.get(k) or "").strip()}
+
+
+def reset_entry_performance(session_state: Any, entry_id: str) -> None:
+    """An entry is beginning: forget ITS temporary key and Feel, so it starts from its saved key
+    and its song's own groove. The retuned register is kept on purpose - it is the write-side
+    lock that keeps tonight's key gestures off the song's saved Practice Key for the whole set."""
+    ident = str(entry_id or "").strip()
+    if not ident:
+        return
+    if ident in performance_keys(session_state):
+        set_performance_key(session_state, ident, "")
+    raw = _state(session_state).get(KARAOKE_PERFORMANCE_FEEL_KEY)
+    if isinstance(raw, Mapping) and ident in raw:
+        current = {str(k): v for k, v in raw.items() if str(k) != ident}
+        try:
+            session_state[KARAOKE_PERFORMANCE_FEEL_KEY] = current
+        except Exception:
+            pass
+
+
+#: Repeat count for the active set (user rule 2026-11-19): the existing Backing Loop Count, but a
+#: SET-level setting - 1 when a set starts (not Backing's 2), carried to every following song
+#: until the singer changes it, and gone with the set. Backing reads it for its play-session
+#: defaults during a set; the Loop Count control writes it through note_karaoke_set_loops.
+KARAOKE_SET_LOOPS_KEY = "_karaoke_set_loops"
+KARAOKE_SET_LOOPS_DEFAULT = 1
+
+
+def karaoke_set_loops(session_state: Any) -> int:
+    """The set's repeat count while a set is active, else 0 (Backing uses its own)."""
+    if not is_karaoke_session_active(session_state):
+        return 0
+    try:
+        n = int(_state(session_state).get(KARAOKE_SET_LOOPS_KEY) or KARAOKE_SET_LOOPS_DEFAULT)
+    except (TypeError, ValueError):
+        n = KARAOKE_SET_LOOPS_DEFAULT
+    return max(1, min(10, n))
+
+
+def note_karaoke_set_loops(session_state: Any, loops: Any) -> int:
+    """An explicit Loop Count change during a set: it becomes the set's (no-op outside a set)."""
+    if not is_karaoke_session_active(session_state):
+        return 0
+    try:
+        n = max(1, min(10, int(loops)))
+    except (TypeError, ValueError):
+        return 0
+    try:
+        session_state[KARAOKE_SET_LOOPS_KEY] = n
+    except Exception:
+        return 0
+    return n
 
 
 def entry_default_practice_key(entry: Any) -> str:
@@ -797,12 +870,14 @@ def resolve_karaoke_entry_groove(session_state: Any, entry: dict[str, Any] | Non
     """Feel owned by one Karaoke entry: its own override, else its own song's style.
 
     Like :func:`resolve_karaoke_entry_bpm`, never Now Editing or the live Feel
-    widget, which carried the first song's Ballad into every later entry.
+    widget, which carried the first song's Ballad into every later entry. A ``groove``
+    saved on the setlist row by the old override is deliberately NOT read (left in the
+    saved data, untouched): it was a past performance's experiment, not the song's groove.
     """
     row = entry if isinstance(entry, dict) else current_session_entry(session_state)
     if not isinstance(row, dict):
         return ""
-    stored = str(row.get("groove") or "").strip()
+    stored = performance_feel_for_entry(session_state, row).get("groove", "")
     if stored:
         return stored
     pick = str(row.get("pick_key") or "").strip()
@@ -829,11 +904,11 @@ def resolve_karaoke_entry_groove(session_state: Any, entry: dict[str, Any] | Non
 
 
 def resolve_karaoke_entry_meter(session_state: Any, entry: dict[str, Any] | None = None) -> str:
-    """Meter owned by one Karaoke entry: its override, else its own song's meter."""
+    """Meter owned by one Karaoke entry: this performance's temporary meter, else its song's."""
     row = entry if isinstance(entry, dict) else current_session_entry(session_state)
     if not isinstance(row, dict):
         return ""
-    stored = str(row.get("meter") or "").strip()
+    stored = performance_feel_for_entry(session_state, row).get("meter", "")
     if stored:
         return stored
     pick = str(row.get("pick_key") or "").strip()
@@ -859,26 +934,34 @@ def resolve_karaoke_entry_meter(session_state: Any, entry: dict[str, Any] | None
 
 
 def record_entry_feel_override(session_state: Any, *, groove: str = "", meter: str = "") -> bool:
-    """Keep an explicit Feel / meter change with the entry being sung (not the set)."""
+    """Keep an explicit Feel / meter change for the entry being sung - THIS performance only.
+
+    Session-only (user rule 2026-11-19): never written to the setlist entry, never persisted.
+    The next entry, Previous Song back to this one, and a new set all start from the song's own
+    groove. Returns True when the temporary Feel changed.
+    """
     if not is_karaoke_session_active(session_state):
         return False
     current = current_session_entry(session_state)
     entry_id = str((current or {}).get("entry_id") or "").strip()
     if not entry_id:
         return False
-    queue = get_queue(session_state)
+    raw = _state(session_state).get(KARAOKE_PERFORMANCE_FEEL_KEY)
+    bag = {str(k): dict(v) for k, v in raw.items() if isinstance(v, Mapping)} if isinstance(raw, Mapping) else {}
+    mine = dict(bag.get(entry_id) or {})
     changed = False
-    for row in queue:
-        if str(row.get("entry_id") or "") != entry_id:
-            continue
-        if groove and str(row.get("groove") or "") != groove:
-            row["groove"] = groove
-            changed = True
-        if meter and str(row.get("meter") or "") != meter:
-            row["meter"] = meter
-            changed = True
+    if groove and str(mine.get("groove") or "") != groove:
+        mine["groove"] = groove
+        changed = True
+    if meter and str(mine.get("meter") or "") != meter:
+        mine["meter"] = meter
+        changed = True
     if changed:
-        _write_queue(session_state, queue)
+        bag[entry_id] = mine
+        try:
+            session_state[KARAOKE_PERFORMANCE_FEEL_KEY] = bag
+        except Exception:
+            return False
     return changed
 
 
@@ -1360,6 +1443,9 @@ def _activate_entry_at(session_state: Any, index: int) -> str | None:
     except (TypeError, ValueError):
         plays = 1
     session_state[KARAOKE_ENTRY_PLAYS_LEFT_KEY] = plays
+    # The entry begins: its own saved key and its song's own groove, never a temporary choice
+    # from an earlier performance of it (Previous Song used to bring back E / Jazz Swing).
+    reset_entry_performance(session_state, str(entry.get("entry_id") or ""))
     # Now Singing only: Karaoke Backing reads this entry's own key through
     # current_session_practice_key. Writing it into the song's shared Practice
     # Key store would rewrite Now Editing when the same song is being edited in
@@ -1412,6 +1498,18 @@ def _pay_edit_regen_owed(session_state: Any) -> None:
         pass
 
 
+def _set_lifecycle_hook(module: str, name: str, session_state: Any) -> None:
+    """Call another owner's set start / end hook if it exists (guarded: absent = no-op)."""
+    try:
+        import importlib
+
+        fn = getattr(importlib.import_module(module), name, None)
+        if callable(fn):
+            fn(session_state)
+    except Exception:
+        pass
+
+
 def _backing_set_scope_hook(name: str, session_state: Any) -> None:
     """Backing's set-scoped Playback Scope layer (backing_track_state): snapshot the musician's
     scope when a set starts, give it back when the set ends, so a mid-song "Intro only" stays a
@@ -1449,10 +1547,16 @@ def start_session(
             if str(entry.get("pick_key") or "") == str(starting_pick_key):
                 start_idx = i
                 break
+    # A fresh set (user rule 2026-11-19): nothing from an earlier set or a previous singer.
+    # Every entry starts in its saved key with its song's own groove; Repeat 1, Lead Sheet Off and
+    # Key Cycling Off until the singer changes them during this set.
+    clear_performance_keys(session_state)
     session_state[KARAOKE_SESSION_ACTIVE_KEY] = True
-    # A fresh set starts from each song's saved data, not from a previous set's display choice.
-    session_state.pop(KARAOKE_SET_LEAD_SHEET_OPEN_KEY, None)
+    session_state[KARAOKE_SET_LEAD_SHEET_OPEN_KEY] = False
+    session_state[KARAOKE_SET_LOOPS_KEY] = KARAOKE_SET_LOOPS_DEFAULT
     _backing_set_scope_hook("snapshot_pre_set_scope", session_state)
+    _set_lifecycle_hook("backing_track_state", "snapshot_pre_set_loops", session_state)
+    _set_lifecycle_hook("backing_key_cycle", "key_cycle_karaoke_set_started", session_state)
     session_state.pop(KARAOKE_SONG_ENDED_KEY, None)
     session_state.pop(PENDING_KARAOKE_ADVANCE_KEY, None)
     session_state.setdefault(KARAOKE_AUTO_ADVANCE_KEY, True)
@@ -1479,6 +1583,9 @@ def stop_session(session_state: Any) -> None:
     session_state.pop(KARAOKE_SET_LEAD_SHEET_OPEN_KEY, None)
     _pay_edit_regen_owed(session_state)
     _backing_set_scope_hook("restore_pre_set_scope", session_state)
+    session_state.pop(KARAOKE_SET_LOOPS_KEY, None)
+    _set_lifecycle_hook("backing_track_state", "restore_pre_set_loops", session_state)
+    _set_lifecycle_hook("backing_key_cycle", "key_cycle_karaoke_set_ended", session_state)
     session_state.pop(KARAOKE_ENTRY_PLAYS_LEFT_KEY, None)
     session_state.pop(KARAOKE_SONG_ENDED_KEY, None)
     session_state.pop(PENDING_KARAOKE_ADVANCE_KEY, None)
