@@ -1976,6 +1976,53 @@ def _render_compare_tray(
     session_state.pop(_compare_queue_key(section_id), None)
 
 
+def _song_settings_snapshot(doc: dict[str, Any]) -> tuple:
+    """The song's own values that the Song settings widgets mirror."""
+    g = doc.get("global") or {}
+    meta = doc.get("metadata") or {}
+    genre_now = str(meta.get("style") or "Pop")
+    label = coerce_composition_key_choice_for_doc(
+        doc,
+        str(g.get("original_key_label") or "")
+        or composition_key_label_from_token(str(g.get("original_key_center") or "C")),
+    )
+    return (
+        genre_now if genre_now in COMPOSITION_GENRES else "Other",
+        coerce_jewish_direction(meta.get("jewish_direction")),
+        label,
+        coerce_composition_bpm(g.get("bpm")),
+        coerce_composition_meter(str(g.get("time_signature") or "4/4")),
+    )
+
+
+def _seed_song_settings_widgets(session_state: dict, doc: dict[str, Any], *, key_prefix: str) -> None:
+    """Re-seed the Song settings widgets whenever the SONG's values changed since they were last seeded.
+
+    The widgets used to be seeded once per session, so a change made elsewhere for the same song (Undo key change,
+    a key/tempo edit in another step) left them showing the old values, and the next Apply silently wrote those
+    back -- after Undo, a BPM-only Apply transposed the whole song to the undone key again. Unsaved edits typed into
+    the panel survive reruns, because they do not change the song until Apply.
+    """
+    snap_key = f"{key_prefix}_seeded_from"
+    snap = _song_settings_snapshot(doc)
+    if session_state.get(snap_key) == snap:
+        return
+    genre, jewish_direction, label, bpm, meter = snap
+    session_state[f"{key_prefix}_genre"] = genre
+    session_state[f"{key_prefix}_jewish_direction"] = (
+        jewish_direction if jewish_direction in COMPOSITION_JEWISH_DIRECTIONS else DEFAULT_JEWISH_DIRECTION
+    )
+    session_state[f"{key_prefix}_key"] = label
+    session_state[f"{key_prefix}_bpm"] = int(bpm)
+    if meter in COMPOSITION_METERS:
+        session_state[f"{key_prefix}_meter"] = meter
+        session_state[f"{key_prefix}_meter_custom"] = ""
+    else:
+        session_state[f"{key_prefix}_meter"] = COMPOSITION_METER_CUSTOM
+        session_state[f"{key_prefix}_meter_custom"] = meter
+    session_state[snap_key] = snap
+
+
 def _render_compact_song_settings(session_state: dict, doc: dict[str, Any], *, key_prefix: str) -> None:
     """Keep Key/BPM/Meter (+ genre) editable but out of the way while composing."""
     pg = playback_globals(doc)
@@ -1986,6 +2033,7 @@ def _render_compact_song_settings(session_state: dict, doc: dict[str, Any], *, k
         f"{pg['bpm']} BPM · {pg['time_signature']} · "
         f"{genre_now or 'Song'}"
     )
+    _seed_song_settings_widgets(session_state, doc, key_prefix=key_prefix)
     with st.expander(f"⚙️ Song settings — {summary}", expanded=False):
         g = doc.setdefault("global", {})
         genre_key = f"{key_prefix}_genre"
@@ -2025,9 +2073,8 @@ def _render_compact_song_settings(session_state: dict, doc: dict[str, Any], *, k
             _field_label("bpm", "Tempo (BPM)"),
             min_value=40,
             max_value=240,
-            value=coerce_composition_bpm(g.get("bpm")),
             step=1,
-            key=f"{key_prefix}_bpm",
+            key=f"{key_prefix}_bpm",  # seeded from the song by _seed_song_settings_widgets
         )
         meter_options = list(COMPOSITION_METERS) + [COMPOSITION_METER_CUSTOM]
         stored_meter = coerce_composition_meter(str(g.get("time_signature") or "4/4"))
