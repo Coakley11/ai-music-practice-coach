@@ -139,11 +139,14 @@ class TheNextSongLoadsItsOwnKey(unittest.TestCase):
         km.advance_session(self.session)
         self.assertEqual(km.current_session_practice_key(self.session), "Db")
 
-    def test_going_back_returns_to_the_temporary_key_of_the_song_being_sung(self) -> None:
-        """The layer is keyed by entry, so stepping away and back does not lose the change."""
+    def test_going_back_starts_the_song_again_in_its_saved_key(self) -> None:
+        """User rule 2026-11-19 (Previous Song re-initialises the song): returning to an entry starts
+        it again in its saved setlist key - the temporary Ab of its earlier performance is gone."""
         km.advance_session(self.session)
         km.regress_session(self.session)
-        self.assertEqual(km.current_session_practice_key(self.session), "Ab")
+        self.assertEqual(km.current_session_practice_key(self.session), "Bb")
+        self.assertEqual(km.performance_keys(self.session), {})
+        self.assertEqual(saved_keys(self.session), ["Bb", "Db", "Ab"])
 
     def test_each_song_in_turn_sounds_in_its_own_key(self) -> None:
         heard = [km.current_session_practice_key(self.session)]
