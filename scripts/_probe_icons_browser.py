@@ -40,7 +40,14 @@ EXPECT = {
     "improv_mission_gen": "🪄", "improv_mission_easier": "🌱", "improv_mission_harder": "🧠", "improv_mission_new": "💡",
     # Creative -> Improvisation Intelligence -> Phrase/Motif
     "improv_gen_motif_chord": "🪄", "improv_motif_new": "💡", "improv_motif_harder": "🧠", "improv_motif_easier": "🌱",
+    # Phrase/Motif with Target scope "2 chords" (2026-11-20: plain text on dev 212e0c63)
+    "improv_span_gen": "🪄", "improv_span_new": "💡", "improv_span_easier": "🌱", "improv_span_harder": "🧠",
 }
+
+MAIN_TEXT_JS = """() => {
+  const m = document.querySelector('[data-testid="stMain"]') || document.body;
+  return {text: (m.innerText || '').slice(0, 20000), errors: document.querySelectorAll('[data-testid="stException"]').length};
+}"""
 
 
 def mark(gate: str, ok: bool, detail: str = "") -> bool:
@@ -73,6 +80,35 @@ def check_keys(page: Page, keys: list[str], where: str) -> None:
              not g["clipped"] and g["l"] >= -1 and g["r"] <= g["vw"] + 1, f"l={g['l']} r={g['r']} vw={g['vw']}")
 
 
+def click_works(page: Page, key: str, where: str) -> None:
+    """Click one generator button and confirm it still acts: the page changes and no exception appears."""
+    before = page.evaluate(MAIN_TEXT_JS)
+    loc = page.locator(f'[class*="st-key-{key}"] button')
+    if not loc.count():
+        mark(f"{where}: {key} can be clicked", False, "not rendered")
+        return
+    loc.first.scroll_into_view_if_needed()
+    loc.first.click()
+    settle(page, 8)
+    after = page.evaluate(MAIN_TEXT_JS)
+    mark(f"{where}: {key} still works (page changed, no error)",
+         after["text"] != before["text"] and after["errors"] <= before["errors"],
+         f"changed={after['text'] != before['text']} errors={before['errors']}->{after['errors']}")
+
+
+def choose_span_scope(page: Page) -> bool:
+    group = page.locator('[data-testid="stRadio"]').filter(has_text="Target scope")
+    if not group.count():
+        return False
+    opt = group.first.get_by_text("2 chords", exact=True)
+    if not opt.count():
+        return False
+    opt.first.scroll_into_view_if_needed()
+    opt.first.click()
+    settle(page, 8)
+    return True
+
+
 def main() -> int:
     with sync_playwright() as pw:
         browser = pw.chromium.launch(headless=True)
@@ -102,6 +138,23 @@ def main() -> int:
                     settle(page, 4)
                 check_keys(page, keys, tab)
                 page.screenshot(path=str(OUT / f"{tab.lower()}-{WIDTH}.png"))
+                for key in keys:
+                    click_works(page, key, tab)
+            # Phrase/Motif across a 2-chord span: the row that was still plain text.
+            page.set_viewport_size({"width": 1280, "height": 900})
+            settle(page, 2)
+            spanned = choose_span_scope(page)
+            mark("Phrase: Target scope '2 chords' selected", spanned)
+            if WIDTH != 1280:
+                page.set_viewport_size({"width": WIDTH, "height": 800})
+                settle(page, 4)
+            span_keys = ["improv_span_gen", "improv_span_new", "improv_span_easier", "improv_span_harder"]
+            check_keys(page, span_keys, "Span motif")
+            for key in span_keys:
+                click_works(page, key, "Span motif")
+            page.screenshot(path=str(OUT / f"span-motif-{WIDTH}.png"))
+            over = page.evaluate("() => [document.documentElement.scrollWidth, document.documentElement.clientWidth]")
+            mark("no horizontal page scroll", int(over[0]) <= int(over[1]) + 2, f"{over[0]} vs {over[1]}")
         finally:
             (OUT / f"results-{WIDTH}.json").write_text(json.dumps({"results": RESULTS, "notes": NOTES}, indent=1), encoding="utf-8")
             browser.close()

@@ -74,6 +74,10 @@ LYRICS_PANEL_BUTTONS = [
     ("apply_text", "Auto-assign to sections"),
     ("reset", "Reset sections to match chart"),
 ]
+# The Songs content editor's own Open / Close button (2026-11-20: was plain text on dev 212e0c63).
+EDITOR_OPEN_BUTTON = [("edit", "Open editor")]
+EDITOR_CLOSE_BUTTON = [("close", "Close editor")]
+_TOGGLE_SEEN: list[str] = []
 # Never clicked.
 DESTRUCTIVE = ("Revert to catalog", "Revert my lyrics", "Delete section",
                "Delete saved progression")
@@ -180,6 +184,9 @@ def open_songs_editor(page: Page, tab: str) -> bool:
         settle(page, 9)
     rows = buttons(page)
     if find(rows, "Open editor"):
+        if "open" not in _TOGGLE_SEEN:
+            _TOGGLE_SEEN.append("open")
+            check_group(page, rows, "songs editor", EDITOR_OPEN_BUTTON)
         click_button_has(page, r"Open editor")
         settle(page, 9)
     if editor_tab_now(page) != tab:
@@ -291,7 +298,7 @@ def phone_pass(page: Page) -> None:
         % (WIDTH, json.dumps([r["text"][:30] for r in rows if r["text"]])[:800]))
 
     # Whichever editor is mounted, every one of its labelled actions must still read correctly.
-    cases = CHART_BUTTONS + CHART_SECTION_BUTTONS if tab == "Edit Song Chart" else LYRICS_BUTTONS
+    cases = (CHART_BUTTONS + CHART_SECTION_BUTTONS if tab == "Edit Song Chart" else LYRICS_BUTTONS) + EDITOR_CLOSE_BUTTON
     seen = 0
     for verb, label in cases:
         row = find(rows, label)
@@ -350,6 +357,7 @@ def main() -> int:
             log("  buttons on the lyrics editor: %s"
                 % json.dumps([r["text"][:34] for r in rows_l if r["text"]])[:900])
             check_group(page, rows_l, "lyrics", LYRICS_BUTTONS)
+            check_group(page, rows_l, "songs editor", EDITOR_CLOSE_BUTTON)
             if expand_named(page, "Paste all lyrics at once", wants="Auto-assign to sections"):
                 check_group(page, buttons(page), "lyrics",
                             [("apply_text", "Auto-assign to sections")])
@@ -449,6 +457,16 @@ def main() -> int:
                 phone_pass(page)
                 page.set_viewport_size({"width": 1500, "height": 1000})
                 settle(page, 7)
+
+            # Close editor still closes, and the panel offers Open editor (with its icon) again.
+            closed = click_button_has(page, r"Close editor")
+            settle(page, 9)
+            rows_x = buttons(page)
+            mark("songs editor: Close editor still closes the editor",
+                 bool(closed) and find(rows_x, "Close editor") is None and find(rows_x, "Open editor") is not None,
+                 "clicked=%s" % closed)
+            check_group(page, rows_x, "songs editor after Close", EDITOR_OPEN_BUTTON)
+            shot(page, "i06-editor-closed-%d" % WIDTH)
 
             saved_one = author_saved_progression(page)
             mark("custom: a progression is saved so More options has something to delete",
