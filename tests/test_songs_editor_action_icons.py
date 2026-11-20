@@ -211,5 +211,21 @@ class TheActionsThemselvesAreUntouched(unittest.TestCase):
                       % ACTION_ICONS["delete"], src)
 
 
+class TheSongsEditorOpenCloseButton(unittest.TestCase):
+    """Open editor / Close editor on Songs (dev 212e0c63 had both as plain text)."""
+
+    SRC = (ROOT / "streamlit_music_practice_app.py").read_text(encoding="utf-8")
+
+    def test_open_is_edit_and_close_is_close(self) -> None:
+        self.assertIn('action_label("edit", "Open editor")', self.SRC)
+        self.assertIn('action_label("close", "Close editor")', self.SRC)
+
+    def test_close_reuses_the_composition_preview_cross_and_is_not_cancel(self) -> None:
+        self.assertEqual(semantic_action_icon("close"), "✕")
+        comp = (ROOT / "composition_studio_page.py").read_text(encoding="utf-8")
+        self.assertIn("✕ Close preview", comp)
+        self.assertNotEqual(semantic_action_icon("close"), semantic_action_icon("cancel"))
+
+
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()

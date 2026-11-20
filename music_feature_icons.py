@@ -225,6 +225,10 @@ ACTION_ICONS: dict[str, str] = {
     # and it follows "upload" (⬆️) rather than replacing it: the file is uploaded, then
     # imported.
     "import": FEATURE_ICONS["action_import"],
+    # Put a panel away without discarding anything. The thin cross is the glyph the
+    # Composition preview's "✕ Close preview" already shows; it is kept apart from
+    # "cancel" (❌), which abandons an edit, because closing the Songs editor keeps it.
+    "close": "✕",
 }
 
 

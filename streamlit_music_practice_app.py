@@ -21614,7 +21614,7 @@ elif _studio_page == "picker":
                 with st.container(key="picker_toggle_song_editor"):
                     if _editor_open:
                         st.button(
-                            "Close editor",
+                            action_label("close", "Close editor"),
                             key="picker_close_song_editor",
                             use_container_width=False,
                             on_click=set_picker_editor_open,
@@ -21622,7 +21622,7 @@ elif _studio_page == "picker":
                         )
                     else:
                         st.button(
-                            "Open editor",
+                            action_label("edit", "Open editor"),
                             key="picker_open_song_editor",
                             use_container_width=False,
                             on_click=set_picker_editor_open,

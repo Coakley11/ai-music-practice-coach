@@ -24,6 +24,17 @@ class Icons(unittest.TestCase):
         for verb, text in (("idea", "New motif"), ("harder", "Harder motif"), ("easier", "Easier motif")):
             self.assertIn(f'action_label("{verb}", "{text}")', SRC)
 
+    def test_span_motif_buttons(self):
+        """The 2-3 chord span motif row (Creative Lab Phrase/Motif) was still plain text on dev 212e0c63."""
+        for verb, text, key in (("generate", "Generate span motif", "improv_span_gen"),
+                                ("idea", "New span idea", "improv_span_new"),
+                                ("easier", "Easier", "improv_span_easier"),
+                                ("harder", "Harder", "improv_span_harder")):
+            row = [ln for ln in SRC.splitlines() if f'"{key}"' in ln and f'"{text}"' in ln]
+            self.assertEqual(len(row), 1, key)
+            self.assertTrue(row[0].rstrip().endswith(f'"{verb}"),'), row[0])
+        self.assertIn("st.button(action_label(verb, label), key=key, type=kind", SRC)
+
     def test_the_verbs_reuse_the_shared_glyphs(self):
         self.assertEqual((ACTION_ICONS["generate"], ACTION_ICONS["easier"], ACTION_ICONS["harder"], ACTION_ICONS["idea"]),
                          ("🪄", "🌱", "🧠", "💡"))

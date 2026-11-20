@@ -3327,15 +3327,17 @@ def _render_span_motif_panel(
 
     with st.container(key="improv_span_motif_actions"):
         c0, c1, c2, c3 = st.columns(4)
+        # The icon verb is its own column, as in the span Mission row: "New span idea" is an
+        # idea (💡) although its variant is "normal", so the verb cannot be read off the variant.
         actions = (
-            (c0, "Generate span motif", "improv_span_gen", "normal", 0, "primary"),
-            (c1, "New span idea", "improv_span_new", "normal", 1, "secondary"),
-            (c2, "Easier", "improv_span_easier", "easier", 0, "secondary"),
-            (c3, "Harder", "improv_span_harder", "harder", 0, "secondary"),
+            (c0, "Generate span motif", "improv_span_gen", "normal", 0, "primary", "generate"),
+            (c1, "New span idea", "improv_span_new", "normal", 1, "secondary", "idea"),
+            (c2, "Easier", "improv_span_easier", "easier", 0, "secondary", "easier"),
+            (c3, "Harder", "improv_span_harder", "harder", 0, "secondary", "harder"),
         )
-        for col, label, key, variant, bump, kind in actions:
+        for col, label, key, variant, bump, kind, verb in actions:
             with col:
-                if st.button(label, key=key, type=kind, use_container_width=True):
+                if st.button(action_label(verb, label), key=key, type=kind, use_container_width=True):
                     nonce = int(state.get("nonce") or 0) + bump
                     motif = _seed(variant, nonce)
                     state.update({"nonce": nonce, "seed": motif, "current": motif})
