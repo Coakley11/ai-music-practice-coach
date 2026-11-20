@@ -1,0 +1,4 @@
+tests/test_lead_sheet_page_follow.py
+tests/test_practice_log_coach.py
+tests/test_song_document_panel.py
+tests/test_uploaded_melodies_pdf_limit.py

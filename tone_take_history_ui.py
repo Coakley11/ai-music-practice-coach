@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from music_feature_icons import action_label
+
 import html
 import io
 from typing import Any
@@ -67,7 +69,7 @@ def render_pending_tone_save(
         key=f"{key_prefix}::tone_save_notes",
         placeholder="What were you working on?",
     )
-    if st_module.button("Save Tone Take", key=f"{key_prefix}::tone_save_btn", type="primary", use_container_width=True):
+    if st_module.button(action_label("save", "Save Tone Take"), key=f"{key_prefix}::tone_save_btn", type="primary", use_container_width=True):
         ok, _tid, err = save_pending_tone_take(
             session_state,
             st=st_module,

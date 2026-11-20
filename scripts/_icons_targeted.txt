@@ -1,0 +1,7 @@
+tests/test_action_icons_61.py
+tests/test_mc3_multichord_missions.py
+tests/test_mission_example_key_change_and_returns.py
+tests/test_phrase_auto_musical.py
+tests/test_mc1_phrase_motif_span_apptest.py
+tests/test_mc31_mission_pedagogy.py
+tests/test_mobile_m6_tool_density.py

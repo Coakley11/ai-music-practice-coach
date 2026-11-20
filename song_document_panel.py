@@ -371,7 +371,9 @@ def _preview(st: Any, row: dict, *, compact: bool) -> None:
     except Exception:
         pass
     st.info("This browser cannot display the PDF inline. Download it to read it.")
-    st.download_button("Download this reference", data=data,
+    from music_feature_icons import action_label as _dl_label
+
+    st.download_button(_dl_label("download", "Download this reference"), data=data,
                        file_name=str(row.get("filename") or "reference.pdf"),
                        mime="application/pdf", key=f"{KEY_PREFIX}dl_{did}")
 
