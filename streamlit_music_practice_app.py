@@ -15808,6 +15808,9 @@ st.markdown(
 # destination (the Lead Sheet while open, else the singing panel; never a melody staff), in a Karaoke Set or not.
 st.markdown(
     '<span class="ls-follow-context" hidden aria-hidden="true" '
+    # Also the Voice styling flag: app_ui's vocal-focus CSS matches this element with :has(), because the
+    # body attribute the <script> above writes is never set (Streamlit does not run it).
+    f'data-vocal-focus="{"true" if km.is_voice_mode(st.session_state) else "false"}" '
     f'data-voice-performance="{1 if km.is_voice_mode(st.session_state) else 0}" '
     f'data-karaoke-set="{1 if (km.is_voice_mode(st.session_state) and km.is_karaoke_session_active(st.session_state)) else 0}">'
     "</span>",
@@ -22199,10 +22202,9 @@ elif _studio_page == "backing":
             render_source_context_debug(st, st.session_state)
         except ImportError:
             pass
-    # The voice-mode `data-vocal-focus="true"` body attribute is set
-    # globally at app init (search for `dataset.vocalFocus` upstream),
-    # so the larger-lyric / vocal-focused CSS automatically applies on
-    # this page whenever the active instrument is Voice.
+    # The Voice styling flag is the rendered `.ls-follow-context[data-vocal-focus]` marker
+    # (app init, every run; the old body-attribute <script> never ran), so the larger-lyric /
+    # vocal-focused CSS applies on this page whenever the active instrument is Voice.
 
     from songs.music_source import custom_selected_song_record as _custom_selected_song_record
 
