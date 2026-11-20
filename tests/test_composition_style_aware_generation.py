@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import unittest
 
 from composition_chord_repeats import accept_full_progression
@@ -201,9 +202,14 @@ class TestStyleAwareMelody(unittest.TestCase):
             self.assertIn("singable hook", str(c.get("remember") or ""))
             desc = str(c.get("contour") or "")
             self.assertEqual(desc, str(c.get("why") or ""))
-            # Event-grounded: mention at least one pitch from events
+            # Event-grounded, on both surfaces: the card names the note the way a musician says it
+            # ("starts on D", "starts on a low D"), and the exact pitch with its octave stays in the
+            # technical description the UI keeps behind "Musical details".
             pitches = [str(e.get("pitch") or "") for e in c["events"] if e.get("pitch")]
-            self.assertTrue(any(p in desc for p in pitches[:3]), desc)
+            letter = re.escape(pitches[0].rstrip("0123456789-"))
+            self.assertRegex(desc, r"starts on (a (low|high) )?" + letter + r"\b")
+            details = str(c.get("details") or "")
+            self.assertTrue(any(p in details for p in pitches[:3]), details)
 
     def test_style_changes_melody_events(self) -> None:
         sigs: dict[str, set] = {}

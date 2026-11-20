@@ -458,6 +458,17 @@ def _intent_flags(remember: str, notes: str) -> dict[str, bool]:
     }
 
 
+_STYLE_WORDS = {
+    "jazz": "jazz", "bossa": "bossa nova", "folk": "folk", "country": "country", "rock": "rock",
+    "pop": "pop", "jewish_pop": "pop", "classical": "classical", "blues": "blues", "soul": "soul",
+}
+
+
+def _style_word(fam: str) -> str:
+    """The one genre word the description may lead with ("A jazz phrase that ...")."""
+    return _STYLE_WORDS.get(str(fam or "").strip().lower(), "")
+
+
 def _concepts_for_intent(ids: list[str], flags: dict[str, bool]) -> list[str]:
     """Order the melody styles so the words pick the shape, before the list is trimmed.
 
@@ -997,7 +1008,7 @@ def _suggest_over_chords(
 ) -> list[dict[str, Any]]:
     """Harmony-aware candidates: each concept is its own rhythm/contour/phrase identity and
     the description is measured from the notes that were actually generated."""
-    from composition_melody_describe import describe_melody_with_harmony, verify_concept_claim
+    from composition_melody_describe import describe_melody_with_harmony, musical_summary, verify_concept_claim
     from composition_melody_engine import CONCEPTS, build_concept_events, concepts_for_feel
     from composition_melody_shape import events_signature
 
@@ -1032,13 +1043,20 @@ def _suggest_over_chords(
         if not ok:  # never label a melody with a concept it does not exhibit
             continue
         description = describe_melody_with_harmony(events, chords, key=key, meter=meter, concept_id=cid)
+        # What a musician reads first: two plain sentences, measured from the same notes. The counts and
+        # percentages stay in `details`, which the card keeps behind "Musical details".
+        summary = musical_summary(
+            events, chords, key=key, meter=meter, style_word=_style_word(fam), feel=feel,
+        )
         out.append(
             {
                 "id": cid,
                 "name": CONCEPTS[cid]["name"],
-                "contour": description,
-                "motif_hint": description,
-                "why": description,
+                "summary": summary,
+                "details": description,
+                "contour": summary,
+                "motif_hint": summary,
+                "why": summary,
                 "feel": feel,
                 "style": style,
                 "remember": remember,

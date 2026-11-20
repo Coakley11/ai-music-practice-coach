@@ -92,6 +92,146 @@ def melody_features(
     }
 
 
+def _register_word(midi: int) -> str:
+    """Which part of the range a note sits in. Octave 3 and below reads low, octave 5 and up reads high.
+
+    The octave number itself belongs in the technical details; a musician reading a card wants "a low D",
+    not "D3". The word still has to be there, though: without it two melodies an octave apart would carry
+    word-for-word the same description.
+    """
+    if midi < 60:
+        return "low"
+    if midi < 72:
+        return ""
+    return "high"
+
+
+def _note_word(pitch: str, midi: int) -> str:
+    """``("D4", 62)`` -> ``"D"``; ``("D3", 50)`` -> ``"a low D"``; ``("D5", 74)`` -> ``"a high D"``."""
+    letter = "".join(ch for ch in str(pitch or "") if not (ch.isdigit() or ch == "-")).strip()
+    letter = letter or str(pitch or "")
+    register = _register_word(int(midi))
+    return f"a {register} {letter}" if register else letter
+
+
+def musical_summary(
+    events: list[dict[str, Any]],
+    chords: list[str],
+    *,
+    key: str = "C",
+    meter: str = "4/4",
+    style_word: str = "",
+    feel: str = "",
+) -> str:
+    """Two sentences a musician can picture, from the SAME measurements as the technical description.
+
+    Shape and movement first, then harmony and character. Every clause is gated on the measured feature that
+    supports it, so a line is never called chromatic without chromatic notes, or stepwise when it leaps about.
+    The numbers themselves (note counts, percentages, off-beat attacks) stay in describe_melody_with_harmony,
+    which the UI keeps behind a "Musical details" expander.
+    """
+    snd = _sounding(events)
+    if not snd:
+        return "No pitched notes to describe yet."
+    f = melody_features(events, chords, key=key, meter=meter)
+    rng = int(f["range_semitones"])
+    net = int(f["net_motion"])
+    peak = float(f["peak_position"])
+    step = float(f["stepwise_share"])
+    leap = int(f["largest_leap"])
+
+    # --- shape ---------------------------------------------------------------------------------
+    if rng <= 4:
+        shape = "stays in a narrow range"
+    elif peak >= 0.6 and net >= 2:
+        shape = "starts low and climbs toward a high note near the end"
+    elif 0.25 <= peak <= 0.75 and net <= 2:
+        shape = "rises to a high point in the middle, then comes back down"
+    elif net >= 3:
+        shape = "starts low and gradually rises"
+    elif net <= -3:
+        shape = "mostly descends"
+    elif abs(float(f["up_share"]) - float(f["down_share"])) <= 0.25:
+        shape = "moves up and down in a wave"
+    else:
+        shape = "rises and falls over the phrase"
+
+    # --- movement ------------------------------------------------------------------------------
+    if step >= 0.7 and leap <= 4:
+        motion = "almost entirely by small steps"
+    elif step >= 0.5 and leap >= 5:
+        motion = "mostly by small steps with a few expressive leaps"
+    elif step >= 0.5:
+        motion = "mostly by small steps"
+    elif leap >= 7:
+        motion = "with frequent jumps between low and high notes"
+    else:
+        motion = "with a mix of steps and skips"
+
+    lead = str(style_word or "").strip()
+    first = f"A {lead} phrase" if lead else "A phrase"
+    first = f"{first} that {shape}, moving {motion}."
+
+    # --- harmony -------------------------------------------------------------------------------
+    tone_share = float(f["strong_chord_tone_share"])
+    chromatic = int(f["chromatic_tones"])
+    approaches = int(f["chromatic_approaches"])
+    if tone_share >= 0.9:
+        harmony = "landing on chord tones"
+    elif tone_share >= 0.6:
+        harmony = "mostly landing on chord tones"
+    else:
+        harmony = "leaning away from the chord tones for tension"
+    # One passing note is not a chromatic style: say what it is and no more.
+    if approaches >= 2:
+        harmony += " and touching a few notes from outside the key, each resolving by a semitone"
+    elif approaches == 1:
+        harmony += " and touching one passing note from outside the key"
+    elif chromatic >= 2:
+        harmony += " and adding a little chromatic colour"
+    elif not chromatic:
+        harmony += " and staying inside the key"
+
+    # --- character -----------------------------------------------------------------------------
+    bits: list[str] = []
+    if int(f["accented_offbeat_attacks"]) >= 2:
+        bits.append("playful syncopated accents")
+    elif float(f["offbeat_share"]) >= 0.3:
+        bits.append("an off-beat lilt")
+    if int(f["repeated_rhythm_bars"]) >= 1:
+        bits.append("a short rhythmic idea that repeats")
+    if int(f["rests"]) >= 1 and len(bits) < 2:
+        bits.append("room to breathe")
+    if not bits:
+        pace = float(f["attacks_per_bar"])
+        feel_word = str(feel or "").strip().lower()
+        if pace >= 5:
+            bits.append("an energetic pace")
+        elif pace <= 2.5:
+            bits.append("an unhurried pace")
+        elif feel_word in {"lyrical", "smooth"}:
+            bits.append("a flowing, lyrical feel")
+        elif feel_word in {"bold", "energetic"}:
+            bits.append("a bold, forward feel")
+        else:
+            bits.append("an even pace")
+    character = bits[0] if len(bits) == 1 else f"{', '.join(bits[:-1])} and {bits[-1]}"
+    # The two notes a musician looks for first - where it starts and how high it reaches. They are also what
+    # keeps two cards apart: the vocabulary above is deliberately coarse, so without them two different
+    # melodies could carry word-for-word the same description and there would be nothing to compare.
+    opening = str(snd[0].get("pitch") or "")
+    open_midi = int(snd[0].get("midi") or 0)
+    peak = str(f["peak_pitch"] or "")
+    peak_midi = max((int(e.get("midi") or 0) for e in snd), default=open_midi)
+    if opening and peak and peak_midi > open_midi:
+        where = f"It starts on {_note_word(opening, open_midi)} and rises toward {_note_word(peak, peak_midi)}, "
+    elif opening:
+        where = f"It starts on its top note, {_note_word(opening, open_midi)}, "
+    else:
+        where = "It "
+    return f"{first} {where}{harmony}, with {character}."
+
+
 def phrase_split_beat(total_beats: float, meter: str = "4/4") -> float:
     bar = bar_beats(meter)
     nbars = max(1, int(round(total_beats / bar)))

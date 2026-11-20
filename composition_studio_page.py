@@ -4112,7 +4112,11 @@ def _render_melody_concept_card(
 ) -> None:
     cid = str(concept.get("id") or prefix)
     name = str(concept.get("name") or "Melodic idea")
-    contour = str(concept.get("contour") or concept.get("why") or "")
+    # The card leads with two plain sentences; the counts and percentages go under "Musical details".
+    contour = str(concept.get("summary") or concept.get("contour") or concept.get("why") or "")
+    details = str(concept.get("details") or "")
+    if details.strip() == contour.strip():
+        details = ""
     events = list(concept.get("events") or concept.get("notes_events") or [])
     sec = section_by_id(doc, section_id) or {}
     chords = list(sec.get("chords") or [])
@@ -4173,6 +4177,11 @@ def _render_melody_concept_card(
             """,
             unsafe_allow_html=True,
         )
+        if details and not is_active:
+            # Note counts, off-beat attacks, chord-tone percentages: still here for anyone who wants them,
+            # but out of the way of choosing a melody by ear.
+            with st.expander("Musical details", expanded=False):
+                st.caption(details)
         with score_box:
             mounted = False
             if events:
