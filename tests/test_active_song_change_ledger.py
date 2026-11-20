@@ -74,6 +74,15 @@ class Ledger(unittest.TestCase):
         self.assertIn("dk=G", row["from"]); self.assertIn("dk=D", row["to"])
         self.assertIn("caller=x.py:f:1", row["why"])
 
+    def test_the_queued_display_key_alone_is_not_a_change(self) -> None:
+        s = _catalog(SHALLOW, "G")
+        asl.note_active_song(s, "run_start")
+        s["_pending_display_key"] = "G"
+        self.assertFalse(asl.note_active_song(s, "set_practice_concert_key"))
+        s.pop("_pending_display_key")
+        self.assertFalse(asl.note_active_song(s, "set_practice_concert_key"))
+        self.assertEqual(asl.ledger_rows(s), [])
+
     def test_no_change_no_row_unless_marked(self) -> None:
         s = _catalog(SHALLOW, "G")
         asl.note_active_song(s, "run_start")

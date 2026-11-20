@@ -135,6 +135,12 @@ def _short(value: Any) -> str:
     return text[:120]
 
 
+def _without_pending(label: str) -> str:
+    import re
+
+    return re.sub(r" pend=\S*", "", str(label or ""))
+
+
 def note_active_song(session: dict[str, Any], op: str, *, mark: bool = False, **why: Any) -> bool:
     """Record ``op`` if the active song differs from the last label seen; True when it changed.
 
@@ -146,7 +152,9 @@ def note_active_song(session: dict[str, Any], op: str, *, mark: bool = False, **
         keys = active_key_state(session)
         now = f"{song} [{keys}]" if song else ""
         before = str(session.get(LAST_LABEL_KEY) or "")
-        changed = bool(now) and bool(before) and now != before
+        # The queued display key (pend=) is set and consumed within every run: it is shown, but a
+        # change of it alone is not a change (it logged several lines per run on Cloud).
+        changed = bool(now) and bool(before) and _without_pending(now) != _without_pending(before)
         session[LAST_LABEL_KEY] = now or before
         if not changed and not mark:
             return False
