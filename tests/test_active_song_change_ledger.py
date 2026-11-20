@@ -26,7 +26,8 @@ def _catalog(pick: str, key: str) -> dict:
 
 class Labels(unittest.TestCase):
     def test_a_catalog_song_is_its_public_title_with_the_practice_key(self) -> None:
-        self.assertEqual(asl.active_song_label(_catalog(BLACKBIRD, "E")), "Blackbird — The Beatles (E)")
+        self.assertEqual(asl.active_song_label(_catalog(BLACKBIRD, "E")), "Blackbird — The Beatles")
+        self.assertIn("dk=E", asl.active_key_state(_catalog(BLACKBIRD, "E")))
 
     def test_custom_and_composition_songs_are_never_named(self) -> None:
         for pick, kind in (("custom::My Secret Song", "custom:"), ("composition::0d28-my-lyrics", "composition:")):
@@ -35,7 +36,7 @@ class Labels(unittest.TestCase):
             self.assertTrue(label.startswith(kind), label)
             self.assertNotIn("Secret", label)
             self.assertNotIn("lyrics", label)
-            self.assertRegex(label, r"^[a-z]+:[0-9a-f]{8} \(D\)$")
+            self.assertRegex(label, r"^[a-z]+:[0-9a-f]{8}$")
 
     def test_no_active_song_is_an_empty_label(self) -> None:
         self.assertEqual(asl.active_song_label({}), "")
@@ -57,10 +58,21 @@ class Ledger(unittest.TestCase):
                                            reasons="cloud_newer_than_applied", mid_session=1)
         self.assertTrue(changed)
         row = asl.ledger_rows(s)[-1]
-        self.assertEqual((row["op"], row["from"], row["to"]),
-                         ("workspace_apply", "Shallow — Lady Gaga / Bradley Cooper (G)", "Blackbird — The Beatles (E)"))
+        self.assertEqual(row["op"], "workspace_apply")
+        self.assertTrue(row["from"].startswith("Shallow — Lady Gaga / Bradley Cooper [dk=G"), row["from"])
+        self.assertTrue(row["to"].startswith("Blackbird — The Beatles [dk=E"), row["to"])
         self.assertIn("reasons=cloud_newer_than_applied", row["why"])
         self.assertIn('[music_active_song] op=workspace_apply from="Shallow', err.getvalue())
+
+    def test_a_key_change_on_the_same_song_is_recorded(self) -> None:
+        s = _catalog(SHALLOW, "G")
+        asl.note_active_song(s, "run_start")
+        s["display_key"] = "D"
+        with redirect_stderr(io.StringIO()):
+            self.assertTrue(asl.note_active_song(s, "set_practice_concert_key", key="D", caller="x.py:f:1"))
+        row = asl.ledger_rows(s)[-1]
+        self.assertIn("dk=G", row["from"]); self.assertIn("dk=D", row["to"])
+        self.assertIn("caller=x.py:f:1", row["why"])
 
     def test_no_change_no_row_unless_marked(self) -> None:
         s = _catalog(SHALLOW, "G")
@@ -110,7 +122,8 @@ class Hooks(unittest.TestCase):
         with redirect_stderr(io.StringIO()):
             self.assertEqual(observed(SimpleNamespace(session_state=session), BLACKBIRD, {}, origin="user"), {"ok": True})
         row = asl.ledger_rows(session)[-1]
-        self.assertEqual((row["op"], row["to"]), ("activate_by_pick_key", "Blackbird — The Beatles (E)"))
+        self.assertEqual(row["op"], "activate_by_pick_key")
+        self.assertTrue(row["to"].startswith("Blackbird — The Beatles [dk=E"), row["to"])
         self.assertIn("origin=user", row["why"])
 
     def test_the_workspace_apply_backing_restore_karaoke_row_and_play_are_instrumented(self) -> None:
@@ -124,6 +137,11 @@ class Hooks(unittest.TestCase):
             self.assertIn(op, app)
         dv = (ROOT / "music_deploy_verification.py").read_text(encoding="utf-8")
         self.assertIn("**Active song changes**", dv)
+        import songs.key_state as ks
+        import songs.practice_key_state as pks
+
+        self.assertTrue(getattr(pks.set_practice_concert_key, "__wrapped_for_ledger__", False))
+        self.assertTrue(getattr(ks.request_display_key, "__wrapped_for_ledger__", False))
 
 
 if __name__ == "__main__":

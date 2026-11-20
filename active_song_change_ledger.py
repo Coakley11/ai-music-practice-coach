@@ -36,7 +36,7 @@ def _hashed(kind: str, pick: str) -> str:
 
 
 def active_song_label(session: dict[str, Any]) -> str:
-    """The active song as a short, non-sensitive label, with its Practice Key: "Title — Artist (E)"."""
+    """The active song as a short, non-sensitive label: "Title — Artist" (keys: active_key_state)."""
     try:
         try:
             from songs.practice_key_state import resolve_practice_source_pick
@@ -58,8 +58,74 @@ def active_song_label(session: dict[str, Any]) -> str:
         else:
             # Catalog pick key "Genre<US>Title — Artist": the public catalog title.
             name = pick.split("\x1f", 1)[-1].strip()[:60]
-        key = str(session.get("display_key") or session.get("concert_key") or "").strip()[:4]
-        return f"{name} ({key})" if key else name
+        return name
+    except Exception:
+        return ""
+
+
+def _pick_label(pick: str) -> str:
+    pick = str(pick or "").strip()
+    if not pick:
+        return ""
+    if pick.startswith("custom::"):
+        return _hashed("custom", pick)
+    if pick.startswith("composition::"):
+        return _hashed("composition", pick)
+    if "::" in pick:
+        return _hashed(pick.split("::", 1)[0][:12] or "other", pick)
+    return pick.split("", 1)[-1].strip()[:60]
+
+
+def active_key_state(session: dict[str, Any]) -> str:
+    """The keys that decide what the musician hears and reads, for the D-major report (2026-11-20):
+    dk = sidebar display key, ck = concert key, pend = queued display key, pk = the active song's saved
+    Practice Key, kc = Key Cycling's temporary key (only while cycling is On), fx = Fixed Key mode."""
+    try:
+        try:
+            from songs.practice_key_state import get_practice_concert_key, resolve_practice_source_pick
+
+            pick = str(resolve_practice_source_pick(session) or "").strip()
+            pk = str(get_practice_concert_key(session, pick) or "").strip() if pick else ""
+        except Exception:
+            pk = ""
+        kc = ""
+        try:
+            from backing_key_cycle import is_cycle_active, temporary_playback_key
+
+            if is_cycle_active(session):
+                kc = str(temporary_playback_key(session) or "").strip()
+        except Exception:
+            kc = ""
+        fx = str(session.get("practice_key_mode") or "").strip()[:10]
+        parts = [
+            f"dk={str(session.get('display_key') or '').strip()[:4]}",
+            f"ck={str(session.get('concert_key') or '').strip()[:4]}",
+            f"pend={str(session.get('_pending_display_key') or '').strip()[:4]}",
+            f"pk={pk[:4]}",
+        ]
+        if kc:
+            parts.append(f"kc={kc[:4]}")
+        if fx and fx.lower() not in ("off", "song", "per_song", "normal"):
+            parts.append(f"fx={fx}")
+        return " ".join(parts)
+    except Exception:
+        return ""
+
+
+def _caller(depth: int = 3) -> str:
+    """file:function:line of the code that called a key writer (no data)."""
+    try:
+        import os
+        import sys
+
+        out = []
+        f = sys._getframe(depth)
+        for _ in range(3):
+            if f is None:
+                break
+            out.append(f"{os.path.basename(f.f_code.co_filename)}:{f.f_code.co_name}:{f.f_lineno}")
+            f = f.f_back
+        return "<".join(out)
     except Exception:
         return ""
 
@@ -76,7 +142,9 @@ def note_active_song(session: dict[str, Any], op: str, *, mark: bool = False, **
     next operation did after it. ``why`` values are short strings or numbers (never saved user data).
     """
     try:
-        now = active_song_label(session)
+        song = active_song_label(session)
+        keys = active_key_state(session)
+        now = f"{song} [{keys}]" if song else ""
         before = str(session.get(LAST_LABEL_KEY) or "")
         changed = bool(now) and bool(before) and now != before
         session[LAST_LABEL_KEY] = now or before
@@ -118,6 +186,7 @@ def ledger_rows(session: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 __all__ = [
+    "active_key_state",
     "LEDGER_KEY",
     "LAST_LABEL_KEY",
     "active_song_label",
