@@ -23676,6 +23676,19 @@ elif _studio_page == "backing":
         st.session_state,
         "backing_audio_state",
         audio_key=str(_audio_signature_key or ""),
+        # Karaoke Set lifecycle evidence (2026-11-19): what this song is actually played with.
+        groove=str(st.session_state.get("backing_groove_style") or ""),
+        meter=str(st.session_state.get("backing_time_signature") or ""),
+        loops=st.session_state.get("backing_track_loops"),
+        set_loops=km.karaoke_set_loops(st.session_state),
+        entry_groove=str(km.resolve_karaoke_entry_groove(st.session_state) or "")
+        if km.is_karaoke_session_active(st.session_state)
+        else "",
+        bpm_widgets=",".join(
+            f"{str(_k).split('::')[-1][-18:]}={st.session_state.get(_k)}"
+            for _k in list(st.session_state.keys())
+            if str(_k).startswith("backing_track_bpm::")
+        ),
         chord_count=len(backing_chords or []),
         level=str(level or ""),
         scope=str(st.session_state.get("backing_track_scope") or ""),
