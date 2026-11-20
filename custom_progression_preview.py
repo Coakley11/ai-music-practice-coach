@@ -15,6 +15,7 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+import re
 import wave
 from typing import Any, Iterable
 
@@ -22,6 +23,7 @@ import chord_subdivisions as _cs
 from songs.meter import meter_timing
 
 PREVIEW_STATE_KEY = "_cpl_preview_state"
+PREVIEW_NONCE_KEY = "_cpl_preview_nonce"
 PREVIEW_KIND_SECTION = "section"
 PREVIEW_KIND_SONG = "song"
 
@@ -401,15 +403,34 @@ def build_preview(inputs: dict[str, Any], kind: str, section: str = "") -> dict[
 
 
 def request_preview(session_state: Any, kind: str, section: str = "") -> None:
-    """Button callback: arm a preview. Writes only the non-widget state key."""
+    """Button callback: arm a preview. Writes only the non-widget state keys."""
     inputs = preview_inputs(session_state)
     prev = session_state.get(PREVIEW_STATE_KEY) or {}
+    # The nonce is kept outside the preview state so it keeps climbing across a close. Taking it from the
+    # armed state alone restarted at 1 after every close, and the reopened player then carried the same id as
+    # the one just dismissed - the browser could keep the old iframe, and with it the audio that was playing.
+    counter = max(int(session_state.get(PREVIEW_NONCE_KEY) or 0), int(prev.get("nonce", 0) or 0)) + 1
+    session_state[PREVIEW_NONCE_KEY] = counter
     session_state[PREVIEW_STATE_KEY] = {
         "kind": kind,
         "section": section if kind == PREVIEW_KIND_SECTION else "",
         "sig": preview_signature(inputs, kind, section),
-        "nonce": int(prev.get("nonce", 0) or 0) + 1,
+        "nonce": counter,
     }
+
+
+def close_preview(session_state: Any) -> bool:
+    """Button callback: dismiss the armed preview.
+
+    Only the transient preview key is dropped, so the player is not rendered on the next run: removing the
+    component takes its audio element with it, which is what stops the sound. The draft chords, their bar
+    lengths, the sections, the saved progression and the active song are never touched. Returns True when a
+    preview was actually open.
+    """
+    if session_state.get(PREVIEW_STATE_KEY) is None:
+        return False
+    session_state.pop(PREVIEW_STATE_KEY, None)
+    return True
 
 
 def active_preview(session_state: Any, kind: str, section: str = "") -> dict[str, Any] | None:
@@ -490,7 +511,24 @@ def mount_active_preview(st: Any, kind: str, section: str = "") -> bool:
         components.html(html_doc, height=height, scrolling=False)
     except Exception:
         return False
+    render_close_button(st, kind, section)
     return True
+
+
+def render_close_button(st: Any, kind: str, section: str = "") -> None:
+    """"✕ Close Preview", directly under the player's own Play / Stop row.
+
+    Play and Stop live inside the player's iframe and can only stop and rewind; this removes the player.
+    """
+    safe = re.sub(r"[^A-Za-z0-9_]+", "_", str(section or ""))[:40]
+    st.button(
+        "✕ Close Preview",
+        key=f"cpl_preview_close_{kind}_{safe}",
+        use_container_width=True,
+        on_click=close_preview,
+        args=(st.session_state,),
+        help="Stop the preview and hide the player. Your chords, bar lengths and saved song are not changed.",
+    )
 
 
 def render_preview_buttons(st: Any, *, kind: str, section: str = "", disabled: bool = False) -> None:
