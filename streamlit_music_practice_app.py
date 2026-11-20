@@ -5713,9 +5713,13 @@ def live_follow_along_component_html(
         # component from a marker on the page (``.ks-ls-state``), so turning it on or off changes
         # nothing in this HTML and Streamlit keeps the iframe - and the music in it - running.
         chart_root_html = (
+            # Its header is the Lead Sheet's own collapse / expand control (user 2026-11-20): it presses
+            # the Backing card's Lead Sheet button - one state, the same no-remount switch - and the
+            # fold then follows the page marker as before. The action words are written by the
+            # script from that marker, so this HTML stays identical whatever the switch says.
             '<details class="live-chart-hidden-wrap" id="live-chart-wrap">'
-            "<summary><span class=\"live-chart-hidden-icon\">\U0001F3BC</span> "
-            "Show chord chart (optional)</summary>"
+            "<summary><span class=\"live-chart-hidden-icon\">\U0001F4D6</span> Lead Sheet "
+            '<span class="ls-fold-action">· Expand Lead Sheet</span></summary>'
             f'<div id="live-chart-root">{chart_html}</div>'
             "</details>"
         )
@@ -6552,10 +6556,34 @@ def live_follow_along_component_html(
     // Follows the switch when it CHANGES, so a singer who opens the chart by hand while the Lead
     // Sheet is off is not overruled on the next tick.
     let lastLeadSheetOpen = null;
+    function syncFoldHeader(ls) {{
+      try {{
+        const act = document.querySelector("#live-chart-wrap .ls-fold-action");
+        if (act) act.textContent = ls ? "\u00b7 Collapse Lead Sheet" : "\u00b7 Expand Lead Sheet";
+        const sum = document.querySelector("#live-chart-wrap > summary");
+        if (sum) sum.setAttribute("aria-label", ls ? "Collapse Lead Sheet" : "Expand Lead Sheet");
+      }} catch (eFh) {{}}
+    }}
+    // The header IS the Lead Sheet switch's second handle: pressing it presses the Backing card's
+    // Lead Sheet button (the one variable), and the fold follows the marker that button updates.
+    function installFoldHeader() {{
+      const sum = document.querySelector("#live-chart-wrap > summary");
+      if (!sum || sum.__lsHeader) return;
+      sum.__lsHeader = true;
+      sum.addEventListener("click", (ev) => {{
+        try {{
+          const btn = window.parent.document.querySelector(".st-key-backing_art_lead_sheet_btn button");
+          if (!btn || btn.disabled) return;      // no card switch: the plain fold still works
+          ev.preventDefault();
+          btn.click();
+        }} catch (eHc) {{}}
+      }});
+    }}
     function syncChartFold() {{
       const wrap = document.getElementById("live-chart-wrap");
       if (!wrap) return;
       const ls = leadSheetOpenOnPage();
+      syncFoldHeader(ls);
       if (ls === lastLeadSheetOpen) return;
       lastLeadSheetOpen = ls;
       const want = chartIsPrimary() || ls;
@@ -7566,6 +7594,7 @@ def live_follow_along_component_html(
     // it for the lyrics, which is what brings the page back after the singer's three seconds.
     if (KARAOKE_HOLD) {{
       if (!registerKaraokeFollow()) window.setTimeout(registerKaraokeFollow, 400);
+      installFoldHeader();
       syncChartFold();
       window.setInterval(syncChartFold, 300);
     }}
@@ -25871,12 +25900,13 @@ elif _studio_page == "backing":
     # and the Lead Sheet switch owns only the optional chord chart inside it. Computed here,
     # before the two gates below, because ``_karaoke_voice`` is not set until much later - long
     # after the page player has already decided whether to mount.
+    # User rule 2026-11-20: the singing panel is ALWAYS there in Voice - in a Karaoke Set or singing
+    # one song on its own - and the Lead Sheet switch governs only the optional Lead Sheet inside it
+    # (folded behind the lyrics when Off). Countdown and auto-advance stay set-only: they read
+    # ``_karaoke_engaged`` (Voice AND an active set), not this.
     _karaoke_needs_surface = False
     try:
-        _karaoke_needs_surface = bool(
-            km.is_voice_mode(st.session_state)
-            and km.is_karaoke_session_active(st.session_state)
-        )
+        _karaoke_needs_surface = bool(km.is_voice_mode(st.session_state))
     except Exception:
         _karaoke_needs_surface = False
     #: Exactly one of these two surfaces may mount, or two players sound at once. The page

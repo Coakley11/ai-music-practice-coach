@@ -180,10 +180,11 @@ class TheLyricsDoNotDependOnTheLeadSheet(unittest.TestCase):
     def test_the_chart_is_folded_not_removed(self) -> None:
         """The DOM stays mounted so the chord highlighting keeps running behind the fold."""
         fold = self.src.index("if karaoke_hide_chart:")
-        block = self.src[fold : fold + 600]
+        block = self.src[fold : fold + 1400]
         self.assertIn("<details", block)
         self.assertIn('id="live-chart-root"', block)
-        self.assertIn("Show chord chart", block)
+        self.assertIn("Lead Sheet", block)
+        self.assertIn("ls-fold-action", block)
 
 
 class TheThreeFeaturesStayDistinct(unittest.TestCase):
