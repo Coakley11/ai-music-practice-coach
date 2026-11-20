@@ -2499,6 +2499,24 @@ def transpose_chord_tokens_in_cue(line: str, from_key: str, to_key: str) -> str:
     return prefix + sep.join(out)
 
 
+def cue_lines_by_cycle_key(lines: list[str], from_key: str, cycle_keys: list[str]) -> dict[str, list[str]]:
+    """The cue lines in every key of a Key Cycling cycle, or ``{}`` when no line changes with the key.
+
+    Key Cycling changes key in the browser, without a rerun, so a cue that spells a chord run
+    (``"Instrumental — G · D/F# · Em7"``) must arrive ready in each key of the cycle; the singing
+    panel shows the one for the key that sounds. Prose cues and lyrics never change with the key,
+    and are not repeated twelve times.
+    """
+    raw = [str(ln) for ln in (lines or [])]
+    keys = [str(k).strip() for k in (cycle_keys or []) if str(k or "").strip()]
+    if not raw or not keys or not str(from_key or "").strip():
+        return {}
+    by_key = {k: [transpose_chord_tokens_in_cue(ln, from_key, k) for ln in raw] for k in keys}
+    if not any(v != raw for v in by_key.values()):
+        return {}
+    return by_key
+
+
 def _distribute_chord_chips(
     chords: list[str], lyric_lines: list[str]
 ) -> list[tuple[str, str]]:
@@ -5455,17 +5473,114 @@ def _build_karaoke_lyrics_panel_script(
         }}
       }}
 
+      // ---- The chips follow the key that sounds (user P1 2026-11-20) ----
+      // LYRIC_MAP is drawn once by the server, in the key of that render. Key Cycling changes key
+      // in the browser (the next key's timeline replaces this one; no rerun), so chips built from
+      // LYRIC_MAP alone stayed in an earlier key: "Am7 / Dm7" under "E♭ minor". The chips now take
+      // their chord names from the same live timeline the Lead Sheet, Current / Next and the audio
+      // follow, through the same label projection -- one key, no second key state. LYRIC_MAP keeps
+      // each bar's shape (sub-chord weights, pushes, hits, N.C.); only the names come from the
+      // timeline. Without a timeline for the section the map's own chords are shown, as before.
+      function timelineKey(tl) {{
+        try {{
+          const byKey = window.parent && window.parent.__kcTimelineByKey;
+          if (byKey && tl) {{
+            for (const k of Object.keys(byKey)) {{ if (byKey[k] === tl) return k; }}
+          }}
+        }} catch (eK) {{}}
+        return "";
+      }}
+      function sectionRunBars(tl, event) {{
+        // The bars of this occurrence of the section, from its bar 1, each a list of its events.
+        if (!Array.isArray(tl) || !tl.length || !event) return null;
+        let i = Number(event.event_index);
+        if (!(tl[i] && tl[i].start_time === event.start_time)) {{
+          i = tl.indexOf(event);
+          if (i < 0) i = tl.findIndex((e) => e && e.start_time === event.start_time);
+          if (i < 0) return null;
+        }}
+        const sec = event.section || "";
+        const isBarStart = (e) => Number(e.bar_in_section) === 1 && !(Number(e.subdivision_index) > 0);
+        let s = i;
+        while (s > 0 && !isBarStart(tl[s]) && tl[s - 1] && tl[s - 1].section === sec) s--;
+        const bars = {{}};
+        let prevBar = 0;
+        for (let j = s; j < tl.length; j++) {{
+          const e = tl[j];
+          if (!e || (e.section || "") !== sec) break;
+          const b = Number(e.bar_in_section) || 0;
+          if (j > s && (b < prevBar || (isBarStart(e) && prevBar >= 1))) break;
+          (bars[b] = bars[b] || []).push(e);
+          prevBar = b;
+        }}
+        return bars;
+      }}
+      function liveChordsForSection(event, base, ctx) {{
+        const tl = (ctx && Array.isArray(ctx.timeline)) ? ctx.timeline : window.__karaokeTimeline;
+        const bars = sectionRunBars(tl, event);
+        if (!bars) return null;
+        const project = (ctx && typeof ctx.project === "function") ? ctx.project : ((c) => c);
+        const name = (e) => String(project(e.chord || "", e.chordSpace || "") || e.chord || "").trim();
+        const total = Math.max(Number(event.section_bars) || 0, (base || []).length);
+        const out = [];
+        for (let b = 1; b <= total; b++) {{
+          const evs = bars[b];
+          const raw = String((base || [])[b - 1] == null ? "" : base[b - 1]).trim();
+          if (!evs || !evs.length) {{ out.push(raw); continue; }}
+          if (raw && isNoChordToken(raw)) {{ out.push(raw); continue; }}
+          if (raw && isHitToken(raw) && evs.length === 1) {{ out.push(name(evs[0]) + ".hit"); continue; }}
+          const subs = raw ? parseBarSubdivisions(raw, 4) : [];
+          if (evs.length === 1 && subs.length <= 1) {{ out.push(name(evs[0])); continue; }}
+          // Subdivided: keep the bar's weights and pushes, take each sub-chord's name live.
+          const parts = evs.map((e, k) => {{
+            const sub = subs.length === evs.length ? subs[k] : null;
+            if (sub && isNoChordToken(sub.chord)) return String(sub.chord);
+            const w = sub ? sub.weight : (Number(e.beat_duration) || 1);
+            return name(e) + ":" + Number(w).toString() + (sub && sub.push ? "p" : "");
+          }});
+          out.push(parts.join("|"));
+        }}
+        return out;
+      }}
+      function linesForKey(data, key) {{
+        // Lyric cues that spell a chord run ("Instrumental — G · D/F# · Em7") come per cycle key.
+        const byKey = data && data.lyrics_by_key;
+        if (key && byKey && Array.isArray(byKey[key])) return byKey[key];
+        return (data && data.lyrics) || [];
+      }}
+      function renderLines(lines) {{
+        lpLyrics.innerHTML = lines
+          .map((l) => '<div class="karaoke-lp-lyric-line">' + escapeHtml(l) + "</div>")
+          .join("");
+      }}
+
       let lastSection = null;
-      window.__karaokeUpdateLyricPanel = function(event) {{
+      let lastTimeline = null;
+      window.__karaokeUpdateLyricPanel = function(event, ctx) {{
         if (!event) return;
         const sectionName = event.section || "";
+        const liveTl = (ctx && Array.isArray(ctx.timeline)) ? ctx.timeline : window.__karaokeTimeline;
+        const keyChanged = !!liveTl && liveTl !== lastTimeline && lastTimeline !== null;
+        if (liveTl) lastTimeline = liveTl;
+
+        // -- Same section, another key (Key Cycling's in-browser change): the chips and any
+        //    chord-run cue lines move to the key that sounds; the lyrics stay where they are.
+        if (sectionName === lastSection && keyChanged) {{
+          const data = dataFor(sectionName);
+          const base = (data && data.chords) || [];
+          if (base.length) buildChordStripForSection(sectionName, liveChordsForSection(event, base, ctx) || base);
+          if (data && data.lyrics_by_key && hasLyrics(sectionName)) {{
+            renderLines(linesForKey(data, timelineKey(liveTl)));
+          }}
+        }}
 
         // -- Section change: rebuild chord strip + swap lyrics. ----
         if (sectionName !== lastSection) {{
           lastSection = sectionName;
           const data = dataFor(sectionName);
-          const chords = (data && data.chords) || [];
-          const lines = (data && data.lyrics) || [];
+          const base = (data && data.chords) || [];
+          const chords = base.length ? (liveChordsForSection(event, base, ctx) || base) : base;
+          const lines = data ? linesForKey(data, timelineKey(liveTl)) : [];
 
           buildChordStripForSection(sectionName, chords);
 
@@ -5474,11 +5589,7 @@ def _build_karaoke_lyrics_panel_script(
             lpSection.textContent = displayLabelFor(sectionName);
             lpLyrics.classList.remove("empty");
             lpLyrics.classList.remove("instrumental");
-            lpLyrics.innerHTML = lines
-              .map((l) =>
-                '<div class="karaoke-lp-lyric-line">' + escapeHtml(l) + "</div>"
-              )
-              .join("");
+            renderLines(lines);
             const nxt = nextSectionAfter(event.event_index, false);
             lpNext.innerHTML = nxt
               ? ('Next: <strong>' + escapeHtml(displayLabelFor(nxt)) + '</strong>')
@@ -7223,7 +7334,13 @@ def live_follow_along_component_html(
       // when a lyrics map was provided, so this is a no-op for
       // instrumentalists (no panel rendered, no listener registered).
       if (typeof window.__karaokeUpdateLyricPanel === "function") {{
-        try {{ window.__karaokeUpdateLyricPanel(event); }} catch (e) {{}}
+        // The panel's chips read the same timeline and label projection as Current / Next.
+        try {{
+          window.__karaokeUpdateLyricPanel(event, {{
+            timeline: tl,
+            project: (c, sp) => projectChordLabel(c, sp),
+          }});
+        }} catch (e) {{}}
       }}
       const nowPlayingBanner = document.querySelector(".now-playing");
       if (nowPlayingBanner) {{
@@ -26527,19 +26644,39 @@ elif _studio_page == "backing":
             # original key beside correctly transposed chord chips.
             _cue_from_key = str(original_key or song_data.get("key") or "").strip()
             _cue_to_key = str(chart_display_key or "").strip()
+            # Key Cycling changes key in the browser, without a rerun: a cue that spells a chord
+            # run must be ready in every key of the cycle (the panel picks the one that sounds,
+            # by the same key names as the cycle's timelines). Only cues that change with the
+            # key are sent this way -- prose cues and lyrics stay a single list.
+            _cue_cycle_keys: list[str] = []
+            try:
+                from backing_key_cycle import (
+                    cycle_key_sequence as _lp_cycle_keys,
+                    is_cycle_active as _lp_cycle_on,
+                )
+
+                if _cue_from_key and _lp_cycle_on(st.session_state):
+                    _cue_cycle_keys = [
+                        str(_k).strip()
+                        for _k in (_lp_cycle_keys(st.session_state) or [])
+                        if str(_k or "").strip()
+                    ]
+            except Exception:
+                _cue_cycle_keys = []
             for _sec_name, _sec_chords in (chart_sections or {}).items():
-                _lines = _lyric_lines_for_section(
+                _raw_lines = _lyric_lines_for_section(
                     _sec_name,
                     _catalog_cues,
                     _user_section_text,
                     limit=16,
                 )
+                _lines = list(_raw_lines)
                 if _cue_from_key and _cue_to_key:
                     _lines = [
                         transpose_chord_tokens_in_cue(
                             _ln, _cue_from_key, _cue_to_key
                         )
-                        for _ln in _lines
+                        for _ln in _raw_lines
                     ]
                 _panel_map[str(_sec_name)] = {
                     "lyrics": _lines,
@@ -26549,6 +26686,10 @@ elif _studio_page == "backing":
                         else []
                     ),
                 }
+                if _cue_cycle_keys and _raw_lines:
+                    _by_key = cue_lines_by_cycle_key(_raw_lines, _cue_from_key, _cue_cycle_keys)
+                    if _by_key:
+                        _panel_map[str(_sec_name)]["lyrics_by_key"] = _by_key
             if any(entry.get("lyrics") for entry in _panel_map.values()):
                 _karaoke_lyric_panel = _panel_map
             elif not _karaoke_show_chords:
