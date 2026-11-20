@@ -4086,14 +4086,14 @@ def _mobile_m5_fold_density_css() -> str:
     font-size: 0.92rem !important;
     margin: 0.06rem 0 0 !important;
   }}
+  /* No line clamp: a page's description must be readable in full on a phone, so
+     the header grows to fit its text instead of hiding the end of the sentence.
+     Long words wrap rather than forcing the card to scroll sideways. */
   .ui-studio-script-header-sub {{
     font-size: 0.7rem !important;
     margin: 0.1rem 0 0 !important;
     line-height: 1.3 !important;
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
+    overflow-wrap: break-word !important;
   }}
   .ui-instrument-strip {{
     gap: 0.35rem !important;
@@ -4340,9 +4340,6 @@ def _mobile_m5_fold_density_css() -> str:
   }}
   .ui-studio-script-header-script {{
     font-size: 1.2rem !important;
-  }}
-  .ui-studio-script-header-sub {{
-    -webkit-line-clamp: 2;
   }}
 """
     return wrap_phone_css(rules) + wrap_phone_narrow_css(narrow)
@@ -7272,6 +7269,11 @@ def _decorative_studio_header_css() -> str:
   background: var(--ui-studio-header-wash, linear-gradient(135deg, #f8fafc 0%, #ffffff 100%));
   box-shadow: 0 2px 14px rgba(15, 23, 42, 0.06);
 }
+/* The text column is a flex item: without this it refuses to shrink past its
+   longest word and the card overflows sideways on a narrow phone. */
+.ui-studio-script-header > div {
+  min-width: 0;
+}
 .ui-studio-script-header-icon {
   font-size: 2.05rem;
   line-height: 1;
@@ -7308,6 +7310,7 @@ def _decorative_studio_header_css() -> str:
   font-size: 0.84rem !important;
   line-height: 1.4 !important;
   color: #475569 !important;
+  overflow-wrap: break-word !important;
 }
 .ui-chart-key-mode-badge {
   display: inline-flex;
@@ -12092,6 +12095,25 @@ def render_chart_key_mode_status_badge(st: Any) -> None:
         st.markdown(block, unsafe_allow_html=True)
 
 
+def header_subtitle_html(subtitle: str) -> str:
+    """Escape a page subtitle and render its ``**bold**`` spans as real emphasis.
+
+    The header is raw HTML, so Streamlit never parses this text as Markdown. Without
+    this the musician reads the asterisks - "Pick songs in **Active Song**" - instead
+    of seeing the control's name emphasised. Every segment is escaped, so the only
+    markup that can reach the page is the ``<strong>`` added here; an unpaired ``**``
+    is shown exactly as written rather than guessed at.
+    """
+    text = str(subtitle or "")
+    parts = text.split("**")
+    if len(parts) % 2 == 0:
+        return html.escape(text)
+    return "".join(
+        html.escape(part) if index % 2 == 0 else f"<strong>{html.escape(part)}</strong>"
+        for index, part in enumerate(parts)
+    )
+
+
 def compact_page_title(
     icon: str,
     title: str,
@@ -12109,7 +12131,7 @@ def compact_page_title(
     )
     kicker = _DECORATIVE_HEADER_KICKER.get(resolved_page_id, "Music studio")
     sub = (
-        f'<p class="ui-studio-script-header-sub">{html.escape(subtitle)}</p>'
+        f'<p class="ui-studio-script-header-sub">{header_subtitle_html(subtitle)}</p>'
         if subtitle
         else ""
     )
