@@ -520,7 +520,7 @@ def pick_mission(page: Page, label: str) -> bool:
 def click_change_rhythm_until_different(page: Page, before_rhythm: str) -> dict[str, object]:
     last = phrase_fields(page)
     for attempt in range(1, 5):
-        if not click_button_has(page, r"^Change Rhythm$"):
+        if not click_button_has(page, r"Change Rhythm$"):
             return {"clicked": False, "fields": last, "attempt": attempt}
         settle(page, 3)
         wait_ready(page)

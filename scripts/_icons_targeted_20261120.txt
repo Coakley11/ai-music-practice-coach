@@ -81,6 +81,9 @@ tests/test_mc31_mission_pedagogy.py
 tests/test_mc32_corrections.py
 tests/test_mc34_written_key_badge.py
 tests/test_mc3_multichord_missions.py
+tests/test_mc4_backing_handshake.py
+tests/test_mc4_mission_passes_sync.py
+tests/test_mc4_mission_tempo_sync.py
 tests/test_media_upload_catalog.py
 tests/test_meter_restore.py
 tests/test_mission_backing_alignment_and_rollback.py

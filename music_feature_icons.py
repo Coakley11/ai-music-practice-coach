@@ -229,6 +229,20 @@ ACTION_ICONS: dict[str, str] = {
     # Composition preview's "✕ Close preview" already shows; it is kept apart from
     # "cancel" (❌), which abandons an edit, because closing the Songs editor keeps it.
     "close": "✕",
+    # Creative Lab motif workflow (user 2026-11-20). One verb per musical action, shared by the
+    # Missions, single-chord Motif and Span Motif rows so the same act looks the same in all three.
+    # These replace the arrow glyphs that used to be typed into the labels ("Sequence Up ↑",
+    # "Reverse Order ⇄"), a second, competing convention. Each glyph is the one the user chose;
+    # several also appear elsewhere with a related meaning (⬆️/⬇️ Upload/Download, 🔄 Key Cycling,
+    # 🥁 Meter, ✅ Save as user verified, 🎼 Songs, 🎸 Guitar) on other pages.
+    "sequence_up": "⬆️",
+    "sequence_down": "⬇️",
+    "reverse": "🔄",
+    "rhythm": "🥁",
+    "build": "🧩",
+    "apply_settings": "✅",
+    "sheet_music": "🎼",
+    "guitar_tab": "🎸",
 }
 
 

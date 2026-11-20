@@ -32,7 +32,8 @@ BTN_JS = """(key) => {
   if (!b) return null;
   const r = b.getBoundingClientRect(), p = b.querySelector('p') || b;
   return {text: (b.innerText || '').trim(), l: Math.round(r.left), r: Math.round(r.right), h: Math.round(r.height),
-          vw: document.documentElement.clientWidth, clipped: p.scrollWidth > p.clientWidth + 1};
+          vw: document.documentElement.clientWidth, clipped: p.scrollWidth > p.clientWidth + 1,
+          disabled: b.disabled === true || b.getAttribute('aria-disabled') === 'true'};
 }"""
 
 EXPECT = {
@@ -42,11 +43,25 @@ EXPECT = {
     "improv_gen_motif_chord": "🪄", "improv_motif_new": "💡", "improv_motif_harder": "🧠", "improv_motif_easier": "🌱",
     # Phrase/Motif with Target scope "2 chords" (2026-11-20: plain text on dev 212e0c63)
     "improv_span_gen": "🪄", "improv_span_new": "💡", "improv_span_easier": "🌱", "improv_span_harder": "🧠",
+    # 2026-11-20 second round: the rest of the Missions / Motif / Span Motif action buttons.
+    "improv_mission_seq_up": "⬆️", "improv_mission_seq_down": "⬇️", "improv_mission_invert": "🔄",
+    "improv_mission_change_rhythm": "🥁",
+    "improv_xform_up": "⬆️", "improv_xform_down": "⬇️", "improv_xform_invert": "🔄", "improv_xform_rhythm": "🥁",
+    "improv_build_motif_pattern": "🧩", "improv_rebuild_motif_pattern": "✅", "improv_pattern_change_rhythm": "🥁",
+    "improv_motif_sheet": "🎼", "improv_motif_tab_btn": "🎸",
+    "improv_span_build": "🧩", "improv_span_rhythm": "🥁", "improv_span_back_to_seed": "↩️",
+    "improv_span_seq_up": "⬆️", "improv_span_seq_down": "⬇️", "improv_span_invert": "🔄",
+    "improv_mission_live_generate": "🪄",
 }
+# Buttons that must stay disabled (multi-chord scope): checked for icon + disabled, never clicked.
+MUST_BE_DISABLED = {"improv_span_seq_up", "improv_span_seq_down", "improv_span_invert"}
+# Rendered only in some setups (Guitar instrument; the Mission recording panel): noted, not failed.
+OPTIONAL = {"improv_motif_tab_btn", "improv_mission_live_generate"}
 
 MAIN_TEXT_JS = """() => {
   const m = document.querySelector('[data-testid="stMain"]') || document.body;
-  return {text: (m.innerText || '').slice(0, 20000), errors: document.querySelectorAll('[data-testid="stException"]').length};
+  const frames = Array.from(m.querySelectorAll('iframe')).map(f => (f.srcdoc || f.src || '').length + ':' + (f.srcdoc || '').slice(-400)).join('|');
+  return {text: (m.innerText || '').slice(0, 20000) + '#' + frames, errors: document.querySelectorAll('[data-testid="stException"]').length};
 }"""
 
 
@@ -71,9 +86,14 @@ def check_keys(page: Page, keys: list[str], where: str) -> None:
     for key in keys:
         g = page.evaluate(BTN_JS, key)
         if g is None:
+            if key in OPTIONAL:
+                NOTES.append(f"{where}: {key} not rendered here (optional)")
+                continue
             # Some actions only appear once the surface is ready; record rather than guess.
             mark(f"{where}: {key} is on the page", False, "not rendered")
             continue
+        if key in MUST_BE_DISABLED:
+            mark(f"{where}: {key} stays disabled", bool(g.get("disabled")), f"disabled={g.get('disabled')}")
         want = EXPECT[key]
         mark(f"{where}: {key} shows {want} before its label", g["text"].startswith(want), g["text"][:40])
         mark(f"{where}: {key} label not clipped and on screen",
@@ -126,6 +146,12 @@ def main() -> int:
             settle(page, 6)
             set_baseweb_select(page, "Analysis mode", "Improvisation Intelligence")
             settle(page, 8)
+            MORE = {
+                "Missions": ["improv_mission_seq_up", "improv_mission_seq_down", "improv_mission_invert",
+                             "improv_mission_change_rhythm"],
+                "Phrase": ["improv_xform_up", "improv_xform_down", "improv_xform_invert", "improv_xform_rhythm",
+                           "improv_build_motif_pattern", "improv_rebuild_motif_pattern", "improv_motif_sheet"],
+            }
             for tab, keys in (("Missions", ["improv_mission_gen", "improv_mission_easier", "improv_mission_harder", "improv_mission_new"]),
                               ("Phrase", ["improv_gen_motif_chord", "improv_motif_new", "improv_motif_harder", "improv_motif_easier"])):
                 page.set_viewport_size({"width": 1280, "height": 900})
@@ -140,6 +166,17 @@ def main() -> int:
                 page.screenshot(path=str(OUT / f"{tab.lower()}-{WIDTH}.png"))
                 for key in keys:
                     click_works(page, key, tab)
+                # The transform / develop / output buttons, now that an example or motif exists.
+                more = MORE[tab]
+                check_keys(page, more + (["improv_mission_live_generate"] if tab == "Missions" else ["improv_motif_tab_btn"]),
+                           f"{tab} more")
+                for key in more:
+                    click_works(page, key, f"{tab} more")
+                if tab == "Phrase":
+                    # Change Rhythm beside Build/Apply appears once a pattern was built.
+                    check_keys(page, ["improv_pattern_change_rhythm"], "Phrase pattern")
+                    click_works(page, "improv_pattern_change_rhythm", "Phrase pattern")
+                page.screenshot(path=str(OUT / f"{tab.lower()}-more-{WIDTH}.png"), full_page=True)
             # Phrase/Motif across a 2-chord span: the row that was still plain text.
             page.set_viewport_size({"width": 1280, "height": 900})
             settle(page, 2)
@@ -152,6 +189,13 @@ def main() -> int:
             check_keys(page, span_keys, "Span motif")
             for key in span_keys:
                 click_works(page, key, "Span motif")
+            develop = ["improv_span_build", "improv_span_rhythm", "improv_span_seq_up", "improv_span_seq_down", "improv_span_invert"]
+            check_keys(page, develop, "Span develop")
+            click_works(page, "improv_span_build", "Span develop")
+            click_works(page, "improv_span_rhythm", "Span develop")
+            check_keys(page, ["improv_span_seq_up", "improv_span_seq_down", "improv_span_invert"], "Span develop after build")
+            check_keys(page, ["improv_span_back_to_seed"], "Span develop")
+            click_works(page, "improv_span_back_to_seed", "Span develop")
             page.screenshot(path=str(OUT / f"span-motif-{WIDTH}.png"))
             over = page.evaluate("() => [document.documentElement.scrollWidth, document.documentElement.clientWidth]")
             mark("no horizontal page scroll", int(over[0]) <= int(over[1]) + 2, f"{over[0]} vs {over[1]}")

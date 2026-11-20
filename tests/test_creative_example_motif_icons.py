@@ -35,6 +35,35 @@ class Icons(unittest.TestCase):
             self.assertTrue(row[0].rstrip().endswith(f'"{verb}"),'), row[0])
         self.assertIn("st.button(action_label(verb, label), key=key, type=kind", SRC)
 
+    def test_transform_and_develop_buttons(self):
+        """User 2026-11-20: every Missions / Motif / Span Motif action button carries its icon."""
+        for verb, text in (("sequence_up", "Sequence Up"), ("sequence_down", "Sequence Down"),
+                           ("reverse", "Reverse Order"), ("rhythm", "Change Rhythm"),
+                           ("build", "Build Motif Pattern"), ("apply_settings", "Apply Pattern Type / Direction"),
+                           ("build", "Build span exercise"), ("reset", "Back to seed motif"),
+                           ("sheet_music", "Generate Sheet Music"), ("guitar_tab", "Generate Guitar TAB")):
+            self.assertIn(f'action_label("{verb}", "{text}")', SRC)
+        # One look per act across the three surfaces: Missions, single-chord Motif, Span Motif.
+        self.assertEqual(SRC.count('action_label("sequence_up", "Sequence Up")'), 3)
+        self.assertEqual(SRC.count('action_label("reverse", "Reverse Order")'), 3)
+        self.assertEqual(SRC.count('action_label("rhythm", "Change Rhythm")'), 4)
+        # The arrows typed into the labels are gone - the icon is the one convention.
+        for old in ("Sequence Up ↑", "Sequence Down ↓", "Reverse Order ⇄"):
+            self.assertNotIn(f'"{old}"', SRC)
+
+    def test_the_span_transforms_stay_disabled(self):
+        row = SRC[SRC.index('"improv_span_seq_up"') - 200: SRC.index('"improv_span_invert"') + 400]
+        self.assertIn("st.button(label, key=key, disabled=True", row)
+
+    def test_mission_generate_backing(self):
+        src = (Path(__file__).resolve().parents[1] / "mission_exact_chord_backing_ui.py").read_text(encoding="utf-8")
+        self.assertIn('action_label("generate", "Generate Backing")', src)
+
+    def test_the_new_creative_glyphs(self):
+        want = {"sequence_up": "⬆️", "sequence_down": "⬇️", "reverse": "🔄", "rhythm": "🥁", "build": "🧩",
+                "apply_settings": "✅", "sheet_music": "🎼", "guitar_tab": "🎸"}
+        self.assertEqual({k: ACTION_ICONS[k] for k in want}, want)
+
     def test_the_verbs_reuse_the_shared_glyphs(self):
         self.assertEqual((ACTION_ICONS["generate"], ACTION_ICONS["easier"], ACTION_ICONS["harder"], ACTION_ICONS["idea"]),
                          ("🪄", "🌱", "🧠", "💡"))
