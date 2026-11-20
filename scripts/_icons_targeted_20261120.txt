@@ -4,6 +4,7 @@ tests/test_ami_single_techniques.py
 tests/test_ami_span_guide_tones.py
 tests/test_ami_span_patterns.py
 tests/test_analysis_and_section_icons.py
+tests/test_app_tutorial.py
 tests/test_backing_art_card.py
 tests/test_backing_context_ui.py
 tests/test_backing_key_cycle_ui_contract.py
@@ -105,6 +106,7 @@ tests/test_missions_ui_copy.py
 tests/test_missions_workflow_hotfix.py
 tests/test_mobile_m3_ordered_content.py
 tests/test_mobile_m4_compaction.py
+tests/test_mobile_m5_fold_density.py
 tests/test_mobile_m6_tool_density.py
 tests/test_mobile_m7_finish_density.py
 tests/test_monetization_entitlements.py
@@ -114,6 +116,8 @@ tests/test_multitrack_export_ui.py
 tests/test_multitrack_m7_publish_ui.py
 tests/test_music_feature_icons.py
 tests/test_music_source_resume_lifecycle.py
+tests/test_music_workspace_reboot_restore.py
+tests/test_notation_metronome_integration.py
 tests/test_notation_visibility.py
 tests/test_origin_dev_composition_phase_d.py
 tests/test_origin_dev_missions_stabilize.py
@@ -124,6 +128,9 @@ tests/test_practice_guitar_key_sync.py
 tests/test_practice_in_backing_jam_handoff.py
 tests/test_practice_log_coach.py
 tests/test_practice_metronome.py
+tests/test_practice_start_stop_icons.py
+tests/test_practice_tools_ui.py
+tests/test_practice_workspace_persistence.py
 tests/test_qa22_37_composition_melody_creative_view.py
 tests/test_qa22_37_instrument_register.py
 tests/test_qa22_37_mission_scale_selection.py
@@ -162,6 +169,8 @@ tests/test_suite_account_workspace_sidebar.py
 tests/test_tab_missions_render_regression.py
 tests/test_tone_history_note_filter.py
 tests/test_tone_take_save_flow.py
+tests/test_tuner_live.py
+tests/test_tuner_tone_ui.py
 tests/test_upload_analysis_history_ui.py
 tests/test_upload_follows_active_source_ownership.py
 tests/test_uploaded_melodies_pdf_limit.py
