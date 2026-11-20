@@ -1255,8 +1255,34 @@ def ensure_key_cycle_follows_active_song(session: dict[str, Any]) -> bool:
         now = _active_song_cycle_identity(session) if live else ""
         was = str((data or {}).get(CYCLE_SONG_ID) or "").strip()
         other_song = bool(live and now and was and was != now)
-        if live and now and not was:
-            _put_owner_cycle_session(session, owner, dict(data, **{CYCLE_SONG_ID: now}))
+        # A cycle saved without its song (written before cycles recorded one) belongs to an unknown
+        # song. It was adopted here with its old key, so one stale cycle in D put D on every song
+        # active after a refresh -- Let It Be (C), Shallow (G), a Karaoke Blackbird (E) (user report
+        # 2026-11-20). It is never adopted: it starts again at the active song's own first key,
+        # stopped, keeping the musician's Interval / Direction / Key Spelling.
+        orphan = bool(live and now and not was)
+        if orphan and not (new_activation or other_song):
+            fresh = start_key_cycle(
+                session,
+                interval=int(data.get("interval") or 1),
+                direction="down" if str(data.get("direction") or "up").lower() == "down" else "up",
+                spelling_prefs=dict(data.get("spelling_prefs") or {}) or spelling_prefs_from_session(session),
+            )
+            if fresh:
+                _log_cycle_key_write(
+                    session,
+                    trigger="orphan_cycle_restarted_for_song",
+                    old_key=str(data.get("current_playback_key") or ""),
+                    new_key=str(fresh.get("current_playback_key") or ""),
+                    cycle_id=str(fresh.get("cycle_id") or ""),
+                    pass_id=0,
+                    extra={"new_song": now[:80], "epoch": int(epoch)},
+                )
+            try:
+                persist_key_cycle_position(session)
+            except Exception:
+                pass
+            return True
         if not (new_activation or other_song):
             return False
         _reset_key_cycle_settings_to_defaults(session)

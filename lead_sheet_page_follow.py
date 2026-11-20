@@ -36,7 +36,7 @@ from __future__ import annotations
 HOLD_MS = 3000
 # Bumped whenever the controller's behaviour changes: an open page keeps the copy it installed (one per top
 # window) and only a newer version replaces it -- v2 pages kept the 6 s hold and the old spacer after a deploy.
-CONTROLLER_VERSION = 4
+CONTROLLER_VERSION = 5
 # Who leads the page when several are open and playing (higher wins; user, 2026-11-16).
 LEAD_SHEET_PRIORITY = 10
 MELODY_PRIORITY = 20                 # the Practice Melody staff
@@ -80,13 +80,44 @@ function lsWatchFrameHost(fe, fit) {
 _CONTROLLER_JS = r"""
 (function installLeadSheetPageFollow() {
   var V = __V__, HOLD_MS = __HOLD__, LS_PRIORITY = __LS_PRIO__;
-  var top;
-  try { top = window.top; void top.document.body; } catch (e) { return; }
-  if (top.__lsFollow && Number(top.__lsFollow.v) >= V) return;
+  // ``shell`` is the browser's top window: every surface finds the controller there (window.top.__lsFollow).
+  // ``top`` is the window that HOLDS THE STREAMLIT APP -- the one whose page the musician scrolls. Locally they are the
+  // same window. On Streamlit Community Cloud they are not: the app runs in a same-origin iframe (under /~/+/) inside
+  // Cloud's own page, and a controller that scrolled window.top moved Cloud's page instead of the app's stMain
+  // (two scrollbars, the chart left behind, a strip of chart over blank white; user, Cloud Dev eee50ba2, 2026-11-19).
+  var shell, top;
+  try { shell = window.top; void shell.document.body; } catch (e) { return; }
+  var APP = '[data-testid="stApp"]';
+  function holdsApp(w) {
+    try { return !!(w && !w.closed && w.document && w.document.querySelector(APP)); } catch (e) { return false; }
+  }
+  // Depth-first through same-origin frames (Cloud may nest the app or put other frames first); a cross-origin frame
+  // throws and is skipped. Not found: the top window, as before.
+  function findApp(w, depth) {
+    if (holdsApp(w)) return w;
+    if (depth <= 0) return null;
+    var frames = [];
+    try { frames = w.document.querySelectorAll("iframe"); } catch (e1) { return null; }
+    for (var i = 0; i < frames.length; i++) {
+      try { var cw = frames[i].contentWindow; var hit = cw && findApp(cw, depth - 1); if (hit) return hit; } catch (e2) {}
+    }
+    return null;
+  }
+  top = findApp(shell, 3) || shell;
+  var old = null;
+  try { old = shell.__lsFollow || null; } catch (eO) {}
+  // A same-version controller is kept only while it still serves THIS app window: Cloud can replace the app's
+  // iframe (reconnect, reboot, rerun after a crash) while its own page stays, leaving a controller bound to a dead one.
+  if (old && Number(old.v) >= V && old.appWin === top && holdsApp(old.appWin)) return;
   // An older controller on this page (an update while the page stayed open): take over its surfaces.
   var inherited = [];
-  try { inherited = (top.__lsFollow && top.__lsFollow.providers) || []; } catch (eI) {}
-  try { if (top.__lsFollow && top.__lsFollow.destroy) top.__lsFollow.destroy(); } catch (eD) {}
+  try { inherited = (old && old.providers) || []; } catch (eI) {}
+  try { if (old && old.destroy) old.destroy(); } catch (eD) {}
+  try { if (top !== shell && top.__lsFollow && top.__lsFollow !== old && top.__lsFollow.destroy) top.__lsFollow.destroy(); } catch (eD2) {}
+  if (top !== shell) {
+    // An older controller (v4 and before) put its spacer and compact bar into Cloud's page: take them out.
+    try { ["ls-mini-transport", "ls-follow-room"].forEach(function (id) { var n = shell.document.getElementById(id); if (n) n.remove(); }); } catch (eS) {}
+  }
   var doc = top.document;
   var C = { v: V, holdMs: HOLD_MS, lastInteraction: 0, lastKind: "", pointerDown: false,
             selfScrollUntil: 0, providers: inherited.slice(), moves: [], wasSuspended: false, leader: "", seq: 0 };
@@ -602,7 +633,10 @@ _CONTROLLER_JS = r"""
     var room = doc.getElementById("ls-follow-room");
     if (room) room.remove();
   };
-  top.__lsFollow = C;
+  C.appWin = top;
+  C.appIsShell = top === shell;
+  shell.__lsFollow = C;
+  if (top !== shell) { try { top.__lsFollow = C; } catch (eA) {} }
   watchAll();
 })();
 """
@@ -623,7 +657,9 @@ def page_follow_controller_js() -> str:
     )
     return (
         "(function () { try { var t = window.top;"
-        f" if (t.__lsFollow && Number(t.__lsFollow.v) >= {CONTROLLER_VERSION}) return;"
+        f" var c = t.__lsFollow; if (c && Number(c.v) >= {CONTROLLER_VERSION}"
+        " && (function () { try { return !!(c.appWin && !c.appWin.closed"
+        " && c.appWin.document.querySelector('[data-testid=\"stApp\"]')); } catch (e) { return false; } })()) return;"
         " var s = t.document.createElement('script'); s.textContent = "
         + json.dumps(code).replace("</", "<\\u002f")
         + "; t.document.head.appendChild(s); s.remove(); } catch (e) {} })();"

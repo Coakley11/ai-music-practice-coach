@@ -2607,3 +2607,28 @@ def resolve_active_musical_key(
             else ""
         ),
     )
+
+
+# --- Diagnostic (D-major report 2026-11-20): who queues a display key ------------------------------
+# Observation only (active_song_change_ledger): the call, its behaviour and result are unchanged.
+def _ledger_observed_display_key(fn: Any) -> Any:
+    import functools
+
+    @functools.wraps(fn)
+    def _observed(session_or_st: Any, key: str, *args: Any, **kwargs: Any) -> Any:
+        result = fn(session_or_st, key, *args, **kwargs)
+        try:
+            from active_song_change_ledger import _caller, note_active_song
+
+            ss = getattr(session_or_st, "session_state", session_or_st)
+            note_active_song(ss, "request_display_key", key=str(key or "")[:4], caller=_caller(2))
+        except Exception:
+            pass
+        return result
+
+    _observed.__wrapped_for_ledger__ = True  # type: ignore[attr-defined]
+    return _observed
+
+
+if not getattr(request_display_key, "__wrapped_for_ledger__", False):
+    request_display_key = _ledger_observed_display_key(request_display_key)  # type: ignore[assignment]

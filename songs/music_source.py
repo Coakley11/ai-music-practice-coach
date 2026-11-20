@@ -7656,6 +7656,17 @@ def activate_catalog_song_for_backing(
         bound_pick=str(getattr(ctx, "bound_pick_key", "") or "") if ctx else "",
         catalog_restore_pin_pick=str(session.get(CATALOG_RESTORE_PIN_KEY) or pick_key).strip(),
     )
+    try:  # diagnostic: which operation changed the active song (active_song_change_ledger)
+        from active_song_change_ledger import note_active_song
+
+        note_active_song(
+            session,
+            "backing_activate_catalog",
+            reason=reason,
+            pick_source=session.get("catalog_restore_pick_source"),
+        )
+    except Exception:
+        pass
     return ctx
 
 

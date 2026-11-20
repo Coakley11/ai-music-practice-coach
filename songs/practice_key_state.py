@@ -1792,3 +1792,33 @@ __all__ = [
     "set_practice_concert_key",
     "set_source_bpm",
 ]
+
+
+# --- Diagnostic (D-major report 2026-11-20): who writes a song's saved Practice Key -------------
+# Observation only (active_song_change_ledger): the call, its behaviour and result are unchanged.
+def _ledger_observed_pk_writer(fn: Any) -> Any:
+    import functools
+
+    @functools.wraps(fn)
+    def _observed(session: Any, concert_key: str, *args: Any, **kwargs: Any) -> Any:
+        result = fn(session, concert_key, *args, **kwargs)
+        try:
+            from active_song_change_ledger import _caller, _pick_label, note_active_song
+
+            note_active_song(
+                session if isinstance(session, dict) or hasattr(session, "get") else {},
+                "set_practice_concert_key",
+                key=str(concert_key or "")[:4],
+                pick=_pick_label(str(kwargs.get("pick_key") or "")),
+                caller=_caller(2),
+            )
+        except Exception:
+            pass
+        return result
+
+    _observed.__wrapped_for_ledger__ = True  # type: ignore[attr-defined]
+    return _observed
+
+
+if not getattr(set_practice_concert_key, "__wrapped_for_ledger__", False):
+    set_practice_concert_key = _ledger_observed_pk_writer(set_practice_concert_key)  # type: ignore[assignment]
