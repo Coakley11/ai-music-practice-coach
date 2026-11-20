@@ -2950,7 +2950,7 @@ def render_abc(abc_text, *, measure_sync=None, follow_role="practice-melody"):
         if (firstCurrent) {{
           // M4: scrollIntoView here also scrolled the PAGE, pulling it back every measure (even over a
           // manual scroll). This frame now only scrolls itself; the page moves through the one page
-          // controller, which honours the six-second manual hold. An open, lit melody staff leads the page
+          // controller, which honours the three-second manual hold. An open, lit melody staff leads the page
           // over the Lead Sheet (user, 2026-11-14).
           try {{
             const de = document.scrollingElement || document.documentElement;
@@ -6530,8 +6530,8 @@ def live_follow_along_component_html(
     // Parts 9 and 10. This surface scrolls its own box, and the ONE page controller
     // (lead_sheet_page_follow) owns the question of whether the singer is scrolling: a wheel,
     // touch, key or press anywhere - including inside this iframe, which it watches - holds
-    // every follower for six seconds, and a held pointer holds it open. Asking it rather than
-    // timing our own six seconds is what keeps the two from disagreeing.
+    // every follower for three seconds, and a held pointer holds it open. Asking it rather than
+    // timing our own three seconds is what keeps the two from disagreeing.
     function followHeld() {{
       try {{
         const ctl = window.top.__lsFollow;
@@ -6584,10 +6584,18 @@ def live_follow_along_component_html(
     }}
     // Two scrollers, each moving only its own thing: this box puts the lyric in front of the
     // singer inside the iframe, and the ONE page controller brings the iframe itself back when
-    // the singer has scrolled the page away. Both obey the same six-second hold, so they cannot
+    // the singer has scrolled the page away. Both obey the same three-second hold, so they cannot
     // take turns fighting each other.
+    // An open uploaded-melody panel (My Uploaded Melodies) stops automatic scrolling here too: the musician
+    // is reading it by hand (user, 2026-11-20). The page controller decides; this asks it.
+    function followBlocked() {{
+      try {{
+        const ctl = window.top.__lsFollow;
+        return !!(ctl && ctl.blocked && ctl.blocked() && !(ctl.leading && ctl.leading()));
+      }} catch (eB) {{ return false; }}
+    }}
     function followInsideBox(el) {{
-      if (!el || !el.isConnected || followHeld()) return false;
+      if (!el || !el.isConnected || followHeld() || followBlocked()) return false;
       const sc = boxScroller();
       if (sc) {{
         const c = el.getBoundingClientRect();
@@ -7289,13 +7297,13 @@ def live_follow_along_component_html(
           if (label) label.textContent = "Now Playing";
         }}
         if (eventChanged && PAGE_FOLLOW) {{
-          // Full-height sheet: the page follows, through the one page controller (6 s manual hold,
+          // Full-height sheet: the page follows, through the one page controller (3 s manual hold,
           // never while paused or stopped). It only scrolls; audio and highlight are untouched.
           try {{
             if (sheetIsPlaying() && window.top.__lsFollow) window.top.__lsFollow.request("lead-sheet", currentCell, {{ why: "chord" }});
           }} catch (ePf) {{}}
         }} else if (eventChanged && clock && !clock.paused) {{
-          // Karaoke's own box. Through followInsideBox, so the singer's six seconds - the
+          // Karaoke's own box. Through followInsideBox, so the singer's three seconds - the
           // shared controller's - are respected, and so the lyrics win the target when a
           // performance has one. It still scrolls the shell rather than the page, which is why
           // this code was written: the page moving here buried the cycle transport.
@@ -7555,7 +7563,7 @@ def live_follow_along_component_html(
       }} catch (ePfI) {{}}
     }}
     // The hold-only install puts the controller on the page without claiming it; this claims
-    // it for the lyrics, which is what brings the page back after the singer's six seconds.
+    // it for the lyrics, which is what brings the page back after the singer's three seconds.
     if (KARAOKE_HOLD) {{
       if (!registerKaraokeFollow()) window.setTimeout(registerKaraokeFollow, 400);
       syncChartFold();
@@ -21004,6 +21012,12 @@ elif _studio_page == "practice":
                                             melody=_pm_melody,
                                             song_identity=_pm_song_identity,
                                         )
+                                        try:
+                                            from backing_melody_modes import MODE_PRACTICE, request_melody_mode
+
+                                            request_melody_mode(st.session_state, MODE_PRACTICE)
+                                        except ImportError:
+                                            pass
                                         set_pending_anchor(
                                             st.session_state, ANCHOR_BACKING_FOLLOW_ALONG
                                         )
@@ -26828,7 +26842,7 @@ elif _studio_page == "backing":
                 karaoke_countdown_seconds=km.countdown_seconds(st.session_state),
                 # Karaoke keeps its own scroll box - M4 left it that way deliberately - but not
                 # its own idea of when the singer is scrolling. This installs the shared page
-                # controller so this surface can ask its six-second hold, without registering as
+                # controller so this surface can ask its three-second hold, without registering as
                 # a page-follow provider and without page_follow's full-height layout.
                 karaoke_hold_from_shared_controller=bool(_karaoke_needs_surface),
                 karaoke_lyrics_panel=_karaoke_lyric_panel,
@@ -26851,7 +26865,7 @@ elif _studio_page == "backing":
                 reading_key=_fa_reading_key,
                 chord_tone_hints_switch=not km.is_karaoke_session_active(st.session_state),
                 # Backing (not Karaoke, whose lyric panel keeps its own box): the whole chart on the page,
-                # the page following the music with a six-second hold after any manual scroll or touch.
+                # the page following the music with a three-second hold after any manual scroll or touch.
                 page_follow=not (_karaoke_engaged or km.is_karaoke_session_active(st.session_state)),
         )
         if _karaoke_engaged:
@@ -26933,6 +26947,18 @@ elif _studio_page == "backing":
             st.session_state.pop("_backing_play_request", None)
         st.markdown("</div>", unsafe_allow_html=True)
 
+    # Melodies under the Lead Sheet (user rules 2026-11-20, backing_melody_modes.py): Practice Melody and My
+    # Uploaded Melodies are one choice -- only the active mode's panels are drawn, so a hidden display never takes
+    # part in scrolling. The Original Melody (below) coexists with either.
+    try:
+        from backing_melody_modes import MODE_PRACTICE as _BK_MODE_PRACTICE, MODE_UPLOADED as _BK_MODE_UPLOADED
+        from backing_melody_modes import render_melody_mode_selector as _bk_render_melody_mode
+
+        _bk_melody_mode = _bk_render_melody_mode(st, st.session_state)
+    except ImportError:
+        _BK_MODE_PRACTICE, _BK_MODE_UPLOADED = "practice", "uploaded"
+        _bk_melody_mode = _BK_MODE_PRACTICE
+
     # Practice Melody projection (Slice E/F1) -- an optional layer on top of
     # Backing, never a second owner of song/key/source state. Consuming the
     # pending handoff here (once per render, idempotent) is what keeps a
@@ -26979,7 +27005,7 @@ elif _studio_page == "backing":
         except Exception:
             pass
 
-    if _pmb_melody is not None:
+    if _bk_melody_mode == _BK_MODE_PRACTICE and _pmb_melody is not None:
         with st.expander(
             f"{FEATURE_ICONS['backing']} Practice Melody", expanded=True
         ):
@@ -27035,6 +27061,52 @@ elif _studio_page == "backing":
                 practice_melody_sections_abc(_pmb_melody, _pmb_display_sections),
                 measure_sync=_pmb_measure_sync,
             )
+    elif _bk_melody_mode == _BK_MODE_PRACTICE:
+        # No Practice Melody handed over from Practice yet: make one here, from this song's chart, with the same
+        # generator and level the Practice page uses (the melody then also shows on Practice). It never changes
+        # the song, key, instrument or backing settings, and never starts or stops playback.
+        if st.button(
+            f"{FEATURE_ICONS['backing']} Show a Practice Melody for this song",
+            key="backing_practice_melody_create",
+        ):
+            _pmb_created = None
+            try:
+                from composition_hum_transcription import parse_meter as _pmb_parse_meter
+                from practice_melody_backing import begin_practice_melody_backing_handoff
+                from practice_melody_session import resolve_practice_melody
+
+                _pmb_sections = sections if isinstance(sections, dict) else {}
+                _pmb_created = resolve_practice_melody(
+                    st.session_state,
+                    song_identity=_pmb_song_identity,
+                    song_id_for_generation=_pmb_song_identity,
+                    song_title=song,
+                    sections=_pmb_sections,
+                    section_order=(song_data or {}).get("section_order") or list(_pmb_sections.keys()),
+                    key_center=_pmb_target_key,
+                    level=level,
+                    tempo_bpm=float(st.session_state.get("backing_track_bpm") or bpm or 100),
+                    style=str(st.session_state.get("backing_groove_style") or ""),
+                    meter=_pmb_parse_meter(str(backing_time_signature or "4/4")),
+                    focus=focus,
+                    instrument=str(instrument or ""),
+                )
+                if _pmb_created is not None:
+                    begin_practice_melody_backing_handoff(
+                        st.session_state, melody=_pmb_created, song_identity=_pmb_song_identity
+                    )
+            except Exception:
+                _pmb_created = None
+            if _pmb_created is not None:
+                st.rerun()
+            st.info("This song has no structured chord/section data yet, so a Practice Melody can't be made for it.")
+    elif _bk_melody_mode == _BK_MODE_UPLOADED:
+        try:
+            from backing_melody_modes import render_uploaded_references
+
+            render_uploaded_references(st, st.session_state)
+        except Exception:
+            st.caption("Uploaded melodies could not be shown right now. The music is unaffected.")
 
     if _developer_mode_enabled():
         with st.expander("📋 Form timeline & section order (dev)", expanded=False):
@@ -27071,104 +27143,112 @@ elif _studio_page == "backing":
                 hide_index=True,
             )
 
-    # ----- Original Melody panel (Composition songs only) -----
-    # One synchronized lead-sheet score per section (chords above the staff, lyrics
-    # below the notes). It follows Backing's own transport; the melody itself is
-    # never played here -- the musician plays it.
+    # ----- Original Melody panel -----
+    # The song's own synchronized melody, whatever its source (backing_melody_modes.original_melody_sections):
+    # today a Composition's composed melody; later a properly integrated synchronized melody for a Catalog or
+    # Custom song. Shown in either melody mode, it always leads the page while open. One synchronized
+    # lead-sheet score per section (chords above the staff, lyrics below the notes). It follows Backing's own
+    # transport; the melody itself is never played here -- the musician plays it.
     _bk_comp_doc = _composition_doc if _chart_bundle and _chart_bundle.get("source") == SOURCE_COMPOSITION else None
-    if _bk_comp_doc:
-        from composition_songs_bridge import (
-            composition_section_melody_events as _bk_melody_events,
-            composition_section_lyrics_alignment as _bk_lyrics_alignment,
+    try:
+        from backing_melody_modes import original_melody_sections as _bk_original_melody_sections
+
+        _bk_melody_by_sec, _bk_om_source = _bk_original_melody_sections(
+            composition_doc=_bk_comp_doc, song_data=song_data if isinstance(song_data, dict) else None,
         )
-        _bk_melody_by_sec = _bk_melody_events(_bk_comp_doc)
-        if _bk_melody_by_sec:
+    except Exception:
+        _bk_melody_by_sec, _bk_om_source = {}, ""
+    if _bk_melody_by_sec:
+        _bk_align_by_sec = {}
+        if _bk_om_source == "composition":
+            from composition_songs_bridge import composition_section_lyrics_alignment as _bk_lyrics_alignment
+
             _bk_align_by_sec = _bk_lyrics_alignment(_bk_comp_doc)
-            with st.expander(
-                feature_label("practice_melody_original", "Original Melody"),
-                expanded=True,
-            ):
-                st.caption(
-                    f"The composed melody for **{song}** · key **{chart_display_key}**. "
-                    "Chords, notes and lyrics follow the backing track."
-                )
-                from composition_melody_notation import build_section_score_model as _bk_score
-                from composition_melody_projection import (
-                    clef_for_instrument as _bk_clef_for,
-                    melody_range_notice as _bk_range_notice,
-                    project_melody_events as _bk_project,
-                )
-                _bk_orig_key = str(original_key or "C").strip()
-                _bk_practice_key = str(concert_key or _bk_orig_key).strip()
-                _bk_written = chart_key_mode == "written"
-                _bk_inst_semitones = _bk_project(
-                    [], original_key=_bk_orig_key, practice_key=_bk_practice_key,
+        with st.expander(
+            feature_label("practice_melody_original", "Original Melody"),
+            expanded=True,
+        ):
+            st.caption(
+                f"The {'composed' if _bk_om_source == 'composition' else 'original'} melody for **{song}** · "
+                f"key **{chart_display_key}**. Chords, notes and lyrics follow the backing track."
+            )
+            from composition_melody_notation import build_section_score_model as _bk_score
+            from composition_melody_projection import (
+                clef_for_instrument as _bk_clef_for,
+                melody_range_notice as _bk_range_notice,
+                project_melody_events as _bk_project,
+            )
+            _bk_orig_key = str(original_key or "C").strip()
+            _bk_practice_key = str(concert_key or _bk_orig_key).strip()
+            _bk_written = chart_key_mode == "written"
+            _bk_inst_semitones = _bk_project(
+                [], original_key=_bk_orig_key, practice_key=_bk_practice_key,
+                instrument=instrument, session_state=st.session_state,
+                written=_bk_written,
+            )[2]
+            _bk_clef = _bk_clef_for(instrument)
+            _bk_display_key = str(
+                (written_key if (_bk_written and _bk_inst_semitones) else "")
+                or concert_key or original_key or "C"
+            )
+            _bk_comp_pg = (_bk_comp_doc or {}).get("global") if isinstance(
+                (_bk_comp_doc or {}).get("global"), dict
+            ) else {}
+            _bk_meter = str(_bk_comp_pg.get("time_signature") or backing_time_signature or "4/4")
+            _bk_bpm = int(_bk_comp_pg.get("bpm") or bpm or 96)
+
+            _bk_projected: dict[str, list] = {}
+            for _bk_sec_name, _bk_events in _bk_melody_by_sec.items():
+                _bk_projected[_bk_sec_name] = _bk_project(
+                    _bk_events, original_key=_bk_orig_key, practice_key=_bk_practice_key,
                     instrument=instrument, session_state=st.session_state,
                     written=_bk_written,
-                )[2]
-                _bk_clef = _bk_clef_for(instrument)
-                _bk_display_key = str(
-                    (written_key if (_bk_written and _bk_inst_semitones) else "")
-                    or concert_key or original_key or "C"
-                )
-                _bk_comp_pg = _bk_comp_doc.get("global") if isinstance(
-                    _bk_comp_doc.get("global"), dict
-                ) else {}
-                _bk_meter = str(_bk_comp_pg.get("time_signature") or backing_time_signature or "4/4")
-                _bk_bpm = int(_bk_comp_pg.get("bpm") or bpm or 96)
+                )[0]
+            _bk_notice = _bk_range_notice(
+                [ev for evs in _bk_projected.values() for ev in evs],
+                instrument, st.session_state,
+            )
+            if _bk_notice:
+                st.caption(_bk_notice)
 
-                _bk_projected: dict[str, list] = {}
-                for _bk_sec_name, _bk_events in _bk_melody_by_sec.items():
-                    _bk_projected[_bk_sec_name] = _bk_project(
-                        _bk_events, original_key=_bk_orig_key, practice_key=_bk_practice_key,
-                        instrument=instrument, session_state=st.session_state,
-                        written=_bk_written,
-                    )[0]
-                _bk_notice = _bk_range_notice(
-                    [ev for evs in _bk_projected.values() for ev in evs],
-                    instrument, st.session_state,
+            for _bk_sec_name, _bk_render_events in _bk_projected.items():
+                _bk_sec_chords = (chart_sections or {}).get(_bk_sec_name, [])
+                # Lyrics sit under the notes only for a singer. Instrumentalists read the
+                # melody alone; the stored lyrics and alignment are never touched.
+                _bk_voice = str(instrument or "").strip() == "Voice"
+                _bk_sec_lyrics = (section_lyrics or {}).get(_bk_sec_name, "") if _bk_voice else ""
+                _bk_sec_align = _bk_align_by_sec.get(_bk_sec_name) if _bk_voice else None
+                _bk_model = _bk_score(
+                    events=_bk_render_events,
+                    chords=_bk_sec_chords,
+                    key=_bk_display_key,
+                    meter=_bk_meter,
+                    bpm=_bk_bpm,
+                    title=_bk_sec_name,
+                    lyrics_text=_bk_sec_lyrics,
+                    lyrics_alignment=_bk_sec_align,
+                    clef=_bk_clef,
                 )
-                if _bk_notice:
-                    st.caption(_bk_notice)
-
-                for _bk_sec_name, _bk_render_events in _bk_projected.items():
-                    _bk_sec_chords = (chart_sections or {}).get(_bk_sec_name, [])
-                    # Lyrics sit under the notes only for a singer. Instrumentalists read the
-                    # melody alone; the stored lyrics and alignment are never touched.
-                    _bk_voice = str(instrument or "").strip() == "Voice"
-                    _bk_sec_lyrics = (section_lyrics or {}).get(_bk_sec_name, "") if _bk_voice else ""
-                    _bk_sec_align = _bk_align_by_sec.get(_bk_sec_name) if _bk_voice else None
-                    _bk_model = _bk_score(
-                        events=_bk_render_events,
-                        chords=_bk_sec_chords,
-                        key=_bk_display_key,
-                        meter=_bk_meter,
-                        bpm=_bk_bpm,
-                        title=_bk_sec_name,
-                        lyrics_text=_bk_sec_lyrics,
-                        lyrics_alignment=_bk_sec_align,
-                        clef=_bk_clef,
-                    )
-                    if _bk_model.get("abc"):
-                        st.markdown(f"##### {_bk_sec_name}")
-                        if _bk_voice and str(_bk_sec_lyrics).strip() and not _bk_model.get("lyrics_aligned"):
-                            st.caption(
-                                "These lyrics are not aligned to the melody yet. Align them in "
-                                "Composition Studio to see each syllable under its note."
+                if _bk_model.get("abc"):
+                    st.markdown(f"##### {_bk_sec_name}")
+                    if _bk_voice and str(_bk_sec_lyrics).strip() and not _bk_model.get("lyrics_aligned"):
+                        st.caption(
+                            "These lyrics are not aligned to the melody yet. Align them in "
+                            "Composition Studio to see each syllable under its note."
+                        )
+                    _bk_msync = None
+                    try:
+                        if _follow_timeline and _bk_render_events:
+                            from composition_playback_sync import build_composition_measure_sync_data as _bk_cmsync
+                            from practice_melody_sync import resolve_melody_measure_timing as _bk_resolve
+                            _bk_msync_data = _bk_cmsync(
+                                _bk_sec_name, _bk_render_events, meter=_bk_meter,
                             )
+                            if _bk_msync_data:
+                                _bk_msync = _bk_resolve(_bk_msync_data, _follow_timeline)
+                    except Exception:
                         _bk_msync = None
-                        try:
-                            if _follow_timeline and _bk_render_events:
-                                from composition_playback_sync import build_composition_measure_sync_data as _bk_cmsync
-                                from practice_melody_sync import resolve_melody_measure_timing as _bk_resolve
-                                _bk_msync_data = _bk_cmsync(
-                                    _bk_sec_name, _bk_render_events, meter=_bk_meter,
-                                )
-                                if _bk_msync_data:
-                                    _bk_msync = _bk_resolve(_bk_msync_data, _follow_timeline)
-                        except Exception:
-                            _bk_msync = None
-                        render_abc(_bk_model["abc"], measure_sync=_bk_msync, follow_role="original-melody")
+                    render_abc(_bk_model["abc"], measure_sync=_bk_msync, follow_role="original-melody")
 
     try:
         from backing_track_state import enable_backing_user_edits

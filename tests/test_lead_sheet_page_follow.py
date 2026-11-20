@@ -355,7 +355,7 @@ def test_no_melody_leads_while_a_karaoke_set_is_active():
     (registered below the Lead Sheet); a Practice / Original Melody staff never leads then."""
     js = lpf._CONTROLLER_JS
     ap = js[js.index("function activeProvider()"):js.index("function transportProvider()")]
-    assert "var best = null, karaoke = karaokeSetActive();" in ap
+    assert "var best = null, karaoke = karaokeSetActive()" in ap
     assert "if (karaoke && (Number(p.priority) || 0) > LS_PRIORITY) return;" in ap
     assert 'doc.body.getAttribute("data-karaoke-session") === "true"' in js
     code = lpf.page_follow_controller_js()

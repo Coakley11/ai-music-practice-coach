@@ -10,7 +10,9 @@ the Original Melody (a Composition's own melody, one staff per section), then th
 Sheet -- each only while it is open on screen and has the playing measure lit (a staff's measures are aligned to
 the Backing timeline); otherwise nothing moves the page. Closing the leader hands the page to the next one at once,
 and among several section staves the one that lit a measure most recently leads. A melody with no measure alignment (an uploaded
-PDF, a staff without a timeline) never registers, so it never claims the page.
+PDF, a staff without a timeline) never registers, so it never claims the page. My Uploaded Melodies (user, 2026-11-20):
+while any uploaded panel is open the musician is reading it by hand, so only the Original Melody may lead; with it
+closed nothing moves the page (no hold either -- closing the last panel hands the page to the Lead Sheet at once).
 
 That is the only code that moves the page. It never fights the person: while they scroll -- for as long as they
 like -- it holds still, and it waits three seconds after their LAST manual scroll (user, 2026-11-18: the three
@@ -36,12 +38,16 @@ from __future__ import annotations
 HOLD_MS = 3000
 # Bumped whenever the controller's behaviour changes: an open page keeps the copy it installed (one per top
 # window) and only a newer version replaces it -- v2 pages kept the 6 s hold and the old spacer after a deploy.
-CONTROLLER_VERSION = 5
+CONTROLLER_VERSION = 6
 # Who leads the page when several are open and playing (higher wins; user, 2026-11-16).
 LEAD_SHEET_PRIORITY = 10
 MELODY_PRIORITY = 20                 # the Practice Melody staff
 ORIGINAL_MELODY_PRIORITY = 30        # a Composition's Original Melody (one staff per section)
 FOLLOW_ROLES = {"practice-melody": MELODY_PRIORITY, "original-melody": ORIGINAL_MELODY_PRIORITY}
+#: My Uploaded Melodies (user, 2026-11-20): while any uploaded panel is open, only a surface at this priority or
+#: higher -- the Original Melody -- may lead; otherwise nothing moves the page. A panel is an expander keyed
+#: ``backing_melody_modes.UPLOADED_PANEL_KEY_PREFIX`` + id (Streamlit gives it the class ``st-key-<key>``).
+UPLOADED_PANEL_CLASS_PREFIX = "st-key-bk_upref_"
 
 # Plain JS (not an f-string), inserted into the follow surfaces' templates as a value. Streamlit lays out the next
 # element where a component's element container ends, and that container keeps the height the component was created
@@ -79,7 +85,7 @@ function lsWatchFrameHost(fe, fit) {
 # Plain string (not an f-string): it is inserted into the components' f-string templates as a value.
 _CONTROLLER_JS = r"""
 (function installLeadSheetPageFollow() {
-  var V = __V__, HOLD_MS = __HOLD__, LS_PRIORITY = __LS_PRIO__;
+  var V = __V__, HOLD_MS = __HOLD__, LS_PRIORITY = __LS_PRIO__, OM_PRIORITY = __OM_PRIO__, UPREF = __UPREF__;
   // ``shell`` is the browser's top window: every surface finds the controller there (window.top.__lsFollow).
   // ``top`` is the window that HOLDS THE STREAMLIT APP -- the one whose page the musician scrolls. Locally they are the
   // same window. On Streamlit Community Cloud they are not: the app runs in a same-origin iframe (under /~/+/) inside
@@ -365,11 +371,19 @@ _CONTROLLER_JS = r"""
   function karaokeSetActive() {
     try { return doc.body.getAttribute("data-karaoke-session") === "true"; } catch (e) { return false; }
   }
+  // An uploaded melody panel is open (My Uploaded Melodies): the musician is reading it by hand. Then only the
+  // Original Melody may lead the page; the Practice Melody and the Lead Sheet never do (user, 2026-11-20).
+  C.blocked = function () {
+    try {
+      return !!doc.querySelector('[class*="' + UPREF + '"] details[open], details[open][class*="' + UPREF + '"]');
+    } catch (e) { return false; }
+  };
   function activeProvider() {
-    var best = null, karaoke = karaokeSetActive();
+    var best = null, karaoke = karaokeSetActive(), cap = C.blocked() ? OM_PRIORITY : -1;
     liveProviders().forEach(function (p) {
       if (!shown(p) || !lit(p)) return;
       if (karaoke && (Number(p.priority) || 0) > LS_PRIORITY) return;
+      if ((Number(p.priority) || 0) < cap) return;
       var pr = Number(p.priority) || 0, bp = best ? (Number(best.priority) || 0) : -1;
       if (!best || pr > bp || (pr === bp && (p.lastAt || p.at || 0) >= (best.lastAt || best.at || 0))) best = p;
     });
@@ -484,6 +498,7 @@ _CONTROLLER_JS = r"""
     if (me) me.lastAt = now();
     var p = activeProvider();
     if (p && (me ? p !== me : p.id !== id)) return false;
+    if (!p && C.blocked()) return false;     // an uploaded panel is open and no Original Melody leads: nothing moves
     return C.follow(el, opts);
   };
 
@@ -580,6 +595,9 @@ _CONTROLLER_JS = r"""
   var timer = top.setInterval(function () {
     try {
       watchAll();
+      // Scrolling an uploaded PDF while it is the reason nothing follows leaves no hold behind: closing the last
+      // panel hands the page to the next display at once, not three seconds later (a held pointer still holds).
+      if (C.blocked() && !activeProvider()) { C.lastInteraction = 0; C.wasSuspended = false; }
       var s = C.suspended();
       // The leading surface changed (the melody opened, closed, or another section's staff lit up): go to
       // its playing measure now, unless the person is scrolling (then the return after the hold does it).
@@ -654,6 +672,8 @@ def page_follow_controller_js() -> str:
         _CONTROLLER_JS.replace("__V__", str(CONTROLLER_VERSION))
         .replace("__HOLD__", str(HOLD_MS))
         .replace("__LS_PRIO__", str(LEAD_SHEET_PRIORITY))
+        .replace("__OM_PRIO__", str(ORIGINAL_MELODY_PRIORITY))
+        .replace("__UPREF__", json.dumps(UPLOADED_PANEL_CLASS_PREFIX))
     )
     return (
         "(function () { try { var t = window.top;"
