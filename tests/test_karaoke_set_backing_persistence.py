@@ -91,84 +91,18 @@ class ScopeSnapshotRestore(unittest.TestCase):
     def _owner(self, sid: str = "sync-shallow"):
         return mock.patch.object(bts, "_scope_owner_id", return_value=sid)
 
-    def test_set_scope_changes_are_put_back_at_stop(self) -> None:
-        from backing_play_session import BACKING_PLAY_SESSION_KEY
-
+    def test_the_retired_scope_snapshot_never_restores_a_pre_set_scope(self) -> None:
+        """User rule 2026-11-20: End Set gives Full song (reset_backing_after_karaoke_set), not the pre-set scope.
+        The old hooks stay importable for one release and only drop a leftover snapshot."""
         s = self._session()
+        s[bts.KARAOKE_PRE_SET_SCOPE_KEY] = {"owner": "sync-shallow", "widgets": {"backing_track_scope": "Selected sections"}}
         with self._owner():
             bts.snapshot_pre_set_scope(s)
-            # During the set: the performance is Intro only, written everywhere a scope lives.
-            s["backing_track_multi_sections"] = ["Intro"]
-            s[bts.BACKING_STATE_KEY]["backing_track_multi_sections"] = ["Intro"]
-            s[BACKING_PLAY_SESSION_KEY]["overrides"]["multi_sections"] = ["Intro"]
-            s[bts.BACKING_STATE_KEY]["backing_track_bpm"] = 100  # not scope: left alone
             bts.restore_pre_set_scope(s)
-        self.assertEqual(s["_pending_backing_scope"], "Selected sections")
-        self.assertEqual(s["_pending_backing_multi_sections"], ["Verse 1", "Chorus 1"])
-        self.assertEqual(s[bts.BACKING_STATE_KEY]["backing_track_multi_sections"], ["Verse 1", "Chorus 1"])
-        self.assertEqual(s[bts.BACKING_STATE_KEY]["backing_track_bpm"], 100)
-        self.assertEqual(s[BACKING_PLAY_SESSION_KEY]["overrides"]["multi_sections"], ["Verse 1", "Chorus 1"])
-        self.assertEqual(s[BACKING_PLAY_SESSION_KEY]["overrides"]["bpm"], 96)
-        # Widgets are never written directly (the scope widget may already exist when End Set runs).
-        self.assertEqual(s["backing_track_multi_sections"], ["Intro"])
+            bts.restore_pre_set_scope(s)
         self.assertNotIn(bts.KARAOKE_PRE_SET_SCOPE_KEY, s)
-
-    def test_full_song_before_the_set_is_full_song_after(self) -> None:
-        from backing_play_session import BACKING_PLAY_SESSION_KEY
-
-        s = self._session()
-        s["backing_track_scope"] = "Full song"
-        s["backing_track_multi_sections"] = []
-        s[bts.BACKING_STATE_KEY].update({"backing_track_scope": "Full song", "backing_track_multi_sections": []})
-        s[BACKING_PLAY_SESSION_KEY]["overrides"] = {"bpm": 96}
-        with self._owner():
-            bts.snapshot_pre_set_scope(s)
-            s[BACKING_PLAY_SESSION_KEY]["overrides"]["scope"] = "Selected sections"
-            s[BACKING_PLAY_SESSION_KEY]["overrides"]["multi_sections"] = ["Intro"]
-            s["_pending_backing_multi_sections"] = ["Intro"]
-            bts.restore_pre_set_scope(s)
-        self.assertEqual(s["_pending_backing_scope"], "Full song")
+        self.assertNotIn("_pending_backing_scope", s)
         self.assertNotIn("_pending_backing_multi_sections", s)
-        self.assertEqual(s[BACKING_PLAY_SESSION_KEY]["overrides"], {"bpm": 96})
-
-    def test_restore_without_a_snapshot_is_a_no_op(self) -> None:
-        s = self._session()
-        before = repr(s)
-        with self._owner():
-            bts.restore_pre_set_scope(s)
-            bts.restore_pre_set_scope(s)
-        self.assertEqual(repr(s), before)
-
-    def test_first_snapshot_of_a_set_wins(self) -> None:
-        s = self._session()
-        with self._owner():
-            bts.snapshot_pre_set_scope(s)
-            s["backing_track_multi_sections"] = ["Intro"]
-            bts.snapshot_pre_set_scope(s)  # a second start inside the same set
-            bts.restore_pre_set_scope(s)
-        self.assertEqual(s["_pending_backing_multi_sections"], ["Verse 1", "Chorus 1"])
-
-    def test_ending_on_another_song_drops_its_performance_scope_too(self) -> None:
-        """End Set while the last sung song (not the pre-set one) is on Backing, its scope changed to Intro."""
-        from backing_play_session import BACKING_PLAY_SESSION_KEY
-
-        s = self._session()
-        with self._owner("sync-shallow"):
-            bts.snapshot_pre_set_scope(s)
-        s[bts.BACKING_STATE_KEY]["backing_track_multi_sections"] = ["Intro"]
-        s[BACKING_PLAY_SESSION_KEY]["overrides"]["multi_sections"] = ["Intro"]
-        s["_pending_backing_multi_sections"] = ["Intro"]
-        with self._owner("sync-blackbird"):
-            bts.restore_pre_set_scope(s)
-        self.assertEqual(s["_pending_backing_scope"], "Full song")
-        self.assertNotIn("_pending_backing_multi_sections", s)
-        self.assertEqual(s[bts.BACKING_STATE_KEY]["backing_track_scope"], "Full song")
-        self.assertEqual(s[bts.BACKING_STATE_KEY]["backing_track_multi_sections"], [])
-        self.assertNotIn("multi_sections", s[BACKING_PLAY_SESSION_KEY]["overrides"])
-        self.assertNotIn("scope", s[BACKING_PLAY_SESSION_KEY]["overrides"])
-        self.assertEqual(s[BACKING_PLAY_SESSION_KEY]["overrides"]["bpm"], 96)
-        self.assertNotIn(bts.KARAOKE_PRE_SET_SCOPE_KEY, s)
-
 
 if __name__ == "__main__":
     unittest.main()

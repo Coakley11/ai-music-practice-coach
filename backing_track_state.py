@@ -2310,101 +2310,15 @@ def _scope_owner_id(session: Any) -> str:
 
 
 def snapshot_pre_set_scope(session: Any) -> None:
-    """Remember the ordinary Backing scope before a Karaoke Set changes it (first call of a set wins)."""
-    if isinstance(session.get(KARAOKE_PRE_SET_SCOPE_KEY), dict):
-        return
-    multi = session.get(BACKING_MULTI_SECTIONS_WIDGET_KEY)
-    widgets = {
-        "backing_track_scope": normalize_backing_scope(session.get(BACKING_SCOPE_WIDGET_KEY) or "Full song"),
-        "backing_track_single_section": str(session.get(BACKING_SINGLE_SECTION_WIDGET_KEY) or ""),
-        "backing_track_multi_sections": [str(x) for x in multi] if isinstance(multi, list) else [],
-        "backing_quick_section": str(session.get("backing_quick_section") or "Full song"),
-    }
-    canon_raw = session.get(BACKING_STATE_KEY)
-    canon = {k: copy.deepcopy(canon_raw.get(k)) for k in _SCOPE_FIELDS if k in canon_raw} if isinstance(canon_raw, dict) else None
-    ps_over = None
-    try:
-        from backing_play_session import get_backing_play_session
-
-        ps = get_backing_play_session(session)
-        if ps is not None:
-            ov = dict(ps.get("overrides") or {})
-            ps_over = {k: copy.deepcopy(ov[k]) for k in _PS_SCOPE_FIELDS if k in ov}
-    except Exception:
-        ps_over = None
-    session[KARAOKE_PRE_SET_SCOPE_KEY] = {
-        "owner": _scope_owner_id(session),
-        "widgets": widgets,
-        "canonical": canon,
-        "play_session": ps_over,
-    }
+    """Retired (user rule 2026-11-20: End Set returns Full song, the ordinary default, not the pre-set scope).
+    Kept as a no-op for one release; clears a snapshot an older build left behind."""
+    session.pop(KARAOKE_PRE_SET_SCOPE_KEY, None)
 
 
 def restore_pre_set_scope(session: Any) -> None:
-    """Put back the scope snapshot_pre_set_scope saved; safe with no snapshot (queue end, leaving Voice, twice).
-
-    Widgets are restored through the pre-widget pending keys only (stop_session can run from an inline button
-    after the scope widget exists). When the set ends on a different song than the snapshot's (the last one
-    sung), that song's performance scope is not kept either: it goes back to Full song, the ordinary default.
-    """
-    snap = session.pop(KARAOKE_PRE_SET_SCOPE_KEY, None)
-    if not isinstance(snap, dict):
-        return
-    if str(snap.get("owner") or "") != _scope_owner_id(session):
-        # The set ended on another song (e.g. the last one sung): its performance scope is not kept either --
-        # that song starts on Full song, as on any ordinary song change.
-        snap = {"owner": "", "widgets": {"backing_track_scope": "Full song"},
-                "canonical": {"backing_track_scope": "Full song", "backing_track_single_section": "",
-                              "backing_track_multi_sections": [], "backing_quick_section": "Full song"},
-                "play_session": {}}
-    w = dict(snap.get("widgets") or {})
-    scope = normalize_backing_scope(w.get("backing_track_scope") or "Full song")
-    multi = [str(x) for x in (w.get("backing_track_multi_sections") or []) if str(x).strip()]
-    single = str(w.get("backing_track_single_section") or "").strip()
-    try:
-        from custom_progression_lab import (
-            PENDING_BACKING_MULTI_SECTIONS,
-            PENDING_BACKING_SCOPE,
-            PENDING_BACKING_SINGLE_SECTION,
-        )
-    except ImportError:
-        PENDING_BACKING_SCOPE = "_pending_backing_scope"
-        PENDING_BACKING_SINGLE_SECTION = "_pending_backing_single_section"
-        PENDING_BACKING_MULTI_SECTIONS = "_pending_backing_multi_sections"
-    session[PENDING_BACKING_SCOPE] = scope
-    session.pop(PENDING_BACKING_SINGLE_SECTION, None)
-    session.pop(PENDING_BACKING_MULTI_SECTIONS, None)
-    if scope != "Full song":
-        if multi:
-            session[PENDING_BACKING_MULTI_SECTIONS] = list(multi)
-        elif single:
-            session[PENDING_BACKING_SINGLE_SECTION] = single
-    canon_snap = snap.get("canonical")
-    canon_now = session.get(BACKING_STATE_KEY)
-    if isinstance(canon_snap, dict) and isinstance(canon_now, dict):
-        merged = dict(canon_now)
-        for k in _SCOPE_FIELDS:
-            if k in canon_snap:
-                merged[k] = copy.deepcopy(canon_snap[k])
-        merged["last_write_reason"] = "karaoke_set_scope_restore"
-        session[BACKING_STATE_KEY] = merged
-    ps_snap = snap.get("play_session")
-    if isinstance(ps_snap, dict):
-        try:
-            from backing_play_session import BACKING_PLAY_SESSION_KEY, get_backing_play_session
-
-            ps = get_backing_play_session(session)
-            if ps is not None:
-                ps = dict(ps)
-                ov = dict(ps.get("overrides") or {})
-                for k in _PS_SCOPE_FIELDS:
-                    ov.pop(k, None)
-                    if k in ps_snap:
-                        ov[k] = copy.deepcopy(ps_snap[k])
-                ps["overrides"] = ov
-                session[BACKING_PLAY_SESSION_KEY] = ps
-        except Exception:
-            pass
+    """Retired: End Set runs backing_play_session.reset_backing_after_karaoke_set (Full song). Drops a leftover
+    snapshot only."""
+    session.pop(KARAOKE_PRE_SET_SCOPE_KEY, None)
 
 
 # --- Karaoke Set: the repeat count is the SET's, the ordinary Loop Count comes back at End Set ---------------------
@@ -2419,67 +2333,14 @@ KARAOKE_POST_SET_ADOPT_KEY = "_karaoke_post_set_adopt_identity"
 
 
 def snapshot_pre_set_loops(session: Any) -> None:
-    """Remember ordinary Backing's Loop Count before a Karaoke Set (first call of a set wins)."""
-    if isinstance(session.get(KARAOKE_PRE_SET_LOOPS_KEY), dict):
-        return
-    loops = normalize_backing_loops(session.get("backing_track_loops"), default=0)
-    canon_raw = session.get(BACKING_STATE_KEY)
-    if not loops and isinstance(canon_raw, dict):
-        loops = normalize_backing_loops(canon_raw.get("backing_track_loops"), default=0)
-    ps_loops = None
-    try:
-        from backing_play_session import get_backing_play_session
-
-        ps = get_backing_play_session(session)
-        if ps is not None and not ps.get("expired"):
-            ps_loops = (ps.get("overrides") or {}).get("loops")
-    except Exception:
-        ps_loops = None
-    identity = ""
-    try:
-        from active_song_transition import ACTIVE_SONG_ACTIVATION_ID_KEY
-
-        identity = str(session.get(ACTIVE_SONG_ACTIVATION_ID_KEY) or "")
-    except Exception:
-        identity = ""
+    """Retired (user rule 2026-11-20: End Set gives ordinary defaults, not the pre-set Loop Count). Kept as a
+    no-op for one release so a guarded caller never breaks; clears any snapshot an older build left behind."""
+    session.pop(KARAOKE_PRE_SET_LOOPS_KEY, None)
     session.pop(KARAOKE_POST_SET_ADOPT_KEY, None)
-    session[KARAOKE_PRE_SET_LOOPS_KEY] = {
-        "loops": loops or BACKING_LOOPS_DEFAULT,
-        "play_session_loops": ps_loops,
-        "activation_identity": identity,
-    }
 
 
 def restore_pre_set_loops(session: Any) -> None:
-    """Give ordinary Backing its pre-set Loop Count back; safe with no snapshot (twice, queue end, leaving Voice).
-
-    Through the pre-widget pending key only (stop_session can run from an inline button after the slider exists),
-    plus the canonical blob and the live play session, so a rerun or the next play session cannot bring the set's
-    count back.
-    """
-    snap = session.pop(KARAOKE_PRE_SET_LOOPS_KEY, None)
-    if not isinstance(snap, dict):
-        return
-    loops = normalize_backing_loops(snap.get("loops"))
-    session["_pending_backing_loops"] = loops
-    canon = session.get(BACKING_STATE_KEY)
-    if isinstance(canon, dict):
-        canon = dict(canon)
-        canon["backing_track_loops"] = loops
-        canon["last_write_reason"] = "karaoke_set_loops_restore"
-        session[BACKING_STATE_KEY] = canon
-    try:
-        from backing_play_session import BACKING_PLAY_SESSION_KEY, get_backing_play_session
-
-        ps = get_backing_play_session(session)
-        if ps is not None:
-            ps = dict(ps)
-            ov = dict(ps.get("overrides") or {})
-            ov.pop("loops", None)
-            if loops != normalize_backing_loops((ps.get("defaults") or {}).get("loops")):
-                ov["loops"] = loops
-            ps["overrides"] = ov
-            session[BACKING_PLAY_SESSION_KEY] = ps
-    except Exception:
-        pass
-    session[KARAOKE_POST_SET_ADOPT_KEY] = str(snap.get("activation_identity") or "")
+    """Retired: End Set runs backing_play_session.reset_backing_after_karaoke_set instead. No-op apart from
+    dropping a leftover snapshot."""
+    session.pop(KARAOKE_PRE_SET_LOOPS_KEY, None)
+    session.pop(KARAOKE_POST_SET_ADOPT_KEY, None)
