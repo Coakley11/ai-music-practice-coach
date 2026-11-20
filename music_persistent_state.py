@@ -676,6 +676,13 @@ _PERSIST_KEYS: tuple[str, ...] = (
     "_backing_play_session",
     "_backing_play_session_expired",
     "_backing_current_bpm_lock",
+    # Song activation epoch (active_song_transition): a refresh is not a song change.
+    "_active_song_activation_identity",
+    "_active_song_activation_epoch",
+    # Key Cycling settings belong to one song activation (reset to defaults on a new one).
+    "_kc_settings_activation_epoch",
+    # Key Cycling as it was before a running Karaoke Set (restored at End Set).
+    "_kc_pre_karaoke_set",
     # Key Cycle Practice — refresh restores On/Off, prefs, position, held (not CONTINUE_PLAY).
     "_backing_key_cycle_sessions",
     "backing_key_cycle_enabled",
@@ -3480,7 +3487,9 @@ def apply_music_disk_state(
             try:
                 from active_song_state import _resolve_display_key_from_music_blob
 
-                blob_dk = _resolve_display_key_from_music_blob(payload)
+                # home_key="": no saved Practice Key means the song's own Original Key (apply_pick_key),
+                # never a made-up C (Shallow, Original G, restored and played in C -- 2026-11-18)
+                blob_dk = _resolve_display_key_from_music_blob(payload, home_key="")
                 if blob_dk:
                     core_for_apply["display_key"] = blob_dk
             except ImportError:
@@ -4929,7 +4938,7 @@ def music_active_song_cloud_drift(
         fixed_mode_active = False
 
     if not fixed_mode_active:
-        cloud_dk = _resolve_display_key_from_music_blob(cloud_state)
+        cloud_dk = _resolve_display_key_from_music_blob(cloud_state, home_key="")
         live_dk = str(ss.get("display_key") or "").strip()
         canonical_dk = ""
         if isinstance(cloud_meta, dict):

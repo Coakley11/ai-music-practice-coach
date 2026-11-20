@@ -40,14 +40,23 @@ def test_lead_sheet_row_books_match_the_card() -> None:
 
 
 def test_key_cycling_console_icons_beside_unchanged_labels() -> None:
+    # Labels say what each button does (user report 2026-11-16: "Stop -- stop what?"): this Stop ends
+    # Key Cycling; the card's "Stop Backing Track" stops the audio and keeps cycling on.
     want = {
-        "backing_key_cycle_prev_btn": ('"Previous"', ":material/skip_previous:"),
-        "backing_key_cycle_advance_btn": ('"Next"', ":material/skip_next:"),
-        "backing_key_cycle_stop_btn": ('"Stop"', ":material/stop:"),
+        "backing_key_cycle_prev_btn": ('"Previous Key"', ":material/skip_previous:"),
+        "backing_key_cycle_advance_btn": ('"Next Key"', ":material/skip_next:"),
+        "backing_key_cycle_stop_btn": ('"Stop Key Cycling"', ":material/stop:"),
     }
     for key, (label, icon) in want.items():
         call = _console_button(key)
         assert label in call and f'icon="{icon}"' in call, key
+    # The page still recognises Previous / Next by their labels (case-insensitive, optional "key").
+    import re
+
+    prev_re = re.compile(r"^([◀⏮]\s*)?Previous( key)?$", re.I)
+    next_re = re.compile(r"^([▶⏭]\s*)?Next( key)?(\s*[▶⏭])?$", re.I)
+    assert prev_re.match("Previous Key") and next_re.match("Next Key")
+    assert "Previous( key)?$/i.test(" in KC and "Next( key)?" in KC  # the page's matchers
     pause = _console_button("backing_key_cycle_pause_btn")
     # The label is the plain "Pause" / "Resume" the bridge reads; the icon follows it.
     assert "pause_label," in pause and 'icon=KC_PAUSE_ICON if pause_label != "Resume" else KC_RESUME_ICON' in pause

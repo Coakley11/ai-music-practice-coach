@@ -2204,6 +2204,18 @@ def apply_cpl_session_progression(
                 clear_practice_concert_key(session_state, pick_key)
             except Exception:
                 pass
+            # Explicit selection initialises the song at its own key. A stored key of the WRONG tonal family (stale state from
+            # another song) is not the musician's choice: replace it here, in the explicit action (render-time sync
+            # routines never persist the read-guard fallback).
+            try:
+                from songs.practice_key_state import saved_practice_concert_key
+                from source_session_state import practice_key_fits_custom_song
+
+                _raw = str(saved_practice_concert_key(session_state, pick_key) or "").strip()
+                if _raw and not practice_key_fits_custom_song(session_state, pick_key, _raw):
+                    clear_practice_concert_key(session_state, pick_key, force=True)
+            except Exception:
+                pass
             set_practice_concert_key(session_state, practice_target, pick_key=pick_key)
             # The SBI Custom Practice Key cache belongs to the Custom it was set
             # for, but the save hook replays it onto whichever Custom the SBI

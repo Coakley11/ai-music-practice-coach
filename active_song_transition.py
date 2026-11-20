@@ -77,6 +77,57 @@ def classify_active_song_transition(session: dict[str, Any], *, surface: str = "
     return PREVIEW_OR_EDIT
 
 
+# Song activation epoch (user rule 2026-11-19): "changing pages is not changing songs". Temporary
+# playback settings (Key Cycling, Backing BPM / loops / scope) belong to one activation of the active
+# song: kept while that song stays active, fresh defaults once ANOTHER song becomes active -- also when
+# an earlier song is chosen again, and for two songs in the same key. Both keys are saved with the
+# workspace, so a refresh is not a change; a refresh that lands on a different song than the saved
+# stamp (another tab switched it) is.
+ACTIVE_SONG_ACTIVATION_ID_KEY = "_active_song_activation_identity"
+ACTIVE_SONG_ACTIVATION_EPOCH_KEY = "_active_song_activation_epoch"
+# Editing / exploring surfaces: a song shown there is not (yet) the Global Active song. A real
+# switch made there is picked up on the next run of any other page.
+_ACTIVATION_SKIP_PAGES: frozenset[str] = frozenset({"custom", "composer", "creative"})
+
+
+def note_active_song_activation(session: dict[str, Any]) -> bool:
+    """Stamp the active song once per run (before the page renders); True when it changed.
+
+    Compares the app's one active-song identity with the last activation's. Never a change: a rerun,
+    a page visit, Pause / Resume / Next / Previous, a Key Cycling transposition, a temporary
+    Creative / SBI visit, or the first stamp ever (nothing to compare with).
+    """
+    try:
+        if classify_active_song_transition(session) == TEMPORARY_WORKFLOW_OWNER:
+            return False
+        if str(session.get("studio_page") or "").strip().lower() in _ACTIVATION_SKIP_PAGES:
+            return False
+        from songs.music_source import resolve_active_song_identity
+
+        now = str(resolve_active_song_identity(session) or "").strip()
+    except Exception:
+        return False
+    if not now:
+        return False
+    last = str(session.get(ACTIVE_SONG_ACTIVATION_ID_KEY) or "").strip()
+    if now == last:
+        return False
+    session[ACTIVE_SONG_ACTIVATION_ID_KEY] = now
+    if not last:
+        session.setdefault(ACTIVE_SONG_ACTIVATION_EPOCH_KEY, 0)
+        return False
+    session[ACTIVE_SONG_ACTIVATION_EPOCH_KEY] = active_song_activation_epoch(session) + 1
+    return True
+
+
+def active_song_activation_epoch(session: dict[str, Any]) -> int:
+    """Which activation of the active song this is (0 before the first change was seen)."""
+    try:
+        return int(session.get(ACTIVE_SONG_ACTIVATION_EPOCH_KEY) or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
 def may_initialize_practice_key_from_original(session: dict[str, Any], *, surface: str = "") -> bool:
     return classify_active_song_transition(session, surface=surface) == COMMITTED_ACTIVE_SONG_CHANGE
 

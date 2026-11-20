@@ -555,7 +555,7 @@ def resolve_restore_display_key(
         try:
             from active_song_state import _resolve_display_key_from_music_blob
 
-            dk = _resolve_display_key_from_music_blob(workspace_payload)
+            dk = _resolve_display_key_from_music_blob(workspace_payload, home_key="")
             if dk:
                 return dk
         except ImportError:

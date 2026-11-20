@@ -148,6 +148,8 @@ KEY_CYCLE_TOOLTIP = (
 # Keys persisted across browser refresh (not CONTINUE_PLAY / prepared WAV blobs).
 KEY_CYCLE_PERSIST_KEYS: tuple[str, ...] = (
     BACKING_KEY_CYCLE_SESSIONS_KEY,
+    "_kc_settings_activation_epoch",
+    "_kc_pre_karaoke_set",
     "backing_key_cycle_enabled",
     BACKING_KEY_CYCLE_STEP_KEY,
     BACKING_KEY_CYCLE_DIRECTION_KEY,
@@ -169,6 +171,13 @@ STATUS_STOPPED = "stopped"
 # stopped, not as a paused session. Play, Resume, Next / Previous and a jump
 # clear it.
 CYCLE_SESSION_OVER = "transport_session_over"
+
+# Position rule (user 2026-11-19): a cycle keeps its position only after the musician's own Pause.
+# ``user_paused`` is set by an explicit Pause (card / console) and cleared by Resume and by every new
+# cycle; a refresh or reopen without it starts at the first key. ``song_id`` binds a cycle to the song
+# it was started for: another song never inherits its position, even in the same key.
+CYCLE_USER_PAUSED = "user_paused"
+CYCLE_SONG_ID = "song_id"
 
 # Owner ids — isolated cycle bags
 OWNER_CATALOG = "catalog"
@@ -1191,6 +1200,93 @@ def _note_cycle_session_over_if_stopped(session: dict[str, Any], data: dict[str,
         pass
 
 
+_SONG_CYCLE_OWNERS: frozenset[str] = frozenset({OWNER_CATALOG, OWNER_CUSTOM, OWNER_COMPOSITION})
+
+
+def _active_song_cycle_identity(session: dict[str, Any]) -> str:
+    """The song a song-owned cycle belongs to (the app's one active-song identity), or ''."""
+    try:
+        from songs.music_source import resolve_active_song_identity
+
+        return str(resolve_active_song_identity(session) or "").strip()
+    except Exception:
+        return ""
+
+
+KC_SETTINGS_ACTIVATION_EPOCH_KEY = "_kc_settings_activation_epoch"
+
+
+def _reset_key_cycle_settings_to_defaults(session: dict[str, Any]) -> None:
+    """Interval Semitone, Direction Ascending, the app's default Key Spelling (a new song activation)."""
+    session[BACKING_KEY_CYCLE_STEP_KEY] = CYCLE_STEP_SEMITONE
+    session[BACKING_KEY_CYCLE_DIRECTION_KEY] = "up"
+    session[BACKING_KEY_SPELLING_PREFS_KEY] = default_spelling_prefs()
+    _queue_key_cycle_widget_seed(session, interval=1, direction="up")
+    # Spelling radios remount from the defaults.
+    for sharp, flat in ENHARMONIC_SPELLING_PAIRS:
+        session.pop(f"backing_key_spell__{sharp}/{flat}", None)
+
+
+def ensure_key_cycle_follows_active_song(session: dict[str, Any]) -> bool:
+    """Key Cycling belongs to one activation of the active song (user rules 2026-11-19).
+
+    * Same song (page visits, reruns, Pause / Resume / Next / Previous): settings and position kept.
+    * Another song became active (active_song_transition's activation epoch moved -- also an earlier
+      song chosen again, and two songs in the same key): Interval Semitone, Direction Ascending, the
+      default Key Spelling; a running cycle starts again from the new song's first key; nothing
+      autoplays.
+    * A cycle never carries a position to another song: it records the song it was started for, and a
+      different active song restarts it the same way even if no epoch change was seen.
+    Returns True when it reset. The saved Practice Key and the song's data are never written.
+    """
+    try:
+        try:
+            from active_song_transition import active_song_activation_epoch
+
+            epoch = active_song_activation_epoch(session)
+        except ImportError:
+            epoch = 0
+        seen = session.get(KC_SETTINGS_ACTIVATION_EPOCH_KEY)
+        new_activation = seen is not None and int(seen) != int(epoch)
+        session[KC_SETTINGS_ACTIVATION_EPOCH_KEY] = int(epoch)
+        if key_cycle_in_karaoke_set(session):
+            # Karaoke Set exception (user rule 2026-11-19): a song change inside a running set keeps
+            # the set's Key Cycling (On/Off, Interval, Direction, Key Spelling); each entry restarts
+            # its own cycle (restart_key_cycle_for_entry). The activation is adopted silently above.
+            return False
+
+        owner = resolve_cycle_owner(session)
+        data = get_owner_cycle_session(session, owner) if owner in _SONG_CYCLE_OWNERS else None
+        live = bool(data and data.get("enabled"))
+        now = _active_song_cycle_identity(session) if live else ""
+        was = str((data or {}).get(CYCLE_SONG_ID) or "").strip()
+        other_song = bool(live and now and was and was != now)
+        if live and now and not was:
+            _put_owner_cycle_session(session, owner, dict(data, **{CYCLE_SONG_ID: now}))
+        if not (new_activation or other_song):
+            return False
+        _reset_key_cycle_settings_to_defaults(session)
+        if live:
+            fresh = start_key_cycle(session, interval=1, direction="up", spelling_prefs=default_spelling_prefs())
+            if fresh:
+                _log_cycle_key_write(
+                    session,
+                    trigger="song_changed_new_cycle",
+                    old_key=str(data.get("current_playback_key") or ""),
+                    new_key=str(fresh.get("current_playback_key") or ""),
+                    cycle_id=str(fresh.get("cycle_id") or ""),
+                    pass_id=0,
+                    extra={"old_song": was[:80], "new_song": now[:80], "epoch": int(epoch)},
+                )
+        try:
+            persist_key_cycle_position(session)
+        except Exception:
+            pass
+        return True
+    except Exception:
+        return False
+
+
 def normalize_key_cycle_after_browser_restore(session: dict[str, Any]) -> bool:
     """On a fresh Streamlit process/session with a restored cycle: hold at pass start.
 
@@ -1211,6 +1307,12 @@ def normalize_key_cycle_after_browser_restore(session: dict[str, Any]) -> bool:
     data["status"] = STATUS_HELD
     session_over = bool(data.get(CYCLE_SESSION_OVER))
     _put_owner_cycle_session(session, owner, data)
+    if not data.get(CYCLE_USER_PAUSED):
+        # Position rule: only the musician's own Pause is resumed after a refresh / reopen.
+        # Anything else (playing, stopped, a finished final key) starts again at the first key
+        # and the card offers Play -- the established first-key rule.
+        rewind_key_cycle_to_first_key(session)
+        session_over = True
     session["_backing_autoplay"] = False
     session.pop(BACKING_KEY_CYCLE_CONTINUE_PLAY_KEY, None)
     session.pop("_kc_seamless_handoff", None)
@@ -3182,17 +3284,23 @@ def _put_owner_cycle_session(session: dict[str, Any], owner: str, data: dict[str
     bag = _sessions_bag(session)
     prev = bag.get(owner) if isinstance(bag.get(owner), dict) else {}
     data = dict(data)
+    # A cycle belongs to the song it was started for (see ensure_key_cycle_follows_active_song).
+    if owner in _SONG_CYCLE_OWNERS and not str(data.get(CYCLE_SONG_ID) or "").strip():
+        _sid = _active_song_cycle_identity(session)
+        if _sid:
+            data[CYCLE_SONG_ID] = _sid
     # Every position change gets the next sequence number, so the disk merge can
     # tell an intentional move (Previous, Stop's rewind) from a stale behind-write.
     # Ending or starting a playback session counts too: a stale write must not
-    # bring back a session Stop ended.
+    # bring back a session Stop ended. So does the musician's own Pause (the only
+    # hold a refresh resumes).
     try:
         _seq = int((prev or {}).get("position_seq") or 0)
     except (TypeError, ValueError):
         _seq = 0
     _session_over_changed = bool((prev or {}).get(CYCLE_SESSION_OVER)) != bool(
         data.get(CYCLE_SESSION_OVER)
-    )
+    ) or bool((prev or {}).get(CYCLE_USER_PAUSED)) != bool(data.get(CYCLE_USER_PAUSED))
     if (
         str((prev or {}).get("current_playback_key") or "")
         != str(data.get("current_playback_key") or "")
@@ -3227,6 +3335,11 @@ def _put_owner_cycle_session(session: dict[str, Any], owner: str, data: dict[str
 
 _CYCLE_DISK_SESSION_KEYS: tuple[str, ...] = (
     BACKING_KEY_CYCLE_SESSIONS_KEY,
+    # The song activation these settings belong to, written with them (a refresh is not a change).
+    "_kc_settings_activation_epoch",
+    "_kc_pre_karaoke_set",
+    "_active_song_activation_identity",
+    "_active_song_activation_epoch",
     "backing_key_cycle_enabled",
     BACKING_KEY_CYCLE_STEP_KEY,
     BACKING_KEY_CYCLE_DIRECTION_KEY,
@@ -3450,6 +3563,30 @@ def temporary_playback_key(session: dict[str, Any], owner: str = "") -> str:
     return str(data.get("current_playback_key") or "").strip()
 
 
+def key_cycle_live_sidebar(session: dict[str, Any]) -> dict[str, Any] | None:
+    """The key Key Cycling is playing now, for the sidebar's CURRENT readouts (user rule 2026-11-19).
+
+    While a cycle is On on Backing, the sidebar's Sounding Key and Capo Fret describe the live cycle
+    key (the console's labels), not the saved song: one current key everywhere. None otherwise -- the
+    sidebar then shows the saved-song context. Display only: the saved Practice Key and the fixed
+    guitar Shape Key are never written here. The page script keeps the marked readouts in step on
+    a key change made in the browser (see the console update).
+    """
+    try:
+        if str(session.get("studio_page") or "").strip().lower() != "backing":
+            return None
+        if not is_cycle_active(session):
+            return None
+        key = temporary_playback_key(session)
+        if not key:
+            return None
+        from key_cycle_console import _concert_display, _pretty, key_label
+
+        return {"key": key, "label": _pretty(key_label(_concert_display(session, key)))}
+    except Exception:
+        return None
+
+
 def effective_backing_playback_key(session: dict[str, Any], base_key: str = "") -> str:
     """Key used for Backing audio + temporary charts. Never writes Practice Key."""
     base = str(base_key or current_backing_owner_practice_key(session) or "C").strip() or "C"
@@ -3548,13 +3685,16 @@ def start_key_cycle(
     return data
 
 
-def pause_key_cycle(session: dict[str, Any]) -> dict[str, Any] | None:
+def pause_key_cycle(session: dict[str, Any], *, user: bool = False) -> dict[str, Any] | None:
+    """Hold the cycle. ``user``: the musician's own Pause -- the only hold a refresh resumes."""
     owner = resolve_cycle_owner(session)
     data = get_owner_cycle_session(session, owner)
     if not data or not data.get("enabled"):
         return data
     data = dict(data)
     data["status"] = STATUS_HELD
+    if user:
+        data[CYCLE_USER_PAUSED] = True
     _put_owner_cycle_session(session, owner, data)
     session["_kc_player_cmd_epoch"] = int(session.get("_kc_player_cmd_epoch") or 0) + 1
     try:
@@ -3595,6 +3735,7 @@ def resume_key_cycle(session: dict[str, Any]) -> dict[str, Any] | None:
     data = dict(data)
     data["status"] = STATUS_RUNNING
     data.pop(CYCLE_SESSION_OVER, None)
+    data.pop(CYCLE_USER_PAUSED, None)
     _put_owner_cycle_session(session, owner, data)
     session["_kc_player_cmd_epoch"] = int(session.get("_kc_player_cmd_epoch") or 0) + 1
     try:
@@ -3673,6 +3814,7 @@ def arm_key_cycle_for_explicit_play(session: dict[str, Any]) -> dict[str, Any] |
         data["status"] = STATUS_RUNNING
         data["pass_id"] = int(data.get("pass_id") or 0) + 1
         data.pop(CYCLE_SESSION_OVER, None)
+        data.pop(CYCLE_USER_PAUSED, None)
         _put_owner_cycle_session(session, owner, data)
         try:
             promote_prepared_cycle_audio(
@@ -3770,6 +3912,7 @@ def rewind_key_cycle_to_first_key(session: dict[str, Any]) -> dict[str, Any] | N
     data["status"] = STATUS_HELD
     data["pending_pass_advance"] = False
     data[CYCLE_SESSION_OVER] = True
+    data.pop(CYCLE_USER_PAUSED, None)
     _put_owner_cycle_session(session, owner, data)
     if first and not _keys_equivalent(before, first) and not promote_prepared_cycle_audio(session, first):
         # The stopped key's take must not stand in for the first key: Play saw
@@ -3862,6 +4005,7 @@ def jump_key_cycle_to_key(
     data["pending_pass_advance"] = False
     data["pass_id"] = int(data.get("pass_id") or 0) + 1
     data.pop(CYCLE_SESSION_OVER, None)
+    data.pop(CYCLE_USER_PAUSED, None)
     _put_owner_cycle_session(session, owner, data)
     for flag in (
         "_kc_at_final_key",
@@ -4045,7 +4189,20 @@ def end_key_cycle_on_page_leave(session: dict[str, Any]) -> None:
 
     Interval, Direction and Key Spelling are kept: turning cycling On again, here or after coming back, reuses them.
     Semitone / Up and the default spellings apply only when nothing was ever chosen.
+
+    During a Karaoke Set (user rule 2026-11-19) a page leave only stops the audio, as the transport
+    Stop does: Key Cycling stays On (or Off) with its Interval / Direction / Key Spelling, and the
+    cycle holds at its first key. Leaving the page never silently changes the set's Key Cycling.
     """
+    if key_cycle_in_karaoke_set(session):
+        try:
+            if is_cycle_active(session):
+                hard_stop_key_cycle_audio(session)
+                rewind_key_cycle_to_first_key(session)
+        except Exception:
+            pass
+        clear_key_cycle_prepared_audio(session, stop_player=True)
+        return
     try:
         if is_cycle_active(session):
             stop_key_cycle(session)
@@ -4076,6 +4233,9 @@ def _seal_cycle_at_final_key(
     """
     session["_kc_at_final_key"] = True
     session["_kc_cycle_finished_final"] = True
+    # Which cycle finished: the flags above are session-wide, and a song change in a Karaoke Set
+    # starts a new cycle (restart_key_cycle_for_entry) that must not read as finished.
+    session["_kc_finished_cycle_id"] = str(data.get("cycle_id") or "")
     pause_key_cycle(session)
     # The cycle has played every key: the session is over and the next
     # Play starts again from the first key.
@@ -4095,6 +4255,220 @@ def _seal_cycle_at_final_key(
         pass_id=data.get("pass_id"),
         extra=dict(extra or {}),
     )
+
+
+def key_cycle_sequence_complete(session: dict[str, Any], cycle_id: str | None = None) -> bool:
+    """The cycle played its whole sequence: the final key's take ended (``_seal_cycle_at_final_key``).
+
+    True only while Key Cycling is still On and held at that end, for the cycle that finished (and,
+    when given, only for ``cycle_id``). A Pause (held, not finished), a key still playing, or a Stop
+    (Key Cycling Off) is never complete. Read-only; the Karaoke Set advance uses
+    ``consume_key_cycle_completion`` so that it happens once.
+    """
+    data = get_owner_cycle_session(session)
+    if not data or not data.get("enabled") or str(data.get("status") or "") != STATUS_HELD:
+        return False
+    if not session.get("_kc_cycle_finished_final"):
+        return False
+    cid = str(data.get("cycle_id") or "")
+    if not cid or str(session.get("_kc_finished_cycle_id") or "") != cid:
+        return False
+    return cycle_id is None or str(cycle_id) == cid
+
+
+def consume_key_cycle_completion(session: dict[str, Any]) -> bool:
+    """True once per finished cycle: the Karaoke Set's cue to move to the next song.
+
+    A delayed or repeated final-key confirmation, or a later run that still sees the finished
+    cycle, returns False: the set advances at most once per cycle.
+    """
+    if not key_cycle_sequence_complete(session):
+        return False
+    cid = str((get_owner_cycle_session(session) or {}).get("cycle_id") or "")
+    if str(session.get("_kc_completion_consumed") or "") == cid:
+        return False
+    session["_kc_completion_consumed"] = cid
+    return True
+
+
+def restart_key_cycle_for_entry(session: dict[str, Any], entry_key: str) -> dict[str, Any] | None:
+    """A Karaoke Set moved to another song: cycle that song from its own key.
+
+    Key Cycling stays On with its Interval, Direction and Key Spelling (taken from the cycle that
+    was On, even when the new song belongs to another cycle owner). The position always starts
+    again at the first key, ``entry_key``, under a new cycle identity -- also when the new song
+    is in the same key as the last one, whose position must not carry over. The finished /
+    consumed markers and prepared takes of the previous song are cleared. Does nothing when Key
+    Cycling is Off (ordinary Karaoke is unchanged).
+    """
+    entry = str(entry_key or "").strip()
+    if not entry:
+        return None
+    owner = resolve_cycle_owner(session)
+    src = get_owner_cycle_session(session, owner)
+    if not (src and src.get("enabled")):
+        src = None
+        for raw in _sessions_bag(session).values():
+            if isinstance(raw, dict) and raw.get("enabled"):
+                src = dict(raw)
+                break
+    if not src:
+        return None
+    old_cur = str(src.get("current_playback_key") or "").strip()
+    prefs = (
+        dict(src["spelling_prefs"])
+        if isinstance(src.get("spelling_prefs"), dict)
+        else spelling_prefs_from_session(session)
+    )
+    _bt, base_mode = split_key_center(entry)
+    st_tonic, st_mode = split_key_center(entry)
+    start = entry
+    if not st_mode and base_mode:
+        start = key_center_token(st_tonic, base_mode)
+    data = _empty_session(
+        owner=owner,
+        base_key=entry,
+        start_key=start,
+        interval=normalize_cycle_interval(src.get("interval")),
+        direction="down" if str(src.get("direction") or "up").lower() == "down" else "up",
+        spelling_prefs=prefs,
+    )
+    data["status"] = STATUS_RUNNING
+    data["enabled"] = True
+    data["current_playback_key"] = start
+    data["offset_semitones"] = 0
+    _note_cycle_session_over_if_stopped(session, data)
+    data = _bump_cycle_identity(session, data)
+    _put_owner_cycle_session(session, owner, data)
+    session["backing_key_cycle_enabled"] = True
+    for k in ("_kc_at_final_key", "_kc_cycle_finished_final", "_kc_finished_cycle_id",
+              "_kc_completion_consumed", "_kc_last_playing_confirm"):
+        session.pop(k, None)
+    clear_key_cycle_prepared_audio(session, clear_current_url=True)
+    session["_kc_cycle_settings_applied"] = (
+        int(data.get("interval") or 1),
+        str(data.get("direction") or "up"),
+        str(data.get("cycle_id") or ""),
+    )
+    _queue_key_cycle_widget_seed(
+        session,
+        interval=int(data.get("interval") or 1),
+        direction=str(data.get("direction") or "up"),
+    )
+    _log_cycle_key_write(
+        session,
+        trigger="karaoke_entry_restart",
+        old_key=old_cur,
+        new_key=start,
+        cycle_id=str(data.get("cycle_id") or ""),
+        pass_id=0,
+        extra={"entry_key": entry},
+    )
+    return data
+
+
+KC_PRE_KARAOKE_SET_KEY = "_kc_pre_karaoke_set"
+
+
+def key_cycle_in_karaoke_set(session: dict[str, Any]) -> bool:
+    """A Karaoke Set is running (Voice + an active set): its Key Cycling outlives song changes."""
+    try:
+        import karaoke_mode as km
+
+        return bool(km.is_voice_mode(session) and km.is_karaoke_session_active(session))
+    except Exception:
+        return False
+
+
+def _key_cycle_settings_snapshot(session: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "enabled": bool(is_cycle_active(session)),
+        "step": normalize_cycle_step_name(session.get(BACKING_KEY_CYCLE_STEP_KEY)) or CYCLE_STEP_SEMITONE,
+        "direction": "down" if str(session.get(BACKING_KEY_CYCLE_DIRECTION_KEY) or "up").lower() == "down" else "up",
+        "spelling": dict(spelling_prefs_from_session(session)),
+    }
+
+
+def _adopt_current_song_activation(session: dict[str, Any]) -> None:
+    """The settings now belong to the activation that is current: no reset on the next Backing run."""
+    try:
+        from active_song_transition import active_song_activation_epoch
+
+        session[KC_SETTINGS_ACTIVATION_EPOCH_KEY] = int(active_song_activation_epoch(session))
+    except Exception:
+        pass
+
+
+def key_cycle_karaoke_set_started(session: dict[str, Any]) -> bool:
+    """A Karaoke Set begins: remember the Key Cycling state from before it, then Key Cycling Off.
+
+    User rule 2026-11-19: a fresh set starts with Key Cycling Off; turned On during the set it stays
+    On (Interval / Direction / Key Spelling) for every later song until it is turned Off.
+    The snapshot is taken once per set: a second call while a set is already remembered keeps the
+    first (pre-set) state. Widget-safe: the Off/On control follows on its next render. Returns True
+    when a snapshot was taken.
+    """
+    if isinstance(session.get(KC_PRE_KARAOKE_SET_KEY), dict):
+        return False
+    session[KC_PRE_KARAOKE_SET_KEY] = _key_cycle_settings_snapshot(session)
+    try:
+        if is_cycle_active(session):
+            stop_key_cycle(session)
+        else:
+            session["backing_key_cycle_enabled"] = False
+            session["_key_cycle_force_ui_off"] = True
+    except Exception:
+        session["backing_key_cycle_enabled"] = False
+        session["_key_cycle_force_ui_off"] = True
+    try:
+        persist_key_cycle_position(session)
+    except Exception:
+        pass
+    return True
+
+
+def key_cycle_karaoke_set_ended(session: dict[str, Any]) -> bool:
+    """End Set: the set's Key Cycling ends with it; ordinary Backing gets its pre-set state back.
+
+    Interval / Direction / Key Spelling and On/Off are restored from the snapshot. A restored On
+    starts a new cycle at the current song's own first key, stopped (nothing autoplays; no set
+    position is inherited). Safe without a snapshot (Key Cycling is left Off). The current song
+    activation is adopted so the song-change reset does not undo the restore on the next run.
+    Returns True when a snapshot was restored.
+    """
+    snap = session.pop(KC_PRE_KARAOKE_SET_KEY, None)
+    try:
+        if is_cycle_active(session):
+            stop_key_cycle(session)
+    except Exception:
+        pass
+    session["backing_key_cycle_enabled"] = False
+    for k in ("_kc_at_final_key", "_kc_cycle_finished_final", "_kc_finished_cycle_id",
+              "_kc_completion_consumed", "_kc_last_playing_confirm"):
+        session.pop(k, None)
+    _adopt_current_song_activation(session)
+    restored = isinstance(snap, dict)
+    if restored:
+        step = normalize_cycle_step_name(snap.get("step")) or CYCLE_STEP_SEMITONE
+        direction = "down" if str(snap.get("direction") or "up").lower() == "down" else "up"
+        spelling = dict(default_spelling_prefs(), **(snap.get("spelling") or {}))
+        session[BACKING_KEY_CYCLE_STEP_KEY] = step
+        session[BACKING_KEY_CYCLE_DIRECTION_KEY] = direction
+        session[BACKING_KEY_SPELLING_PREFS_KEY] = spelling
+        interval = cycle_interval_for_step_name(step)
+        _queue_key_cycle_widget_seed(session, interval=interval, direction=direction)
+        if snap.get("enabled"):
+            try:
+                start_key_cycle(session, interval=interval, direction=direction, spelling_prefs=spelling)
+            except Exception:
+                pass
+    if not is_cycle_active(session):
+        session["_key_cycle_force_ui_off"] = True
+    try:
+        persist_key_cycle_position(session)
+    except Exception:
+        pass
+    return restored
 
 
 def seal_final_key_from_ack(session: dict[str, Any], ack: dict[str, Any]) -> bool:
@@ -4245,6 +4619,7 @@ def _step_owner_cycle(
     data["pending_pass_advance"] = False
     if status == STATUS_HELD and force:
         data["status"] = STATUS_RUNNING
+        data.pop(CYCLE_USER_PAUSED, None)
     if force:
         data.pop(CYCLE_SESSION_OVER, None)
     _put_owner_cycle_session(session, owner, data)
@@ -5519,6 +5894,34 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
     function cancelPendingPlays() {{
       state.playGen = Number(state.playGen || 0) + 1;
     }}
+    // The take the musician is waiting for, which the active element does not hold yet: the key a
+    // Previous / Next moved to while the server prepares it ("cold"), or a new take whose start was
+    // held by a later Pause. Browser traces 2026-11-17 (390 px, seq390_3 / seq390_11): the silence
+    // of that wait was taken for a Pause, so the musician's own Pause resumed the old key; and
+    // Resume un-paused the take that was left. While one is pending its silence is not a Pause,
+    // and Resume plays it, never the old take. ``url`` is empty until the server has named it.
+    function kcPendingTake() {{
+      try {{
+        const p = parentWin.__kcPendingTake;
+        if (!p || !p.key) return null;
+        if (p.cycleId && state.cycleId && String(p.cycleId) !== String(state.cycleId)) return null;
+        // A newer Previous / Next replaced it.
+        if (p.navSeq && parentWin.__kcNav && Number(parentWin.__kcNav.seq || 0) !== Number(p.navSeq)) return null;
+        return p;
+      }} catch (ePt) {{ return null; }}
+    }}
+    function kcSetPendingTake(key, url, navSeq, why) {{
+      try {{
+        parentWin.__kcPendingTake = {{
+          key: String(key || '').trim(), url: String(url || '').trim(), navSeq: Number(navSeq || 0),
+          cycleId: String(state.cycleId || ''), at: Date.now(), why: String(why || ''),
+        }};
+      }} catch (eSpt) {{}}
+    }}
+    function kcClearPendingTake() {{
+      try {{ if (parentWin.__kcPendingTake) parentWin.__kcPendingTake = null; }} catch (eCpt) {{}}
+    }}
+    parentWin.__kcPendingTakeNow = kcPendingTake;
     // Prefer parent-realm scheduler (installed by boot script). Iframe timers die
     // when Streamlit destroys the components.html frame.
     function kcSched(fn, ms) {{
@@ -7505,6 +7908,17 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
                 put('.kc-console-next-capo', 'Fret ' + capos[nx]);
               }}
               put('.kc-console-position', String(ix + 1) + ' / ' + String(nC));
+              // The sidebar's CURRENT readouts (Sounding Key, Capo Fret) move with the console.
+              try {{
+                parentDoc.querySelectorAll('[data-kc-live="sounding"]').forEach((el) => {{
+                  if (sounds[ix]) el.textContent = String(sounds[ix]);
+                }});
+                if (capos.length === nC && capos[ix] !== '') {{
+                  parentDoc.querySelectorAll('[data-kc-live="capo"]').forEach((el) => {{
+                    el.textContent = String(capos[ix]);
+                  }});
+                }}
+              }} catch (eSide) {{}}
               try {{
                 const ring = bar.querySelector('.kc-ring');
                 if (ring) ring.style.setProperty('--kc-p', String((100 * (ix + 1)) / nC) + '%');
@@ -7579,8 +7993,14 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       state.swapStartedAt = 0;
       state._kcLatePrepAt = 0;
       try {{
-        parentWin.__kcPendingPlayingAck = null;
-        parentWin.__kcPendingPlayingAckQueue = [];
+        // In-flight acks of automatic handoffs die with the Pause. A Previous / Next is the
+        // musician's move and must still reach Python, also one pressed just before the Pause
+        // (a cold Next the server has not taken yet: dropping it left the server on the old key,
+        // trace seq390_3): this hold enforcement runs every tick while paused and used to erase it.
+        // Python keeps the transport as the musician left it (see _apply_manual_nav_ack).
+        const keepNav = (parentWin.__kcPendingPlayingAckQueue || []).filter((a) => a && a.manualSwitch);
+        parentWin.__kcPendingPlayingAckQueue = keepNav;
+        parentWin.__kcPendingPlayingAck = keepNav.length ? keepNav[keepNav.length - 1] : null;
         parentWin.__backingKeyCyclePassConsumed = null;
       }} catch (eAck) {{}}
       try {{ clearHandoffCookie(); }} catch (eC) {{}}
@@ -7599,6 +8019,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
     }}
     parentWin.__kcHardStop = function () {{
       const t0 = Number(parentWin.__kcClickT0 || kcNow());
+      kcClearPendingTake();  // Stop ends the wait too: nothing is played when it arrives
       abortTransportPlayback({{ seekZero: false }});
       // Commands up to this epoch were built before the Stop (see applyCmd), and
       // so is every running command of this same cycle until the server's own off.
@@ -8000,6 +8421,36 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         }} catch (eFb) {{ act = null; }}
       }}
       if (!act) return;
+      // A take the musician is waiting for (a cold Previous / Next, or a start a Pause held):
+      // Resume plays that key from its start. The active element still holds the key that was
+      // left, and un-pausing it played that key (trace seq390_11). Not named by the server yet:
+      // nothing plays now; its start, when it comes, plays (the hold is cleared above).
+      const pendR = kcPendingTake();
+      if (pendR) {{
+        if (!pendR.url) {{
+          try {{
+            parentWin.__kcPlayDiag = parentWin.__kcPlayDiag || [];
+            parentWin.__kcPlayDiag.push({{ t: kcNow(), ev: 'resume_waits_for_pending_take', key: pendR.key }});
+          }} catch (eRw) {{}}
+          try {{ syncVisibleTransport(); }} catch (eRwv) {{}}
+          return;
+        }}
+        try {{
+          act.pause();
+          act.setAttribute('data-kc-url', pendR.url);
+          act.setAttribute('data-kc-sounding', pendR.key);
+          act.preload = 'auto';
+          act.src = pendR.url;
+          state.playingUrl = pendR.url;
+          act.load();
+          parentWin.__kcForceResumeFromStart = true;
+          parentWin.__kcLastSounding = pendR.key;
+          try {{ syncHighlight(pendR.key); }} catch (eRhl) {{}}
+          parentWin.__kcPlayDiag = parentWin.__kcPlayDiag || [];
+          parentWin.__kcPlayDiag.push({{ t: kcNow(), ev: 'resume_plays_pending_take', key: pendR.key }});
+        }} catch (eRp) {{}}
+        kcClearPendingTake();
+      }}
       // Fresh-session Resume often has empty buffers; load last known URL.
       try {{
         const want = String(
@@ -8150,7 +8601,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
     // once they pause, for the newest target. A superseded switch never becomes
     // audible (navSeq), and Python adopts the key it is told -- any distance,
     // either wrap.
-    function kcNavAck(target, fromKey, navSeq, cold) {{
+    function kcNavAck(target, fromKey, navSeq, cold, stayPaused) {{
       // Tell Python where navigation landed: the key now sounding, or (cold) the
       // key it must prepare and start.
       try {{
@@ -8170,6 +8621,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           navSeq: Number(navSeq || 0),
           cold: !!cold,
           resumedFromPause: false,
+          stayPaused: !!stayPaused,
           passToken: state.passToken || '',
         }};
         parentWin.__kcPendingPlayingAck = ack;
@@ -8410,7 +8862,18 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       // (a navigator switch is already one per settled target).
       if (!navSeq && now - Number(parentWin.__kcSwitchAt || 0) < 350) return false;
       parentWin.__kcSwitchAt = now;
+      // This move replaces any key still awaited from an earlier one (a cold target sets it below).
+      kcClearPendingTake();
       const t0 = parentWin.__kcClickT0 || now;
+      // Next / Previous while paused stays paused (user decision 2026-11-17): the new key is shown
+      // everywhere and waits at its start; Resume plays it. The hold flag alone is not enough (it
+      // can be stale while a take plays), so nothing may be sounding either.
+      let stayPaused = false;
+      try {{
+        let held = !!state.userPaused;
+        try {{ held = held || parentWin.sessionStorage.getItem('kc_user_paused') === '1'; }} catch (eSp) {{}}
+        stayPaused = held && !anyAudibleBuffer();
+      }} catch (eStay) {{ stayPaused = false; }}
       const chips = [...parentDoc.querySelectorAll('.ui-key-cycle-chip[data-key]')];
       const keys = [];
       chips.forEach((el) => {{
@@ -8479,7 +8942,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           if (origin && origin.key === navTarget && origin.html) applyLeadSheetHtml(origin.html, navTarget);
           syncHighlight(navTarget);
         }} catch (eBack) {{}}
-        kcNavAck(navTarget, audible, navSeq, false);
+        kcNavAck(navTarget, audible, navSeq, false, stayPaused);
         return true;
       }}
       if (!target) {{
@@ -8588,10 +9051,16 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           // under a page that is about to show the new one: silence it and let
           // Python prepare the target, which it then starts from the first chord.
           if (navStale()) return false;
+          // Retries and kicks queued for the old take die with it (one restarted it 0.8 s
+          // later in runs seqfix_3 / seqfix_6, which ended the wait below).
+          cancelPendingPlays();
           try {{
             parentDoc.querySelectorAll('audio[id^="kc-"]').forEach((a) => {{ try {{ a.pause(); }} catch (eP0) {{}} }});
           }} catch (eSil0) {{}}
-          kcNavAck(target, audible, navSeq, true);
+          // The musician now waits for this key: that silence is not a Pause, and a Resume plays
+          // this key, not the one just silenced (see kcPendingTake).
+          kcSetPendingTake(target, '', navSeq, 'cold_nav');
+          kcNavAck(target, audible, navSeq, true, stayPaused);
           return true;
         }}
         return false;
@@ -8618,8 +9087,10 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       state.playingUrl = el.getAttribute('data-kc-url') || el.src || '';
       let wasPausedAtSwitch = !!state.userPaused;
       try {{ if (parentWin.sessionStorage.getItem('kc_user_paused') === '1') wasPausedAtSwitch = true; }} catch (eWP) {{}}
-      state.userPaused = false;
-      try {{ parentWin.sessionStorage.setItem('kc_user_paused', '0'); }} catch (eSS) {{}}
+      if (!stayPaused) {{
+        state.userPaused = false;
+        try {{ parentWin.sessionStorage.setItem('kc_user_paused', '0'); }} catch (eSS) {{}}
+      }}
       el.muted = false;
       try {{ el.volume = 1; }} catch (eV) {{}}
       // Next/Previous always start the new key at the first chord of the
@@ -8766,7 +9237,8 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
             navSeq: navSeq,
             cold: false,
             playingUrl: String(el.currentSrc || el.getAttribute('src') || el.getAttribute('data-kc-url') || ''),
-            resumedFromPause: !!wasPausedAtSwitch,
+            resumedFromPause: !!wasPausedAtSwitch && !stayPaused,
+            stayPaused: !!stayPaused,
             passToken: state.passToken || '',
           }};
           parentWin.__kcPendingPlayingAck = ack;
@@ -8802,6 +9274,14 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         // starts while it is pending (a superseded switch, a duplicate of the
         // same take) is stopped by the parent-realm guards.
         try {{ el.__kcNavSeq = navSeq; parentWin.__kcNavOwnerEl = el; }} catch (eOw) {{}}
+      }}
+      if (stayPaused) {{
+        try {{ el.pause(); }} catch (eSpP) {{}}
+        // Resume plays the new key from its first chord, not from where the old take paused.
+        try {{ parentWin.__kcForceResumeFromStart = true; }} catch (eSpR) {{}}
+        try {{ parentWin.__kcLastPauseT = 0; parentWin.__kcLastSeekT = 0; }} catch (eSpT) {{}}
+        finish();
+        return true;
       }}
       // The outgoing take goes silent the instant the target starts (muted, not
       // paused: a failed start unmutes it again); finish() then pauses it. Two
@@ -8959,6 +9439,22 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         paused = true;
         try {{ parentWin.__kcTransportPaused = true; }} catch (eTPh) {{}}
       }} else if (anyPlaying || playKick || bufferingOrStarting || handoffInFlight) {{
+        // The wait is over when the awaited key is heard -- not when the take that was left starts
+        // again for a moment (a stray retry, silenced at once by the one-audible rule).
+        if (anyPlaying) {{
+          const pA = kcPendingTake();
+          let heardAwaited = !pA;
+          if (pA) {{
+            try {{
+              ['kc-buf-0', 'kc-buf-1'].forEach((id) => {{
+                const b = parentDoc.getElementById(id);
+                if (b && bufferIsAudible(b) && (String(b.getAttribute('data-kc-sounding') || '').trim() === pA.key
+                    || (pA.url && urlsMatch(b, pA.url)))) heardAwaited = true;
+              }});
+            }} catch (eHa) {{}}
+          }}
+          if (heardAwaited) kcClearPendingTake();
+        }}
         try {{
           state.userPaused = false;
           parentWin.sessionStorage.setItem('kc_user_paused', '0');
@@ -8969,6 +9465,11 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       }} else if (userHold) {{
         state._silentSince = 0;
         paused = true;
+      }} else if (kcPendingTake()) {{
+        // Waiting for a key the musician moved to (its take is being prepared): not a Pause,
+        // however long it takes. Only the musician's Pause, a Stop or the server holds it.
+        state._silentSince = 0;
+        paused = false;
       }} else if (parentWin.__kcHadAudible) {{
         const nowMs = Date.now();
         if (!state._silentSince) state._silentSince = nowMs;
@@ -9305,6 +9806,9 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         let tpIntent = '';
         try {{ tpIntent = String(((parentWin.__backingTransportState || {{}}).transport) || ''); }} catch (eTp) {{ tpIntent = ''; }}
         if (!prog && !running && !held && tpIntent === 'playing') running = true;
+        // Waiting for the key a Previous / Next moved to: the musician has not paused, so this
+        // press is a Pause (trace seq390_11: it resumed the key that was left).
+        if (!prog && !running && !held && kcPendingTake()) running = true;
         return !prog && running;
       }}
       parentWin.__kcCyclePressPauses = function () {{
@@ -9358,6 +9862,11 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           // Programmatic live-Resume must never flip to Pause mid-gesture.
           const prog = !!parentWin.__kcProgrammaticResumeClick;
           const running = kcCyclePressPauses(label);
+          // Whether this press paused: a start command built before a Pause is held (applyCmd).
+          try {{
+            parentWin.__kcPauseGuard.pause = !(prog || !running);
+            parentWin.__kcPauseGuard.cycle = String(state.cycleId || '');
+          }} catch (ePgM) {{}}
           // Simplify: running (audible) → Pause; otherwise → Resume.
           if (prog || !running) {{
             // A setting changed while paused: the paused take is obsolete and
@@ -9406,6 +9915,10 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
                   }}
                 }}
               }} catch (eGap) {{ pauseKey = ''; pauseFrom = ''; }}
+              // Paused while waiting for the key a Previous / Next moved to: that is the paused
+              // position, not the take that was left (still the active element).
+              const pendP = kcPendingTake();
+              if (pendP) {{ pauseKey = pendP.key; pauseFrom = ''; }}
               parentWin.__kcPauseSounding = {{
                 key: pauseKey
                   || (typeof parentWin.__kcLiveKey === 'function' ? String(parentWin.__kcLiveKey() || '') : '')
@@ -11744,6 +12257,62 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           return;
         }}
       }} catch (eStale) {{}}
+      // A start built before the musician's Pause -- the new key after a cold Previous / Next, a
+      // restart, a rebuilt arrangement -- does not play after it (trace seq390_3: the server's
+      // start of D-flat played 1.5 s after the Pause). The guards below let such starts through
+      // whatever their age. Built before the Pause: older than the epoch applied at the press, or
+      // not yet answering the card's Pause (``transportConsumed``); neither has a time limit, as
+      // a key can take longer than 20 s to prepare. The command still applies, as a paused one;
+      // its take, when new, is the one Resume plays (kcPendingTake). Stop is never held.
+      try {{
+        if (!cmd.enabled || cmd.hardStop) kcClearPendingTake();
+        let heldNow = !!state.userPaused;
+        try {{ heldNow = heldNow || parentWin.sessionStorage.getItem('kc_user_paused') === '1'; }} catch (eHn) {{}}
+        // Only the kinds the guards below exempt; a plain resume / autoplay is already held there.
+        const starts = !!(cmd.restart || cmd.forcePlay || cmd.arrangementReload || cmd.forceArrangementReplace);
+        if (heldNow && starts && cmd.enabled && !cmd.hardStop) {{
+          const pgS = parentWin.__kcPauseGuard;
+          const tlS = parentWin.__backingTransportLocal;
+          const beforePress = !!(pgS && pgS.pause && Number(cmd.epoch || 0) <= Number(pgS.epoch || 0)
+            && (!pgS.cycle || !cmd.cycleId || String(cmd.cycleId) === String(pgS.cycle)));
+          const beforeCardPause = !!(tlS && tlS.token && tlS.intent === 'paused'
+            && String(cmd.transportConsumed || '') !== String(tlS.token));
+          if (beforePress || beforeCardPause) {{
+            const actS = activeAudio();
+            const urlS = String(cmd.currentUrl || '').trim();
+            const keyS = String(cmd.sounding || '').trim();
+            if (urlS && keyS && !(actS && urlsMatch(actS, urlS))) {{
+              const prevS = kcPendingTake();
+              kcSetPendingTake(keyS, urlS, prevS && prevS.key === keyS ? prevS.navSeq : 0, 'start_before_pause');
+            }}
+            try {{
+              const bagS = parentWin.__kcApplyTrace || (parentWin.__kcApplyTrace = []);
+              bagS.push({{ t: Date.now(), reason: 'start_before_pause_held', epoch: cmd.epoch, sounding: keyS,
+                restart: !!cmd.restart, force: !!cmd.forcePlay, reload: !!cmd.arrangementReload,
+                byEpoch: beforePress, byEcho: beforeCardPause }});
+              if (bagS.length > 40) bagS.shift();
+            }} catch (eTrS) {{}}
+            cmd = Object.assign({{}}, cmd, {{
+              restart: false, forcePlay: false, autoplay: false, resume: false, paused: true,
+            }});
+          }}
+        }}
+        // The server saw the Previous / Next and kept another key (it refused the move): nothing
+        // is awaited any more; its command plays that key again (see the navigation block below).
+        const pendN = kcPendingTake();
+        const navN = parentWin.__kcNav;
+        if (pendN && pendN.navSeq && navN && Number(navN.seq) === pendN.navSeq && navN.ackSeq
+            && Number(cmd.ackedSwitchSeq || 0) >= Number(navN.ackSeq)
+            && String(cmd.sounding || '').trim() && String(cmd.sounding).trim() !== pendN.key) {{
+          kcClearPendingTake();
+        }}
+        // The server names the awaited key's take (a held command after a paused Previous / Next):
+        // Resume can play it at once.
+        const pendS = kcPendingTake();
+        if (pendS && !pendS.url && cmd.currentUrl && String(cmd.sounding || '').trim() === pendS.key) {{
+          pendS.url = String(cmd.currentUrl).trim();
+        }}
+      }} catch (eStartHeld) {{}}
       try {{
         const pg = parentWin.__kcPauseGuard;
         if (
@@ -12092,7 +12661,12 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       // the page is playing, has finished that take, is handing off, or holds another
       // take, the answer only refreshes the neighbours. A deliberate restart (Play,
       // Next / Previous) is not an answer and still applies.
-      if (cmd.resume && !cmd.restart && !state.userPaused) {{
+      // Not when the page is waiting for exactly this key (Resume after a cold Previous / Next
+      // left it to this answer, trace seqfix_5): the active element still holds the take that
+      // was left, which read as "moved on" and kept the page silent while the server played.
+      const awaitedE = kcPendingTake();
+      const answersWait = !!(awaitedE && String(cmd.sounding || '').trim() === awaitedE.key);
+      if (cmd.resume && !cmd.restart && !state.userPaused && !answersWait) {{
         const actE = activeAudio();
         const curE = String(cmd.currentUrl || '').trim();
         const srcE = actE ? String(actE.currentSrc || actE.src || '').trim() : '';
@@ -14177,8 +14751,18 @@ def _apply_manual_nav_ack(
         # that acknowledges it and plays Python's key again (it silenced that
         # key for a cold target). A duplicate was handled; Stop owns a stop.
         return reason not in ("duplicate_ack", "transport_stopped")
-    # Pressing Previous / Next plays the target, also from a paused cycle.
-    continue_playback(session, reason="key_cycle_nav")
+    # Pressing Previous / Next plays the target -- unless the musician was paused: then the cycle
+    # moves to the target and stays paused at its start until Resume (user decision 2026-11-17).
+    # Paused or not is the transport's state as this run finds it, not the page's flag at the
+    # press: the card's Pause / Resume is applied earlier in the same run, so a Pause pressed just
+    # after a Next is already in it when that Next arrives and must not be undone by the Next
+    # (browser trace 2026-11-17, seq390), and a Resume pressed just after a paused Next must not be
+    # undone by the hold. The page's ``stayPaused`` only records what it saw at the press.
+    from backing_transport_intent import PAUSED as _T_PAUSED, transport_intent as _t_now
+
+    stay_paused = _t_now(session) == _T_PAUSED
+    if not stay_paused:
+        continue_playback(session, reason="key_cycle_nav")
     try:
         jump_key_cycle_to_key(
             session,
@@ -14201,8 +14785,23 @@ def _apply_manual_nav_ack(
             pass_id=ack.get("passId"),
             extra={"error": f"{type(exc).__name__}: {exc}", "trace": traceback.format_exc()[-1500:]},
         )
+    if stay_paused:
+        _hold_after_paused_navigation(session)
     _finish_manual_nav_ack(session, ack)
     return True
+
+
+def _hold_after_paused_navigation(session: dict[str, Any]) -> None:
+    """Previous / Next pressed while paused: the cycle is on the new key and stays paused.
+
+    The jump marks the cycle Running and arms a start of the target; Pause's own hold undoes
+    exactly that (Held, no restart / resume / continue-play, the take silenced, Resume label) and
+    a Resume then plays the new key (re-queued if its take is not ready yet).
+    """
+    from backing_transport_intent import pause_playback
+
+    pause_key_cycle(session, user=True)
+    pause_playback(session, reason="key_cycle_nav_paused")
 
 
 def _finish_manual_nav_ack(session: dict[str, Any], ack: dict[str, Any]) -> None:
@@ -14711,7 +15310,7 @@ def _toggle_key_cycle_pause_resume(session: dict[str, Any]) -> None:
         resume_key_cycle(session)
     else:
         pause_playback(session, reason="key_cycle_pause")
-        pause_key_cycle(session)
+        pause_key_cycle(session, user=True)
 
 
 def _stop_key_cycle_from_button(session: dict[str, Any]) -> None:
@@ -14747,14 +15346,22 @@ def _stop_key_cycle_from_button(session: dict[str, Any]) -> None:
 
 
 def _step_key_cycle_from_button(session: dict[str, Any], steps: int) -> None:
-    """Server-side Previous / Next (the bridge takes the clicks once it is installed)."""
-    from backing_transport_intent import continue_playback
+    """Server-side Previous / Next (the bridge takes the clicks once it is installed).
 
-    continue_playback(session, reason="key_cycle_next" if steps > 0 else "key_cycle_previous")
+    While paused the cycle moves and stays paused (see _hold_after_paused_navigation).
+    """
+    from backing_transport_intent import PAUSED, continue_playback, transport_intent
+
+    data = get_owner_cycle_session(session)
+    paused = transport_intent(session) == PAUSED or str((data or {}).get("status") or "") == STATUS_HELD
+    if not paused:
+        continue_playback(session, reason="key_cycle_next" if steps > 0 else "key_cycle_previous")
     if steps > 0:
         advance_key_cycle_now(session)
     else:
         previous_key_cycle_now(session)
+    if paused:
+        _hold_after_paused_navigation(session)
 
 
 def render_backing_key_cycle_playback_bar(st: Any, session: dict[str, Any]) -> None:
@@ -15023,7 +15630,7 @@ def render_backing_key_cycle_playback_bar(st: Any, session: dict[str, Any]) -> N
                     return bool(st.button(label, key=key, use_container_width=True, **kw))
 
             _btn(
-                "Previous",
+                "Previous Key",
                 "backing_key_cycle_prev_btn",
                 icon=":material/skip_previous:",
                 disabled=transport_stopped,
@@ -15041,7 +15648,7 @@ def render_backing_key_cycle_playback_bar(st: Any, session: dict[str, Any]) -> N
                 disabled=transport_stopped,
             )
             _btn(
-                "Next",
+                "Next Key",
                 "backing_key_cycle_advance_btn",
                 icon=":material/skip_next:",
                 disabled=transport_stopped,
@@ -15051,8 +15658,10 @@ def render_backing_key_cycle_playback_bar(st: Any, session: dict[str, Any]) -> N
             # A callback, like Previous / Next / Pause: a button's True value
             # lives for one run only, and an earlier st.rerun() in that run (the
             # pass bridge after an ack) used to swallow the Stop press.
+            # Not "Stop": this one ends Key Cycling (cycling off, the Practice Key context back),
+            # unlike the card's "Stop Backing Track", which stops the audio and keeps cycling on.
             _btn(
-                "Stop",
+                "Stop Key Cycling",
                 "backing_key_cycle_stop_btn",
                 icon=":material/stop:",
                 on_click=_stop_key_cycle_from_button,
@@ -15106,6 +15715,10 @@ def html_escape(text: str) -> str:
 
 
 __all__ = [
+    "KC_PRE_KARAOKE_SET_KEY",
+    "key_cycle_in_karaoke_set",
+    "key_cycle_karaoke_set_started",
+    "key_cycle_karaoke_set_ended",
     "BACKING_KEY_CYCLE_CONTINUE_PLAY_KEY",
     "BACKING_KEY_CYCLE_DIRECTION_KEY",
     "BACKING_KEY_CYCLE_PASS_FINISHED_KEY",
@@ -15158,6 +15771,11 @@ __all__ = [
     "FOLLOW_TIMELINE_SPACE_CONCERT",
     "FOLLOW_TIMELINE_SPACE_DISPLAY",
     "normalize_key_cycle_after_browser_restore",
+    "ensure_key_cycle_follows_active_song",
+    "key_cycle_live_sidebar",
+    "CYCLE_USER_PAUSED",
+    "CYCLE_SONG_ID",
+    "KC_SETTINGS_ACTIVATION_EPOCH_KEY",
     "stash_audible_arrangement_after_generate",
     "current_backing_owner_practice_key",
     "cycle_chart_mode",

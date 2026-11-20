@@ -198,7 +198,7 @@ def apply_card_command(
 
             if is_cycle_active(session):
                 _cycle = True
-                pause_key_cycle(session)
+                pause_key_cycle(session, user=True)
                 # Freeze the key that was sounding: a Pause right after an
                 # automatic key change carries the new key the page was playing
                 # (idempotent; only the cycle's next key is adopted).

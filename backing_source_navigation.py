@@ -1284,7 +1284,13 @@ def begin_practice_loop_backing_handoff(
 
 def snapshot_practice_source_display_key(session: dict[str, Any]) -> None:
     """Remember the active practice-song concert key before Creative backing overrides it."""
-    key = str(session.get("display_key") or session.get("concert_key") or "C").strip() or "C"
+    key = str(session.get("display_key") or session.get("concert_key") or "").strip()
+    if not key:
+        # No key yet (a restore before the song's key is applied): remember nothing rather than a made-up C,
+        # which the Backing rebuild then kept as the Practice Key (Shallow, Original G -> C; 2026-11-18).
+        session.pop(PRACTICE_SOURCE_DISPLAY_KEY, None)
+        session.pop(PRACTICE_SOURCE_PICK_KEY, None)
+        return
     session[PRACTICE_SOURCE_DISPLAY_KEY] = key
     session[PRACTICE_SOURCE_PICK_KEY] = str(session.get("active_catalog_pick_key") or "").strip()
 
@@ -1307,12 +1313,26 @@ def _resolved_practice_display_key(session: dict[str, Any]) -> str:
                 return key
     except ImportError:
         pass
-    return str(session.get("display_key") or session.get("concert_key") or "C").strip() or "C"
+    # Nothing saved: "" -- the caller falls back to the song's own Original Key. A made-up C here was kept as the
+    # "Practice Key to preserve" by the Backing rebuild (Shallow, Original G, played in C -- 2026-11-18).
+    return str(session.get("display_key") or session.get("concert_key") or "").strip()
+
+
+def _active_song_original_key(session: dict[str, Any]) -> str:
+    try:
+        from songs.music_source import resolve_active_song_keys
+
+        original, _concert, _written = resolve_active_song_keys(session, None)
+        return str(original or "").strip()
+    except Exception:
+        return ""
 
 
 def restore_practice_source_display_key(session: dict[str, Any], *, st_like: Any | None = None) -> str:
     """Practice page owns the active song key — not the last Creative backing key."""
-    key = _resolved_practice_display_key(session)
+    key = _resolved_practice_display_key(session) or _active_song_original_key(session)
+    if not key:
+        return ""
     try:
         from session_widget_safe import safe_assign_display_key
 

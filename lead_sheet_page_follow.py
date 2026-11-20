@@ -12,11 +12,15 @@ the Backing timeline); otherwise nothing moves the page. Closing the leader hand
 and among several section staves the one that lit a measure most recently leads. A melody with no measure alignment (an uploaded
 PDF, a staff without a timeline) never registers, so it never claims the page.
 
-That is the only code that moves the page, and it holds still for three seconds after any
-manual scroll, touch, key or click (each new one restarts the three seconds; user, 2026-11-16: six was too long) --
-except a click / tap that opens or closes a panel, which hands over to the notation that now leads at once --
-never moves while a pointer is down, and never moves while the music is paused or stopped. When the three seconds
-run out during playback it returns smoothly to the current measure.
+That is the only code that moves the page. It never fights the person: while they scroll -- for as long as they
+like -- it holds still, and it waits three seconds after their LAST manual scroll (user, 2026-11-18: the three
+seconds start when they stop; scrolling again restarts them; 2026-11-16: six was too long). Manual scrolling is a
+wheel / trackpad scroll, a finger dragging the page, a scroll key, the scrollbar, and the glide after any of those;
+a pointer or finger held down holds the page. Moving the mouse, a click or tap that does not scroll, a chord
+lighting up and its own scrolling never hold -- nor does opening or closing a panel, which hands over to the
+notation that now leads at once. It never moves while the music is paused or stopped. When the three seconds run
+out during playback it returns smoothly to the measure playing NOW, and keeps it genuinely on screen: inside the
+window, clear of the sticky header and the compact transport bar, with the next row below it for reading ahead.
 
 It only ever reads ``getBoundingClientRect`` and writes the page scroller's ``scrollTop``: it never touches an
 audio element, the follow timeline or the highlight, so it cannot change what is heard or which chord is lit.
@@ -32,7 +36,7 @@ from __future__ import annotations
 HOLD_MS = 3000
 # Bumped whenever the controller's behaviour changes: an open page keeps the copy it installed (one per top
 # window) and only a newer version replaces it -- v2 pages kept the 6 s hold and the old spacer after a deploy.
-CONTROLLER_VERSION = 3
+CONTROLLER_VERSION = 4
 # Who leads the page when several are open and playing (higher wins; user, 2026-11-16).
 LEAD_SHEET_PRIORITY = 10
 MELODY_PRIORITY = 20                 # the Practice Melody staff
@@ -128,53 +132,104 @@ _CONTROLLER_JS = r"""
   function rectInTop(el) {
     try {
       var r = el.getBoundingClientRect();
-      var t = r.top, b = r.bottom, w = el.ownerDocument.defaultView;
+      var t = r.top, b = r.bottom, l = r.left, rt = r.right, w = el.ownerDocument.defaultView;
       while (w && w !== top) {
         var fe = w.frameElement;
         if (!fe) return null;
         var fr = fe.getBoundingClientRect();
         t += fr.top + (fe.clientTop || 0); b += fr.top + (fe.clientTop || 0);
+        l += fr.left + (fe.clientLeft || 0); rt += fr.left + (fe.clientLeft || 0);
         w = w.parent;
       }
-      return { top: t, bottom: b };
+      return { top: t, bottom: b, left: l, right: rt };
     } catch (e) { return null; }
   }
 
-  // ---- manual interaction: hold for HOLD_MS after the last one ----
+  // ---- manual scrolling: hold while the person scrolls, then for HOLD_MS after the LAST manual scroll ----
+  // (user, 2026-11-18) There is no limit on how long someone may scroll around the page: the three seconds start
+  // when they STOP, and scrolling again before they run out starts them again. What counts as manual scrolling: a
+  // wheel / trackpad scroll, a finger dragging the page, a scroll key that moves the page, dragging the scrollbar,
+  // and the page still gliding from one of those (touch momentum, a smooth key scroll) -- a pointer or finger held
+  // down holds the page however long it stays still. What does not: moving or hovering the mouse, a click or tap that
+  // does not scroll the page, a chord lighting up, and this controller's own scrolling.
   C.suspended = function () { return C.pointerDown || (now() - C.lastInteraction < HOLD_MS); };
   C.remainingMs = function () { return C.pointerDown ? HOLD_MS : Math.max(0, HOLD_MS - (now() - C.lastInteraction)); };
+  // A page scroll this soon after the person's own input (or after their previous scroll) is still theirs: the
+  // glide after a flick, a key's smooth scroll, the scrollbar's arrows.
+  var GLIDE_MS = 400;
+  C.lastSignal = 0; C.pressScrolled = false;
   function interact(kind) {
-    C.lastInteraction = now(); C.lastKind = kind;
-    if (now() < C.selfScrollUntil) {
+    var t = now();
+    C.lastInteraction = t; C.lastSignal = t; C.lastKind = kind;
+    if (C.pointerDown) C.pressScrolled = true;
+    if (t < C.selfScrollUntil) {
       // Stop a return already under way: the person's scroll wins at once.
       C.selfScrollUntil = 0;
       try { var sc = scroller(); sc.scrollTo({ top: sc.scrollTop, behavior: "auto" }); } catch (e) {}
     }
   }
-  var KINDS = ["wheel", "touchstart", "touchmove", "keydown"];
   // Opening or closing a panel (a click / tap on an expander's header) is not scrolling: the page hands over to
-  // the notation that now leads at once instead of holding (measured: 6.4 s after closing the Practice Melody).
-  // A drag or wheel that starts on a header still holds -- touchmove and wheel always count.
+  // the notation that now leads at once instead of holding (measured: 6.4 s after closing the Practice Melody),
+  // even when the panel's new height makes the page scroll. A drag or wheel that starts on a header still holds.
   function panelToggle(ev) {
     try { var t = ev && ev.target; return !!(t && t.closest && t.closest("summary")); } catch (e) { return false; }
   }
-  var TOGGLE_KINDS = { touchstart: 1 };
+  function press(ev) {
+    if (panelToggle(ev)) return;
+    C.pointerDown = true; C.pressScrolled = false;
+    // a tap that stops the page while it still glides from the person's own scroll is part of that scroll
+    if (now() - C.lastSignal < GLIDE_MS) interact("press-stops-glide");
+  }
+  // Released: the three seconds start now only if this press scrolled the page (a drag, the scrollbar).
+  function release(kind) {
+    if (!C.pointerDown) return;
+    C.pointerDown = false;
+    if (C.pressScrolled) interact(kind);
+    C.pressScrolled = false;
+  }
+  var SCROLL_KEYS = { ArrowUp: 1, ArrowDown: 1, PageUp: 1, PageDown: 1, Home: 1, End: 1, " ": 1, Spacebar: 1 };
+  function scrollKey(ev) {
+    try {
+      if (!ev || !SCROLL_KEYS[ev.key] || ev.ctrlKey || ev.metaKey || ev.altKey) return false;
+      var t = ev.target, tag = t && t.tagName ? String(t.tagName).toLowerCase() : "";
+      return !(tag === "input" || tag === "textarea" || tag === "select" || (t && t.isContentEditable));
+    } catch (e) { return false; }
+  }
+  // The page scroller moved: the person's scroll if a press is down or their input was just now; otherwise it is
+  // this controller (C.follow), another component or a re-render -- never a reason to hold.
+  function pageScrolled(ev) {
+    try {
+      var sc = scroller();
+      if (ev && ev.target !== sc && ev.target !== doc && ev.target !== doc.documentElement) return;
+    } catch (e) { return; }
+    var t = now();
+    if (C.pointerDown || t - C.lastSignal < GLIDE_MS) interact("scroll");
+  }
   var seen = new WeakSet();
   function watch(d) {
     if (!d || seen.has(d)) return;
     seen.add(d);
     var opts = { capture: true, passive: true };
-    KINDS.forEach(function (k) {
-      d.addEventListener(k, function (ev) { if (TOGGLE_KINDS[k] && panelToggle(ev)) return; interact(k); }, opts);
+    d.addEventListener("wheel", function () { interact("wheel"); }, opts);
+    d.addEventListener("touchmove", function () { interact("touchmove"); }, opts);
+    // a scroll key only opens the window: the hold starts if the page then really scrolls
+    d.addEventListener("keydown", function (ev) { if (scrollKey(ev)) C.lastSignal = now(); }, opts);
+    // touch uses the touch events (a finger scrolling the page cancels its pointer at once); mouse / pen the pointer's
+    d.addEventListener("touchstart", function (ev) { press(ev); }, opts);
+    ["touchend", "touchcancel"].forEach(function (k) {
+      d.addEventListener(k, function (ev) { if (!ev.touches || !ev.touches.length) release(k); }, opts);
     });
-    d.addEventListener("pointerdown", function (ev) {
-      if (panelToggle(ev)) return;
-      C.pointerDown = true; interact("pointerdown");
+    d.addEventListener("pointerdown", function (ev) { if (ev.pointerType !== "touch") press(ev); }, opts);
+    d.addEventListener("pointerup", function (ev) { if (ev.pointerType !== "touch") release("pointerup"); }, opts);
+    // a mouse press that turns into a native drag (selected text, an image) is cancelled while the button is still
+    // down: the press lasts until the drag ends
+    d.addEventListener("pointercancel", function (ev) { if (ev.pointerType === "pen") release("pointercancel"); }, opts);
+    ["dragend", "drop"].forEach(function (k) { d.addEventListener(k, function () { release(k); }, opts); });
+    // a release the page never heard (let go outside the window): the next plain move with no button down
+    d.addEventListener("pointermove", function (ev) {
+      if (C.pointerDown && ev.pointerType === "mouse" && ev.buttons === 0) release("pointermove");
     }, opts);
-    ["pointerup", "pointercancel"].forEach(function (k) {
-      d.addEventListener(k, function (ev) { C.pointerDown = false; if (!panelToggle(ev)) interact(k); }, opts);
-    });
-    d.addEventListener("touchend", function (ev) { C.pointerDown = false; if (!panelToggle(ev)) interact("touchend"); }, opts);
+    if (d === doc) d.addEventListener("scroll", pageScrolled, opts);
   }
   // The page and every same-origin iframe on it (controls live in their own frames).
   function watchAll() {
@@ -186,6 +241,62 @@ _CONTROLLER_JS = r"""
     } catch (e) {}
   }
   C.watch = watch;
+
+  // ---- is the playing chord GENUINELY on screen? (user, 2026-11-18: "a person looking at the screen must clearly
+  // see the currently highlighted chord") ----
+  // What is drawn at a top-window point, followed down through the frames el sits in: null when it is el itself,
+  // otherwise the element covering it there (an overlay, a sticky bar, the page around a frame that clips el).
+  function coverAt(el, x, y) {
+    var chain = [], w = el.ownerDocument.defaultView;
+    while (w && w !== top) { if (!w.frameElement) return null; chain.unshift(w.frameElement); w = w.parent; }
+    var d = doc, ox = 0, oy = 0;
+    for (var i = 0; i < chain.length; i++) {
+      var hit = d.elementFromPoint(x - ox, y - oy);
+      if (hit !== chain[i]) return hit || d.documentElement;
+      var fr = chain[i].getBoundingClientRect();
+      ox += fr.left + (chain[i].clientLeft || 0); oy += fr.top + (chain[i].clientTop || 0);
+      d = chain[i].contentDocument;
+      if (!d) return null;
+    }
+    var e = d.elementFromPoint(x - ox, y - oy);
+    return (e && (e === el || el.contains(e))) ? null : (e || d.documentElement);
+  }
+  // The fixed / sticky box a covering element belongs to (top window only), in window coordinates, or null.
+  function pinnedBox(e) {
+    try {
+      for (var n = e; n && n !== doc.body && n !== doc.documentElement; n = n.parentElement) {
+        if (n.ownerDocument !== doc) return null;
+        var pos = top.getComputedStyle(n).position;
+        if (pos === "fixed" || pos === "sticky") { var r = n.getBoundingClientRect(); return { top: r.top, bottom: r.bottom }; }
+      }
+    } catch (e2) {}
+    return null;
+  }
+  // null when el is wholly inside the window between the sticky header and the compact bar and its centre and two
+  // inner points show el itself; otherwise { why, pinned } (pinned: the fixed / sticky box covering it, if any).
+  C.notVisible = function (el) {
+    var r = el && el.isConnected && rectInTop(el);
+    if (!r) return { why: "unmapped" };
+    var sc = scroller(), vt = viewTop(sc) + topInset(), vb = viewBottom(sc) - bottomInset();
+    if (r.top < vt - 1 || r.bottom > vb + 1) return { why: r.bottom <= vt || r.top >= vb ? "outside" : "edge" };
+    if (r.left < -1 || r.right > top.innerWidth + 1) return { why: "sideways" };
+    // scrolled out of its own frame's box (Karaoke's lyric box scrolls itself): that frame's follower brings it
+    // back; moving the page cannot
+    try {
+      for (var w = el.ownerDocument.defaultView; w && w !== top; w = w.parent) {
+        var fe = w.frameElement; if (!fe) break;
+        var fr = rectInTop(fe);
+        if (fr && (r.top < fr.top - 1 || r.bottom > fr.bottom + 1)) return { why: "clipped" };
+      }
+    } catch (eF) {}
+    var cx = (r.left + r.right) / 2, hgt = r.bottom - r.top, ys = [0.5, 0.25, 0.75];
+    for (var i = 0; i < ys.length; i++) {
+      var cov = null;
+      try { cov = coverAt(el, cx, r.top + hgt * ys[i]); } catch (e) { cov = null; }
+      if (cov) return { why: "covered", pinned: pinnedBox(cov) };
+    }
+    return null;
+  };
 
   // ---- following ----
   function liveProviders() {
@@ -309,9 +420,15 @@ _CONTROLLER_JS = r"""
     if (!r) return false;
     var sc = scroller();
     var vt = viewTop(sc) + topInset(), vb = viewBottom(sc) - bottomInset();
+    // something pinned over the chord (an overlay the insets above do not know): keep clear of it as well
+    var pin = opts.pinned;
+    if (pin && pin.bottom - pin.top < 0.5 * (vb - vt)) {
+      if ((pin.top + pin.bottom) / 2 < (vt + vb) / 2) vt = Math.max(vt, pin.bottom + 8);
+      else vb = Math.min(vb, pin.top - 8);
+    }
     var avail = Math.max(120, vb - vt);
     var bandTop = vt + 0.04 * avail, bandBottom = vt + 0.62 * avail;
-    if (r.top >= bandTop && r.bottom <= bandBottom) return false;
+    if (!opts.force && r.top >= bandTop && r.bottom <= bandBottom) return false;
     var want = sc.scrollTop + (r.top - (vt + 0.18 * avail));
     // The last rows of a chart near the end of the page: the page cannot scroll far enough to bring them up to
     // the reading position (measured: the chord sat at 91-93 % of the window, under the compact bar, and the
@@ -457,17 +574,19 @@ _CONTROLLER_JS = r"""
         // Paused / stopped: stay put; the next measure change after Resume follows (no hold debt).
         else if (p) C.wasSuspended = false;
       }
-      // Catch-up: playing, not held, no move of ours in flight, and the playing measure entirely outside the window
-      // -> bring it in now. Measured 2026-11-17 (Voice, Blackbird, 360 px): every missed sample was bar 1 just after
+      // Catch-up: playing, not held, no move of ours in flight, and the playing measure not GENUINELY visible --
+      // outside the window, cut by its edge, under the header / the compact bar / an overlay -> bring it into the
+      // reading position now. Measured 2026-11-17 (Voice, Blackbird, 360 px): every missed sample was bar 1 just after
       // Play / Play again / a return / a reload -- its highlight was set before the page followed, so the page
-      // waited ~2 s for the next chord change with the playing bar below the window. A measure on screen is untouched.
+      // waited ~2 s for the next chord change with the playing bar below the window. A measure clearly on screen is
+      // untouched (no nudging while it can be read).
       if (!s && lead && now() >= C.selfScrollUntil) {
         try {
           if (lead.playing()) {
-            var ce = lead.current(), rr = ce && rectInTop(ce);
-            if (rr) {
-              var scc = scroller(), vtc = viewTop(scc) + topInset(), vbc = viewBottom(scc) - bottomInset();
-              if (rr.bottom <= vtc || rr.top >= vbc) C.follow(ce, { why: "catchup" });
+            var ce = lead.current(), nv = ce && C.notVisible(ce);
+            if (nv && (nv.why === "outside" || nv.why === "edge" || nv.why === "covered")) {
+              C.lastHidden = { t: now(), why: nv.why };
+              C.follow(ce, { why: "catchup-" + nv.why, force: true, pinned: nv.pinned });
             }
           }
         } catch (eCu) {}

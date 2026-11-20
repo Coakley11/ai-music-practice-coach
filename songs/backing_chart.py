@@ -24,6 +24,29 @@ except ImportError:
         cleaned = str(chord).strip().replace(" ", "").upper()
         return cleaned in {"N.C.", "NC", "N.C", "N/C", "(N.C.)", "TACET", "—", "-"}
 
+_WORKING_LINE_RE = re.compile(r"You're working in [^.]*\.(?: Pending Play Backing Track\.)?")
+
+
+def _subtitle_html(subtitle: str) -> str:
+    """The chart subtitle, with its "You're working in <key> at <bpm> (...)." sentence marked.
+
+    The follow view keeps that sentence (key, tempo, meter, feel) and folds away the coaching
+    around it; every other view shows the same words as before.
+    """
+    text = str(subtitle or "")
+    m = _WORKING_LINE_RE.search(text)
+    if not m:
+        return html.escape(text)
+    parts = []
+    before, after = text[: m.start()].strip(), text[m.end():].strip()
+    if before:
+        parts.append(f"<span class='lead-coach'>{html.escape(before)} </span>")
+    parts.append(f"<span class='lead-working'>{html.escape(m.group(0))}</span>")
+    if after:
+        parts.append(f"<span class='lead-coach'> {html.escape(after)}</span>")
+    return "".join(parts)
+
+
 BACKING_CHART_CSS = """
 <style>
 .backing-chart-sheet { font-family: system-ui, -apple-system, Segoe UI, sans-serif; }
@@ -696,7 +719,7 @@ def render_backing_chord_chart(
             capo_fret=int(capo_fret or 0) if shape_sounding else 0,
         )
         header_note = (
-            f"<div class='lead-subtitle'>{html.escape(_subtitle)}</div>" if _subtitle else ""
+            f"<div class='lead-subtitle'>{_subtitle_html(_subtitle)}</div>" if _subtitle else ""
         )
     except Exception:
         header_note = ""

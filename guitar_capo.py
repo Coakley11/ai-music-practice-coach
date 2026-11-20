@@ -1010,6 +1010,29 @@ def capo_status_banner_html(ctx: CapoContext) -> str:
     )
 
 
+def _key_cycle_live(session_state: dict) -> dict | None:
+    """Key Cycling's live key for the CURRENT readouts, or None (saved-song context)."""
+    try:
+        from backing_key_cycle import key_cycle_live_sidebar
+
+        return key_cycle_live_sidebar(session_state)
+    except Exception:
+        return None
+
+
+def _capo_fret_caption(sounding: str, shape: str, kc_live: dict | None) -> str:
+    """The sidebar's Capo Fret line: the live cycle key's fret while Key Cycling is On (marked so the
+    page script moves it with the key), else the saved song's. The fixed Shape Key is unchanged."""
+    if kc_live:
+        capo = capo_fret_for_shape(str(kc_live.get("key") or sounding), shape)
+        return (
+            f'<p class="ui-sidebar-key-caption"><strong>Capo Fret:</strong> '
+            f'<span data-kc-live="capo">{capo}</span></p>'
+        )
+    capo = capo_fret_for_shape(sounding, shape)
+    return f'<p class="ui-sidebar-key-caption"><strong>Capo Fret:</strong> {capo}</p>'
+
+
 def render_guitar_capo_sidebar(
     ui: Any,
     session_state: dict,
@@ -1030,11 +1053,22 @@ def render_guitar_capo_sidebar(
     else:
         sounding_src = practice_tok
     sounding = sync_capo_from_practice_display_key(session_state, sounding_src)
-    ui.markdown(
-        f'<p class="ui-sidebar-key-caption"><strong>Sounding Key:</strong> '
-        f"{html.escape(sounding)}</p>",
-        unsafe_allow_html=True,
-    )
+    # Key Cycling On (Backing): the CURRENT readouts show the key the cycle plays now -- display
+    # only; ``sounding`` (the saved song's key) still drives every state write below.
+    kc_live = _key_cycle_live(session_state)
+    if kc_live:
+        ui.markdown(
+            f'<p class="ui-sidebar-key-caption"><strong>Sounding Key:</strong> '
+            f'<span data-kc-live="sounding">{html.escape(kc_live["label"])}</span>'
+            f' <span style="opacity:.75">(Key Cycling)</span></p>',
+            unsafe_allow_html=True,
+        )
+    else:
+        ui.markdown(
+            f'<p class="ui-sidebar-key-caption"><strong>Sounding Key:</strong> '
+            f"{html.escape(sounding)}</p>",
+            unsafe_allow_html=True,
+        )
     # New run: widgets not yet created. Apply any deferred sync from last flush.
     session_state["_capo_widgets_instantiated_this_run"] = False
     genuine_off_pending = bool(session_state.get("_capo_genuine_user_off")) or (
@@ -1158,7 +1192,6 @@ def render_guitar_capo_sidebar(
             # Show canonical Capo this frame; next run checkbox seeds ON.
             shape_now = shape_tonic_only(str(session_state.get(CAPO_SHAPE_KEY) or ""))
             chart_label = shape_chart_label_for_concert(sounding, shape_now)
-            capo = capo_fret_for_shape(sounding, shape_now)
             ui.markdown(
                 f'<p class="ui-sidebar-key-caption"><strong>Shape Key:</strong> '
                 f"{html.escape(shape_now)} "
@@ -1170,10 +1203,7 @@ def render_guitar_capo_sidebar(
                 f"{html.escape(chart_label)}</p>",
                 unsafe_allow_html=True,
             )
-            ui.markdown(
-                f'<p class="ui-sidebar-key-caption"><strong>Capo Fret:</strong> {capo}</p>',
-                unsafe_allow_html=True,
-            )
+            ui.markdown(_capo_fret_caption(sounding, shape_now, kc_live), unsafe_allow_html=True)
             try:
                 persist_st.rerun()
             except Exception:
@@ -1188,16 +1218,9 @@ def render_guitar_capo_sidebar(
         # Do not sync_capo_widgets_from_canonical here. Widgets already show Capo off;
         # queuing ``_pending_capo_enabled_widget=False`` after instantiate stomps the
         # next user Capo-ON click (widget key rewritten before the checkbox renders).
-        ui.markdown(
-            f'<p class="ui-sidebar-key-caption"><strong>Shape Key:</strong> '
-            f"{html.escape(shape_tonic_only(sounding))} "
-            f"<span style=\"opacity:.75\">(follows sounding while Capo is off)</span></p>",
-            unsafe_allow_html=True,
-        )
-        ui.markdown(
-            '<p class="ui-sidebar-key-caption"><strong>Capo Fret:</strong> open (no capo)</p>',
-            unsafe_allow_html=True,
-        )
+        # Capo Shape Mode off: no Shape Key and no capo line -- there is no shape to show, and an "active-looking"
+        # Shape Key beside the Sounding Key read as a second key (user, 2026-11-18). The Sounding Key above is the
+        # one key that matters; the shape choice appears when Capo Shape Mode is switched on.
         if persist_capo_to_canonical(session_state) or genuine_manual_off or session_state.get(
             "_capo_genuine_user_off"
         ):
@@ -1320,11 +1343,7 @@ def render_guitar_capo_sidebar(
         f'<p class="ui-sidebar-key-caption"><strong>Charts in</strong> {html.escape(chart_label)}</p>',
         unsafe_allow_html=True,
     )
-    capo = capo_fret_for_shape(sounding, session_state[CAPO_SHAPE_KEY])
-    ui.markdown(
-        f'<p class="ui-sidebar-key-caption"><strong>Capo Fret:</strong> {capo}</p>',
-        unsafe_allow_html=True,
-    )
+    ui.markdown(_capo_fret_caption(sounding, session_state[CAPO_SHAPE_KEY], kc_live), unsafe_allow_html=True)
     # While temporary SBI Custom owns Capo sounding, Capo Mode ON must still
     # flush — Capo saves are the durable write path and must seal Trial first.
     try:
