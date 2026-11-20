@@ -12,7 +12,9 @@ def test_page_defaults_follow_transitions_without_resetting_musical_state():
              'composer_saved_compositions':{'piece':{'key':'D'}},'mt_tracks':{'tenor':b'audio'}}
     state=deepcopy(music)
     for page in ('home','practice','home','backing','picker','custom'):
-        assert apply_page_defaults(state,page) == (page!='home')
+        # Home opens the page list, and every other destination keeps the choice the
+        # user last made - which each pass below leaves as "expanded".
+        assert apply_page_defaults(state,page) is False
         state[PAGES_COLLAPSED]=False
         assert not apply_page_defaults(state,page)  # a normal rerun respects the user's choice
         assert {key:state[key] for key in music}==music
