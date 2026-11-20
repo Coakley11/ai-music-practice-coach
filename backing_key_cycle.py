@@ -4428,13 +4428,14 @@ def key_cycle_karaoke_set_started(session: dict[str, Any]) -> bool:
 
 
 def key_cycle_karaoke_set_ended(session: dict[str, Any]) -> bool:
-    """End Set: the set's Key Cycling ends with it; ordinary Backing gets its pre-set state back.
+    """End Set: the set's Key Cycling ends with it; the song left in Now Editing is ordinary again.
 
-    Interval / Direction / Key Spelling and On/Off are restored from the snapshot. A restored On
-    starts a new cycle at the current song's own first key, stopped (nothing autoplays; no set
-    position is inherited). Safe without a snapshot (Key Cycling is left Off). The current song
-    activation is adopted so the song-change reset does not undo the restore on the next run.
-    Returns True when a snapshot was restored.
+    User rule 2026-11-20 ("Defaults, Off"): Key Cycling goes back to its ordinary defaults --
+    Off, Interval Semitone, Ascending, the default Key Spelling. Neither the set's settings nor the
+    pre-set state come back (a cycle that was On before the set stays Off). The start-time snapshot
+    is only the once-per-set guard of ``key_cycle_karaoke_set_started``; it is cleared here, never
+    restored. The current song activation is adopted so the next Backing run does not treat the
+    End Set as a song change. Returns True when a set was ended (its snapshot was present).
     """
     snap = session.pop(KC_PRE_KARAOKE_SET_KEY, None)
     try:
@@ -4447,28 +4448,16 @@ def key_cycle_karaoke_set_ended(session: dict[str, Any]) -> bool:
               "_kc_completion_consumed", "_kc_last_playing_confirm"):
         session.pop(k, None)
     _adopt_current_song_activation(session)
-    restored = isinstance(snap, dict)
-    if restored:
-        step = normalize_cycle_step_name(snap.get("step")) or CYCLE_STEP_SEMITONE
-        direction = "down" if str(snap.get("direction") or "up").lower() == "down" else "up"
-        spelling = dict(default_spelling_prefs(), **(snap.get("spelling") or {}))
-        session[BACKING_KEY_CYCLE_STEP_KEY] = step
-        session[BACKING_KEY_CYCLE_DIRECTION_KEY] = direction
-        session[BACKING_KEY_SPELLING_PREFS_KEY] = spelling
-        interval = cycle_interval_for_step_name(step)
-        _queue_key_cycle_widget_seed(session, interval=interval, direction=direction)
-        if snap.get("enabled"):
-            try:
-                start_key_cycle(session, interval=interval, direction=direction, spelling_prefs=spelling)
-            except Exception:
-                pass
-    if not is_cycle_active(session):
-        session["_key_cycle_force_ui_off"] = True
+    session[BACKING_KEY_CYCLE_STEP_KEY] = CYCLE_STEP_SEMITONE
+    session[BACKING_KEY_CYCLE_DIRECTION_KEY] = "up"
+    session[BACKING_KEY_SPELLING_PREFS_KEY] = dict(default_spelling_prefs())
+    _queue_key_cycle_widget_seed(session, interval=cycle_interval_for_step_name(CYCLE_STEP_SEMITONE), direction="up")
+    session["_key_cycle_force_ui_off"] = True
     try:
         persist_key_cycle_position(session)
     except Exception:
         pass
-    return restored
+    return isinstance(snap, dict)
 
 
 def seal_final_key_from_ack(session: dict[str, Any], ack: dict[str, Any]) -> bool:

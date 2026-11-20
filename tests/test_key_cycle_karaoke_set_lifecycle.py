@@ -3,8 +3,9 @@
 * A fresh set starts with Key Cycling Off; whatever was on before the set is remembered.
 * Turned On during the set it stays On -- Interval / Direction / Key Spelling -- for every later
   song (a song change inside the set is NOT the ordinary settings reset); Off also carries.
-* End Set restores the pre-set state for ordinary Backing: On/Off and the settings, a restored On
-  at the current song's first key and stopped. Safe without a snapshot.
+* End Set (user rule 2026-11-20, "Defaults, Off"): Key Cycling goes back to its ordinary defaults --
+  Off, Semitone, Ascending, default Key Spelling. Neither the set's settings nor the pre-set state
+  come back; a cycle that was On before the set stays Off. Safe without a snapshot.
 * Outside a set the ordinary song-change reset is unchanged.
 """
 
@@ -14,7 +15,7 @@ import unittest
 from unittest import mock
 
 import backing_key_cycle as kc
-from backing_transport_intent import STOPPED, begin_playback, transport_intent
+from backing_transport_intent import PLAYING, begin_playback, transport_intent
 
 FOURTHS = kc.CYCLE_STEP_FOURTH
 
@@ -135,34 +136,39 @@ class KaraokeSetLifecycle(unittest.TestCase):
         self.assertTrue(kc.is_cycle_active(self.ss))
 
     # 3. End Set
-    def test_end_set_restores_the_pre_set_on_with_its_settings_at_the_first_key_stopped(self) -> None:
-        self._choose(kc.CYCLE_STEP_SEMITONE, "up", {"F#/Gb": "F#"})
-        self._turn_on("D")
-        before = self._settings()
-        self._start_set()
-        self._choose(FOURTHS, "down")
-        self._turn_on("D")
-        self._next_entry("song-B", "F")
-        self._end_set()
-        self.assertEqual(self._settings(), before)
-        self.assertTrue(kc.is_cycle_active(self.ss))
-        self.assertEqual(kc.temporary_playback_key(self.ss), "F")  # the song now active, first key
-        self.assertEqual(transport_intent(self.ss), STOPPED)       # nothing autoplays
-        self.assertNotIn(kc.KC_PRE_KARAOKE_SET_KEY, self.ss)
-        self._run()                                                 # the next Backing run keeps it
-        self.assertEqual(self._settings(), before)
-        self.assertTrue(kc.is_cycle_active(self.ss))
+    def _defaults(self) -> tuple:
+        return (kc.CYCLE_STEP_SEMITONE, "up", kc.spelling_prefs_from_session({}))
 
-    def test_end_set_restores_off_when_it_was_off_before(self) -> None:
+    def test_end_set_gives_the_defaults_off_even_if_key_cycling_was_on_before_the_set(self) -> None:
+        self._choose(FOURTHS, "down", {"F#/Gb": "Gb"})
+        self._turn_on("D")                       # On before the set, with non-default settings
+        self._start_set()
+        self._choose(FOURTHS, "down", {"F#/Gb": "Gb"})
+        self._turn_on("D")                       # and On again during the set
+        self._next_entry("song-B", "F")
+        self.ss["karaoke_session_active"] = False
+        self.assertTrue(kc.key_cycle_karaoke_set_ended(self.ss))     # a set was ended
+        self.assertFalse(kc.is_cycle_active(self.ss))                # Off: the pre-set On does not come back
+        self.assertFalse(self.ss.get("backing_key_cycle_enabled"))
+        self.assertTrue(self.ss.get("_key_cycle_force_ui_off"))
+        self.assertEqual(self._settings(), self._defaults())         # Semitone, Ascending, default spelling
+        self.assertNotEqual(transport_intent(self.ss), PLAYING)      # nothing autoplays
+        self.assertNotIn(kc.KC_PRE_KARAOKE_SET_KEY, self.ss)
+        self._run()                                                  # the next Backing run keeps it
+        self.assertFalse(kc.is_cycle_active(self.ss))
+        self.assertEqual(self._settings(), self._defaults())
+
+    def test_end_set_gives_the_defaults_off_when_it_was_off_before(self) -> None:
         self._choose(FOURTHS, "down")
         self._start_set()
         self._turn_on("D")
         self._next_entry("song-B", "F")
+        self.assertTrue(self.ss[kc.KC_PRE_KARAOKE_SET_KEY])  # the guard is there until End Set
         self._end_set()
         self.assertFalse(kc.is_cycle_active(self.ss))
         self.assertFalse(self.ss.get("backing_key_cycle_enabled"))
         self._run()
-        self.assertEqual(self._settings()[:2], (FOURTHS, "down"))
+        self.assertEqual(self._settings(), self._defaults())         # the set's Fourths / Descending end with it
 
     def test_end_set_without_a_snapshot_is_safe_and_leaves_key_cycling_off(self) -> None:
         self._turn_on("D")
