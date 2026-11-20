@@ -1510,20 +1510,6 @@ def _set_lifecycle_hook(module: str, name: str, session_state: Any) -> None:
         pass
 
 
-def _backing_set_scope_hook(name: str, session_state: Any) -> None:
-    """Backing's set-scoped Playback Scope layer (backing_track_state): snapshot the musician's
-    scope when a set starts, give it back when the set ends, so a mid-song "Intro only" stays a
-    temporary choice and ordinary Backing never inherits it. Absent the hook, nothing happens."""
-    try:
-        import backing_track_state as _bts
-
-        fn = getattr(_bts, name, None)
-        if callable(fn):
-            fn(session_state)
-    except Exception:
-        pass
-
-
 def start_session(
     session_state: Any,
     *,
@@ -1557,8 +1543,6 @@ def start_session(
     session_state[KARAOKE_SESSION_ACTIVE_KEY] = True
     session_state[KARAOKE_SET_LEAD_SHEET_OPEN_KEY] = False
     session_state[KARAOKE_SET_LOOPS_KEY] = KARAOKE_SET_LOOPS_DEFAULT
-    _backing_set_scope_hook("snapshot_pre_set_scope", session_state)
-    _set_lifecycle_hook("backing_track_state", "snapshot_pre_set_loops", session_state)
     session_state.pop(KARAOKE_SONG_ENDED_KEY, None)
     session_state.pop(PENDING_KARAOKE_ADVANCE_KEY, None)
     session_state.setdefault(KARAOKE_AUTO_ADVANCE_KEY, True)
@@ -1584,9 +1568,11 @@ def stop_session(session_state: Any) -> None:
     session_state[KARAOKE_SESSION_ACTIVE_KEY] = False
     session_state.pop(KARAOKE_SET_LEAD_SHEET_OPEN_KEY, None)
     _pay_edit_regen_owed(session_state)
-    _backing_set_scope_hook("restore_pre_set_scope", session_state)
     session_state.pop(KARAOKE_SET_LOOPS_KEY, None)
-    _set_lifecycle_hook("backing_track_state", "restore_pre_set_loops", session_state)
+    # End Set (user rule 2026-11-20, superseding "restore the pre-set values"): Now Editing comes
+    # back as an ordinary song with ordinary Backing defaults - 2 repeats, Full song, its own BPM,
+    # groove and meter - never the pre-set overrides or the set's. Backing's owner does the reset.
+    _set_lifecycle_hook("backing_play_session", "reset_backing_after_karaoke_set", session_state)
     _set_lifecycle_hook("backing_key_cycle", "key_cycle_karaoke_set_ended", session_state)
     session_state.pop(KARAOKE_ENTRY_PLAYS_LEFT_KEY, None)
     session_state.pop(KARAOKE_SONG_ENDED_KEY, None)
