@@ -2694,3 +2694,34 @@ def _chart_prov_failure(session: Any, where: str, exc: BaseException) -> None:
         log_failure(session, where, exc)
     except Exception:
         pass
+
+
+# --- Diagnostic: which operation changed the active song (active_song_change_ledger) -------------
+# The two song-activation entry points record a ledger row when they changed the active song. The
+# wrapper only observes; the functions' behaviour and return values are unchanged.
+def _ledger_observed(fn: Any, op: str) -> Any:
+    import functools
+
+    @functools.wraps(fn)
+    def _observed(st: Any, *args: Any, **kwargs: Any) -> Any:
+        result = fn(st, *args, **kwargs)
+        try:
+            from active_song_change_ledger import note_active_song
+
+            note_active_song(getattr(st, "session_state", {}), op, origin=kwargs.get("origin"))
+        except Exception:
+            pass
+        return result
+
+    _observed.__wrapped_for_ledger__ = True  # type: ignore[attr-defined]
+    return _observed
+
+
+if not getattr(apply_explicit_catalog_dropdown_pick, "__wrapped_for_ledger__", False):
+    apply_explicit_catalog_dropdown_pick = _ledger_observed(  # type: ignore[assignment]
+        apply_explicit_catalog_dropdown_pick, "explicit_catalog_pick"
+    )
+if not getattr(activate_active_song_by_pick_key, "__wrapped_for_ledger__", False):
+    activate_active_song_by_pick_key = _ledger_observed(  # type: ignore[assignment]
+        activate_active_song_by_pick_key, "activate_by_pick_key"
+    )

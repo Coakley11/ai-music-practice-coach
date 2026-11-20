@@ -1143,7 +1143,29 @@ def sync_workspace_protocol(
                 )
             except ImportError:
                 pass
+        _music_ledger = str(app_id or "").strip().lower() == "music"
+        if _music_ledger:
+            try:  # diagnostic: which operation changed the active song (active_song_change_ledger)
+                from active_song_change_ledger import note_active_song
+
+                note_active_song(st.session_state, "before_workspace_apply")
+            except Exception:
+                pass
         apply_state(st, picked.state)
+        if _music_ledger:
+            try:
+                from active_song_change_ledger import note_active_song
+
+                note_active_song(
+                    st.session_state,
+                    "workspace_apply",
+                    source=picked.source,
+                    reasons=apply_reason,
+                    mid_session=int(bool(already_synced) and not cold_session),
+                    saved_at=cloud_ts if picked.source == "cloud" else disk_ts,
+                )
+            except Exception:
+                pass
     except Exception as exc:
         reason = f"apply_state failed: {exc}"
         st.session_state["_suite_persist_restore_skip_reason"] = reason

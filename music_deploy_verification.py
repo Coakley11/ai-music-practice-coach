@@ -590,6 +590,22 @@ def render_dev_deploy_verification_panel(st: Any, session: dict[str, Any]) -> No
         )
     for name, p in paths.items():
         st.sidebar.caption(f"`{name}` → `{p}`")
+    # Which operation changed the active song, and why (active_song_change_ledger; newest last).
+    try:
+        from active_song_change_ledger import ledger_rows
+
+        rows = ledger_rows(session)[-12:]
+        st.sidebar.markdown("**Active song changes**")
+        st.sidebar.code(
+            "\n".join(
+                f"{r.get('t')} {'*' if r.get('changed') else ' '} {r.get('op')} "
+                f"[{r.get('page')}] {r.get('from')} -> {r.get('to')} {r.get('why')}"
+                for r in rows
+            )
+            or "(none this session)"
+        )
+    except Exception:
+        pass
 
 
 __all__ = [

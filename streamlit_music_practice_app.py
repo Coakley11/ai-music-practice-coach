@@ -1410,6 +1410,12 @@ if hasattr(st, "session_state"):
                 prime_music_coach_insight_preserve_before_workspace_sync(st)
             except Exception:
                 pass
+            try:  # diagnostic: changes made by this run's widget callbacks (active_song_change_ledger)
+                from active_song_change_ledger import note_active_song as _asl_note
+
+                _asl_note(st.session_state, "run_start")
+            except Exception:
+                pass
             prepare_music_workspace(
                 st,
                 song_picker_catalog=SONG_PICKER_CATALOG,
@@ -1552,6 +1558,12 @@ def _activate_karaoke_entry(entry: dict | None, *, apply_entry_key: bool = True)
     st.session_state[km.KARAOKE_EDITING_PICK_KEY] = pick
     st.session_state[km.KARAOKE_EDITING_ENTRY_ID_KEY] = entry_id
     invalidate_backing_cache(st)
+    try:  # diagnostic: which operation changed the active song (active_song_change_ledger)
+        from active_song_change_ledger import note_active_song as _asl_note
+
+        _asl_note(st.session_state, "karaoke_setlist_row", entry_key_applied=int(bool(apply_entry_key)))
+    except Exception:
+        pass
 
 
 # === DEFERRED MULTITRACK PROJECT KEY ==========================================
@@ -15340,6 +15352,13 @@ def _render_backing_step2_playback_action(
         # Play (and a Resume that restarts a changed selection) is committed
         # once armed, further down this run.
         _play_clicked = _card_outcome.play
+        if _play_clicked:
+            try:  # diagnostic marker: the ledger shows what the operations after Play did
+                from active_song_change_ledger import note_active_song as _asl_note
+
+                _asl_note(st.session_state, "card_play", mark=True)
+            except Exception:
+                pass
         if _card_outcome.commit:
             commit_card_command(st.session_state, _card_token)
         if _card_outcome.rerun:
