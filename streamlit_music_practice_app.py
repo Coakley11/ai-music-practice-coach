@@ -5540,8 +5540,12 @@ def _build_karaoke_lyrics_panel_script(
           // Through the box follow, which asks the ONE page controller whether the singer is
           // scrolling and moves only this surface's own box. This line used to call
           // scrollIntoView on every tick: no hold, and it moved the whole page.
+          // Only while the lyric line IS the follow target (Lead Sheet closed). With the Lead Sheet
+          // open the chords are followed throughout; following the line here as well made the page
+          // alternate between chord and lyric (user, 2026-11-20: no alternation).
           try {{
-            if (window.__karaokeBoxFollow) window.__karaokeBoxFollow(activeLine);
+            const lyricTarget = window.__karaokeFollowTarget ? window.__karaokeFollowTarget() : activeLine;
+            if (lyricTarget === activeLine && window.__karaokeBoxFollow) window.__karaokeBoxFollow(activeLine);
           }} catch (eLf) {{}}
         }}
       }}
