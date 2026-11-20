@@ -81,7 +81,9 @@ def test_uploaded_melodies_never_follow_or_highlight():
 def test_several_open_references_each_keep_their_own_page():
     panel = (ROOT / "song_document_panel.py").read_text(encoding="utf-8")
     ref = panel[panel.index("def render_song_document_reference("):panel.index("def render_song_documents_panel(")]
-    assert 'page_key=f"{prefix}page", key_prefix=prefix' in ref
+    assert 'reader=f"::{namespace}{did}::"' in ref
+    prev = panel[panel.index("def _preview("):panel.index("def render_song_document_reference(")]
+    assert "st.session_state[PAGE_KEY + reader]" in prev and "key_prefix = KEY_PREFIX + reader" in prev
 
 
 # ---- Original Melody -----------------------------------------------------------------------------------------------

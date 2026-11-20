@@ -329,29 +329,30 @@ def _manage(st: Any, row: dict) -> None:
                 st.rerun()
 
 
-def _preview(st: Any, row: dict, *, compact: bool, page_key: str = PAGE_KEY,
-             key_prefix: str = KEY_PREFIX) -> None:
-    """The document itself, a page at a time (``page_key`` / ``key_prefix``: one reading position per panel)."""
+def _preview(st: Any, row: dict, *, compact: bool, reader: str = "") -> None:
+    """The document itself, a page at a time. ``reader`` gives one panel its own reading position and widget keys
+    (still under this panel's prefix), so several references can be open at once."""
     did = str(row.get("document_id") or "")
     digest = str(row.get("sha256") or "")
     fetch, render, pages = _cached_helpers(st)
 
     total = pages(did, digest, row.get("page_count") or 1)
-    page = int(st.session_state.get(page_key) or 0)
+    page = int(st.session_state.get(PAGE_KEY + reader) or 0)
+    key_prefix = KEY_PREFIX + reader
     page = max(0, min(page, total - 1))
 
     if total > 1:
         nav = st.columns([1, 2, 1])
         if nav[0].button("Previous", key=f"{key_prefix}prev", disabled=page <= 0,
                          use_container_width=True):
-            st.session_state[page_key] = page - 1
+            st.session_state[PAGE_KEY + reader] = page - 1
             st.rerun()
         nav[1].markdown(
             f"<div style='text-align:center;padding-top:0.45rem'>Page {page + 1} "
             f"of {total}</div>", unsafe_allow_html=True)
         if nav[2].button("Next", key=f"{key_prefix}next", disabled=page >= total - 1,
                          use_container_width=True):
-            st.session_state[page_key] = page + 1
+            st.session_state[PAGE_KEY + reader] = page + 1
             st.rerun()
 
     width = 760 if compact else _RENDER_WIDTH_DESKTOP
@@ -385,9 +386,8 @@ def render_song_document_reference(st: Any, row: dict, *, namespace: str, compac
     severity, message = _status_line(row)
     if severity != "ok":
         {"warn": st.warning, "error": st.error}.get(severity, st.caption)(message)
-    prefix = f"{namespace}{did}_"
     try:
-        _preview(st, row, compact=compact, page_key=f"{prefix}page", key_prefix=prefix)
+        _preview(st, row, compact=compact, reader=f"::{namespace}{did}::")
     except Exception:
         st.error("That reference could not be shown. The others and the music are unaffected.")
 
