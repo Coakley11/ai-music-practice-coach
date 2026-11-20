@@ -1635,18 +1635,137 @@ def expire_backing_play_session(session: dict[str, Any], *, song_changed: bool =
         session.pop("_backing_user_edit_intent", None)
 
 
+# User spec 2026-11-19 ("changing pages is not the same as changing songs"): leaving Backing while the same song
+# stays active KEEPS the temporary BPM, repeats and the other play-session knobs -- only Scope goes back to Full Song.
+# A different active song (active_song_transition's activation epoch) starts fresh: the play session ends, repeats go
+# back to the default and Scope to Full Song; the new song's own defaults are initialized by the song-change path.
+BACKING_SETTINGS_ACTIVATION_EPOCH_KEY = "_backing_settings_activation_epoch"
+_SCOPE_OVERRIDE_FIELDS = ("scope", "single_section", "multi_sections")
+
+
+def reset_backing_scope_to_full_song(session: dict[str, Any], *, reason: str) -> None:
+    """Scope back to Full Song everywhere it lives, without touching a widget that may already exist.
+
+    The widgets go through the pre-widget pending keys (applied before the scope controls are built); the saved
+    Backing filters and the play-session overrides are written directly. Nothing about the song itself changes.
+    """
+    try:
+        from custom_progression_lab import (
+            PENDING_BACKING_MULTI_SECTIONS,
+            PENDING_BACKING_SCOPE,
+            PENDING_BACKING_SINGLE_SECTION,
+        )
+    except ImportError:
+        PENDING_BACKING_SCOPE = "_pending_backing_scope"
+        PENDING_BACKING_SINGLE_SECTION = "_pending_backing_single_section"
+        PENDING_BACKING_MULTI_SECTIONS = "_pending_backing_multi_sections"
+    session[PENDING_BACKING_SCOPE] = "Full song"
+    session.pop(PENDING_BACKING_SINGLE_SECTION, None)
+    session.pop(PENDING_BACKING_MULTI_SECTIONS, None)
+    # Both callers run before the scope controls exist in the run (the page-change callback; the Backing hydrate),
+    # exactly where the old expiry wrote these widget values too.
+    session["backing_track_scope"] = "Full song"
+    session.pop("backing_track_single_section", None)
+    session.pop("backing_track_multi_sections", None)
+    session["backing_quick_section"] = "Full song"
+    try:
+        from backing_track_state import BACKING_STATE_KEY
+
+        canon = session.get(BACKING_STATE_KEY)
+        if isinstance(canon, dict):
+            canon = dict(canon)
+            canon.update({
+                "backing_track_scope": "Full song",
+                "backing_track_single_section": "",
+                "backing_track_multi_sections": [],
+                "backing_quick_section": "Full song",
+                "last_write_reason": reason,
+            })
+            session[BACKING_STATE_KEY] = canon
+    except ImportError:
+        pass
+    ps = get_backing_play_session(session)
+    if ps is not None:
+        ps = dict(ps)
+        ov = dict(ps.get("overrides") or {})
+        for k in _SCOPE_OVERRIDE_FIELDS:
+            ov.pop(k, None)
+        ps["overrides"] = ov
+        session[BACKING_PLAY_SESSION_KEY] = ps
+
+
+def follow_active_song_activation(session: dict[str, Any]) -> bool:
+    """Start Backing's temporary settings fresh when a different song became active. Returns True when it reset.
+
+    A rerun, refresh, page visit, Pause / Resume, Next / Previous or a Key Cycling transposition is never a song
+    change (active_song_transition decides that from the authoritative song identity); the first sight only stamps.
+    """
+    try:
+        from active_song_transition import active_song_activation_epoch
+    except ImportError:
+        return False
+    epoch = int(active_song_activation_epoch(session) or 0)
+    seen = session.get(BACKING_SETTINGS_ACTIVATION_EPOCH_KEY)
+    if seen is None:
+        session[BACKING_SETTINGS_ACTIVATION_EPOCH_KEY] = epoch
+        return False
+    try:
+        if int(seen) == epoch:
+            return False
+    except (TypeError, ValueError):
+        pass
+    session[BACKING_SETTINGS_ACTIVATION_EPOCH_KEY] = epoch
+    expire_backing_play_session(session, song_changed=True)
+    try:
+        from backing_track_state import BACKING_LOOPS_DEFAULT, BACKING_STATE_KEY
+    except ImportError:
+        BACKING_LOOPS_DEFAULT, BACKING_STATE_KEY = 2, "backing_track_state"
+    session["_pending_backing_loops"] = BACKING_LOOPS_DEFAULT
+    canon = session.get(BACKING_STATE_KEY)
+    if isinstance(canon, dict):
+        canon = dict(canon)
+        canon["backing_track_loops"] = BACKING_LOOPS_DEFAULT
+        session[BACKING_STATE_KEY] = canon
+    reset_backing_scope_to_full_song(session, reason="active_song_activation")
+    return True
+
+
 def expire_backing_play_session_on_page_exit(
     session: dict[str, Any],
     *,
     previous_page: str,
     new_page: str,
 ) -> bool:
+    """Leaving Backing: the play session (BPM, repeats ...) is kept for the same song; Scope returns to Full Song.
+
+    Returns True when Backing was left. A song change ends the play session through follow_active_song_activation.
+    """
     prev = str(previous_page or "").strip().lower()
     nxt = str(new_page or "").strip().lower()
     if prev == "backing" and nxt != "backing":
-        expire_backing_play_session(session)
+        if _backing_source_kind(session) in _WORKFLOW_SOURCES:
+            # A Creative jam / Song-Based Improv / Mission backing is not a song: its own page owns its tempo and
+            # feel, so its Backing knobs still end with the visit (unchanged behaviour).
+            expire_backing_play_session(session)
+        else:
+            reset_backing_scope_to_full_song(session, reason="backing_page_exit")
         return True
     return False
+
+
+# Backing sources that are a workflow's material, not a song (the spec above covers Catalog, Custom and
+# Composition songs).
+_WORKFLOW_SOURCES = frozenset({"entry_jam", "song_improv", "mission"})
+
+
+def _backing_source_kind(session: dict[str, Any]) -> str:
+    try:
+        from backing_context import get_backing_context
+
+        ctx = get_backing_context(session)
+        return str(getattr(ctx, "source", "") or "").strip() if ctx is not None else ""
+    except Exception:
+        return ""
 
 
 def sync_backing_play_session_on_backing_page(session: dict[str, Any]) -> dict[str, Any]:
@@ -1655,6 +1774,8 @@ def sync_backing_play_session_on_backing_page(session: dict[str, Any]) -> dict[s
     Browser refresh must NOT be treated as leaving the play session. Matching
     ``source_identity`` (or launch_id) with a non-expired bag rehydrates Current knobs.
     """
+    # A different active song since Backing last looked: its temporary settings start fresh (user spec 2026-11-19).
+    follow_active_song_activation(session)
     ps = get_backing_play_session(session)
     launch_id = _ctx_launch_id(session)
     identity = resolve_backing_source_identity(session)
@@ -2229,7 +2350,10 @@ __all__ = [
     "seal_live_backing_tempo_for_persist",
     "trace_backing_bpm",
     "expire_backing_play_session",
+    "BACKING_SETTINGS_ACTIVATION_EPOCH_KEY",
     "expire_backing_play_session_on_page_exit",
+    "follow_active_song_activation",
+    "reset_backing_scope_to_full_song",
     "get_backing_play_session",
     "play_session_blocks_canonical_seed",
     "resolve_backing_source_identity",

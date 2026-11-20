@@ -500,7 +500,8 @@ class TestPlaySessionBpmLifecycle(unittest.TestCase):
         sync_backing_play_session_on_backing_page(session)
         self.assertEqual(session["backing_time_signature"], "3/4")
 
-    def test_04b_leave_backing_resets_meter_to_source_default(self) -> None:
+    def test_04b_leave_backing_keeps_meter_for_the_same_song(self) -> None:
+        """User spec 2026-11-19: same song, page round trip keeps temporary settings (only Scope resets)."""
         session = _regular_backing_session()
         sync_backing_play_session_on_backing_page(session)
         session["backing_time_signature"] = "3/4"
@@ -510,8 +511,8 @@ class TestPlaySessionBpmLifecycle(unittest.TestCase):
             session, previous_page="backing", new_page="practice"
         )
         sync_backing_play_session_on_backing_page(session)
-        self.assertEqual(session["backing_time_signature"], "4/4")
-        self.assertNotIn("meter", (session[BACKING_PLAY_SESSION_KEY].get("overrides") or {}))
+        self.assertEqual(session["backing_time_signature"], "3/4")
+        self.assertEqual((session[BACKING_PLAY_SESSION_KEY].get("overrides") or {}).get("meter"), "3/4")
 
     def test_05_selected_sections_persist_refresh(self) -> None:
         session = _regular_backing_session()
@@ -551,7 +552,8 @@ class TestPlaySessionBpmLifecycle(unittest.TestCase):
         self.assertNotIn("scope", ov)
         self.assertNotIn("multi_sections", ov)
         self.assertNotIn("groove", ov)
-    def test_06_leaving_backing_expires_ephemeral_overrides(self) -> None:
+    def test_06_leaving_backing_keeps_the_same_songs_bpm(self) -> None:
+        """User spec 2026-11-19 (Shallow at 90, visit Multitrack, back: still 90). Was: expired to the song's 82."""
         session = _regular_backing_session()
         sync_backing_play_session_on_backing_page(session)
         session["backing_track_bpm"] = 96
@@ -559,8 +561,9 @@ class TestPlaySessionBpmLifecycle(unittest.TestCase):
         expire_backing_play_session_on_page_exit(
             session, previous_page="backing", new_page="creative"
         )
-        self.assertTrue(session.get(BACKING_PLAY_SESSION_KEY, {}).get("expired"))
-        self.assertEqual(int(session["backing_track_bpm"]), 82)
+        self.assertFalse(session.get(BACKING_PLAY_SESSION_KEY, {}).get("expired"))
+        sync_backing_play_session_on_backing_page(session)
+        self.assertEqual(int(session["backing_track_bpm"]), 96)
 
     def test_07_source_identity_survives_override_expiry(self) -> None:
         session = _regular_backing_session()
