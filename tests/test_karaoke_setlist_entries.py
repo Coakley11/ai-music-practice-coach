@@ -1854,7 +1854,10 @@ class TestFourEntrySetlistRegression(unittest.TestCase):
         src = open("streamlit_music_practice_app.py", encoding="utf-8").read()
         start = src.find("def _open_lyrics_editor_from_backing(")
         self.assertGreater(start, 0)
-        body = src[start:start + 1400]
+        # The whole function: the card-pick branch added before the setlist branch put the
+        # first payload's "title" past a fixed 1400-character window although it is carried.
+        end = src.find("\ndef ", start + 1)
+        body = src[start:end if end > 0 else start + 6000]
         for field in ("practice_key", "title", "genre"):
             self.assertIn(
                 f'"{field}"', body,
