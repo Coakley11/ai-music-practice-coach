@@ -10821,6 +10821,24 @@ def request_backing_loops_adjust(delta: int) -> None:
     new_loops = max(1, min(10, current + int(delta)))
     st.session_state[PENDING_BACKING_LOOPS] = new_loops
     st.session_state["_backing_loops_pending_flush"] = True
+    _note_karaoke_set_loops(new_loops)
+
+
+def _note_karaoke_set_loops(loops: Any) -> None:
+    """An explicit Loop Count change during a Karaoke Set becomes the SET's repeat count (no-op outside a set)."""
+    try:
+        import karaoke_mode as _km
+
+        if _km.is_voice_mode(st.session_state):
+            _km.note_karaoke_set_loops(st.session_state, loops)
+    except Exception:
+        pass
+
+
+def _on_backing_loops_slider_change() -> None:
+    """The Loop Count slider moved: the set's count during a Karaoke Set, then the ordinary filter commit."""
+    _note_karaoke_set_loops(st.session_state.get("backing_track_loops"))
+    _on_backing_filter_change()
 
 
 def _flush_pending_backing_loops_edit() -> None:
@@ -15403,7 +15421,7 @@ def _render_backing_scope_controls(
                     1,
                     key="backing_track_loops",
                     label_visibility="collapsed",
-                    on_change=_on_backing_filter_change,
+                    on_change=_on_backing_loops_slider_change,
                 )
             with _loop_r:
                 st.button(
