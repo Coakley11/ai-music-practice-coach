@@ -11190,6 +11190,9 @@ def _toggle_backing_lead_sheet_from_card(ready: bool, set_leadsheet_open: Any, v
     st.session_state[BACKING_LEAD_SHEET_ON_PLAY_KEY] = on
     if not on:
         st.session_state["backing_lead_sheet_open"] = False
+    from backing_track_state import note_karaoke_set_lead_sheet_choice
+
+    note_karaoke_set_lead_sheet_choice(st.session_state, on)
 
 
 def _render_backing_art_actions(*, leadsheet_ready: bool, set_leadsheet_open: Any, sheet_visible: bool = False) -> bool:
@@ -26576,6 +26579,10 @@ elif _studio_page == "backing":
         st.session_state["backing_lead_sheet_open"] = bool(open_)
         # The card's Lead sheet On / Off is this same choice (Play reopens it for the next take).
         st.session_state[BACKING_LEAD_SHEET_ON_PLAY_KEY] = bool(open_)
+        # During a Karaoke Set it is also the set's choice: every following song opens (or not) the same way.
+        from backing_track_state import note_karaoke_set_lead_sheet_choice
+
+        note_karaoke_set_lead_sheet_choice(st.session_state, bool(open_))
         # Opened over a live take: the follow-along player mounts with native
         # autoplay and starts at the playhead the card transport handed over
         # (its own JS pauses it again when nothing was playing at the click).

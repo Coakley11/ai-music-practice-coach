@@ -27,11 +27,43 @@ def backing_presentation_is_initialized(session: dict, source_id: str) -> bool:
     )
 
 
+# Karaoke Set (user rule 2026-11-18): Lead Sheet On / Off is a SET-level choice -- turned on during a set it
+# stays on for every following song until the singer turns it off. The Karaoke owner's set model starts / stops
+# it (karaoke_mode.KARAOKE_SET_LEAD_SHEET_OPEN_KEY, same literal); only the explicit Lead Sheet choice writes it
+# while a set is active, and advancing to the next song keeps it.
+KARAOKE_SET_LEAD_SHEET_OPEN_KEY = "_karaoke_set_lead_sheet_open"
+
+
+def _karaoke_set_active(session: Any) -> bool:
+    try:
+        import karaoke_mode as km
+
+        return bool(km.is_karaoke_session_active(session))
+    except Exception:
+        return False
+
+
+def karaoke_set_lead_sheet_choice(session: Any) -> bool | None:
+    """The Lead Sheet On / Off the singer chose during the active Karaoke Set; None outside a set or before a choice."""
+    if not _karaoke_set_active(session):
+        return None
+    choice = session.get(KARAOKE_SET_LEAD_SHEET_OPEN_KEY)
+    return None if choice is None else bool(choice)
+
+
+def note_karaoke_set_lead_sheet_choice(session: Any, open_: bool) -> None:
+    """Record an explicit Lead Sheet On / Off as the set's choice (no-op outside an active Karaoke Set)."""
+    if _karaoke_set_active(session):
+        session[KARAOKE_SET_LEAD_SHEET_OPEN_KEY] = bool(open_)
+
+
 def initialize_backing_presentation(session: dict, source_id: str) -> bool:
     """Open the song/playback experience after an explicit Play gesture.
 
     Returns True only when this initializes a different source. A stale Lead
-    Sheet flag from a prior song must not auto-open the new source.
+    Sheet flag from a prior song must not auto-open the new source -- except
+    the singer's own On / Off during an active Karaoke Set, which every song
+    of the set follows.
     """
     source_id = str(source_id or "").strip()
     if not source_id:
@@ -39,7 +71,8 @@ def initialize_backing_presentation(session: dict, source_id: str) -> bool:
     already_initialized = backing_presentation_is_initialized(session, source_id)
     session[BACKING_PRESENTATION_SESSION_ID_KEY] = source_id
     if not already_initialized:
-        session["backing_lead_sheet_open"] = False
+        set_choice = karaoke_set_lead_sheet_choice(session)
+        session["backing_lead_sheet_open"] = bool(set_choice) if set_choice is not None else False
         session.pop("_pending_open_backing_lead_sheet", None)
     return not already_initialized
 
@@ -161,6 +194,12 @@ BACKING_DEVICE_COMPARE_LABELS: tuple[str, ...] = (
 )
 
 __all__ = (
+    "KARAOKE_PRE_SET_SCOPE_KEY",
+    "KARAOKE_SET_LEAD_SHEET_OPEN_KEY",
+    "karaoke_set_lead_sheet_choice",
+    "note_karaoke_set_lead_sheet_choice",
+    "restore_pre_set_scope",
+    "snapshot_pre_set_scope",
     "BACKING_DIRTY_KEY",
     "BACKING_LOOPS_DEFAULT",
     "BACKING_PENDING_SYNC_KEY",
@@ -2246,3 +2285,123 @@ def render_backing_state_debug(st: Any, session: dict[str, Any]) -> None:
     failure_class = trace.get("backing_sync_failure_class")
     if failure_class:
         st.sidebar.caption(f"**backing_sync_class:** `{failure_class}`")
+
+
+# --- Karaoke Set: Playback Scope is per performance, never the user's Backing preference -------------------------
+# User rule 2026-11-18: a scope change during a Karaoke Set (e.g. Intro only) applies to that performance only; the
+# next song and a new set start from Full song, and ending the set puts back the scope the user had in ordinary
+# Backing. The Karaoke owner calls these through a guarded getattr: snapshot at start_session, restore at
+# stop_session. The per-song reset inside a set is theirs (karaoke_ui sets the pending scope to Full song).
+KARAOKE_PRE_SET_SCOPE_KEY = "_karaoke_pre_set_backing_scope"
+_SCOPE_FIELDS = ("backing_track_scope", "backing_track_single_section", "backing_track_multi_sections", "backing_quick_section")
+_PS_SCOPE_FIELDS = ("scope", "single_section", "multi_sections")
+
+
+def _scope_owner_id(session: Any) -> str:
+    try:
+        from backing_context import backing_page_sync_id
+
+        sid = str(backing_page_sync_id(session) or "").strip()
+        if sid:
+            return sid
+    except Exception:
+        pass
+    return str(session.get("active_catalog_pick_key") or "").strip()
+
+
+def snapshot_pre_set_scope(session: Any) -> None:
+    """Remember the ordinary Backing scope before a Karaoke Set changes it (first call of a set wins)."""
+    if isinstance(session.get(KARAOKE_PRE_SET_SCOPE_KEY), dict):
+        return
+    multi = session.get(BACKING_MULTI_SECTIONS_WIDGET_KEY)
+    widgets = {
+        "backing_track_scope": normalize_backing_scope(session.get(BACKING_SCOPE_WIDGET_KEY) or "Full song"),
+        "backing_track_single_section": str(session.get(BACKING_SINGLE_SECTION_WIDGET_KEY) or ""),
+        "backing_track_multi_sections": [str(x) for x in multi] if isinstance(multi, list) else [],
+        "backing_quick_section": str(session.get("backing_quick_section") or "Full song"),
+    }
+    canon_raw = session.get(BACKING_STATE_KEY)
+    canon = {k: copy.deepcopy(canon_raw.get(k)) for k in _SCOPE_FIELDS if k in canon_raw} if isinstance(canon_raw, dict) else None
+    ps_over = None
+    try:
+        from backing_play_session import get_backing_play_session
+
+        ps = get_backing_play_session(session)
+        if ps is not None:
+            ov = dict(ps.get("overrides") or {})
+            ps_over = {k: copy.deepcopy(ov[k]) for k in _PS_SCOPE_FIELDS if k in ov}
+    except Exception:
+        ps_over = None
+    session[KARAOKE_PRE_SET_SCOPE_KEY] = {
+        "owner": _scope_owner_id(session),
+        "widgets": widgets,
+        "canonical": canon,
+        "play_session": ps_over,
+    }
+
+
+def restore_pre_set_scope(session: Any) -> None:
+    """Put back the scope snapshot_pre_set_scope saved; safe with no snapshot (queue end, leaving Voice, twice).
+
+    Widgets are restored through the pre-widget pending keys only (stop_session can run from an inline button
+    after the scope widget exists). When the set ends on a different song than the snapshot's (the last one
+    sung), that song's performance scope is not kept either: it goes back to Full song, the ordinary default.
+    """
+    snap = session.pop(KARAOKE_PRE_SET_SCOPE_KEY, None)
+    if not isinstance(snap, dict):
+        return
+    if str(snap.get("owner") or "") != _scope_owner_id(session):
+        # The set ended on another song (e.g. the last one sung): its performance scope is not kept either --
+        # that song starts on Full song, as on any ordinary song change.
+        snap = {"owner": "", "widgets": {"backing_track_scope": "Full song"},
+                "canonical": {"backing_track_scope": "Full song", "backing_track_single_section": "",
+                              "backing_track_multi_sections": [], "backing_quick_section": "Full song"},
+                "play_session": {}}
+    w = dict(snap.get("widgets") or {})
+    scope = normalize_backing_scope(w.get("backing_track_scope") or "Full song")
+    multi = [str(x) for x in (w.get("backing_track_multi_sections") or []) if str(x).strip()]
+    single = str(w.get("backing_track_single_section") or "").strip()
+    try:
+        from custom_progression_lab import (
+            PENDING_BACKING_MULTI_SECTIONS,
+            PENDING_BACKING_SCOPE,
+            PENDING_BACKING_SINGLE_SECTION,
+        )
+    except ImportError:
+        PENDING_BACKING_SCOPE = "_pending_backing_scope"
+        PENDING_BACKING_SINGLE_SECTION = "_pending_backing_single_section"
+        PENDING_BACKING_MULTI_SECTIONS = "_pending_backing_multi_sections"
+    session[PENDING_BACKING_SCOPE] = scope
+    session.pop(PENDING_BACKING_SINGLE_SECTION, None)
+    session.pop(PENDING_BACKING_MULTI_SECTIONS, None)
+    if scope != "Full song":
+        if multi:
+            session[PENDING_BACKING_MULTI_SECTIONS] = list(multi)
+        elif single:
+            session[PENDING_BACKING_SINGLE_SECTION] = single
+    canon_snap = snap.get("canonical")
+    canon_now = session.get(BACKING_STATE_KEY)
+    if isinstance(canon_snap, dict) and isinstance(canon_now, dict):
+        merged = dict(canon_now)
+        for k in _SCOPE_FIELDS:
+            if k in canon_snap:
+                merged[k] = copy.deepcopy(canon_snap[k])
+        merged["last_write_reason"] = "karaoke_set_scope_restore"
+        session[BACKING_STATE_KEY] = merged
+    ps_snap = snap.get("play_session")
+    if isinstance(ps_snap, dict):
+        try:
+            from backing_play_session import BACKING_PLAY_SESSION_KEY, get_backing_play_session
+
+            ps = get_backing_play_session(session)
+            if ps is not None:
+                ps = dict(ps)
+                ov = dict(ps.get("overrides") or {})
+                for k in _PS_SCOPE_FIELDS:
+                    ov.pop(k, None)
+                    if k in ps_snap:
+                        ov[k] = copy.deepcopy(ps_snap[k])
+                ps["overrides"] = ov
+                session[BACKING_PLAY_SESSION_KEY] = ps
+        except Exception:
+            pass
