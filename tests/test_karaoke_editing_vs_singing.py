@@ -136,7 +136,10 @@ class BackingCardKeyDuringASet(unittest.TestCase):
         body = _APP[_APP.index("def _render_backing_card_practice_key("):]
         body = body[: body.index("\ndef ")]
         self.assertIn("km.is_karaoke_session_active(st.session_state)", body)
-        self.assertIn("_sing_pick != str(st.session_state.get(ACTIVE_CATALOG_PICK_KEY)", body)
+        # 2026-11-19: for the WHOLE set - also when the sung song is the edited song, whose sidebar
+        # key can differ from its setlist key (the card read E while D played).
+        self.assertNotIn("_sing_pick != str(st.session_state.get(ACTIVE_CATALOG_PICK_KEY)", body)
+        self.assertIn("and _sing_pick\n    ):", body)
         self.assertIn("km.current_session_practice_key(st.session_state)", body)
         self.assertIn("_render_backing_card_performance_key(original_key, _sing_key", body)
 
@@ -153,11 +156,13 @@ class BackingCardKeyDuringASet(unittest.TestCase):
         self.assertNotIn("_write_queue", body)
 
     def test_the_retune_control_stays_when_the_sung_song_is_the_edited_song(self) -> None:
-        """Issue 69: the card's Practice Key control retunes the performance; only the
-        editing-differs case swaps it for text, and it must come before the owner widget."""
+        """Issue 69: during a set the card's key control retunes the performance - the card's own
+        performance control (seeded with the sung entry's key) in every case, edited song or not,
+        decided before the owner widget."""
         body = _APP[_APP.index("def _render_backing_card_practice_key("):]
         body = body[: body.index("\ndef ")]
-        self.assertLess(body.index("_sing_pick != "), body.index('proxy = globals().get("_sidebar_pk_proxy")'))
+        self.assertLess(body.index("_render_backing_card_performance_key(original_key, _sing_key"),
+                        body.index('proxy = globals().get("_sidebar_pk_proxy")'))
 
 
 class SetStartBringsThePanelIntoView(unittest.TestCase):
@@ -323,7 +328,9 @@ class SetLevelLeadSheetChoiceIsSetScoped(unittest.TestCase):
         km, state = self._queue()
         state[km.KARAOKE_SET_LEAD_SHEET_OPEN_KEY] = True
         km.start_session(state)
-        self.assertNotIn(km.KARAOKE_SET_LEAD_SHEET_OPEN_KEY, state)
+        # 2026-11-19: a fresh set starts with the Lead Sheet OFF (explicit False, not "no choice",
+        # which let the pre-set state show).
+        self.assertIs(state.get(km.KARAOKE_SET_LEAD_SHEET_OPEN_KEY), False)
         state[km.KARAOKE_SET_LEAD_SHEET_OPEN_KEY] = True
         km.advance_session(state) if hasattr(km, "advance_session") else None
         self.assertTrue(state.get(km.KARAOKE_SET_LEAD_SHEET_OPEN_KEY))
