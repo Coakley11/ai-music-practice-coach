@@ -510,14 +510,44 @@ def render_synced_score_playback_html(
       if (h > 60) {{
         fe.style.height = h + "px"; fe.setAttribute("height", String(h));
         const box = fe.parentElement;
-        if (box && box.getAttribute("data-testid") === "stElementContainer") box.style.height = h + "px";
+        if (box && box.getAttribute("data-testid") === "stElementContainer") {{
+          box.style.height = h + "px";
+          // Mark it, so the sweeper below can give the height back when this player goes away.
+          box.setAttribute("data-cplay-sized", "1");
+        }}
       }}
     }} catch (e) {{}}
   }}
+  // Streamlit recycles element containers by position: when the player unmounts, the container keeps the
+  // inline height fitFrame gave it and the next element to land there inherits the empty space (measured:
+  // a 37 px heading left sitting in 182 px after a preview was closed).
+  //
+  // The release is a plain rule in the PARENT's own <head>, because it has to outlive this frame - a timer,
+  // an observer, even a function created in here all stop the moment the iframe is removed. It is installed
+  // once (guarded by its id; the score frame installs the same id), and it matches only a container that one
+  // of our frames marked AND that no longer holds a frame, so no other Streamlit widget can be resized by
+  // it. It changes height only - it never scrolls, moves or repositions anything.
+  try {{
+    const pdoc = window.parent && window.parent.document;
+    if (pdoc && !pdoc.getElementById("cplay-size-reset")) {{
+      const sty = pdoc.createElement("style");
+      sty.id = "cplay-size-reset";
+      sty.textContent =
+        '[data-testid="stElementContainer"][data-cplay-sized]:not(:has(iframe))' +
+        "{{height:auto !important;min-height:0 !important;}}";
+      (pdoc.head || pdoc.documentElement).appendChild(sty);
+    }}
+  }} catch (e) {{}}
   fitFrame();
   window.addEventListener("load", fitFrame);
   window.addEventListener("resize", fitFrame);
   setTimeout(fitFrame, 250);
+  // The score is drawn asynchronously, so a fit at 250 ms can still be measuring an empty page and leave the
+  // Python height estimate standing (measured once at 390 px: 267 px reserved for 62 px of content). Re-fit
+  // whenever the content's own height changes; it always sizes TO the content, so nothing is ever clipped.
+  try {{
+    new ResizeObserver(function () {{ fitFrame(); }}).observe(document.body);
+  }} catch (e) {{}}
   let last = -1;
   let lastChord = -1;
   let lastLyric = -1;

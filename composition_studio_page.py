@@ -795,6 +795,26 @@ body[data-studio-page="composer"] .block-container {
   line-height: 1.5;
   margin: 0 0 0.6rem;
 }
+/* Editing tools read as editing tools: the app's own red edit accent (#dc2626 / #b91c1c, as used by the
+   Practice control headers and the song-library edit affordances) on an expander that opens an editor.
+   Add the class to any editor expander's container; the label still carries the ✏️ the Chords editor uses. */
+[class*="st-key-composer_editor_panel"] [data-testid="stExpander"] details {
+  border: 1px solid rgba(220, 38, 38, 0.4) !important;
+  border-left: 3px solid #dc2626 !important;
+  border-radius: 10px !important;
+  background: rgba(254, 226, 226, 0.18) !important;
+}
+[class*="st-key-composer_editor_panel"] [data-testid="stExpander"] summary {
+  color: #b91c1c !important;
+  font-weight: 700 !important;
+}
+[class*="st-key-composer_editor_panel"] [data-testid="stExpander"] summary:hover {
+  background: rgba(254, 226, 226, 0.45) !important;
+}
+[class*="st-key-composer_editor_panel"] [data-testid="stExpander"] summary svg {
+  fill: #b91c1c !important;
+  color: #b91c1c !important;
+}
 .composer-review-cover {
   background: linear-gradient(145deg, #0f172a 0%, #1e3a5f 55%, #4338ca 100%);
   color: #f8fafc;
@@ -2467,6 +2487,16 @@ def prepare_vision_widget_state(session_state: dict, doc: dict[str, Any]) -> Non
             custom = session_state["composer_vision_meter"]
             session_state["composer_vision_meter"] = COMPOSITION_METER_CUSTOM
             session_state["composer_vision_meter_custom"] = custom
+
+
+def _edit_icon() -> str:
+    """The app's own edit glyph — the same pencil the Chords editor's "✏️ Edit" buttons use."""
+    try:
+        from music_feature_icons import ACTION_ICONS
+
+        return str(ACTION_ICONS.get("edit") or "✏️")
+    except Exception:
+        return "✏️"
 
 
 def _field_label(field: str, text: str) -> str:
@@ -6359,8 +6389,10 @@ def _render_active_melody_inplace_tools(
             _save_doc(session_state, doc)
             st.rerun()
 
-    with st.expander("Advanced Phrase Editor", expanded=False):
-        _render_active_melody_phrase_editor(session_state, doc, active_id)
+    # Same edit language as the Chords editor: the ✏️ pencil in the label, inside the red editor panel.
+    with st.container(key="composer_editor_panel_phrase"):
+        with st.expander(f"{_edit_icon()} Advanced Phrase Editor", expanded=False):
+            _render_active_melody_phrase_editor(session_state, doc, active_id)
 
 
 def _render_active_melody_workspace(

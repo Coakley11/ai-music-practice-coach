@@ -637,14 +637,36 @@ def render_abc_html(abc_text: str, *, height: int = 280, add_classes: bool = Tru
             var box = fe.parentElement;
             if (box && box.getAttribute("data-testid") === "stElementContainer") {{
               box.style.height = h + "px";
+              // Marked so the release rule below gives the height back when this score unmounts: Streamlit
+              // recycles containers by position and the next element inherited the empty space.
+              box.setAttribute("data-cplay-sized", "1");
             }}
           }}
         }} catch (e) {{}}
       }}
+      // The release lives as a plain rule in the parent's own head, which outlives this frame (a timer or
+      // observer created in here dies with it). Same id as the player's: whichever mounts first installs it.
+      try {{
+        var pdoc = window.parent && window.parent.document;
+        if (pdoc && !pdoc.getElementById("cplay-size-reset")) {{
+          var sty = pdoc.createElement("style");
+          sty.id = "cplay-size-reset";
+          sty.textContent =
+            '[data-testid="stElementContainer"][data-cplay-sized]:not(:has(iframe))' +
+            "{{height:auto !important;min-height:0 !important;}}";
+          (pdoc.head || pdoc.documentElement).appendChild(sty);
+        }}
+      }} catch (e) {{}}
       fit();
       window.addEventListener("load", fit);
       window.addEventListener("resize", fit);
       setTimeout(fit, 250);
+      // abcjs draws asynchronously (and again when its fonts land), so a fit at 250 ms can measure an empty
+      // page and leave the caller's height estimate standing - measured at 390 px: 267 px reserved for 62 px
+      // of score. Re-fit whenever the content's own height changes; it only ever sizes TO the score.
+      try {{
+        new ResizeObserver(function () {{ fit(); }}).observe(document.body);
+      }} catch (e) {{}}
     }})();
     </script>
     </body>
