@@ -73,7 +73,11 @@ FEATURE_ICONS: dict[str, str] = {
     "phase_vision": "💡",
     "phase_structure": "🏗️",
     "phase_chords": "🎸",
-    "phase_melody": "🎵",
+    # The three beamed notes a musician already sees on the Songs page Melody card
+    # (``practice_ui_labels.FOCUS_ICONS["Melody"]`` reads this entry, so the two
+    # surfaces cannot drift). Not the single note 🎵, which is the Catalog *source*
+    # logo in ``SONG_SOURCE_ICONS``.
+    "phase_melody": "🎶",
     "phase_lyrics": "🎤",
     "phase_review": "✅",
     # Action icons — shared across Composition Studio and Custom Progression Lab.

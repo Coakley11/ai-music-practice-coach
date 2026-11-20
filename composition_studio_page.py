@@ -1753,9 +1753,14 @@ def _render_section_lane_switcher(session_state: dict, doc: dict[str, Any], *, a
         for _l in ("chords", "melody", "lyrics"):
             lane_done[_l] = _status.get(_l) == "complete"
     st.markdown("**Work on**")
-    lanes = [("chords", "🎸 Chords"), ("melody", "🎵 Melody")]
+    # Chords keeps the red guitar and Lyrics the microphone; Melody reads the shared
+    # registry so the lane button matches the Songs page Melody card.
+    lanes = [
+        ("chords", COMPOSITION_PHASE_LABELS["chords"]),
+        ("melody", COMPOSITION_PHASE_LABELS["melody"]),
+    ]
     if not skip_lyrics:
-        lanes.append(("lyrics", "🎤 Lyrics"))
+        lanes.append(("lyrics", COMPOSITION_PHASE_LABELS["lyrics"]))
     cols = st.columns(len(lanes))
     for col, (lane, label) in zip(cols, lanes):
         with col:

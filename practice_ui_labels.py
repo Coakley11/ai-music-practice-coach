@@ -5,7 +5,7 @@ from __future__ import annotations
 import html
 import re
 
-from music_feature_icons import INSTRUMENT_ICONS, instrument_icon
+from music_feature_icons import FEATURE_ICONS, INSTRUMENT_ICONS, instrument_icon
 
 LEVEL_ICONS: dict[str, str] = {
     "Beginner": "🌱",
@@ -54,7 +54,9 @@ FOCUS_ICONS: dict[str, str] = {
     "Bebop Phrasing": "🎷",
     "Breath Support": "🎤",
     "Guide Tones": "🎼",
-    "Melody": "🎶",
+    # One Melody glyph for the whole app: the Songs page card and Composition
+    # Studio both read FEATURE_ICONS["phase_melody"].
+    "Melody": FEATURE_ICONS["phase_melody"],
     "Harmony": "🎼",
     "Rhythm": "🥁",
     "Dynamics": "🎚️",

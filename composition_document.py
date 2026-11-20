@@ -14,6 +14,7 @@ from custom_progression_lab import (
     expand_entries_to_chords,
     normalize_chord_symbol,
 )
+from music_feature_icons import FEATURE_ICONS
 
 COMPOSITION_SCHEMA_VERSION = 1
 
@@ -107,7 +108,8 @@ COMPOSITION_PHASE_LABELS: dict[str, str] = {
     "vision": "💡 Song Vision",
     "structure": "🏗️ Song Structure",
     "chords": "🎸 Chords",
-    "melody": "🎵 Melody",
+    # Same Melody glyph the Songs page card shows — read from the shared registry.
+    "melody": f"{FEATURE_ICONS['phase_melody']} Melody",
     "lyrics": "🎤 Lyrics",
     "review": "✅ Review",
 }
