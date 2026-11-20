@@ -192,12 +192,17 @@ def apply_card_command(
         session[BACKING_AUTOPLAY_KEY] = False
         session.pop("_backing_play_request", None)
         session[BACKING_PLAY_FEEDBACK_KEY] = "Paused"
-        _cycle = False
+        _key_moved = False
         try:
-            from backing_key_cycle import adopt_sounding_key_at_pause, is_cycle_active, pause_key_cycle
+            from backing_key_cycle import (
+                adopt_sounding_key_at_pause,
+                is_cycle_active,
+                pause_key_cycle,
+                temporary_playback_key,
+            )
 
             if is_cycle_active(session):
-                _cycle = True
+                _key_before = str(temporary_playback_key(session) or "")
                 pause_key_cycle(session, user=True)
                 # Freeze the key that was sounding: a Pause right after an
                 # automatic key change carries the new key the page was playing
@@ -210,13 +215,16 @@ def apply_card_command(
                         cycle_id=report.get("cycleId", ""),
                         from_key=report.get("from", ""),
                     )
+                _key_moved = str(temporary_playback_key(session) or "") != _key_before
         except Exception:
             pass
         _mark_handled(session, token)
-        # Key cycling: this runs part-way through the page, after the cycle bar
-        # and player were built for the old state -- rerun so the whole page
-        # (the held cycle, its next command) is built from the new one.
-        return CardCommandOutcome(commit=True, rerun=_cycle)
+        # Key cycling: this runs before the cycle bar, its bridge and the player
+        # are built, so they already draw the held cycle -- a second full run
+        # (0.5-1.5 MB to the phone, which delayed the next press) is needed only
+        # when the Pause adopted the key the page had already moved to: the take
+        # this run prepared above is for the key before.
+        return CardCommandOutcome(commit=True, rerun=_key_moved)
     if action == "resume":
         # A setting changed while paused: the paused take is obsolete, so the
         # new selection starts from its first chord. Otherwise the browser has

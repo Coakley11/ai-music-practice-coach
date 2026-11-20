@@ -129,7 +129,8 @@ class TestClickRunRendersPostClickLabel(unittest.TestCase):
         self.assertEqual(run.labels[PAUSE_KEY], "Resume")
         self.assertEqual(run.label_writes.count((PAUSE_KEY, "Resume")), 1)
         self.assertNotIn((PAUSE_KEY, "Pause"), run.label_writes)
-        pause.assert_called_once_with(session)
+        # The Pause button is a deliberate pause: it marks the cycle so a refresh holds the position.
+        pause.assert_called_once_with(session, user=True)
         resume.assert_not_called()
         self.assertEqual(int(session.get("_kc_player_cmd_epoch") or 0), epoch_before + 1)
         self.assertEqual(run.reruns, 0)
