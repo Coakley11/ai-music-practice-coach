@@ -24,7 +24,7 @@ from __future__ import annotations
 
 from typing import Any
 
-__all__ = ["render_song_documents_panel"]
+__all__ = ["render_song_document_reference", "render_song_documents_panel"]
 
 KEY_PREFIX = "song_doc_"
 SELECTED_KEY = f"{KEY_PREFIX}selected"
@@ -329,28 +329,30 @@ def _manage(st: Any, row: dict) -> None:
                 st.rerun()
 
 
-def _preview(st: Any, row: dict, *, compact: bool) -> None:
-    """The document itself, a page at a time."""
+def _preview(st: Any, row: dict, *, compact: bool, reader: str = "") -> None:
+    """The document itself, a page at a time. ``reader`` gives one panel its own reading position and widget keys
+    (still under this panel's prefix), so several references can be open at once."""
     did = str(row.get("document_id") or "")
     digest = str(row.get("sha256") or "")
     fetch, render, pages = _cached_helpers(st)
 
     total = pages(did, digest, row.get("page_count") or 1)
-    page = int(st.session_state.get(PAGE_KEY) or 0)
+    page = int(st.session_state.get(PAGE_KEY + reader) or 0)
+    key_prefix = KEY_PREFIX + reader
     page = max(0, min(page, total - 1))
 
     if total > 1:
         nav = st.columns([1, 2, 1])
-        if nav[0].button("Previous", key=f"{KEY_PREFIX}prev", disabled=page <= 0,
+        if nav[0].button("Previous", key=f"{key_prefix}prev", disabled=page <= 0,
                          use_container_width=True):
-            st.session_state[PAGE_KEY] = page - 1
+            st.session_state[PAGE_KEY + reader] = page - 1
             st.rerun()
         nav[1].markdown(
             f"<div style='text-align:center;padding-top:0.45rem'>Page {page + 1} "
             f"of {total}</div>", unsafe_allow_html=True)
-        if nav[2].button("Next", key=f"{KEY_PREFIX}next", disabled=page >= total - 1,
+        if nav[2].button("Next", key=f"{key_prefix}next", disabled=page >= total - 1,
                          use_container_width=True):
-            st.session_state[PAGE_KEY] = page + 1
+            st.session_state[PAGE_KEY + reader] = page + 1
             st.rerun()
 
     width = 760 if compact else _RENDER_WIDTH_DESKTOP
@@ -373,7 +375,21 @@ def _preview(st: Any, row: dict, *, compact: bool) -> None:
     st.info("This browser cannot display the PDF inline. Download it to read it.")
     st.download_button("Download this reference", data=data,
                        file_name=str(row.get("filename") or "reference.pdf"),
-                       mime="application/pdf", key=f"{KEY_PREFIX}dl_{did}")
+                       mime="application/pdf", key=f"{key_prefix}dl_{did}")
+
+
+def render_song_document_reference(st: Any, row: dict, *, namespace: str, compact: bool = True) -> None:
+    """One saved reference on its own (Backing's My Uploaded Melodies panels): its status line and its pages,
+    with its own reading position, so several can be open at once. Read-only -- managing (rename, retag,
+    delete) stays in the Practice page panel. A reference that cannot be loaded degrades to a message."""
+    did = str(row.get("document_id") or "")
+    severity, message = _status_line(row)
+    if severity != "ok":
+        {"warn": st.warning, "error": st.error}.get(severity, st.caption)(message)
+    try:
+        _preview(st, row, compact=compact, reader=f"::{namespace}{did}::")
+    except Exception:
+        st.error("That reference could not be shown. The others and the music are unaffected.")
 
 
 def render_song_documents_panel(st: Any, session: Any, *, compact: bool = False) -> None:
