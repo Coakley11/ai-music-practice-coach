@@ -20774,7 +20774,7 @@ elif _studio_page == "practice":
                     with _n_col3:
                         st.write("")
                         _gen_notation = st.button(
-                            "Generate notation / TAB",
+                            action_label("sheet_music", "Generate notation / TAB"),
                             key="practice_generate_notation",
                             type="primary",
                             use_container_width=True,
