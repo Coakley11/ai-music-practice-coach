@@ -435,7 +435,71 @@ def _intent_flags(remember: str, notes: str) -> dict[str, bool]:
         "comfortable": any(w in blob for w in ("comfortable", "singable", "narrow range", "easy to sing")),
         "rhythmic": any(w in blob for w in ("rhythmic", "syncop", "groove")),
         "intense_second": any(w in blob for w in ("second half", "more intense", "later phrase")),
+        "high_register": any(
+            w in blob
+            for w in ("high register", "higher register", "high range", "higher range", "up high", "high notes",
+                      "sing high")
+        ),
+        "low_register": any(
+            w in blob
+            for w in ("low register", "lower register", "low range", "lower range", "down low", "low notes",
+                      "darker register")
+        ),
+        "leaps": any(
+            w in blob
+            for w in ("leap", "larger interval", "large interval", "bigger interval", "big interval",
+                      "wide interval", "wider interval", "angular", "jump")
+        ),
+        "stepwise": any(
+            w in blob
+            for w in ("stepwise", "step-wise", "step wise", "smooth", "scalar", "conjunct", "flowing line",
+                      "small interval", "no big jump", "without big jump", "no leaps")
+        ),
     }
+
+
+def _concepts_for_intent(ids: list[str], flags: dict[str, bool]) -> list[str]:
+    """Order the melody styles so the words pick the shape, before the list is trimmed.
+
+    "a hook" has to reach motif_hook, "syncopated" the groove styles, "builds to a peak" the climbing ones. Only
+    existing styles are used, and verify_concept_claim still drops any style that does not exhibit its own claim.
+    Takes the resolved intent, so a request that contradicts itself does not reorder the list either.
+    """
+    from composition_melody_engine import CONCEPTS
+
+    preferred: list[str] = []
+    if flags.get("hook_repeat"):
+        preferred.append("motif_hook")
+    if flags.get("rhythmic"):
+        preferred += ["groove_pocket", "offbeat_accent"]
+    if flags.get("rising") or flags.get("peak_end"):
+        preferred += ["forward_climb", "expressive_arch"]
+    if flags.get("leaps"):
+        preferred.append("expressive_arch")
+    if flags.get("stepwise"):
+        preferred.append("direct_line")
+    out = [cid for cid in preferred if cid in CONCEPTS]
+    for cid in ids:
+        if cid not in out:
+            out.append(cid)
+    return out
+
+
+def _intent_from_flags(flags: dict[str, bool], profile: dict[str, Any] | None) -> dict[str, bool]:
+    """Forward every parsed direction to the generator (only four of the ten used to arrive).
+
+    Contradictions cancel out, so an impossible request behaves like one that was never made instead of fighting
+    itself; the note chooser still bounds every note by the instrument range.
+    """
+    intent = {k: bool(v) for k, v in flags.items()}
+    intent["hold_last"] = bool(flags.get("hold_last")) or str((profile or {}).get("energy_tier")) == "low"
+    if flags.get("rising") and flags.get("opening"):
+        intent["start_low"] = True  # "opens low and builds" -- the same reading the no-chord path already uses
+    if flags.get("high_register") and flags.get("low_register"):
+        intent["high_register"] = intent["low_register"] = False
+    if flags.get("leaps") and flags.get("stepwise"):
+        intent["leaps"] = intent["stepwise"] = False
+    return intent
 
 
 def shape_melody_with_intent(
@@ -944,13 +1008,9 @@ def _suggest_over_chords(
     except ImportError:
         bias = {}
     flags = _intent_flags(remember, notes)
-    intent = {
-        "hold_last": flags["hold_last"] or str(profile.get("energy_tier")) == "low",
-        "space": flags["space"],
-        "start_low": flags["start_low"],
-        "comfortable": flags["comfortable"],
-    }
+    intent = _intent_from_flags(flags, profile)
     ids = concepts_for_feel(feel, section_label=str(section.get("label") or ""), limit=max(limit, 1) + 3)
+    ids = _concepts_for_intent(ids, intent)
     out: list[dict[str, Any]] = []
     seen_sigs: set[tuple] = set()
     for cid in ids:
