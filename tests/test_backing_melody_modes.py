@@ -162,3 +162,13 @@ def test_with_the_lead_sheet_open_the_lyric_line_never_takes_the_page_from_the_c
     assert "lyricTarget === activeLine && window.__karaokeBoxFollow" in body
     tgt = APP[APP.index("function karaokeFollowTarget()"):APP.index("let lastBoxTarget = null;")]
     assert "if (chartIsPrimary() || leadSheetOpenOnPage()) return chord;" in tgt
+
+
+def test_in_normal_voice_the_full_height_sheet_follows_the_lyrics_when_the_lead_sheet_is_closed():
+    """Normal Voice has PAGE_FOLLOW and the singing lyrics in one frame; the lyrics provider owns it. The chord-change
+    request must follow that provider's target (lyric line with the Lead Sheet closed), never the chord regardless."""
+    i = APP.index("if (eventChanged && PAGE_FOLLOW) {{")
+    branch = APP[i:APP.index("}} else if (eventChanged && clock && !clock.paused) {{", i)]
+    assert "const lyricLead = KARAOKE_HOLD ? karaokeFollowTarget() : null;" in branch
+    assert 'toLyric = !!(lyricLead && lyricLead.classList && lyricLead.classList.contains("karaoke-lp-lyric-line"))' in branch
+    assert 'request("lead-sheet", toLyric ? lyricLead : currentCell, {{ why: toLyric ? "karaoke-lyric" : "chord" }})' in branch

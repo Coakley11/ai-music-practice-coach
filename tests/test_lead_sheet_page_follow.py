@@ -108,7 +108,7 @@ def test_backing_sheet_is_full_height_and_follows_through_the_controller():
     html = _app().live_follow_along_component_html(b"RIFF", TL, "<div></div>", audio_b64="AA", page_follow=True)
     assert "const PAGE_FOLLOW = true;" in html
     assert "installLeadSheetPageFollow" in html
-    assert 'request("lead-sheet", currentCell' in html
+    assert 'request("lead-sheet", toLyric ? lyricLead : currentCell' in html
     assert 'fe.setAttribute("scrolling", "no")' in html
     assert 'pauseButton: () => document.getElementById("live-stop-btn")' in html
 

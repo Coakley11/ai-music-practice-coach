@@ -7567,8 +7567,13 @@ def live_follow_along_component_html(
         if (eventChanged && PAGE_FOLLOW) {{
           // Full-height sheet: the page follows, through the one page controller (3 s manual hold,
           // never while paused or stopped). It only scrolls; audio and highlight are untouched.
+          // Normal Voice: this frame also carries the singing lyrics and the lyrics provider owns it, so
+          // the page follows ITS target - the chord while the Lead Sheet is open, the lyric line while it
+          // is closed - not the chord regardless (measured 2026-11-20: Lead Sheet off still stepped by chord).
           try {{
-            if (sheetIsPlaying() && window.top.__lsFollow) window.top.__lsFollow.request("lead-sheet", currentCell, {{ why: "chord" }});
+            const lyricLead = KARAOKE_HOLD ? karaokeFollowTarget() : null;
+            const toLyric = !!(lyricLead && lyricLead.classList && lyricLead.classList.contains("karaoke-lp-lyric-line"));
+            if (sheetIsPlaying() && window.top.__lsFollow) window.top.__lsFollow.request("lead-sheet", toLyric ? lyricLead : currentCell, {{ why: toLyric ? "karaoke-lyric" : "chord" }});
           }} catch (ePf) {{}}
         }} else if (eventChanged && clock && !clock.paused) {{
           // Karaoke's own box. Through followInsideBox, so the singer's three seconds - the
