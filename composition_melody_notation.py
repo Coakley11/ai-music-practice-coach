@@ -482,6 +482,18 @@ def build_section_score_model(
     """Canonical derived view for section score rendering (no duplicate ownership)."""
     evs = list(events or [])
     chord_list = list(chords or [])
+    if evs and chord_list:
+        # Melody repeats (x2-x4) tile the phrase past one pass of the section's chords, so every repeated pass used
+        # to print with no chord symbols in Practice, Backing, Creative/SBI and the Composition staff. Cycle the
+        # progression over the melody's span here, before the bar count is derived from it, so the symbols, the
+        # chord strip and the ABC all agree. Render-time only: the section's saved progression is never touched,
+        # and a progression that already covers the melody comes back unchanged (never duplicated).
+        try:
+            from composition_melody_preview import harmony_covering_melody  # local: preview imports this module
+
+            chord_list = list(harmony_covering_melody(chord_list, evs, meter=meter))
+        except Exception:
+            chord_list = list(chords or [])
     from custom_progression_lab import expand_entries_to_chords
 
     n_chords = len(expand_entries_to_chords(chord_list)) if chord_list and isinstance(chord_list[0], dict) else len(

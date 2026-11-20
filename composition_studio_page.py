@@ -685,6 +685,63 @@ body[data-studio-page="composer"] .block-container {
 .composer-suggestion-card.is-active h4 {
   color: #1d4ed8;
 }
+/* Melody idea cards: the keyed wrapper is the card (title + staff + controls); the header inside it is borderless.
+   ACTIVE (blue) and PREVIEWING (amber) frames follow the header's markers and are mutually exclusive. */
+[class*="st-key-composer_mel_card_"] {
+  background: #ffffff;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  border-radius: 12px;
+  padding: 0.6rem 0.75rem 0.55rem;
+  margin-bottom: 0.6rem;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04);
+  gap: 0.45rem;
+  box-sizing: border-box;
+}
+[class*="st-key-composer_mel_card_"] .composer-suggestion-card {
+  border: none !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+  margin: 0 !important;
+}
+[class*="st-key-composer_mel_card_"]:has([data-composer-active-melody="1"]) {
+  border: 2px solid #2563eb;
+  background: linear-gradient(180deg, #eff6ff 0%, #ffffff 120px);
+  box-shadow: 0 4px 14px rgba(37, 99, 235, 0.12);
+}
+[class*="st-key-composer_mel_card_"]:has([data-composer-previewing="1"]) {
+  border: 2px solid #f59e0b;
+  box-shadow: 0 4px 14px rgba(245, 158, 11, 0.14);
+}
+@media (max-width: 480px) {
+  [class*="st-key-composer_mel_card_"] { padding: 0.5rem 0.5rem 0.45rem; }
+}
+@media (max-width: 640px) {
+  [class*="st-key-composer_melody_repeats_row_"] [data-testid="stHorizontalBlock"] {
+    flex-direction: row !important;
+    flex-wrap: nowrap !important;
+    gap: 0.4rem !important;
+  }
+  [class*="st-key-composer_melody_repeats_row_"] [data-testid="stColumn"],
+  [class*="st-key-composer_melody_repeats_row_"] [data-testid="column"] {
+    flex: 1 1 0 !important;
+    min-width: 0 !important;
+    width: auto !important;
+  }
+}
+.composer-preview-badge {
+  display: inline-block;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #92400e;
+  background: #fef3c7;
+  border-radius: 999px;
+  padding: 0.12rem 0.55rem;
+  margin-left: 0.35rem;
+  vertical-align: middle;
+}
 .composer-active-badge {
   display: inline-block;
   font-size: 0.72rem;
@@ -1783,6 +1840,11 @@ def _attach_synced_score_preview(
     bpm = int(pg.get("bpm") or 96)
     meter = str(pg.get("time_signature") or "4/4")
     key = str(pg.get("key_center") or "C")
+    if chord_syms and events:
+        # Repeated melody passes keep their chords (symbols above the staff + chord highlight).
+        from composition_melody_preview import harmony_covering_melody
+
+        chord_syms = [str(c) for c in harmony_covering_melody(list(chord_syms), list(events), meter=meter)]
 
     lyric_tl: list[dict[str, Any]] = []
     if lyrics_alignment and events:
@@ -1914,6 +1976,53 @@ def _render_compare_tray(
     session_state.pop(_compare_queue_key(section_id), None)
 
 
+def _song_settings_snapshot(doc: dict[str, Any]) -> tuple:
+    """The song's own values that the Song settings widgets mirror."""
+    g = doc.get("global") or {}
+    meta = doc.get("metadata") or {}
+    genre_now = str(meta.get("style") or "Pop")
+    label = coerce_composition_key_choice_for_doc(
+        doc,
+        str(g.get("original_key_label") or "")
+        or composition_key_label_from_token(str(g.get("original_key_center") or "C")),
+    )
+    return (
+        genre_now if genre_now in COMPOSITION_GENRES else "Other",
+        coerce_jewish_direction(meta.get("jewish_direction")),
+        label,
+        coerce_composition_bpm(g.get("bpm")),
+        coerce_composition_meter(str(g.get("time_signature") or "4/4")),
+    )
+
+
+def _seed_song_settings_widgets(session_state: dict, doc: dict[str, Any], *, key_prefix: str) -> None:
+    """Re-seed the Song settings widgets whenever the SONG's values changed since they were last seeded.
+
+    The widgets used to be seeded once per session, so a change made elsewhere for the same song (Undo key change,
+    a key/tempo edit in another step) left them showing the old values, and the next Apply silently wrote those
+    back -- after Undo, a BPM-only Apply transposed the whole song to the undone key again. Unsaved edits typed into
+    the panel survive reruns, because they do not change the song until Apply.
+    """
+    snap_key = f"{key_prefix}_seeded_from"
+    snap = _song_settings_snapshot(doc)
+    if session_state.get(snap_key) == snap:
+        return
+    genre, jewish_direction, label, bpm, meter = snap
+    session_state[f"{key_prefix}_genre"] = genre
+    session_state[f"{key_prefix}_jewish_direction"] = (
+        jewish_direction if jewish_direction in COMPOSITION_JEWISH_DIRECTIONS else DEFAULT_JEWISH_DIRECTION
+    )
+    session_state[f"{key_prefix}_key"] = label
+    session_state[f"{key_prefix}_bpm"] = int(bpm)
+    if meter in COMPOSITION_METERS:
+        session_state[f"{key_prefix}_meter"] = meter
+        session_state[f"{key_prefix}_meter_custom"] = ""
+    else:
+        session_state[f"{key_prefix}_meter"] = COMPOSITION_METER_CUSTOM
+        session_state[f"{key_prefix}_meter_custom"] = meter
+    session_state[snap_key] = snap
+
+
 def _render_compact_song_settings(session_state: dict, doc: dict[str, Any], *, key_prefix: str) -> None:
     """Keep Key/BPM/Meter (+ genre) editable but out of the way while composing."""
     pg = playback_globals(doc)
@@ -1924,6 +2033,7 @@ def _render_compact_song_settings(session_state: dict, doc: dict[str, Any], *, k
         f"{pg['bpm']} BPM · {pg['time_signature']} · "
         f"{genre_now or 'Song'}"
     )
+    _seed_song_settings_widgets(session_state, doc, key_prefix=key_prefix)
     with st.expander(f"⚙️ Song settings — {summary}", expanded=False):
         g = doc.setdefault("global", {})
         genre_key = f"{key_prefix}_genre"
@@ -1963,9 +2073,8 @@ def _render_compact_song_settings(session_state: dict, doc: dict[str, Any], *, k
             _field_label("bpm", "Tempo (BPM)"),
             min_value=40,
             max_value=240,
-            value=coerce_composition_bpm(g.get("bpm")),
             step=1,
-            key=f"{key_prefix}_bpm",
+            key=f"{key_prefix}_bpm",  # seeded from the song by _seed_song_settings_widgets
         )
         meter_options = list(COMPOSITION_METERS) + [COMPOSITION_METER_CUSTOM]
         stored_meter = coerce_composition_meter(str(g.get("time_signature") or "4/4"))
@@ -2938,6 +3047,11 @@ def _render_melody_staff(
     lyrics_alignment: dict[str, Any] | None = None,
 ) -> None:
     """Primary score: chord symbols above staff, with optional aligned lyrics."""
+    if chords and events:
+        # Melody repeats x2-x4: show the progression above every repeated pass, not just the first.
+        from composition_melody_preview import harmony_covering_melody
+
+        chords = harmony_covering_melody(list(chords), list(events), meter=meter)
     score = build_section_score_model(
         events=events,
         chords=chords,
@@ -2948,7 +3062,8 @@ def _render_melody_staff(
         lyrics_text=lyrics_text,
         lyrics_alignment=lyrics_alignment,
     )
-    st.markdown('<div class="composer-score-wrap">', unsafe_allow_html=True)
+    # (No split '<div class="composer-score-wrap">' ... '</div>' markdown pair: Streamlit renders each call as its own
+    # element, so the opening div drew an empty bordered bar above every score instead of wrapping it.)
     if score["has_melody"]:
         try:
             import streamlit.components.v1 as components
@@ -2974,7 +3089,6 @@ def _render_melody_staff(
             f'<div class="composer-score-lyrics">{html.escape(str(score["lyrics_text"]))}</div>',
             unsafe_allow_html=True,
         )
-    st.markdown("</div>", unsafe_allow_html=True)
 
 
 def _section_lyrics_text(section: dict[str, Any] | None) -> str:
@@ -4008,98 +4122,111 @@ def _render_melody_concept_card(
     # Match Chords active marker so Streamlit keeps the attribute and QA can find it.
     active_attr = ' data-composer-active="1" data-composer-active-melody="1"' if is_active else ""
 
-    st.markdown(
-        f"""
-<div class="{card_class}"{active_attr}>
-  <h4>{html.escape(name)}{badge}</h4>
-  {"" if is_active else f'<p class="composer-suggestion-why">{html.escape(contour)}</p>'}
-</div>
-        """,
-        unsafe_allow_html=True,
-    )
-    # ONE score per candidate.  The score lives in a placeholder rendered above the Preview
-    # control; once this candidate's preview is armed the placeholder shows the *same* score
-    # as the synced (highlighting) version instead of a second copy underneath.
-    concept_slot = f"melody:{section_id}:{cid}"
-    chord_syms = expanded_section_chords(doc, section_id) if chords else []
-    score_box = st.container()
-    p1, p2 = st.columns(2)
-    with p1:
-        preview_label = "▶ Preview with chords" if chords else "▶ Preview melody"
-        if st.button(preview_label, key=f"{prefix}_preview_{cid}", use_container_width=True):
-            result = play_composer_preview(
-                session_state,
-                doc,
-                section_id=section_id,
-                include_melody=True,
-                melody_override=events or None,
-                loops=1,
-                melody_gain=float(session_state.get("composer_melody_mix_gain") or 0.45),
-                backing_gain=float(session_state.get("composer_backing_mix_gain") or 0.85),
-                chord_override=list(chord_syms),
-                slot=concept_slot,
-                label=(
-                    f"Playing melody + chords · {name}"
-                    if chords
-                    else f"Playing melody · {name}"
-                ),
-            )
-            if not result.get("ok"):
-                st.warning(str(result.get("reason") or "Could not generate preview."))
-    with score_box:
-        mounted = False
-        if events:
-            _align = get_alignment(sec) if is_active else None
-            mounted = _attach_synced_score_preview(
-                session_state,
-                doc,
-                slot=concept_slot,
-                events=events,
-                chord_syms=chord_syms or None,
-                caption="Follow the highlighted note and chord",
-                dom_id=f"mel_{cid[:16]}",
-                lyrics_alignment=_align if (_align and str(_align.get("status") or "") != "unaligned") else None,
-                transport="custom",
-            )
-        if events and not mounted:
-            n_ev = len(events)
-            staff_h = 220 if n_ev <= 12 else (260 if n_ev <= 24 else 300)
-            _render_melody_staff(
-                events,
-                key=str(pg.get("key_center") or "C"),
-                meter=str(pg.get("time_signature") or "4/4"),
-                bpm=int(pg.get("bpm") or 96),
-                title="",  # the card's <h4> already names the idea; avoid a second title
-                height=staff_h,
-                chords=chords,
-                lyrics_text=lyrics_text if is_active else "",
-            )
-        elif not events:
-            _attach_synced_score_preview(
-                session_state, doc, slot=concept_slot, events=None,
-                chord_syms=chord_syms or None, caption="Preview", dom_id=f"mel_{cid[:16]}",
-            )
-    with p2:
-        if is_active:
-            st.caption("In use — preview other ideas freely.")
-        elif st.button("Use this melody", key=f"{prefix}_use_{cid}", type="primary", use_container_width=True):
-            if events:
-                apply_melody_events(
+    # The whole idea (title, staff, Preview / Use this melody) is ONE bordered card: the header box alone used to carry the
+    # border, so on desktop the ACTIVE frame held only the title with the staff and buttons outside it.
+    with st.container(key=f"composer_mel_card_{prefix}_{cid}"):
+        # Header is filled after the Preview button below is handled, so the card that is being auditioned in THIS run is
+        # labelled "Previewing" (the Preview click runs after the header would otherwise already be drawn).
+        header_box = st.empty()
+        # ONE score per candidate.  The score lives in a placeholder rendered above the Preview
+        # control; once this candidate's preview is armed the placeholder shows the *same* score
+        # as the synced (highlighting) version instead of a second copy underneath.
+        concept_slot = f"melody:{section_id}:{cid}"
+        chord_syms = expanded_section_chords(doc, section_id) if chords else []
+        score_box = st.container()
+        p1, p2 = st.columns(2)
+        with p1:
+            preview_label = "▶ Preview with chords" if chords else "▶ Preview melody"
+            if st.button(preview_label, key=f"{prefix}_preview_{cid}", use_container_width=True):
+                result = play_composer_preview(
+                    session_state,
                     doc,
-                    section_id,
-                    events,
-                    concept=concept,
-                    replace=True,
+                    section_id=section_id,
+                    include_melody=True,
+                    melody_override=events or None,
+                    loops=1,
+                    melody_gain=float(session_state.get("composer_melody_mix_gain") or 0.45),
+                    backing_gain=float(session_state.get("composer_backing_mix_gain") or 0.85),
+                    chord_override=list(chord_syms),
+                    slot=concept_slot,
+                    label=(
+                        f"Playing melody + chords · {name}"
+                        if chords
+                        else f"Playing melody · {name}"
+                    ),
                 )
-            else:
-                apply_melody_concept(doc, section_id, concept)
-            session_state[f"composer_melody_active_source_{section_id}"] = cid
-            session_state[f"composer_melody_just_accepted_{section_id}"] = True
-            # Reset widget so repeats control seeds from the newly accepted pattern.
-            session_state.pop(f"composer_melody_repeats_{section_id}", None)
-            invalidate_composer_preview(session_state)
-            _save_doc(session_state, doc)
-            st.rerun()
+                if not result.get("ok"):
+                    st.warning(str(result.get("reason") or "Could not generate preview."))
+        previewing = (
+            not is_active
+            and composer_preview_slot(session_state) == concept_slot
+            and bool(session_state.get(COMPOSER_PREVIEW_WAV_KEY))
+        )
+        preview_badge = '<span class="composer-preview-badge">Previewing</span>' if previewing else ""
+        preview_attr = ' data-composer-previewing="1"' if previewing else ""
+        header_box.markdown(
+            f"""
+    <div class="{card_class}"{active_attr}{preview_attr}>
+      <h4>{html.escape(name)}{badge}{preview_badge}</h4>
+      {"" if is_active else f'<p class="composer-suggestion-why">{html.escape(contour)}</p>'}
+    </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        with score_box:
+            mounted = False
+            if events:
+                _align = get_alignment(sec) if is_active else None
+                mounted = _attach_synced_score_preview(
+                    session_state,
+                    doc,
+                    slot=concept_slot,
+                    events=events,
+                    chord_syms=chord_syms or None,
+                    caption="Follow the highlighted note and chord",
+                    dom_id=f"mel_{cid[:16]}",
+                    lyrics_alignment=_align if (_align and str(_align.get("status") or "") != "unaligned") else None,
+                    transport="custom",
+                )
+            if events and not mounted:
+                n_ev = len(events)
+                staff_h = 220 if n_ev <= 12 else (260 if n_ev <= 24 else 300)
+                _render_melody_staff(
+                    events,
+                    key=str(pg.get("key_center") or "C"),
+                    meter=str(pg.get("time_signature") or "4/4"),
+                    bpm=int(pg.get("bpm") or 96),
+                    title="",  # the card's <h4> already names the idea; avoid a second title
+                    height=staff_h,
+                    chords=chords,
+                    lyrics_text=lyrics_text if is_active else "",
+                )
+            elif not events:
+                _attach_synced_score_preview(
+                    session_state, doc, slot=concept_slot, events=None,
+                    chord_syms=chord_syms or None, caption="Preview", dom_id=f"mel_{cid[:16]}",
+                )
+        with p2:
+            if is_active:
+                st.caption("In use — preview other ideas freely.")
+            elif st.button("Use this melody", key=f"{prefix}_use_{cid}", type="primary", use_container_width=True):
+                if events:
+                    apply_melody_events(
+                        doc,
+                        section_id,
+                        events,
+                        concept=concept,
+                        replace=True,
+                    )
+                else:
+                    apply_melody_concept(doc, section_id, concept)
+                session_state[f"composer_melody_active_source_{section_id}"] = cid
+                session_state[f"composer_melody_just_accepted_{section_id}"] = True
+                # Reset widget so repeats control seeds from the newly accepted pattern.
+                session_state.pop(f"composer_melody_repeats_{section_id}", None)
+                invalidate_composer_preview(session_state)
+                _save_doc(session_state, doc)
+                st.rerun()
 
 
 def _render_active_melody_phrase_editor(session_state: dict, doc: dict[str, Any], section_id: str) -> None:
@@ -4779,6 +4906,14 @@ def _render_structure_column(session_state: dict, doc: dict[str, Any]) -> None:
                 st.rerun()
 
 
+def _chord_bars_widget_key(section_id: str, index: int, n_rows: int, row: dict[str, Any]) -> str:
+    """Bars input key that changes whenever the row it edits changes (position, row count, chord or length)."""
+    import hashlib
+
+    sig = hashlib.sha1(f"{n_rows}|{row.get('chord')}|{row.get('bars')}".encode("utf-8")).hexdigest()[:10]
+    return f"composer_ch_bars_{section_id}_{index}_{sig}"
+
+
 def _render_chords_lane(
     session_state: dict,
     doc: dict[str, Any],
@@ -4854,12 +4989,15 @@ def _render_chords_lane(
                     session_state.pop(insert_key, None)
                     st.rerun()
             with c6:
+                # Keyed by the row's content, not just its position: after Delete/Insert the rows shift, and a
+                # position-keyed input kept the old row's value and wrote it onto the chord that moved into that
+                # slot (delete D from D | Bm(2 bars) | G -> Bm lost its 2 bars and G gained them).
                 bars = st.number_input(
                     "Bars",
                     min_value=1,
                     max_value=8,
                     value=int(row.get("bars") or 1),
-                    key=f"composer_ch_bars_{sid}_{i}",
+                    key=_chord_bars_widget_key(sid, i, len(draft), row),
                     label_visibility="collapsed",
                     disabled=_is_split,
                 )
@@ -5921,18 +6059,20 @@ def _render_active_melody_repeat_controls(
         # Keep widget key aligned with durable section state (section-scoped).
         session_state[repeats_key] = int(repeats)
         # Explicit 1–4 choices — more visible/usable than a thin Streamlit slider.
-        choice_cols = st.columns(MELODY_REPEAT_MAX - MELODY_REPEAT_MIN + 1)
+        # One short row of 1-4 on every width (a phone used to stack four full-width buttons, ~250 px of scrolling).
         chosen: int | None = None
-        for i, n in enumerate(range(MELODY_REPEAT_MIN, MELODY_REPEAT_MAX + 1)):
-            with choice_cols[i]:
-                if st.button(
-                    str(n),
-                    key=f"composer_melody_repeats_btn_{section_id}_{n}",
-                    type="primary" if n == int(repeats) else "secondary",
-                    use_container_width=True,
-                    help=f"Tile this melody phrase {n} time(s) for this section.",
-                ):
-                    chosen = int(n)
+        with st.container(key=f"composer_melody_repeats_row_{section_id}"):
+            choice_cols = st.columns(MELODY_REPEAT_MAX - MELODY_REPEAT_MIN + 1)
+            for i, n in enumerate(range(MELODY_REPEAT_MIN, MELODY_REPEAT_MAX + 1)):
+                with choice_cols[i]:
+                    if st.button(
+                        str(n),
+                        key=f"composer_melody_repeats_btn_{section_id}_{n}",
+                        type="primary" if n == int(repeats) else "secondary",
+                        use_container_width=True,
+                        help=f"Tile this melody phrase {n} time(s) for this section.",
+                    ):
+                        chosen = int(n)
         if chosen is not None and chosen != int(repeats):
             if set_section_melody_repeats(doc, section_id, int(chosen)):
                 session_state[repeats_key] = int(chosen)

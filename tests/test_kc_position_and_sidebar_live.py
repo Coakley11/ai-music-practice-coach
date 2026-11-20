@@ -164,15 +164,19 @@ class AnotherSong(_Base):
         self.assertFalse(kc.ensure_key_cycle_follows_active_song(self.ss))
         self.assertEqual(self._index(), 3)
 
-    def test_a_cycle_saved_before_songs_were_recorded_is_adopted(self) -> None:
+    def test_a_cycle_saved_before_songs_were_recorded_is_not_adopted(self) -> None:
+        # User report 2026-11-20: a saved cycle without its song was adopted with its old key, so one
+        # stale cycle in D put D on every song active after a refresh. It now starts again at the
+        # active song's own first key (still On, stopped) instead of keeping its position.
         self._start("D")
         self._go(2)
         bag = self.ss[kc.BACKING_KEY_CYCLE_SESSIONS_KEY]
         for v in bag.values():
             v.pop(kc.CYCLE_SONG_ID, None)
-        self.assertFalse(kc.ensure_key_cycle_follows_active_song(self.ss))
+        self.assertTrue(kc.ensure_key_cycle_follows_active_song(self.ss))
         self.assertEqual(self._data().get(kc.CYCLE_SONG_ID), "song-A")
-        self.assertEqual(self._index(), 3)
+        self.assertEqual(self._index(), 1)
+        self.assertTrue(kc.is_cycle_active(self.ss))
 
     def test_key_cycling_off_is_left_alone(self) -> None:
         self.song = "song-B"

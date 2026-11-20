@@ -231,6 +231,22 @@ def _contour_value(spec: Any, x: float, *, beat: float, bar: float) -> float:
     return pts[-1][1]
 
 
+def _intent_contour_offset(intent: dict[str, bool], x: float) -> float:
+    """Semitones added to the style's own contour target by plain-English shape directions.
+
+    x is the position in the phrase (0 at the start, 1 at the end). These only move the target the note chooser
+    aims at: the notes themselves still come from the chord and the instrument range.
+    """
+    off = 0.0
+    if intent.get("rising"):
+        off += 5.0 * x
+    if intent.get("peak_end"):  # a peak around four fifths through, fading either side
+        off += 5.5 * max(0.0, 1.0 - abs(x - 0.8) / 0.25)
+    if intent.get("intense_second") and x >= 0.5:
+        off += 3.5
+    return off
+
+
 def _name_for(pc: int, info: ChordInfo | None, key: str, direction: int = 0) -> str:
     if info is not None:
         n = info.name_for_pc(pc)
@@ -282,8 +298,29 @@ def build_concept_events(
     if intent.get("comfortable"):
         lo, hi = max(lo, 60), min(hi, 76)
     center = _tonic_midi(key, lo, hi)
+    # Register: "up high" / "down low" move the line about a fifth, inside the instrument's own range. The note
+    # chooser only ever picks from range(lo, hi + 1), so this biases the line but can never leave the range.
+    if intent.get("high_register"):
+        center = min(hi - 3, center + 7)
+    elif intent.get("low_register"):
+        center = max(lo + 2, center - 7)
     if intent.get("start_low"):
         center -= 2
+    # Interval size: "larger leaps" widens what counts as free movement and all but drops the leap penalty;
+    # "smooth / stepwise" tightens it to a step. The per-style numbers are copied here, never mutated.
+    leap_free = float(cfg["leap_free"])
+    leap_w = float(cfg["leap_w"])
+    if intent.get("leaps"):
+        leap_free = min(12.0, leap_free + 4.0)
+        leap_w *= 0.3
+    elif intent.get("stepwise"):
+        leap_free = 2.0
+        leap_w = max(leap_w, 1.2)
+    elif intent.get("rising") or intent.get("peak_end") or intent.get("intense_second"):
+        # A shape direction needs a little more room to move, or a tightly stepping style cannot actually climb:
+        # the "direct line" style ignored "rising" entirely at every contour strength until it had this.
+        leap_free += 1.0
+        leap_w *= 0.8
     tpc = tonic_pc(key)
     scale = sorted(key_scale_pcs(key))
     style = str(style or "simple").lower()
@@ -384,7 +421,8 @@ def build_concept_events(
     def step_cost(i: int, m: int, pm: int | None, pinfo: ChordInfo | None, pprev: int | None) -> float:
         s = dp[i]
         info = chord_info(s["chord"], key)
-        tgt = center + _contour_value(cfg["contour"], x_of(s), beat=s["beat"], bar=bar)
+        x = x_of(s)
+        tgt = center + _contour_value(cfg["contour"], x, beat=s["beat"], bar=bar) + _intent_contour_offset(intent, x)
         c = 0.32 * abs(m - tgt)
         pc = m % 12
         if info is not None:
@@ -394,13 +432,17 @@ def build_concept_events(
                 c += 2.0  # extensions are a deliberate, rare colour
         if pm is not None:
             iv = abs(m - pm)
-            c += cfg["leap_w"] * max(0, iv - cfg["leap_free"])
+            c += leap_w * max(0.0, iv - leap_free)
             if iv == 0:
                 c += cfg["rep_pen"]
             if iv > 12:
                 c += 6
             if intent.get("comfortable"):
                 c += 0.8 * max(0, iv - 4)
+            if intent.get("leaps"):
+                # Asked for leaps: reward real distance (to an octave) and make a tiny step the thing to avoid.
+                c -= 0.35 * min(iv, 12)
+                c += 0.45 * max(0, 3 - iv)
             # resolve tension of a dominant: 3rd moves up a semitone, 7th down a step
             if pinfo is not None and pinfo.is_dominant and pinfo.third_pc is not None:
                 ppc = pm % 12

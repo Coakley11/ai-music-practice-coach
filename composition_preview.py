@@ -405,6 +405,14 @@ def generate_preview_wav(
     from backing_audio import generate_backing_track
     from composition_sync_transport import count_in_seconds, prepend_count_in_clicks
 
+    if include_melody and not recorded_audio:
+        # Melody repeats x2-x4 run past one pass of the chords: cycle the progression under the
+        # whole melody (it used to stop after pass 1, leaving the repeats with no harmony).
+        from composition_melody_preview import harmony_covering_melody
+
+        _mel = list(melody_override) if melody_override is not None else _resolve_melody_events(doc, section_id)
+        chords = [str(c) for c in harmony_covering_melody(chords, _mel, meter=str(pg["time_signature"]))]
+
     wav = generate_backing_track(
         chords,
         bpm=pg["bpm"],

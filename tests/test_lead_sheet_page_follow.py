@@ -233,8 +233,36 @@ def test_the_compact_bar_stays_with_the_lead_sheet_whichever_staff_leads():
 
 def test_a_newer_controller_keeps_the_surfaces_already_registered():
     js = lpf._CONTROLLER_JS
-    assert "inherited = (top.__lsFollow && top.__lsFollow.providers) || []" in js
+    assert "inherited = (old && old.providers) || []" in js
     assert "providers: inherited.slice()" in js
+
+
+def test_it_scrolls_the_window_that_holds_the_app_not_clouds_page():
+    """Streamlit Community Cloud runs the app in a same-origin iframe (under /~/+/) inside its own page, so the
+    browser's top window is Cloud's page, not the app. Measured on Cloud Dev eee50ba2 (user, 2026-11-19): the
+    controller scrolled window.top -- Cloud's page -- so there were two scrollbars, the app's stMain never followed and
+    the chart sat in a strip over blank white. The controller keeps its handle on window.top (every surface asks
+    window.top.__lsFollow), but measures and scrolls the window whose document holds [data-testid="stApp"]: the top
+    window itself locally, the app's iframe on Cloud."""
+    js = lpf._CONTROLLER_JS
+    head = js[: js.index("var C = {")]
+    assert "shell = window.top" in head
+    assert """var APP = '[data-testid="stApp"]'""" in head
+    assert "if (holdsApp(w)) return w;" in head                          # local: the top window is the app
+    assert "findApp(cw, depth - 1)" in head and "top = findApp(shell, 3) || shell;" in head   # Cloud: a nested frame
+    assert "var doc = top.document;" in head                             # every scroll / measure uses the app window
+    assert "shell.__lsFollow = C;" in js and "top.__lsFollow = C;" in js and "C.appWin = top;" in js
+    # a same-version controller bound to an app frame Cloud replaced is rebuilt, not kept
+    assert "old.appWin === top && holdsApp(old.appWin)) return;" in head
+    inst = lpf.page_follow_controller_js()
+    gate = inst.split("t.document.createElement")[0]
+    assert "c.appWin && !c.appWin.closed" in gate and "stApp" in gate
+    # an older controller's spacer / compact bar left in Cloud's page is removed
+    assert '["ls-mini-transport", "ls-follow-room"]' in head and "shell.document.getElementById(id)" in head
+    assert lpf.CONTROLLER_VERSION >= 5                                    # an open v4 page (scrolling Cloud's page) is replaced
+    # nothing after the app window is chosen reaches past it
+    body = js[js.index("var doc = top.document;"):]
+    assert "window.top" not in body and "shell.document" not in body.replace("shell.__lsFollow = C;", "")
 
 
 def test_the_last_rows_get_room_to_reach_the_reading_position():

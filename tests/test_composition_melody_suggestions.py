@@ -36,12 +36,18 @@ class TestCompositionMelodySuggestions(unittest.TestCase):
         apply_melody_concept(doc, str(verse["id"]), concept)
         self.assertTrue(section_has_melody(verse))
 
-    def test_hum_notes_count_as_melody(self) -> None:
+    def test_guidance_notes_alone_are_not_a_melody(self) -> None:
+        # "Notes for this melody" (intent.hum_notes) is prose guidance; it is never turned into notes. It must not mark the
+        # section "Melody ✓" / count toward progress before a melody is accepted (Composition stabilization, 2026-11-19).
         doc = bootstrap_from_vision(genre="Pop", song_idea="Test.")
         apply_structure_template(doc, "simple")
         verse = ordered_sections(doc)[0]
         verse.setdefault("melody", {"intent": {}, "phrases": []})
-        verse["melody"]["intent"]["hum_notes"] = "Da da da rising hook"
+        verse["melody"]["intent"]["hum_notes"] = "Start low, climb stepwise, settle on the tonic"
+        self.assertFalse(section_has_melody(verse))
+        # an accepted melody still counts, with or without guidance notes
+        concept = suggest_melody_concepts(doc, verse, "lyrical", "simple", limit=1)[0]
+        apply_melody_concept(doc, str(verse["id"]), concept)
         self.assertTrue(section_has_melody(verse))
 
 

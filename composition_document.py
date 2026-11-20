@@ -1212,7 +1212,9 @@ def section_has_melody(sec: dict[str, Any]) -> bool:
             continue
         if str(phrase.get("motif") or "").strip() or str(phrase.get("notes") or "").strip():
             return True
-    return bool(str((melody.get("intent") or {}).get("hum_notes") or "").strip())
+    # ``intent.hum_notes`` is the "Notes for this melody" guidance box (contour, lyric stress, range): prose that is never
+    # turned into notes. Counting it marked a section "Melody ✓" (and unlocked Continue) before any melody was accepted.
+    return False
 
 
 def melodized_section_count(doc: dict[str, Any]) -> tuple[int, int]:

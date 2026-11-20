@@ -77,6 +77,110 @@ def _key_tonic_pc(key: str) -> int:
     return table.get(root, 0)
 
 
+def _key_scale_pcs(key: str) -> set[int]:
+    """Pitch classes that belong to the key (minor = natural minor plus the raised 7th for V)."""
+    text = str(key or "C").strip()
+    low = text.lower()
+    minor = "minor" in low or (text.endswith("m") and not low.endswith("maj"))
+    tonic = _key_tonic_pc(key)
+    degrees = (0, 2, 3, 5, 7, 8, 10, 11) if minor else (0, 2, 4, 5, 7, 9, 11)
+    return {(tonic + d) % 12 for d in degrees}
+
+
+# Fit penalty per chord tone outside the key that the melody never sounds. Qualities come from a
+# per-style list, not per scale degree, so ties used to pick e.g. Amaj7 (G#) or Am7 (C) as V in D major.
+_OUT_OF_KEY_TONE_PENALTY = 0.75
+
+
+_EXTRA_QUALITY_DEGREES = {
+    "sus4": (0, 5, 7), "sus2": (0, 2, 7), "sus": (0, 5, 7), "dim": (0, 3, 6), "aug": (0, 4, 8), "+": (0, 4, 8),
+    "m6": (0, 3, 7, 9), "m9": (0, 3, 7, 10, 2), "maj9": (0, 4, 7, 11, 2), "add9": (0, 4, 7, 2), "7sus4": (0, 5, 7, 10),
+    "dim7": (0, 3, 6, 9), "13": (0, 4, 7, 10, 9), "m11": (0, 3, 7, 10, 5),
+}
+
+
+def _symbol_tones(symbol: str) -> set[int] | None:
+    """Chord tones of a simple symbol, or None when the quality is not recognised (left untouched)."""
+    import re
+
+    m = re.match(r"^([A-G][#b]?)([^/]*)", str(symbol or "").strip())
+    if not m:
+        return None
+    root = _key_tonic_pc(m.group(1))
+    qual = m.group(2)
+    if qual in {"", "m", "m7", "m7b5", "7", "9", "maj7", "6"}:
+        return _chord_tone_pcs(root, qual)
+    degrees = _EXTRA_QUALITY_DEGREES.get(qual)
+    return {(root + d) % 12 for d in degrees} if degrees else None
+
+
+def _symbol_root_quality(symbol: str) -> tuple[int, str] | None:
+    import re
+
+    m = re.match(r"^([A-G][#b]?)([^/]*)", str(symbol or "").strip())
+    return (_key_tonic_pc(m.group(1)), m.group(2)) if m else None
+
+
+def _chromatic_chord_is_justified(symbol: str, next_symbol: str | None) -> bool:
+    """Outside-the-key chords that harmony explains by where they go next (not a blanket ban):
+    a secondary dominant (E7 -> A), a tritone substitute (Eb7 -> D) or a diminished passing chord (C#dim7 -> D)."""
+    this = _symbol_root_quality(symbol)
+    nxt = _symbol_root_quality(next_symbol) if next_symbol else None
+    if not this or not nxt:
+        return False
+    root, qual = this
+    target = nxt[0]
+    dominant = qual in {"", "7", "9", "13", "7sus4"} or qual.startswith("7")
+    if dominant and (root - target) % 12 == 7:  # V/x resolving down a fifth
+        return True
+    if qual in {"7", "9", "13"} and (root - target) % 12 == 1:  # tritone substitute, down a half step
+        return True
+    if qual in {"dim", "dim7", "m7b5"} and (target - root) % 12 == 1:  # leading-tone diminished passing chord
+        return True
+    return False
+
+
+def _clashes_with_melody(tones: set[int], scale: set[int], melody_pcs: set[int]) -> bool:
+    """An added chromatic chord tone a half step from a note the melody sounds (C natural under C#)."""
+    for t in tones - scale - melody_pcs:
+        if ((t + 1) % 12) in melody_pcs or ((t - 1) % 12) in melody_pcs:
+            return True
+    return False
+
+
+def _keep_colour_that_fits_melody(
+    picked: list[str],
+    coloured: list[str],
+    groups: list[list[tuple[int, float]]],
+    *,
+    key: str,
+) -> list[str]:
+    """Style/feeling colouring runs after the melody fit and never looks at the melody.
+
+    A coloured chord is kept when every tone is in the key or sounded by the melody, or when its outside tones are
+    explained by harmonic context (secondary dominant, tritone sub, diminished passing chord) AND do not rub a half
+    step against the melody. Otherwise -- e.g. "melancholy" turning A into Am7 under a C# in D major -- the
+    melody-fit chord stays. Chromatic harmony is not banned; only unjustified or clashing substitutions are undone.
+    """
+    if len(picked) != len(coloured):
+        return coloured
+    scale = _key_scale_pcs(key)
+    out: list[str] = []
+    for i, (orig, col) in enumerate(zip(picked, coloured)):
+        tones = _symbol_tones(col)
+        melody_pcs = {pc for pc, _w in (groups[i] if i < len(groups) else [])}
+        outside = (tones - scale - melody_pcs) if tones is not None else set()
+        if col == orig or tones is None or not outside:
+            out.append(col)
+            continue
+        nxt = coloured[i + 1] if i + 1 < len(coloured) else None
+        if _chromatic_chord_is_justified(col, nxt) and not _clashes_with_melody(tones, scale, melody_pcs):
+            out.append(col)
+        else:
+            out.append(orig)
+    return out
+
+
 def _pc_name(pc: int, *, prefer_flats: bool = False) -> str:
     sharp = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
     flat = ["C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B"]
@@ -202,6 +306,8 @@ def _pick_chord_for_pcs(
     for off in (0, 5, 7, 9, 2):  # I IV V vi ii
         roots.append((tonic + off) % 12)
     tried: set[tuple[int, str]] = set()
+    scale = _key_scale_pcs(key)
+    melody_pcs = {pc for pc, _w in pcs_weights}
     for root in roots:
         for qual in quals:
             key_t = (root, qual)
@@ -210,6 +316,8 @@ def _pick_chord_for_pcs(
             tried.add(key_t)
             tones = _chord_tone_pcs(root, qual)
             fit = sum(w for pc, w in pcs_weights if pc in tones)
+            # A chromatic chord tone is fine when the melody itself sounds it; otherwise prefer the diatonic quality.
+            fit -= _OUT_OF_KEY_TONE_PENALTY * len(tones - scale - melody_pcs)
             # Prefer melody note as chord tone (esp. third)
             third = (root + (3 if qual.startswith("m") else 4)) % 12
             if top_pc == third:
@@ -299,8 +407,10 @@ def harmonize_melody_to_progressions(
             )
             symbols.append(sym)
             why_bits.append(bit)
+        picked = list(symbols)
         symbols = apply_style_chord_color(symbols, profile, variant=variant)
         symbols = apply_feeling_chord_bias(symbols, profile, feeling=feel, variant=variant)
+        symbols = _keep_colour_that_fits_melody(picked, symbols, groups, key=key)
         entries = symbols_to_entries(symbols)
         grounded = describe_harmony_from_events(entries, profile=profile)
         fit_line = "; ".join(why_bits[:3])

@@ -598,7 +598,24 @@ def render_synced_score_playback_html(
     root.querySelectorAll(".cplay-sec").forEach(h => h.classList.toggle("is-active", sec !== null && h.getAttribute("data-sec") === sec));
     const now = document.getElementById("{safe_id}-now");
     if (now) now.textContent = cur ? (cur.getAttribute("data-now") || "") : "";
-    if (cur && cur.scrollIntoView) {{ try {{ cur.scrollIntoView({{block: "nearest"}}); }} catch (e) {{}} }}
+    keepChipVisible(cur);
+  }}
+  function keepChipVisible(cur) {{
+    // Scroll the chord row itself, never the page. scrollIntoView() walks up to whatever ancestor can scroll,
+    // which on Streamlit is the page container: with the player off screen it yanked the page ~400 px on the
+    // first chord change after the user had scrolled away, then held it there for every chord after that.
+    // Measured 2026-11-19 at 390/1366/1440 px. The page is moved only by the shared page-follow controller.
+    const box = root ? root.querySelector("#{safe_id}-chips") : null;
+    if (!cur || !box) return;
+    if (box.scrollHeight <= box.clientHeight + 1) return;  // nothing to scroll: all the chips fit
+    try {{
+      const cr = cur.getBoundingClientRect();
+      const br = box.getBoundingClientRect();
+      const above = cr.top - br.top;
+      const below = cr.bottom - br.bottom;
+      if (above < 0) box.scrollTop += above;
+      else if (below > 0) box.scrollTop += below;
+    }} catch (e) {{}}
   }}
   function softChordAt(t) {{
     // Soft context only — never a competing cursor. Index = sounding chord span.
@@ -765,9 +782,11 @@ def mount_synced_score_playback(
         if abc_text:
             bars = max(1, str(abc_text).count("|") - 1)
             systems = -(-bars // 2)  # two measures per system on a phone
-            per_system = 165 if "\nw:" in str(abc_text) else 130
-            # caption + score + audio control
-            frame_height = 40 + systems * per_system + 80
+            # Measured (desktop + 390px): a 2-bar system with its chord row is ~95 px (~130 px with an aligned lyric
+            # line) and the transport row ~45 px. The old 130/165 + 80 left a ~150 px blank band above Close preview.
+            per_system = 140 if "\nw:" in str(abc_text) else 108
+            # caption + score + transport
+            frame_height = 40 + systems * per_system + 56
         elif str(bundle.get("mode") or "") == "chords":
             # Compact chord-chip row + transport (4 chips per phone row), no score.
             n_chords = len([s for s in (bundle.get("chord_spans") or []) if int(s.get("loop") or 0) == 0]) or 1

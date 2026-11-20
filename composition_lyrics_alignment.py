@@ -239,11 +239,18 @@ def set_alignment(section: dict[str, Any], alignment: dict[str, Any]) -> None:
 def _classify_events(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Tag each event with index and rest/pitched status."""
     result = []
+    prev_pass: Any = None
     for i, ev in enumerate(events or []):
         if not isinstance(ev, dict):
             continue
         is_rest = bool(ev.get("is_rest") or str(ev.get("pitch") or "").lower() == "rest")
         dur = float(ev.get("duration_beats") or 1.0)
+        # Each Melody repeats pass starts a new phrase: once the lyrics run out, the last syllable must not be held
+        # across the whole repeated pass (it was: "street" sung over 18 notes of a x2 melody).
+        this_pass = ev.get("repeat_index", ev.get("pass_index"))
+        new_pass = prev_pass is not None and this_pass is not None and this_pass != prev_pass
+        if this_pass is not None:
+            prev_pass = this_pass
         result.append({
             "index": i,
             "is_rest": is_rest,
@@ -251,7 +258,7 @@ def _classify_events(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
             "pitch": str(ev.get("pitch") or "C4"),
             "beat": float(ev.get("beat") or 0),
             "measure": int(ev.get("measure") or 1),
-            "phrase_start": bool(ev.get("phrase_start")),
+            "phrase_start": bool(ev.get("phrase_start")) or new_pass,
             "phrase_end": bool(ev.get("phrase_end")),
         })
     return result

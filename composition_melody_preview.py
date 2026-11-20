@@ -44,6 +44,58 @@ def melody_end_beat(events: list[dict[str, Any]] | None) -> float:
     return end
 
 
+def harmony_covering_melody(
+    chords: list[Any] | None,
+    events: list[dict[str, Any]] | None,
+    *,
+    meter: str = "4/4",
+) -> list[Any]:
+    """The section progression, cycled so it lasts as long as the melody.
+
+    Melody repeats x2-x4 tile the phrase past one pass of the section's chords; the staff,
+    the synced chord highlight and the preview backing all used one pass only, so every
+    repeated pass showed no chord symbols and played with no harmony underneath. Accepts
+    chord entries (``{"chord", "bars"}``) or one symbol per bar; a progression already as
+    long as the melody is returned unchanged. The last cycled entry is trimmed to the
+    melody's final bar.
+    """
+    import math
+
+    from composition_melody_notation import beats_per_bar
+
+    seq = [c for c in list(chords or []) if (isinstance(c, dict) or str(c).strip())]
+    if not seq or not events:
+        return list(chords or [])
+    bar = max(1.0, float(beats_per_bar(meter)))
+    need = int(math.ceil(melody_end_beat(events) / bar - 1e-6))
+
+    def width(entry: Any) -> int:
+        if isinstance(entry, dict):
+            try:
+                return max(1, int(entry.get("bars") or 1))
+            except (TypeError, ValueError):
+                return 1
+        return 1
+
+    if need <= sum(width(c) for c in seq):
+        return list(chords or [])
+    out: list[Any] = []
+    used = 0
+    i = 0
+    while used < need:
+        entry = seq[i % len(seq)]
+        w = width(entry)
+        if isinstance(entry, dict):
+            entry = dict(entry)
+            if used + w > need:
+                w = need - used
+                entry["bars"] = w
+        out.append(entry)
+        used += w
+        i += 1
+    return out
+
+
 def wav_duration_seconds(wav: bytes | None) -> float:
     if not wav:
         return 0.0
