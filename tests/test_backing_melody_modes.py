@@ -117,14 +117,14 @@ def test_backing_takes_its_original_melody_from_the_one_source_agnostic_hook():
 
 # ---- the controller ------------------------------------------------------------------------------------------------
 
-def test_an_open_uploaded_panel_lets_only_the_original_melody_lead():
+def test_an_open_uploaded_panel_lets_only_a_melody_staff_lead():
     act = JS[JS.index("C.blocked = function ()"):JS.index("function transportProvider()")]
     assert 'details[open]' in act and "UPREF" in act
-    assert "cap = C.blocked() ? OM_PRIORITY : -1" in act
-    assert "if ((Number(p.priority) || 0) < cap) return;" in act
+    assert "cap = C.blocked() ? MELODY_PRIORITY : -1" in act
+    assert "if (pr0 < cap) return;" in act
     assert lpf.ORIGINAL_MELODY_PRIORITY > lpf.MELODY_PRIORITY > lpf.LEAD_SHEET_PRIORITY
     code = lpf.page_follow_controller_js()
-    assert "__OM_PRIO__" not in code and "__UPREF__" not in code
+    assert "__PM_PRIO__" not in code and "__UPREF__" not in code
 
 
 def test_with_nothing_eligible_a_follow_request_moves_nothing():

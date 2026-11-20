@@ -44,8 +44,9 @@ LEAD_SHEET_PRIORITY = 10
 MELODY_PRIORITY = 20                 # the Practice Melody staff
 ORIGINAL_MELODY_PRIORITY = 30        # a Composition's Original Melody (one staff per section)
 FOLLOW_ROLES = {"practice-melody": MELODY_PRIORITY, "original-melody": ORIGINAL_MELODY_PRIORITY}
-#: My Uploaded Melodies (user, 2026-11-20): while any uploaded panel is open, only a surface at this priority or
-#: higher -- the Original Melody -- may lead; otherwise nothing moves the page. A panel is an expander keyed
+#: My Uploaded Melodies (user, 2026-11-20): while any uploaded panel is open, only a melody staff (the Original or
+#: the Practice Melody, which outrank it) may lead; otherwise nothing moves the page -- not the Lead Sheet, not the
+#: singing lyrics. A panel is an expander keyed
 #: ``backing_melody_modes.UPLOADED_PANEL_KEY_PREFIX`` + id (Streamlit gives it the class ``st-key-<key>``).
 UPLOADED_PANEL_CLASS_PREFIX = "st-key-bk_upref_"
 
@@ -85,7 +86,7 @@ function lsWatchFrameHost(fe, fit) {
 # Plain string (not an f-string): it is inserted into the components' f-string templates as a value.
 _CONTROLLER_JS = r"""
 (function installLeadSheetPageFollow() {
-  var V = __V__, HOLD_MS = __HOLD__, LS_PRIORITY = __LS_PRIO__, OM_PRIORITY = __OM_PRIO__, UPREF = __UPREF__;
+  var V = __V__, HOLD_MS = __HOLD__, LS_PRIORITY = __LS_PRIO__, MELODY_PRIORITY = __PM_PRIO__, UPREF = __UPREF__;
   // ``shell`` is the browser's top window: every surface finds the controller there (window.top.__lsFollow).
   // ``top`` is the window that HOLDS THE STREAMLIT APP -- the one whose page the musician scrolls. Locally they are the
   // same window. On Streamlit Community Cloud they are not: the app runs in a same-origin iframe (under /~/+/) inside
@@ -368,7 +369,18 @@ _CONTROLLER_JS = r"""
   // that asked most recently.
   // An active Karaoke Set (user, 2026-11-16): the Lead Sheet if open, else the Karaoke lyrics -- a melody staff
   // never leads then, whatever is on the page.
+  // Read from a marker the app renders on every run (``.ls-follow-context``): a <script> in st.markdown is not run by
+  // Streamlit, so a body attribute written that way cannot be relied on (kept only as a fallback).
+  function followContext(name) {
+    try {
+      var m = doc.querySelector(".ls-follow-context");
+      if (m && m.hasAttribute("data-" + name)) return m.getAttribute("data-" + name) === "1";
+    } catch (e) {}
+    return null;
+  }
   function karaokeSetActive() {
+    var m = followContext("karaoke-set");
+    if (m !== null) return m;
     try { return doc.body.getAttribute("data-karaoke-session") === "true"; } catch (e) { return false; }
   }
   // An uploaded melody panel is open (My Uploaded Melodies): the musician is reading it by hand. Then only the
@@ -378,12 +390,19 @@ _CONTROLLER_JS = r"""
       return !!doc.querySelector('[class*="' + UPREF + '"] details[open], details[open][class*="' + UPREF + '"]');
     } catch (e) { return false; }
   };
+  // The one order (user, 2026-11-20), every instrument including normal Voice:
+  //   Original Melody -> Practice Melody -> an open uploaded melody (nothing moves) -> Lead Sheet -> singing lyrics.
+  // An active Karaoke Set: the Lead Sheet while it is open, else the Karaoke lyrics; never a melody staff.
+  // A shown Lead Sheet always outranks the lyrics, even between its lit chords, so the two never take turns.
   function activeProvider() {
-    var best = null, karaoke = karaokeSetActive(), cap = C.blocked() ? OM_PRIORITY : -1;
-    liveProviders().forEach(function (p) {
+    var best = null, karaoke = karaokeSetActive(), cap = C.blocked() ? MELODY_PRIORITY : -1;
+    var pool = liveProviders(), sheetShown = pool.some(function (p) { return p.id === "lead-sheet" && shown(p); });
+    pool.forEach(function (p) {
       if (!shown(p) || !lit(p)) return;
-      if (karaoke && (Number(p.priority) || 0) > LS_PRIORITY) return;
-      if ((Number(p.priority) || 0) < cap) return;
+      var pr0 = Number(p.priority) || 0;
+      if (karaoke && pr0 > LS_PRIORITY) return;
+      if (pr0 < cap) return;
+      if (sheetShown && pr0 < LS_PRIORITY) return;
       var pr = Number(p.priority) || 0, bp = best ? (Number(best.priority) || 0) : -1;
       if (!best || pr > bp || (pr === bp && (p.lastAt || p.at || 0) >= (best.lastAt || best.at || 0))) best = p;
     });
@@ -672,7 +691,7 @@ def page_follow_controller_js() -> str:
         _CONTROLLER_JS.replace("__V__", str(CONTROLLER_VERSION))
         .replace("__HOLD__", str(HOLD_MS))
         .replace("__LS_PRIO__", str(LEAD_SHEET_PRIORITY))
-        .replace("__OM_PRIO__", str(ORIGINAL_MELODY_PRIORITY))
+        .replace("__PM_PRIO__", str(MELODY_PRIORITY))
         .replace("__UPREF__", json.dumps(UPLOADED_PANEL_CLASS_PREFIX))
     )
     return (

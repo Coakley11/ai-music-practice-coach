@@ -356,7 +356,7 @@ def test_no_melody_leads_while_a_karaoke_set_is_active():
     js = lpf._CONTROLLER_JS
     ap = js[js.index("function activeProvider()"):js.index("function transportProvider()")]
     assert "var best = null, karaoke = karaokeSetActive()" in ap
-    assert "if (karaoke && (Number(p.priority) || 0) > LS_PRIORITY) return;" in ap
+    assert "if (karaoke && pr0 > LS_PRIORITY) return;" in ap
     assert 'doc.body.getAttribute("data-karaoke-session") === "true"' in js
     code = lpf.page_follow_controller_js()
     assert "LS_PRIORITY = %d" % lpf.LEAD_SHEET_PRIORITY in code and "__LS_PRIO__" not in code
@@ -400,3 +400,41 @@ def test_genuinely_visible_means_inside_clear_and_uncovered():
     f = js[js.index("C.follow = function"):js.index("// A surface asks to follow")]
     assert "if (!opts.force && r.top >= bandTop && r.bottom <= bandBottom) return false;" in f
     assert "var pin = opts.pinned;" in f
+
+
+def test_normal_voice_uses_the_same_order_as_every_instrument_with_the_lyrics_last():
+    """User, 2026-11-20 (correcting the earlier Voice rule): Original Melody -> Practice Melody -> an open uploaded
+    melody (nothing moves) -> Lead Sheet -> singing lyrics. Normal Voice is no special case: melodies DO lead."""
+    js = lpf._CONTROLLER_JS
+    ap = js[js.index("function activeProvider()"):js.index("function transportProvider()")]
+    assert "voicePerformance" not in js                       # the superseded "never a melody in Voice" rule is gone
+    assert 'id: "karaoke-lyrics", priority: 5,' in APP and 'id: "lead-sheet", priority: 10,' in APP
+    assert lpf.ORIGINAL_MELODY_PRIORITY > lpf.MELODY_PRIORITY > lpf.LEAD_SHEET_PRIORITY > 5
+    # a shown Lead Sheet always outranks the lyrics, even between its lit chords: the two never take turns
+    assert 'sheetShown = pool.some(function (p) { return p.id === "lead-sheet" && shown(p); })' in ap
+    assert "if (sheetShown && pr0 < LS_PRIORITY) return;" in ap
+    # an open uploaded melody: only a melody staff may lead, so neither the Lead Sheet nor the lyrics move
+    assert "cap = C.blocked() ? MELODY_PRIORITY : -1" in ap and "if (pr0 < cap) return;" in ap
+
+
+def test_an_active_karaoke_set_follows_the_lead_sheet_if_open_else_the_lyrics_never_a_melody():
+    js = lpf._CONTROLLER_JS
+    ap = js[js.index("function activeProvider()"):js.index("function transportProvider()")]
+    assert "if (karaoke && pr0 > LS_PRIORITY) return;" in ap
+    assert "if (sheetShown && pr0 < LS_PRIORITY) return;" in ap
+    # and Backing does not draw the melody displays during a set
+    assert "_bk_in_karaoke_set = bool(km.is_voice_mode(st.session_state) and km.is_karaoke_session_active(st.session_state))" in APP
+    assert '_bk_melody_mode = "" if _bk_in_karaoke_set else _bk_render_melody_mode(st, st.session_state)' in APP
+    assert "if _bk_melody_by_sec and not _bk_in_karaoke_set:" in APP
+
+
+def test_the_follow_context_is_a_marker_element_not_a_markdown_script():
+    """Streamlit does not run a <script> inside st.markdown, so the controller reads a rendered marker first."""
+    js = lpf._CONTROLLER_JS
+    assert 'doc.querySelector(".ls-follow-context")' in js
+    assert 'followContext("karaoke-set")' in js
+    assert """'<span class="ls-follow-context" hidden aria-hidden="true" '""" in APP
+    assert 'data-voice-performance="{1 if km.is_voice_mode(st.session_state) else 0}"' in APP
+    assert "km.is_karaoke_session_active(st.session_state)) else 0}" in APP
+    assert lpf.CONTROLLER_VERSION >= 6
+

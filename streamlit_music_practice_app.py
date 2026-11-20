@@ -15768,9 +15768,20 @@ st.markdown(
       try {{
         document.body.dataset.vocalFocus = "{ 'true' if km.is_voice_mode(st.session_state) else 'false' }";
         document.body.dataset.karaokeSession = "{ 'true' if (km.is_voice_mode(st.session_state) and km.is_karaoke_session_active(st.session_state)) else 'false' }";
+        document.body.dataset.voicePerformance = "{ 'true' if km.is_voice_mode(st.session_state) else 'false' }";
       }} catch (e) {{}}
     </script>
     """,
+    unsafe_allow_html=True,
+)
+# The page-follow controller's context (lead_sheet_page_follow): a plain marker element, because Streamlit does not
+# run a <script> inside st.markdown, so the body attributes above cannot be relied on. Voice -> exactly one follow
+# destination (the Lead Sheet while open, else the singing panel; never a melody staff), in a Karaoke Set or not.
+st.markdown(
+    '<span class="ls-follow-context" hidden aria-hidden="true" '
+    f'data-voice-performance="{1 if km.is_voice_mode(st.session_state) else 0}" '
+    f'data-karaoke-set="{1 if (km.is_voice_mode(st.session_state) and km.is_karaoke_session_active(st.session_state)) else 0}">'
+    "</span>",
     unsafe_allow_html=True,
 )
 
@@ -26950,14 +26961,20 @@ elif _studio_page == "backing":
     # Melodies under the Lead Sheet (user rules 2026-11-20, backing_melody_modes.py): Practice Melody and My
     # Uploaded Melodies are one choice -- only the active mode's panels are drawn, so a hidden display never takes
     # part in scrolling. The Original Melody (below) coexists with either.
+    # An active Karaoke Set shows only the Karaoke lyrics and the optional Lead Sheet (user, 2026-11-20): no
+    # Original, Practice or Uploaded Melody and no melody-mode choice while the set runs.
+    try:
+        _bk_in_karaoke_set = bool(km.is_voice_mode(st.session_state) and km.is_karaoke_session_active(st.session_state))
+    except Exception:
+        _bk_in_karaoke_set = False
     try:
         from backing_melody_modes import MODE_PRACTICE as _BK_MODE_PRACTICE, MODE_UPLOADED as _BK_MODE_UPLOADED
         from backing_melody_modes import render_melody_mode_selector as _bk_render_melody_mode
 
-        _bk_melody_mode = _bk_render_melody_mode(st, st.session_state)
+        _bk_melody_mode = "" if _bk_in_karaoke_set else _bk_render_melody_mode(st, st.session_state)
     except ImportError:
         _BK_MODE_PRACTICE, _BK_MODE_UPLOADED = "practice", "uploaded"
-        _bk_melody_mode = _BK_MODE_PRACTICE
+        _bk_melody_mode = "" if _bk_in_karaoke_set else _BK_MODE_PRACTICE
 
     # Practice Melody projection (Slice E/F1) -- an optional layer on top of
     # Backing, never a second owner of song/key/source state. Consuming the
@@ -27158,7 +27175,7 @@ elif _studio_page == "backing":
         )
     except Exception:
         _bk_melody_by_sec, _bk_om_source = {}, ""
-    if _bk_melody_by_sec:
+    if _bk_melody_by_sec and not _bk_in_karaoke_set:
         _bk_align_by_sec = {}
         if _bk_om_source == "composition":
             from composition_songs_bridge import composition_section_lyrics_alignment as _bk_lyrics_alignment
