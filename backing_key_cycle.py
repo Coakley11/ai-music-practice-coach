@@ -9859,8 +9859,23 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
             if (bagR.length > 40) bagR.shift();
           }} catch (eB) {{}}
         }}
-        const shown = shownChartKey();
-        if (shown && shown !== live) {{
+        // Which key the sheet on screen is for: the page marks every chart it places
+        // (data-kc-playing-key); the server's own render carries no mark (and its cycle charts
+        // name data-kc-chart-key), so an unmarked sheet is one the page did not place for this take.
+        let placedFor = '';
+        let haveSheet = false;
+        parentDoc.querySelectorAll('iframe').forEach((frame) => {{
+          try {{
+            const root = frame.contentDocument && frame.contentDocument.getElementById('live-chart-root');
+            const sh = root && root.querySelector('.backing-chart-sheet, .lead-sheet');
+            if (sh && !haveSheet) {{
+              haveSheet = true;
+              placedFor = String(sh.getAttribute('data-kc-playing-key') || sh.getAttribute('data-kc-chart-key') || '').trim();
+            }}
+          }} catch (eF) {{}}
+        }});
+        const shown = placedFor;
+        if (haveSheet && shown !== live) {{
           const chart = (parentWin.__kcChartByKey || {{}})[live];
           if (chart) {{
             applyLeadSheetHtml(chart, live);

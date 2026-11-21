@@ -412,6 +412,10 @@ def _run_console(test: unittest.TestCase, first: dict, ops: list) -> list:
             for op in ops:
                 if op[0] == "stale":
                     page.evaluate(_STALE_RENDER_JS)
+                elif op[0] == "stale_unmarked":  # the server's own sheet names no key at all
+                    page.evaluate(_STALE_RENDER_JS)
+                    page.evaluate("""() => { const d = document.getElementById('kc-panel').contentDocument;
+                      d.getElementById('live-chart-root').innerHTML = '<div class="lead-sheet">Dm chart</div>'; }""")
                 elif op[0] == "pause":
                     page.evaluate("() => ['kc-buf-0','kc-buf-1'].forEach(i => { const a = document.getElementById(i); if (a) a.pause(); })")
                 elif op[0] == "wait":
@@ -440,6 +444,14 @@ class AStaleRenderNeverOutlivesTheSoundingTake(unittest.TestCase):
         self.assertEqual(after["chart"], "Gm", snaps)
         self.assertIn("console", after["repairs"])
         self.assertIn("chart", after["repairs"])
+
+    def test_the_servers_unmarked_sheet_is_repaired_too(self) -> None:
+        # browser run 2026-11-21 (360, b72dc357): the console was repaired, but the reloaded singing
+        # panel's own chart (no key mark) kept the older key's cells under the new key's audio
+        snaps = _run_console(self, self.GM, [("wait", 600), ("stale_unmarked",), ("wait", 1200)])
+        after = snaps[-1]
+        self.assertEqual(after["chart"], "Gm", snaps)
+        self.assertEqual((after["current"], after["pos"]), ("G minor", "3 / 3"), snaps)
 
     def test_nothing_is_rewritten_while_no_take_sounds(self) -> None:
         snaps = _run_console(self, self.GM, [("wait", 600), ("pause",), ("wait", 300), ("stale",), ("wait", 1200)])
