@@ -171,3 +171,53 @@ class SwitchAckReportsTheAssignedSource(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PlayAfterTheFinishedCycleStartsTheFirstKey(unittest.TestCase):
+    """Play right after the cycle finished: the run that handles it resolved its chart and audio from
+    the held final key, so the app rewinds to the first key and runs again (the Play command is not
+    committed yet, so the next run applies it with the first key). Browser probe 2026-11-21 on
+    34cc4898: the card said Starting and nothing sounded."""
+
+    def setUp(self) -> None:
+        from unittest import mock
+
+        for p in (
+            mock.patch("monetization_entitlements.can_use", return_value=True),
+            mock.patch.object(kc, "persist_key_cycle_position", return_value=True),
+        ):
+            p.start()
+            self.addCleanup(p.stop)
+        self.ss: dict = {"display_key": "A", "concert_key": "A"}
+        kc.start_key_cycle(self.ss, start_key="Am", interval=5, direction="up")
+        self.cid = str(kc.get_owner_cycle_session(self.ss)["cycle_id"])
+        self.seq = list(kc.cycle_key_sequence(self.ss))
+        for _ in range(len(self.seq) - 1):
+            kc._step_owner_cycle(self.ss, steps=1, force=False, queue_continue=False, allow_wrap=False)
+        self.assertTrue(kc.seal_final_key_from_ack(self.ss, {
+            "kind": "final_key_stop", "ackId": "fks_p", "cycleId": self.cid, "passId": 12,
+            "playingKey": self.seq[-1], "fromKey": self.seq[-1], "natural": True}))
+
+    def test_the_finished_cycle_holds_its_final_key_until_play(self) -> None:
+        self.assertTrue(self.ss.get("_kc_cycle_finished_final"))
+        self.assertEqual(kc.temporary_playback_key(self.ss), self.seq[-1])
+        self.assertTrue(kc.is_cycle_active(self.ss))
+
+    def test_the_rewind_play_triggers_puts_the_first_key_and_ends_the_finished_state(self) -> None:
+        kc.rewind_key_cycle_to_first_key(self.ss)
+        self.assertEqual(kc.temporary_playback_key(self.ss), self.seq[0])
+        # the re-applied Play is an ordinary Play: no second rewind / rerun
+        self.assertFalse(self.ss.get("_kc_cycle_finished_final"))
+        kc.arm_key_cycle_for_explicit_play(self.ss)
+        self.assertEqual(kc.temporary_playback_key(self.ss), self.seq[0])
+        self.assertTrue(self.ss.get("_kc_restart_play"))
+
+    def test_the_app_rewinds_and_reruns_before_handling_play_after_the_finish(self) -> None:
+        src = (Path(kc.__file__).resolve().parent / "streamlit_music_practice_app.py").read_text(encoding="utf-8")
+        i = src.index("_kc_play_after_finish = False")
+        block = src[i:i + 900]
+        self.assertIn('st.session_state.get("_kc_cycle_finished_final")', block)
+        self.assertIn("_kc_pf_rewind(st.session_state)", block)
+        self.assertIn("st.rerun()", block)
+        # the rerun is outside the try/except that would swallow Streamlit's rerun exception
+        self.assertLess(block.index("except Exception"), block.index("st.rerun()"))

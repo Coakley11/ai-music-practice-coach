@@ -15780,6 +15780,26 @@ def _render_backing_step2_playback_action(
         # Play (and a Resume that restarts a changed selection) is committed
         # once armed, further down this run.
         _play_clicked = _card_outcome.play
+        # Play after Key Cycling finished its final key: start again from the first key. The cycle
+        # holds the final key when it ends, and this run already resolved its chart and audio from
+        # that key, so arming the first key here left nothing to publish -- the card said Starting
+        # and nothing sounded (browser probe 2026-11-21). Rewind first and run again: the Play
+        # command is not committed yet, so the next run applies it with the first key.
+        _kc_play_after_finish = False
+        if _play_clicked:
+            try:
+                from backing_key_cycle import (
+                    is_cycle_active as _kc_pf_active,
+                    rewind_key_cycle_to_first_key as _kc_pf_rewind,
+                )
+
+                if _kc_pf_active(st.session_state) and st.session_state.get("_kc_cycle_finished_final"):
+                    _kc_pf_rewind(st.session_state)
+                    _kc_play_after_finish = True
+            except Exception:
+                _kc_play_after_finish = False
+        if _kc_play_after_finish:
+            st.rerun()
         if _play_clicked:
             try:  # diagnostic marker: the ledger shows what the operations after Play did
                 from active_song_change_ledger import note_active_song as _asl_note
