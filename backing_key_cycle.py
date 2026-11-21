@@ -15674,11 +15674,12 @@ def _stop_key_cycle_from_button(session: dict[str, Any]) -> None:
     # supersedes it: commit it unapplied (its echo also clears the card's own
     # pending intent). A Play is not touched.
     try:
-        from backing_card_commands import commit_card_command, pending_card_command
+        from backing_card_commands import commit_card_command, drop_carried_card_play, pending_card_command
 
         _card_action, _card_token = pending_card_command(session)
         if _card_action in ("pause", "resume") and _card_token:
             commit_card_command(session, _card_token)
+        drop_carried_card_play(session)  # Stop outranks a Play carried over a rerun
     except Exception:
         pass
     stop_key_cycle(session)

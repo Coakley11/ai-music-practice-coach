@@ -45,6 +45,11 @@ from backing_transport_intent import (
 # The command whose authoritative mutation the server has applied: echoed to
 # the card (ends its "Starting…" state) before the command is committed.
 CARD_HANDLED_KEY = "_backing_card_transport_handled"
+# A card Play the page reran for before arming it (Key Cycling Play after the cycle finished). The
+# card's own value is gone in the next run (browser trace 2026-11-21: ``backing_card_transport`` was
+# None in the run after the rerun, so the Play was never armed and nothing sounded), so the command is
+# carried here until it is committed. A newer card command, or a Stop, drops it.
+CARD_CARRIED_PLAY_KEY = "_backing_card_carried_play"
 CARD_PLAN_KEY = "_backing_card_command_plan"
 BACKING_AUTOPLAY_KEY = "_backing_autoplay"
 BACKING_PLAY_FEEDBACK_KEY = "_backing_play_feedback"
@@ -103,7 +108,36 @@ def commit_card_command(session: Any, token: str) -> None:
     """The command is fully applied: never handle it again."""
     if token and session.get(BACKING_CARD_TRANSPORT_CONSUMED_KEY) != token:
         session[BACKING_CARD_TRANSPORT_CONSUMED_KEY] = token
+    if token and session.get(CARD_CARRIED_PLAY_KEY) == token:
+        session.pop(CARD_CARRIED_PLAY_KEY, None)
     _mark_handled(session, token)
+
+
+def carry_card_play_over_rerun(session: Any, token: str) -> None:
+    """The page reruns before arming this Play: the next runs handle it again until it is committed."""
+    if token:
+        session[CARD_CARRIED_PLAY_KEY] = str(token)
+
+
+def drop_carried_card_play(session: Any) -> None:
+    """A Stop outranks a Play still carried over a rerun."""
+    session.pop(CARD_CARRIED_PLAY_KEY, None)
+
+
+def card_command_for_this_run(session: Any) -> tuple[str, str]:
+    """The card command this run handles: the pending one, else a Play carried over a rerun."""
+    action, token = pending_card_command(session)
+    carried = str(session.get(CARD_CARRIED_PLAY_KEY) or "")
+    if action:
+        if carried and carried != token:
+            session.pop(CARD_CARRIED_PLAY_KEY, None)  # a newer command (e.g. Stop) wins
+        return action, token
+    if not carried:
+        return "", ""
+    if session.get(BACKING_CARD_TRANSPORT_CONSUMED_KEY) == carried:
+        session.pop(CARD_CARRIED_PLAY_KEY, None)
+        return "", ""
+    return "play", carried
 
 
 def commit_handled_card_command(session: Any) -> None:
@@ -112,7 +146,7 @@ def commit_handled_card_command(session: Any) -> None:
     The component value cannot change during a run, so this is the command
     this run handled.
     """
-    _action, token = pending_card_command(session)
+    _action, token = card_command_for_this_run(session)
     if token and session.get(CARD_HANDLED_KEY) == token:
         commit_card_command(session, token)
 
@@ -268,5 +302,8 @@ __all__ = [
     "card_echo_token",
     "commit_card_command",
     "pending_card_command",
+    "card_command_for_this_run",
+    "carry_card_play_over_rerun",
+    "drop_carried_card_play",
     "pending_card_cycle_report",
 ]

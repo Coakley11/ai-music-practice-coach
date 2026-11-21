@@ -15759,11 +15759,14 @@ def _render_backing_step2_playback_action(
     # (backing_card_commands): a run cut off before then handles it again.
     from backing_card_commands import (
         apply_card_command,
+        card_command_for_this_run,
+        carry_card_play_over_rerun,
         commit_card_command,
-        pending_card_command,
     )
 
-    _card_action, _card_token = pending_card_command(st.session_state)
+    # The pending card command, or a Play carried over the rerun below (the card's own value is gone
+    # in the run after a rerun).
+    _card_action, _card_token = card_command_for_this_run(st.session_state)
     _play_clicked = False
     if _card_action in ("play", "stop", "pause", "resume"):
         _card_outcome = apply_card_command(
@@ -15783,8 +15786,9 @@ def _render_backing_step2_playback_action(
         # Play after Key Cycling finished its final key: start again from the first key. The cycle
         # holds the final key when it ends, and this run already resolved its chart and audio from
         # that key, so arming the first key here left nothing to publish -- the card said Starting
-        # and nothing sounded (browser probe 2026-11-21). Rewind first and run again: the Play
-        # command is not committed yet, so the next run applies it with the first key.
+        # and nothing sounded (browser probe 2026-11-21). Rewind first and run again. The card's
+        # value is gone in the next run (diagnostic trace 2026-11-21: the rerun saw no command and the
+        # cycle stayed Held at the first key), so the Play is carried over the rerun until committed.
         _kc_play_after_finish = False
         if _play_clicked:
             try:
@@ -15795,6 +15799,7 @@ def _render_backing_step2_playback_action(
 
                 if _kc_pf_active(st.session_state) and st.session_state.get("_kc_cycle_finished_final"):
                     _kc_pf_rewind(st.session_state)
+                    carry_card_play_over_rerun(st.session_state, _card_token)
                     _kc_play_after_finish = True
             except Exception:
                 _kc_play_after_finish = False

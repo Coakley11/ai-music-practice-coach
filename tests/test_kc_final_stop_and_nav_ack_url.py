@@ -169,8 +169,6 @@ class SwitchAckReportsTheAssignedSource(unittest.TestCase):
         self.assertIn("final_take_ended_watch", src)
 
 
-if __name__ == "__main__":
-    unittest.main()
 
 
 class PlayAfterTheFinishedCycleStartsTheFirstKey(unittest.TestCase):
@@ -218,6 +216,129 @@ class PlayAfterTheFinishedCycleStartsTheFirstKey(unittest.TestCase):
         block = src[i:i + 900]
         self.assertIn('st.session_state.get("_kc_cycle_finished_final")', block)
         self.assertIn("_kc_pf_rewind(st.session_state)", block)
+        self.assertIn("carry_card_play_over_rerun(st.session_state, _card_token)", block)
         self.assertIn("st.rerun()", block)
+        self.assertLess(block.index("carry_card_play_over_rerun"), block.index("st.rerun()"))
+        # the run reads the carried Play when the card's own value is gone
+        self.assertIn("_card_action, _card_token = card_command_for_this_run(st.session_state)", src)
         # the rerun is outside the try/except that would swallow Streamlit's rerun exception
         self.assertLess(block.index("except Exception"), block.index("st.rerun()"))
+
+
+class APlayCarriedOverTheRewindRerunIsArmed(unittest.TestCase):
+    """Diagnostic trace 2026-11-21 (d96439de, 6 whole tones): Play after the finished cycle rewound to
+    the first key and reran, but in the rerun ``backing_card_transport`` was None, so no command was
+    handled, nothing was armed and the cycle stayed Held at 1 / 6 with no take. The Play is now carried
+    over the rerun until it is committed; a newer command or a Stop drops it."""
+
+    TOKEN = "s1:2"
+
+    def setUp(self) -> None:
+        from unittest import mock
+
+        import backing_card_commands as bcc
+
+        self.bcc = bcc
+        for p_ in (
+            mock.patch("monetization_entitlements.can_use", return_value=True),
+            mock.patch.object(kc, "persist_key_cycle_position", return_value=True),
+        ):
+            p_.start()
+            self.addCleanup(p_.stop)
+        self.ss: dict = {"display_key": "A", "concert_key": "A"}
+        kc.start_key_cycle(self.ss, start_key="Am", interval=2, direction="up")
+        self.cid = str(kc.get_owner_cycle_session(self.ss)["cycle_id"])
+        self.seq = list(kc.cycle_key_sequence(self.ss))
+        for _ in range(len(self.seq) - 1):
+            kc._step_owner_cycle(self.ss, steps=1, force=False, queue_continue=False, allow_wrap=False)
+        self.assertTrue(kc.seal_final_key_from_ack(self.ss, {
+            "kind": "final_key_stop", "ackId": "fks_c", "cycleId": self.cid, "passId": 6,
+            "playingKey": self.seq[-1], "fromKey": self.seq[-1], "natural": True}))
+
+    def _card(self, action: str, nonce: int) -> None:
+        from backing_card_transport import BACKING_CARD_TRANSPORT_KEY
+
+        self.ss[BACKING_CARD_TRANSPORT_KEY] = {"action": action, "session": "s1", "nonce": nonce}
+
+    def _apply(self, action: str, token: str):
+        return self.bcc.apply_card_command(self.ss, action, token, has_chords=True, stop_backing=lambda _i: False)
+
+    def _first_run_handles_play_and_reruns(self) -> None:
+        """Run 1: the card's Play with the cycle finished -> rewind, carry the Play, rerun."""
+        from backing_card_transport import BACKING_CARD_TRANSPORT_KEY
+
+        self._card("play", 2)
+        action, token = self.bcc.card_command_for_this_run(self.ss)
+        self.assertEqual((action, token), ("play", self.TOKEN))
+        self.assertTrue(self._apply(action, token).play)
+        self.assertTrue(self.ss.get("_kc_cycle_finished_final"))
+        kc.rewind_key_cycle_to_first_key(self.ss)
+        self.bcc.carry_card_play_over_rerun(self.ss, token)
+        # the rerun: the card's value is gone (measured in the browser)
+        self.ss[BACKING_CARD_TRANSPORT_KEY] = None
+
+    def test_the_rerun_still_handles_the_play_and_arms_the_first_key(self) -> None:
+        self._first_run_handles_play_and_reruns()
+        action, token = self.bcc.card_command_for_this_run(self.ss)
+        self.assertEqual((action, token), ("play", self.TOKEN))
+        self.assertTrue(self._apply(action, token).play)
+        # an ordinary Play now: no second rewind, the cycle runs from its first key
+        self.assertFalse(self.ss.get("_kc_cycle_finished_final"))
+        kc.arm_key_cycle_for_explicit_play(self.ss)
+        bag = kc.get_owner_cycle_session(self.ss)
+        self.assertEqual(bag.get("status"), kc.STATUS_RUNNING)
+        self.assertEqual(kc.temporary_playback_key(self.ss), self.seq[0])
+        self.assertTrue(self.ss.get("_kc_restart_play"))
+        self.assertTrue(self.ss.get("_backing_autoplay"))
+        for stale in ("_kc_hard_stop", "_kc_pause_audio", "_kc_at_final_key"):
+            self.assertFalse(self.ss.get(stale), stale)
+
+    def test_once_armed_and_committed_it_is_never_handled_again(self) -> None:
+        self._first_run_handles_play_and_reruns()
+        action, token = self.bcc.card_command_for_this_run(self.ss)
+        self._apply(action, token)
+        kc.arm_key_cycle_for_explicit_play(self.ss)
+        self.bcc.commit_handled_card_command(self.ss)
+        self.assertEqual(self.bcc.card_command_for_this_run(self.ss), ("", ""))
+        self.assertNotIn(self.bcc.CARD_CARRIED_PLAY_KEY, self.ss)
+
+    def test_a_run_cut_off_before_arming_handles_the_same_play_again(self) -> None:
+        from backing_transport_intent import TRANSPORT_COMMAND_KEY
+
+        self._first_run_handles_play_and_reruns()
+        for _ in range(2):  # not committed: the next run handles it again
+            self.assertEqual(self.bcc.card_command_for_this_run(self.ss), ("play", self.TOKEN))
+        gen = self.ss[TRANSPORT_COMMAND_KEY]["generation"]
+        self._apply("play", self.TOKEN)  # the same playback session, not another one
+        self.assertEqual(self.ss[TRANSPORT_COMMAND_KEY]["generation"], gen)
+
+    def test_a_card_stop_pressed_during_the_rerun_wins(self) -> None:
+        self._first_run_handles_play_and_reruns()
+        self._card("stop", 3)
+        self.assertEqual(self.bcc.card_command_for_this_run(self.ss), ("stop", "s1:3"))
+        self.assertNotIn(self.bcc.CARD_CARRIED_PLAY_KEY, self.ss)
+
+    def test_the_key_cycling_stop_drops_the_carried_play(self) -> None:
+        self._first_run_handles_play_and_reruns()
+        kc._stop_key_cycle_from_button(self.ss)
+        self.assertEqual(self.bcc.card_command_for_this_run(self.ss), ("", ""))
+
+    def test_an_already_committed_token_is_not_replayed(self) -> None:
+        from backing_card_transport import BACKING_CARD_TRANSPORT_CONSUMED_KEY
+
+        self.bcc.carry_card_play_over_rerun(self.ss, self.TOKEN)
+        self.ss[BACKING_CARD_TRANSPORT_CONSUMED_KEY] = self.TOKEN
+        self.assertEqual(self.bcc.card_command_for_this_run(self.ss), ("", ""))
+        self.assertNotIn(self.bcc.CARD_CARRIED_PLAY_KEY, self.ss)
+
+    def test_the_saved_practice_key_is_not_touched(self) -> None:
+        before = (self.ss.get("display_key"), self.ss.get("concert_key"))
+        self._first_run_handles_play_and_reruns()
+        action, token = self.bcc.card_command_for_this_run(self.ss)
+        self._apply(action, token)
+        kc.arm_key_cycle_for_explicit_play(self.ss)
+        self.assertEqual((self.ss.get("display_key"), self.ss.get("concert_key")), before)
+
+
+if __name__ == "__main__":
+    unittest.main()
