@@ -5205,6 +5205,27 @@ def _build_karaoke_lyrics_panel_html(
     )
 
 
+def _karaoke_panel_has_lyric_lines(section_lyrics_map: dict | None) -> bool:
+    """True when some section of the lyric panel has lyric lines to sing.
+
+    The Lead Sheet fold decides "is the chart the only performance display?" from this, known at
+    render time, instead of from the lyric lines in the DOM: those lines are only drawn by the
+    first chord event (before Play the panel says "Press play to follow the lyrics.") and vanish
+    in instrumental sections, so the DOM answer was "no lyrics" exactly when the fold was set.
+    """
+    if not isinstance(section_lyrics_map, dict):
+        return False
+    for data in section_lyrics_map.values():
+        if not isinstance(data, dict):
+            continue
+        if data.get("lyrics"):
+            return True
+        by_key = data.get("lyrics_by_key")
+        if isinstance(by_key, dict) and any(by_key.values()):
+            return True
+    return False
+
+
 def _build_karaoke_lyrics_panel_script(
     section_lyrics_map: dict | None,
     *,
@@ -5818,6 +5839,9 @@ def live_follow_along_component_html(
     )
     page_follow_flag_js = "true" if page_follow else "false"
     karaoke_hold_flag_js = "true" if karaoke_hold_from_shared_controller else "false"
+    # The chart is the only performance display (so the fold stays open whatever the Lead Sheet
+    # switch says) only when there are no lyrics to sing at all - a fact fixed for this render.
+    chart_always_shown_js = "false" if _karaoke_panel_has_lyric_lines(karaoke_lyrics_panel) else "true"
     # One token per performed take (entry + key + set position): the set-start bring-into-view
     # below fires once per new song, never again when a rerun re-creates the same take's panel.
     try:
@@ -6725,6 +6749,7 @@ def live_follow_along_component_html(
       }}
     }} catch (eDev) {{}}
     const KARAOKE_HOLD = {karaoke_hold_flag_js};
+    const CHART_ALWAYS_SHOWN = {chart_always_shown_js};
     {hold_only_js}
 
     // Parts 9 and 10. This surface scrolls its own box, and the ONE page controller
@@ -6749,9 +6774,21 @@ def live_follow_along_component_html(
     }}
     // Asked each time, not once at load: the lyric lines can be drawn after this script runs.
     function chartIsPrimary() {{ return !document.querySelector(".karaoke-lp-lyric-line"); }}
-    // Follows the switch when it CHANGES, so a singer who opens the chart by hand while the Lead
-    // Sheet is off is not overruled on the next tick.
-    let lastLeadSheetOpen = null;
+    // The fold has ONE source: the Lead Sheet switch (the page marker), unless the song has no
+    // lyrics at all and the chart is the only thing to perform from. It used to be decided once,
+    // when the switch value changed, from chartIsPrimary() - a DOM test for lyric lines that is
+    // always "no lyrics" before Play (the panel only says "Press play...") - so Lead sheet: Off
+    // chosen before Play latched the chart OPEN under an "Expand" header until the header was
+    // pressed. Now the wanted state is applied on every tick while the card switch exists (the
+    // header presses it, so there is no other way to open the fold), and the header words are
+    // written from the fold's real state, so card, fold and header cannot disagree.
+    let lastFoldWanted = null;
+    function cardLeadSheetSwitch() {{
+      try {{
+        const btn = window.parent.document.querySelector(".st-key-backing_art_lead_sheet_btn button");
+        return btn && !btn.disabled ? btn : null;
+      }} catch (eCs) {{ return null; }}
+    }}
     function syncFoldHeader(ls) {{
       try {{
         const act = document.querySelector("#live-chart-wrap .ls-fold-action");
@@ -6768,8 +6805,8 @@ def live_follow_along_component_html(
       sum.__lsHeader = true;
       sum.addEventListener("click", (ev) => {{
         try {{
-          const btn = window.parent.document.querySelector(".st-key-backing_art_lead_sheet_btn button");
-          if (!btn || btn.disabled) return;      // no card switch: the plain fold still works
+          const btn = cardLeadSheetSwitch();
+          if (!btn) return;                      // no card switch: the plain fold still works
           ev.preventDefault();
           btn.click();
         }} catch (eHc) {{}}
@@ -6778,12 +6815,14 @@ def live_follow_along_component_html(
     function syncChartFold() {{
       const wrap = document.getElementById("live-chart-wrap");
       if (!wrap) return;
-      const ls = leadSheetOpenOnPage();
-      syncFoldHeader(ls);
-      if (ls === lastLeadSheetOpen) return;
-      lastLeadSheetOpen = ls;
-      const want = chartIsPrimary() || ls;
-      if (wrap.open !== want) wrap.open = want;
+      const want = CHART_ALWAYS_SHOWN || leadSheetOpenOnPage();
+      // Without the card switch the summary is a plain fold: follow the switch only when it
+      // changes, so a fold opened by hand is not overruled on the next tick.
+      if (want !== lastFoldWanted || cardLeadSheetSwitch()) {{
+        lastFoldWanted = want;
+        if (wrap.open !== want) wrap.open = want;
+      }}
+      syncFoldHeader(wrap.open);
     }}
     // During a Karaoke Set the follow target is the Lead Sheet's current chord while the sheet is
     // open, and the current lyric line while it is closed. With no lyrics the chords ARE the
