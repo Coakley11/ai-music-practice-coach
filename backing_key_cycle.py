@@ -1519,6 +1519,55 @@ def reanchor_key_cycle_from_practice_key(
     return data
 
 
+def _reconcile_keeps_live_cycle(
+    session: dict[str, Any],
+    data: dict[str, Any] | None,
+    *,
+    reason: str,
+    applied: Any,
+    ui_interval: int,
+    ui_direction: str,
+) -> bool:
+    """A live playback session keeps its cycle when the settings check disagrees on its own.
+
+    The Interval / Direction re-check after the radios render is a safety net for a change the
+    musician made: their click resets the cycle in its own callback, before this check runs.
+    Acceptance run 2026-11-21 on 0cc15d8c (Karaoke Set, 390 px): about 2 s after Resume -- a rerun
+    cut off at once by the next -- this check reset a cycle playing D minor to its first key under
+    a new cycle id (interval and direction unchanged, Fourths / Ascending); the console read
+    "1 / 12 A minor" while D minor sounded. While the transport is playing or paused it now keeps
+    the cycle, puts the radios back to the cycle's own settings and records what disagreed.
+    Returns True when it kept the cycle (the caller must not reset).
+    """
+    try:
+        from backing_transport_intent import STOPPED, transport_intent
+
+        if transport_intent(session) == STOPPED or not data or not data.get("enabled"):
+            return False
+    except Exception:
+        return False
+    d_int = int(data.get("interval") or 1)
+    d_dir = "down" if str(data.get("direction") or "up").lower() == "down" else "up"
+    _queue_key_cycle_widget_seed(session, interval=d_int, direction=d_dir)
+    session["_kc_cycle_settings_applied"] = (d_int, d_dir, str(data.get("cycle_id") or ""))
+    cur = str(data.get("current_playback_key") or "")
+    _log_cycle_key_write(
+        session,
+        trigger="settings_check_kept_live_cycle",
+        old_key=cur,
+        new_key=cur,
+        cycle_id=str(data.get("cycle_id") or ""),
+        pass_id=data.get("pass_id"),
+        extra={
+            "reason": reason,
+            "applied": repr(applied)[:80],
+            "ui": [int(ui_interval), str(ui_direction)],
+            "data": [d_int, d_dir],
+        },
+    )
+    return True
+
+
 def reset_key_cycle_position_for_settings(
     session: dict[str, Any],
     *,
@@ -15652,7 +15701,12 @@ def render_backing_key_cycle_controls(st: Any, session: dict[str, Any]) -> None:
             # Interval/Direction radios disagree with session data, honor UI.
             data_mag = int(data.get("interval") or mag)
             data_dir = str(data.get("direction") or direc)
-            if data_mag != mag or data_dir != direc:
+            if (data_mag != mag or data_dir != direc) and _reconcile_keeps_live_cycle(
+                session, data, reason="identity_bump_ui_differs", applied=applied,
+                ui_interval=mag, ui_direction=direc,
+            ):
+                pass
+            elif data_mag != mag or data_dir != direc:
                 reset_key_cycle_position_for_settings(
                     session,
                     interval=mag,
@@ -15670,6 +15724,16 @@ def render_backing_key_cycle_controls(st: Any, session: dict[str, Any]) -> None:
                     data_dir,
                     cur_id,
                 )
+        elif (
+            isinstance(applied, tuple)
+            and len(applied) >= 2
+            and (int(applied[0]) != mag or str(applied[1]) != direc)
+            and _reconcile_keeps_live_cycle(
+                session, data, reason="applied_differs_from_ui", applied=applied,
+                ui_interval=mag, ui_direction=direc,
+            )
+        ):
+            pass
         elif (
             isinstance(applied, tuple)
             and len(applied) >= 2
@@ -15695,6 +15759,13 @@ def render_backing_key_cycle_controls(st: Any, session: dict[str, Any]) -> None:
             )
             # If radios disagree with session on first paint after a cold start,
             # prefer session (already seeded above).
+        elif (int(data.get("interval") or 1) != mag or str(data.get("direction") or "") != direc) and (
+            _reconcile_keeps_live_cycle(
+                session, data, reason="cycle_differs_from_ui", applied=applied,
+                ui_interval=mag, ui_direction=direc,
+            )
+        ):
+            pass
         elif int(data.get("interval") or 1) != mag or str(data.get("direction") or "") != direc:
             # Applied matches UI but session drifted (should be rare).
             reset_key_cycle_position_for_settings(
