@@ -256,7 +256,10 @@ def build_cycle_chart_strip_html(
 # Acks the receiver hands to the pass bridge. ``final_key_stop`` (the page finished the final key's
 # take and ended the cycle) was dropped here, so the server never learned the cycle had ended
 # (browser trace 2026-11-16: F#m completed, the server stayed Running, a Resume replayed it).
-_DELIVERED_ACK_KINDS = ("playing", "play_started", "final_key_stop")
+# ``need_next``: a pass ended before its next take reached the page, which asks for it. Only the
+# rerun matters (it republishes the prepared next take and restarts the prefetch); the bridge
+# consumes it without moving the key. Undelivered, an ask stayed queued and changed nothing.
+_DELIVERED_ACK_KINDS = ("playing", "play_started", "final_key_stop", "need_next")
 
 
 def render_handoff_component(

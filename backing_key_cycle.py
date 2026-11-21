@@ -7781,6 +7781,9 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       state._onEndedGate = false;
       state.swapStartedAt = 0;
       state._kcLatePrepAt = 0;
+      // A wait for a late next take (onEnded's trySwap) belongs to the playing it was started in:
+      // Stop / Pause end it, so a take that arrives afterwards never starts behind them.
+      state._kcEndWait = Number(state._kcEndWait || 0) + 1;
       try {{
         // In-flight acks of automatic handoffs die with the Pause. A Previous / Next is the
         // musician's move and must still reach Python, also one pressed just before the Pause
@@ -9199,8 +9202,13 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       try {{ playKick = Number(state.playKickUntil || 0) > Date.now(); }} catch (eK) {{}}
       let handoffInFlight = false;
       try {{
+        // A pass that ended before its next take arrived waits for it (onEnded's trySwap): the
+        // cycle is still playing, between two keys -- not a Pause. Read as silence it latched a
+        // pause nobody pressed, which ended that wait (the late take then never started).
+        const awaitingNext = !!(state._kcAwaitNext && state._kcAwaitNext === state._kcEndWait
+          && state.enabled);
         handoffInFlight = !!(state.swapping || state.pendingHandoff || state.ending
-          || state._kcPlayInFlight);
+          || state._kcPlayInFlight || awaitingNext);
       }} catch (eH) {{ handoffInFlight = false; }}
       let bufferingOrStarting = false;
       try {{
@@ -11766,7 +11774,33 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       }}
       // The take whose end this is: the wait below belongs to it alone.
       let waitFrom = null;
+      const endWait = state._kcEndWait = Number(state._kcEndWait || 0) + 1;
+      // Polls every 50 ms: ask at ~1 s, 5 s, 15 s, 30 s, then every minute; wait up to 10 min.
+      const KC_NEED_NEXT_AT = [20, 100, 300, 600];
+      const KC_LATE_TAKE_WAIT_ATTEMPTS = 12000;
+      const requestNextTake = (attempt) => {{
+        try {{
+          const fromKey = String((waitFrom && waitFrom.key) || parentWin.__kcLastSounding || '').trim();
+          const ack = {{
+            kind: 'need_next',
+            ackId: 'nn_' + Date.now().toString(36) + '_' + attempt,
+            cycleId: String(state.cycleId || ''),
+            passId: Number(state.passId || 0),
+            playingKey: fromKey,
+            fromKey: fromKey,
+            expectKey: expectedNextInSequence(fromKey) || '',
+            attempt: attempt,
+          }};
+          parentWin.__kcPendingPlayingAckQueue = parentWin.__kcPendingPlayingAckQueue || [];
+          parentWin.__kcPendingPlayingAckQueue.push(ack);
+          parentWin.__kcPendingPlayingAck = ack;
+          parentWin.__kcPlayDiag = parentWin.__kcPlayDiag || [];
+          parentWin.__kcPlayDiag.push({{ t: kcNow(), ev: 'need_next_sent', attempt: attempt,
+            from: fromKey, expect: ack.expectKey }});
+        }} catch (eNn) {{}}
+      }};
       const trySwap = (attempt) => {{
+        if (state._kcEndWait !== endWait) return;  // Stop / Pause / a newer end took over
         if (!state.enabled) {{ state.ending = false; state._onEndedGate = false; return; }}
         if (state.swapping || state.pendingHandoff) {{ state.ending = false; return; }}
         if (attempt === 0) {{
@@ -11792,6 +11826,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
             if (actW && (replaced || (!actW.paused && !finW))) {{
               state.ending = false;
               state._onEndedGate = false;
+              if (state._kcAwaitNext === endWait) state._kcAwaitNext = 0;
               try {{
                 parentWin.__kcPlayDiag = parentWin.__kcPlayDiag || [];
                 parentWin.__kcPlayDiag.push({{ t: kcNow(), ev: 'trySwap_active_taken_over', attempt: attempt,
@@ -11833,6 +11868,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         }}
         if (idle2 && nxt) {{
           state.ending = false;
+          if (state._kcAwaitNext === endWait) state._kcAwaitNext = 0;
           doSeamlessSwap(idle2, nxt);
           try {{
             if (typeof parentWin.__kcSched === 'function') {{
@@ -11845,18 +11881,28 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           }}
           return;
         }}
-        if (attempt < 1800) {{
-          // Up to ~90s for late neighbor prep (loops=2 Verse WAVs can finish
-          // generating after the current pass ends). Abort on Off / Pause.
+        if (attempt < KC_LATE_TAKE_WAIT_ATTEMPTS) {{
+          // The pass ended before its next take reached the page. Ask Python for it now (a
+          // need_next ack: a rerun that only republishes the prepared next take and restarts the
+          // prefetch; it never moves the key) and keep waiting -- the take starts the moment it
+          // arrives. Waiting ~90 s for Python to send it unasked left the cycle silent at 1 / 12
+          // and then gave up (browser runs 2026-11-20: the take arrived at ~159 s).
+          state._kcAwaitNext = endWait;  // ended by Stop / Pause / a newer end (each renews _kcEndWait)
+          if (KC_NEED_NEXT_AT.indexOf(attempt) >= 0
+              || (attempt > KC_NEED_NEXT_AT[KC_NEED_NEXT_AT.length - 1] && attempt % 1200 === 0)) {{
+            requestNextTake(attempt);
+          }}
           if (!state.enabled || state.userPaused) {{
             state.ending = false;
             state._onEndedGate = false;
+            state._kcAwaitNext = 0;
             return;
           }}
           try {{
             if (parentWin.sessionStorage.getItem('kc_user_paused') === '1') {{
               state.ending = false;
               state._onEndedGate = false;
+              state._kcAwaitNext = 0;
               return;
             }}
           }} catch (eUP2) {{}}
@@ -14353,6 +14399,41 @@ def render_backing_key_cycle_compact_audio(
         return False
 
 
+# Acks the pass bridge consumes without moving the key (see render_backing_key_cycle_pass_bridge).
+_KC_NO_ADVANCE_ACK_KINDS = ("play_started", "need_next")
+
+
+def _note_need_next_ack(session: dict[str, Any], ack: dict[str, Any]) -> None:
+    """A pass ended before its next take arrived and the page asked for it.
+
+    The rerun carrying this ack is the answer: the Backing page republishes the prepared next take
+    to the player and re-registers the prefetch fragment, aimed at the key the page waits for.
+    Nothing here moves the key.
+    """
+    if not isinstance(ack, dict) or str(ack.get("kind") or "") != "need_next":
+        return
+    expect = str(ack.get("expectKey") or "").strip()
+    if expect:
+        session[BACKING_KEY_CYCLE_PREFETCH_TARGET_KEY] = expect
+    try:
+        import json
+        import os
+        import time
+        from pathlib import Path as _Path
+
+        if os.environ.get("MUSIC_APP_DATA_DIR"):
+            data_dir = _Path(os.environ["MUSIC_APP_DATA_DIR"])
+            data_dir.mkdir(parents=True, exist_ok=True)
+            with (data_dir / "_key_cycle_bridge_clicks.jsonl").open("a", encoding="utf-8") as fh:
+                fh.write(json.dumps({
+                    "t": time.time(), "advanced": False, "ack_kind": "need_next",
+                    "from": str(ack.get("fromKey") or ""), "expect": expect,
+                    "attempt": ack.get("attempt"), "channel": "declare_component",
+                }) + "\n")
+    except Exception:
+        pass
+
+
 def render_backing_key_cycle_pass_bridge(st: Any, session: dict[str, Any]) -> None:
     """Receive playing handoffs via declare_component (no hidden form race)."""
     # The receiver iframe exists only while a cycle is active. It used to be
@@ -14401,13 +14482,15 @@ def render_backing_key_cycle_pass_bridge(st: Any, session: dict[str, Any]) -> No
     if not isinstance(handoff_ack, dict):
         return
 
-    while isinstance(handoff_ack, dict) and str(handoff_ack.get("kind") or "") == "play_started":
-        # The current player proved it is playing: remount churn is over. This is not
-        # a key handoff, so it never advances the cycle or consumes an explicit Play.
+    while isinstance(handoff_ack, dict) and str(handoff_ack.get("kind") or "") in _KC_NO_ADVANCE_ACK_KINDS:
+        # play_started: the current player proved it is playing, so remount churn is over.
+        # need_next: a pass ended before its next take arrived; this rerun republishes it.
+        # Neither is a key handoff: they never advance the cycle or consume an explicit Play.
         try:
             mark_ack_consumed(session, str(handoff_ack.get("ackId") or ""))
         except Exception:
             pass
+        _note_need_next_ack(session, handoff_ack)
         disarm_spurious_off_on_play_started(session, handoff_ack)
         # A manual Next/Previous ack may be queued behind it. Handle it in THIS run;
         # waiting for another rerun let Python republish the old key over the switch.
@@ -14426,11 +14509,12 @@ def render_backing_key_cycle_pass_bridge(st: Any, session: dict[str, Any]) -> No
     while isinstance(handoff_ack, dict) and handoff_ack.get("manualSwitch"):
         _nav_applied = _apply_manual_nav_ack(session, handoff_ack, data) or _nav_applied
         handoff_ack = drain_pending_handoff_ack(session)
-        while isinstance(handoff_ack, dict) and str(handoff_ack.get("kind") or "") == "play_started":
+        while isinstance(handoff_ack, dict) and str(handoff_ack.get("kind") or "") in _KC_NO_ADVANCE_ACK_KINDS:
             try:
                 mark_ack_consumed(session, str(handoff_ack.get("ackId") or ""))
             except Exception:
                 pass
+            _note_need_next_ack(session, handoff_ack)
             disarm_spurious_off_on_play_started(session, handoff_ack)
             handoff_ack = drain_pending_handoff_ack(session)
     if not isinstance(handoff_ack, dict):
@@ -14591,11 +14675,12 @@ def render_backing_key_cycle_pass_bridge(st: Any, session: dict[str, Any]) -> No
         # Next wait a full script run (tens of seconds under load) behind the first,
         # long enough for a Feel/BPM auto-apply to key-lock it out.
         handoff_ack = drain_pending_handoff_ack(session)
-        while isinstance(handoff_ack, dict) and str(handoff_ack.get("kind") or "") == "play_started":
+        while isinstance(handoff_ack, dict) and str(handoff_ack.get("kind") or "") in _KC_NO_ADVANCE_ACK_KINDS:
             try:
                 mark_ack_consumed(session, str(handoff_ack.get("ackId") or ""))
             except Exception:
                 pass
+            _note_need_next_ack(session, handoff_ack)
             disarm_spurious_off_on_play_started(session, handoff_ack)
             handoff_ack = drain_pending_handoff_ack(session)
         if not isinstance(handoff_ack, dict):
