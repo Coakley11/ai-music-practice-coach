@@ -6339,7 +6339,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           parentWin.__kcEndedWatch
           && (
             typeof parentWin.__kcFinishPendingHandoff !== 'function'
-            || parentWin.__kcWatchVersion !== 32
+            || parentWin.__kcWatchVersion !== 33
           )
         );
         if (needReinstall) {{
@@ -6354,7 +6354,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       }} catch (e) {{}}
       if (parentWin.__kcEndedWatchInstalled && parentWin.__kcEndedWatch
           && typeof parentWin.__kcFinishPendingHandoff === 'function'
-          && parentWin.__kcWatchVersion === 32) return;
+          && parentWin.__kcWatchVersion === 33) return;
       try {{
         const boot = parentDoc.createElement('script');
         boot.textContent = `
@@ -6718,7 +6718,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
     }}
   }};
   if (window.__kcEndedWatch) return;
-  window.__kcWatchVersion = 32;
+  window.__kcWatchVersion = 33;
   window.__kcEndedWatchInstalled = true;
   window.__kcEndedWatch = window.setInterval(function(){{
     try {{
@@ -6861,6 +6861,38 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         && !st.swapping && !st.pendingHandoff && !st.userPaused
         && typeof window.__kcOnEnded === 'function'
       ) {{
+        // The cycle's FINAL key ended: there is no next take to wait for. Finish the cycle now
+        // instead of treating the silence as a late next take (that waited 90 s, the console read
+        // "playing 12 / 12" and the next Play acted as Stop -- browser runs 2026-11-20 on
+        // 13de912d). A gate a previous hand-off left set must not swallow this end either.
+        try {{
+          var seqF = Array.isArray(st.sequence) ? st.sequence : [];
+          var curF = String(act.getAttribute('data-kc-sounding') || window.__kcLastSounding || '').trim();
+          var lastF = seqF.length ? String(seqF[seqF.length - 1] || '').trim() : '';
+          var atFinalF = !!st.atFinalKey || (seqF.length > 1 && !!curF && curF === lastF);
+          var doneF = !!st.finalCompleted || (act.__kcCompletedFinal
+            && act.__kcCompletedFinal === String(act.currentSrc || act.src || ''));
+          var userPausedF = false;
+          try {{ userPausedF = window.sessionStorage.getItem('kc_user_paused') === '1'; }} catch (eUpF) {{}}
+          if (atFinalF && !doneF && !userPausedF) {{
+            st._onEndedGate = false;
+            st.ending = false;
+            st._kcLatePrepAt = 0;
+            st._kcAwaitNext = 0;
+            // Until the cycle is sealed (finalCompleted), retry about once a second.
+            if (performance.now() - Number(st._kcFinalEndCalledAt || 0) > 1000) {{
+              st._kcFinalEndCalledAt = performance.now();
+              try {{
+                window.__kcPlayDiag = window.__kcPlayDiag || [];
+                window.__kcPlayDiag.push({{ t: performance.now(), ev: 'final_take_ended_watch', key: curF }});
+              }} catch (eFd) {{}}
+              window.__kcSched(function(){{
+                try {{ window.__kcOnEnded(); }} catch (eFe) {{}}
+              }}, 0);
+            }}
+            return;
+          }}
+        }} catch (eFin) {{}}
         // Natural end with no next buffer yet — wait for fragment publication.
         var userPausedLP = !!st.userPaused;
         try {{ userPausedLP = userPausedLP || window.sessionStorage.getItem('kc_user_paused') === '1'; }} catch (eUPL) {{}}
@@ -8789,7 +8821,10 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         manualSwitch: true,
         navSeq: Number(seq),
         cold: !playingEl,
-        playingUrl: playingEl ? String(playingEl.currentSrc || playingEl.getAttribute('src') || '') : '',
+        // The source the element was GIVEN: currentSrc keeps the previous take's URL until the new
+        // one loads, and that URL (another key's) made Python treat the switch as not audible and
+        // schedule a restart that repainted the card and the Lead Sheet a key behind.
+        playingUrl: playingEl ? String(playingEl.getAttribute('src') || playingEl.getAttribute('data-kc-url') || playingEl.currentSrc || '') : '',
         resumedFromPause: false,
       }};
       W.__kcPendingPlayingAck = ack;
@@ -9285,7 +9320,11 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
             manualSwitch: true,
             navSeq: navSeq,
             cold: false,
-            playingUrl: String(el.currentSrc || el.getAttribute('src') || el.getAttribute('data-kc-url') || ''),
+            // The source this switch gave the element, not currentSrc: Chromium keeps the previous
+            // take's URL in currentSrc until the new one loads (browser runs 2026-11-20: Next2 to
+            // Gm acked the Am take's URL; Python called the switch not audible, queued a Gm
+            // restart, and the card / Lead Sheet then showed Gm while Dm played after Previous).
+            playingUrl: String(el.getAttribute('src') || el.getAttribute('data-kc-url') || el.currentSrc || ''),
             resumedFromPause: !!wasPausedAtSwitch && !stayPaused,
             stayPaused: !!stayPaused,
             passToken: state.passToken || '',
