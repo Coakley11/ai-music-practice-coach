@@ -12602,7 +12602,18 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       if (cmd.epoch != null && state.stoppedEpoch != null) {{
         const stopCycle = (Date.now() - Number(state.stoppedAt || 0) < 20000) ? String(state.stoppedCycleId || '') : '';
         const cmdCycle = String(cmd.cycleId || '');
-        const afterStop = !cmd.enabled || !!cmd.hardStop || ((stopCycle && cmdCycle)
+        // An explicit start that answers a Play pressed after the Stop is after it, whatever its
+        // cycle: browser run 2026-11-21 (Karaoke Set, 390 px) -- Stop, then Play 9 s later; the
+        // server's forcePlay of the same cycle was dropped here as "before the Stop", nothing
+        // sounded and only a second Play 20 s later started the cycle.
+        let playAfterStop = false;
+        try {{
+          const tlP = parentWin.__backingTransportLocal;
+          playAfterStop = !!((cmd.forcePlay || cmd.restart) && tlP && tlP.token && tlP.intent === 'playing'
+            && String(cmd.transportConsumed || '') === String(tlP.token)
+            && (Number(tlP.until || 0) - 20000) >= Number(state.stoppedAt || 0));
+        }} catch (ePas) {{ playAfterStop = false; }}
+        const afterStop = !cmd.enabled || !!cmd.hardStop || playAfterStop || ((stopCycle && cmdCycle)
           ? cmdCycle !== stopCycle
           : Number(cmd.epoch) > Number(state.stoppedEpoch));
         if (afterStop) {{

@@ -115,6 +115,8 @@ def _run(test: unittest.TestCase, ops: list) -> list:
                     page.evaluate(_END_PASS_JS)
                 elif kind == "wait":
                     page.wait_for_timeout(int(op[1]))
+                elif kind == "js":
+                    page.evaluate(op[1])
                 snaps.append(page.evaluate(_STATE_JS))
         finally:
             browser.close()
@@ -446,6 +448,43 @@ class AStaleRenderNeverOutlivesTheSoundingTake(unittest.TestCase):
         # the repair acts only on a take that is sounding (a paused Previous / Next is the page's own
         # pause handling, unchanged here)
         self.assertEqual(after["repairs"], [], snaps)
+
+
+_PLAY_AM = _cmd(40, "Am", "Dm", autoplay=True, forcePlay=True, restart=True)
+_STOP_THEN_PLAY_CLICK = """() => { window.__kcHardStop();
+  window.__backingTransportLocal = { intent: 'playing', token: 'card:7', until: Date.now() + 20000 }; }"""
+
+
+class APlayPressedAfterAStopStartsTheCycle(unittest.TestCase):
+    """Browser run 2026-11-21 (Karaoke Set, 390 px, a Composition selected for editing): Stop, then
+    Play 9 s later -- the server's forcePlay of the same cycle was dropped as "built before the
+    Stop" (the page waits up to 20 s for the server's own off), nothing sounded and only a second
+    Play started the cycle. A start that answers the Play pressed after the Stop is after it."""
+
+    def test_the_start_answering_the_play_sounds(self) -> None:
+        snaps = _run(self, [
+            ("cmd", _PLAY_AM), ("wait", 800), ("js", _STOP_THEN_PLAY_CLICK), ("wait", 400),
+            ("cmd", dict(_cmd(41, "Am", "Dm", autoplay=True, forcePlay=True, restart=True), transportConsumed="card:7")),
+            ("wait", 1500)])
+        self.assertEqual(snaps[2]["live"], [], snaps)          # the Stop silenced it
+        self.assertEqual(snaps[-1]["live"], ["Am"], snaps)     # one press: the first key sounds
+
+    def test_a_running_command_built_before_the_stop_stays_silent(self) -> None:
+        snaps = _run(self, [
+            ("cmd", _PLAY_AM), ("wait", 800), ("js", _STOP_THEN_PLAY_CLICK), ("wait", 400),
+            # same cycle, built before the server saw the Play (no echo of it): still refused
+            ("cmd", _cmd(41, "Am", "Dm", autoplay=True, resume=True)),
+            ("wait", 1500)])
+        self.assertEqual(snaps[-1]["live"], [], snaps)
+
+    def test_a_start_answering_an_older_click_stays_silent(self) -> None:
+        snaps = _run(self, [
+            ("cmd", _PLAY_AM), ("wait", 800),
+            ("js", "() => { window.__backingTransportLocal = { intent: 'playing', token: 'card:6', until: Date.now() + 20000 }; }"),
+            ("wait", 300), ("js", "() => { window.__kcHardStop(); }"), ("wait", 400),
+            ("cmd", dict(_cmd(41, "Am", "Dm", autoplay=True, forcePlay=True, restart=True), transportConsumed="card:6")),
+            ("wait", 1500)])
+        self.assertEqual(snaps[-1]["live"], [], snaps)
 
 
 if __name__ == "__main__":

@@ -485,8 +485,14 @@
         hdoc.addEventListener("canplay", window.parent.__backingHandoffMediaHook, true);
         hdoc.addEventListener("play", window.parent.__backingHandoffMediaHook, true);
       } catch (e) {}
+      // The song's own end: never a Key Cycling take (its passes end by design and the cycle owns
+      // what follows), and never after a Stop -- browser run 2026-11-21 (Karaoke Set): the Key
+      // Cycling Stop turned cycling off, this report came back on, the stopped take read as
+      // "ended" and the set moved on to its next song.
       function anyEnded() {
-        return backingAudio().some(function (a) { return a && a.ended && !a.muted; });
+        return backingAudio().some(function (a) {
+          return a && a.ended && !a.muted && String(a.id || "").indexOf("kc-") !== 0;
+        });
       }
       // The Lead Sheet's player is re-created whenever a rerun changes its
       // HTML; its new player then started over at 0:00. Its live place is kept
@@ -520,7 +526,7 @@
         const settledStopped = !playing && (now - notPlayingSince > 700);
         if (wasPlaying && settledStopped) {
           wasPlaying = false;
-          if (now > stoppingUntil && args.report_ended && anyEnded()) send("ended");
+          if (now > stoppingUntil && args.report_ended && intentNow() === "playing" && anyEnded()) send("ended");
         }
         if (playing) wasPlaying = true;
         const intent = intentNow();
