@@ -6818,12 +6818,30 @@ def live_follow_along_component_html(
         return !!(ctl && ctl.blocked && ctl.blocked() && !(ctl.leading && ctl.leading()));
       }} catch (eB) {{ return false; }}
     }}
+    // Karaoke's Live Follow-Along Player is sticky at the top of this frame (position: sticky; top: 0), so the
+    // top of the box is never free. A line put at 32 % of the box sat UNDER it on a phone, where the player's
+    // 2 x 2 status cards make it taller than 32 % of the 820 px box (measured 2026-11-21, Karaoke Set, Lead
+    // Sheet off, 390 px: the lyric covered in 461/461 samples; at 1280 px the one-row player is shorter). The
+    // line goes below whatever is pinned there.
+    function boxTopClearance() {{
+      let clear = 0;
+      try {{
+        document.querySelectorAll(".live-player").forEach((p) => {{
+          const cs = window.getComputedStyle(p);
+          if (cs.position !== "sticky" && cs.position !== "fixed") return;
+          const h = p.getBoundingClientRect().height;
+          if (h > 0) clear = Math.max(clear, (parseFloat(cs.top) || 0) + h);
+        }});
+      }} catch (eCl) {{}}
+      return clear;
+    }}
     function followInsideBox(el) {{
       if (!el || !el.isConnected || followHeld() || followBlocked()) return false;
       const sc = boxScroller();
       if (sc) {{
         const c = el.getBoundingClientRect();
-        const want = sc.scrollTop + c.top - (sc.clientHeight * 0.32);
+        const readAt = Math.max(sc.clientHeight * 0.32, boxTopClearance() + 12);
+        const want = sc.scrollTop + c.top - readAt;
         if (Math.abs(want - sc.scrollTop) >= 10) {{
           const max = sc.scrollHeight - sc.clientHeight;
           sc.scrollTop = Math.max(0, Math.min(want, max));
@@ -6845,6 +6863,9 @@ def live_follow_along_component_html(
       return !!sc || pageMoved;
     }}
     window.__karaokeBoxFollow = followInsideBox;
+    // The page controller asks this frame directly when what covers its target is pinned inside this frame
+    // (no page move can clear that; this box can).
+    window.__lsBoxFollow = followInsideBox;
     // Set start and each new song, Lead Sheet OFF: put the performance display in front of the
     // singer once, so the countdown (drawn inside this frame) and the first lyric are on screen.
     // Measured before this: the panel sat ~1800 px (desktop) / ~2100 px (phone) below the top of
