@@ -25546,10 +25546,16 @@ elif _studio_page == "backing":
                     "gen": arm_key_cycle_prefetch(st.session_state),
                     "take_request": capture_take_request(st.session_state, prefetch=True),
                 }
+                try:
+                    from backing_key_cycle import resolve_cycle_owner as _pf_resolve_owner
+
+                    # The owner this full run armed the prefetch for; every tick serves it.
+                    _pf_snap["owner"] = str(_pf_resolve_owner(st.session_state) or "")
+                except Exception:
+                    _pf_snap["owner"] = ""
                 st.session_state["_kc_prefetch_snap"] = _pf_snap
 
-                @st.fragment(run_every=2)
-                def _key_cycle_prefetch_fragment() -> None:
+                def _key_cycle_prefetch_tick() -> None:
                     from copy import deepcopy as _dc
                     import json
                     import os
@@ -25557,26 +25563,72 @@ elif _studio_page == "backing":
                     from pathlib import Path
 
                     ss = st.session_state
+
+                    def _pf_skip(reason: str, **extra: Any) -> None:
+                        # Diagnosis only (MUSIC_APP_DATA_DIR runs): why a tick did no prefetch work,
+                        # logged once per change of reason so a silent stall names its cause.
+                        if not os.environ.get("MUSIC_APP_DATA_DIR"):
+                            return
+                        try:
+                            if ss.get("_kc_pf_last_skip") == reason:
+                                return
+                            ss["_kc_pf_last_skip"] = reason
+                            _d = Path(os.environ["MUSIC_APP_DATA_DIR"])
+                            _d.mkdir(parents=True, exist_ok=True)
+                            with (_d / "_kc_prefetch.jsonl").open("a", encoding="utf-8") as _fh:
+                                _fh.write(json.dumps({"t": _time.time(), "event": "skip", "reason": reason, **extra}, default=str) + "\n")
+                        except Exception:
+                            pass
+
                     snap = ss.get("_kc_prefetch_snap")
                     if not isinstance(snap, dict):
+                        _pf_skip("no_snap")
                         return
-                    from backing_take_identity import take_install_allowed
+                    from backing_take_identity import capture_take_request, take_install_allowed
 
-                    if (
-                        not key_cycle_prefetch_still_valid(ss, int(snap.get("gen") or 0))
-                        or not take_install_allowed(ss, snap.get("take_request"))
-                    ):
+                    if not key_cycle_prefetch_still_valid(ss, int(snap.get("gen") or 0)):
+                        try:
+                            from backing_key_cycle import BACKING_KEY_CYCLE_SESSIONS_KEY as _pf_bag_key
+                            from backing_key_cycle import resolve_cycle_owner as _pf_owner
+                            from creative_key_sync import live_backing_source as _pf_src
+
+                            _pf_bag = ss.get(_pf_bag_key) or {}
+                            _pf_who = {
+                                "owner": _pf_owner(ss), "page": ss.get("studio_page"), "src": _pf_src(ss),
+                                "bags": {k: [bool((v or {}).get("enabled")), (v or {}).get("status")]
+                                         for k, v in dict(_pf_bag).items() if isinstance(v, dict)},
+                            }
+                        except Exception as _exc_w:
+                            _pf_who = {"err": str(_exc_w)[:120]}
+                        _pf_skip("gen_invalid", gen=snap.get("gen"), now=ss.get("_kc_prefetch_gen"),
+                                 cancel=bool(ss.get("_kc_prefetch_cancel")), who=_pf_who)
+                        ss.pop("_kc_prefetch_snap", None)
+                        return
+                    if not take_install_allowed(ss, snap.get("take_request")):
+                        try:
+                            _was, _now = snap.get("take_request"), capture_take_request(ss, prefetch=True)
+                            _diff = {
+                                f: [str(getattr(_was, f, None)), str(getattr(_now, f, None))]
+                                for f in ("source", "practice_key", "mode", "cycle", "transport_generation")
+                                if getattr(_was, f, None) != getattr(_now, f, None)
+                            }
+                        except Exception as _exc_d:
+                            _diff = {"err": str(_exc_d)[:120]}
+                        _pf_skip("take_request_changed", diff=_diff)
                         ss.pop("_kc_prefetch_snap", None)
                         return
                     if not _kc_pf_active(ss):
+                        _pf_skip("cycle_inactive")
                         return
                     try:
                         from backing_key_cycle import key_cycle_settings_pending as _pf_pending
 
                         if _pf_pending(ss):
+                            _pf_skip("settings_pending")
                             return
                     except Exception:
                         pass
+                    _pf_skip("working")
                     targets = [str(t) for t in (snap.get("neighbors") or []) if t]
                     try:
                         from backing_key_cycle import cycle_prefetch_neighbor_keys as _kc_live_neighbors
@@ -25600,6 +25652,13 @@ elif _studio_page == "backing":
                         _log = None
                     pending = []
                     ready_targets = []
+                    # Synthesized takes that still need their follow timeline. They go to the FRONT
+                    # of the queue: the cache-hit path below builds the timeline and hands the take
+                    # to the player on this tick. Queued behind targets not yet synthesized, the
+                    # next key's take (ready in ~1 s) waited a whole round of ticks, and when the
+                    # ticks stopped it reached the player ~159 s after Play -- the first pass had
+                    # long ended in silence at 1 / 12 (browser runs 2026-11-20, dev 0c679a6f).
+                    _await_tl: list[str] = []
                     for tgt in targets:
                         if not tgt or tgt == from_key:
                             continue
@@ -25707,8 +25766,8 @@ elif _studio_page == "backing":
                                 # otherwise the full prefetch path below builds it with the events.
                                 _hit_tl = _BACKING_TIMELINE_CACHE.get(_hit_sig)
                                 if not _hit_tl:
-                                    if tgt not in pending:
-                                        pending.append(tgt)
+                                    if tgt not in _await_tl:
+                                        _await_tl.append(tgt)
                                     continue
                                 _pf_path = spill_backing_wav_to_disk(
                                     ss, _BACKING_WAV_CACHE.get(_hit_sig) or b"", _hit_sig, update_session=False
@@ -25825,6 +25884,8 @@ elif _studio_page == "backing":
                                 )
                         except Exception:
                             pass
+                    if _await_tl:
+                        pending = list(_await_tl) + [p for p in pending if p not in _await_tl]
                     if not pending:
                         ss.pop(BACKING_KEY_CYCLE_PREFETCH_TARGET_KEY, None)
                         return
@@ -26146,6 +26207,15 @@ elif _studio_page == "backing":
                             pass
                     if _ok and len(pending) <= 1:
                         ss.pop(BACKING_KEY_CYCLE_PREFETCH_TARGET_KEY, None)
+
+                @st.fragment(run_every=2)
+                def _key_cycle_prefetch_fragment() -> None:
+                    from backing_key_cycle import pinned_cycle_owner
+
+                    _snap0 = st.session_state.get("_kc_prefetch_snap")
+                    _owner0 = str(_snap0.get("owner") or "") if isinstance(_snap0, dict) else ""
+                    with pinned_cycle_owner(_owner0):
+                        _key_cycle_prefetch_tick()
 
                 _key_cycle_prefetch_fragment()
     except Exception:
