@@ -97,5 +97,49 @@ class TheCardReportsOnlyTheSongsOwnEnd(unittest.TestCase):
         self.assertNotIn("ended", sent)
 
 
+def _hook(test, args: dict) -> list:
+    """The singing panel's player calls __backingReportKaraokeEnded from its own ended event."""
+    try:
+        from playwright import sync_api
+    except Exception:  # pragma: no cover
+        test.skipTest("playwright not installed")
+    with sync_api.sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        try:
+            page = browser.new_page()
+            page.route("http://card.test/**", lambda r: r.fulfill(status=200, content_type="text/html",
+                                                                   body=_PARENT.replace("AUDIO_ID", "x")))
+            page.goto("http://card.test/app/")
+            page.evaluate("(html) => { document.getElementById('card').srcdoc = html; }", CARD)
+            page.wait_for_timeout(800)
+            page.evaluate(_RENDER, args)
+            page.wait_for_timeout(300)
+            page.evaluate("() => window.__backingReportKaraokeEnded()")
+            page.wait_for_timeout(400)
+            return page.evaluate(_ACTIONS)
+        finally:
+            browser.close()
+
+
+class TheSingingPanelsEndHook(unittest.TestCase):
+    """Browser run 2026-11-21 on 4e803012 (Karaoke Set, 390 px): after the Key Cycling Stop the set still
+    moved on -- the singing panel's own player reported its end through this hook, which sent "ended"
+    whatever the transport said."""
+
+    def test_while_playing_it_reports_the_end(self) -> None:
+        self.assertIn("ended", _hook(self, dict(_BASE, report_ended=False, transport="playing")))
+
+    def test_after_a_stop_it_reports_nothing(self) -> None:
+        self.assertNotIn("ended", _hook(self, dict(_BASE, report_ended=False, transport="stopped", server_playing=False)))
+
+
+def test_the_server_advances_a_set_only_for_a_playing_song() -> None:
+    src = (ROOT / "streamlit_music_practice_app.py").read_text(encoding="utf-8")
+    i = src.index('elif _card_action == "ended":')
+    block = src[i:i + 1600]
+    assert 'and transport_intent(st.session_state) == "playing"' in block
+    assert block.index('transport_intent(st.session_state) == "playing"') < block.index("transition_karaoke_performance(")
+
+
 if __name__ == "__main__":
     unittest.main()

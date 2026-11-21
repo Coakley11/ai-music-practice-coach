@@ -15850,6 +15850,11 @@ def _render_backing_step2_playback_action(
             and km.is_karaoke_session_active(st.session_state)
             and km.auto_advance_enabled(st.session_state)
             and playback_allowed(st.session_state)
+            # A song ends while it is playing: after a Stop (the card's, or Key Cycling's, which
+            # stops the transport) an "ended" is the stopped take, not the song finishing.
+            # Browser runs 2026-11-21 (Karaoke Set, 390 px): the Key Cycling Stop was followed by
+            # an "ended" and the set moved on to its next song (Blackbird, G major).
+            and transport_intent(st.session_state) == "playing"
         ):
             # Natural end. The card transport (sheet closed) and the lead-sheet
             # audio "ended" callback (sheet open) both arrive as this intent.
