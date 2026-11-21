@@ -81,7 +81,7 @@ def test_opening_or_closing_a_panel_hands_over_without_the_hold():
     w = _watch(lpf._CONTROLLER_JS)
     assert 't.closest("summary")' in w
     pr = w[w.index("function press(ev)"):w.index("function release(kind)")]
-    assert pr.index("if (panelToggle(ev)) return;") < pr.index("C.pointerDown = true;")
+    assert pr.index("if (panelToggle(ev)) { C.keep = null; return; }") < pr.index("C.pointerDown = true;")
     # touch presses come from the touch events (a finger that scrolls cancels its pointer at once)
     assert 'd.addEventListener("pointerdown", function (ev) { if (ev.pointerType !== "touch") press(ev); }, opts);' in w
     assert 'd.addEventListener("touchstart", function (ev) { press(ev); }, opts);' in w
