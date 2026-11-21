@@ -3195,9 +3195,38 @@ def cycle_step_semitones(session: dict[str, Any]) -> int:
     return magnitude if direction != "down" else -magnitude
 
 
+# The owner a Key Cycling prefetch tick serves (see pinned_cycle_owner). A context variable, not
+# session state: it is set and reset around one fragment tick in the script thread, and a session
+# write in that ``finally`` could itself be cut off by a rerun and leave a pin behind.
+from contextvars import ContextVar as _ContextVar
+from contextlib import contextmanager as _contextmanager
+
+_CYCLE_OWNER_PIN: "_ContextVar[str]" = _ContextVar("kc_cycle_owner_pin", default="")
+
+
+@_contextmanager
+def pinned_cycle_owner(owner: str):
+    """Resolve the cycle owner as ``owner`` inside this block (Backing page only).
+
+    The prefetch fragment's ticks re-resolved the owner from the Songs source state, which a
+    fragment run can read differently from the full run that armed it: a Catalog cycle's ticks
+    resolved "composition", found no running cycle, dropped their snapshot and stopped. The next
+    key's take then reached the player only through the page's need_next at the end of each pass,
+    ~5 s of silence per key (browser run 2026-11-20). The tick serves the owner its full run armed.
+    """
+    token = _CYCLE_OWNER_PIN.set(str(owner or "").strip())
+    try:
+        yield
+    finally:
+        _CYCLE_OWNER_PIN.reset(token)
+
+
 def resolve_cycle_owner(session: dict[str, Any]) -> str:
     """Backing owner bag for the current page (isolated cycle sessions)."""
     page = str(session.get("studio_page") or "").strip().lower()
+    _pin = _CYCLE_OWNER_PIN.get()
+    if _pin and page == "backing":
+        return _pin
     src = ""
     try:
         from creative_key_sync import live_backing_source

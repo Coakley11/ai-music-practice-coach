@@ -209,11 +209,54 @@ class PythonTakesTheAskWithoutMovingTheKey(unittest.TestCase):
 class PrefetchHandsAReadyTakeOverFirst(unittest.TestCase):
     def test_a_synthesized_take_without_its_timeline_is_handled_first(self) -> None:
         src = (_ROOT / "streamlit_music_practice_app.py").read_text(encoding="utf-8")
-        frag = src[src.index("def _key_cycle_prefetch_fragment"):src.index("_key_cycle_prefetch_fragment()\n")]
+        frag = src[src.index("def _key_cycle_prefetch_tick"):src.index("def _key_cycle_prefetch_fragment")]
         self.assertIn("_await_tl.append(tgt)", frag)
         self.assertNotIn("pending.append(tgt)\n                                    continue", frag)
         i_order = frag.index("pending = list(_await_tl) + [p for p in pending if p not in _await_tl]")
         self.assertLess(i_order, frag.index("tgt = pending[0]"))
+
+
+class PrefetchTicksServeTheOwnerTheirRunArmed(unittest.TestCase):
+    """A Catalog cycle's prefetch ticks resolved "composition" from the Songs source state, found
+    no running cycle and stopped ~5 s after every full run (browser run 2026-11-20): the next key's
+    take then reached the player only at the end of each pass, ~5 s of silence per key."""
+
+    _SONGS_SAY_COMPOSITION = {"studio_page": "backing", "backing_context": {"source": "regular_song"},
+                              "active_catalog_pick_key": "composition::doc"}
+
+    def test_inside_the_pin_the_owner_is_the_armed_one(self) -> None:
+        ss = dict(self._SONGS_SAY_COMPOSITION)
+        self.assertEqual(kc.resolve_cycle_owner(ss), kc.OWNER_COMPOSITION)
+        with kc.pinned_cycle_owner(kc.OWNER_CATALOG):
+            self.assertEqual(kc.resolve_cycle_owner(ss), kc.OWNER_CATALOG)
+        self.assertEqual(kc.resolve_cycle_owner(ss), kc.OWNER_COMPOSITION)  # nothing left behind
+
+    def test_an_empty_pin_resolves_as_before(self) -> None:
+        ss = dict(self._SONGS_SAY_COMPOSITION)
+        with kc.pinned_cycle_owner(""):
+            self.assertEqual(kc.resolve_cycle_owner(ss), kc.OWNER_COMPOSITION)
+
+    def test_the_pin_is_released_when_the_tick_fails(self) -> None:
+        ss = dict(self._SONGS_SAY_COMPOSITION)
+        with self.assertRaises(RuntimeError):
+            with kc.pinned_cycle_owner(kc.OWNER_CATALOG):
+                raise RuntimeError("tick cut off")
+        self.assertEqual(kc.resolve_cycle_owner(ss), kc.OWNER_COMPOSITION)
+
+    def test_a_pinned_catalog_cycle_is_active_and_its_prefetch_valid(self) -> None:
+        ss = dict(self._SONGS_SAY_COMPOSITION)
+        ss[kc.BACKING_KEY_CYCLE_SESSIONS_KEY] = {kc.OWNER_CATALOG: {"enabled": True, "status": kc.STATUS_RUNNING}}
+        gen = kc.arm_key_cycle_prefetch(ss)
+        self.assertFalse(kc.key_cycle_prefetch_still_valid(ss, gen))   # the stop seen in the browser
+        with kc.pinned_cycle_owner(kc.OWNER_CATALOG):
+            self.assertTrue(kc.key_cycle_prefetch_still_valid(ss, gen))
+
+    def test_the_fragment_runs_its_tick_pinned_to_the_snapshot_owner(self) -> None:
+        src = (_ROOT / "streamlit_music_practice_app.py").read_text(encoding="utf-8")
+        self.assertIn('_pf_snap["owner"] = str(_pf_resolve_owner(st.session_state) or "")', src)
+        frag = src[src.index("def _key_cycle_prefetch_fragment"):src.index("_key_cycle_prefetch_fragment()\n")]
+        self.assertIn("with pinned_cycle_owner(_owner0):", frag)
+        self.assertIn("_key_cycle_prefetch_tick()", frag)
 
 
 if __name__ == "__main__":

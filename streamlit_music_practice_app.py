@@ -25124,10 +25124,16 @@ elif _studio_page == "backing":
                     "gen": arm_key_cycle_prefetch(st.session_state),
                     "take_request": capture_take_request(st.session_state, prefetch=True),
                 }
+                try:
+                    from backing_key_cycle import resolve_cycle_owner as _pf_resolve_owner
+
+                    # The owner this full run armed the prefetch for; every tick serves it.
+                    _pf_snap["owner"] = str(_pf_resolve_owner(st.session_state) or "")
+                except Exception:
+                    _pf_snap["owner"] = ""
                 st.session_state["_kc_prefetch_snap"] = _pf_snap
 
-                @st.fragment(run_every=2)
-                def _key_cycle_prefetch_fragment() -> None:
+                def _key_cycle_prefetch_tick() -> None:
                     from copy import deepcopy as _dc
                     import json
                     import os
@@ -25159,8 +25165,21 @@ elif _studio_page == "backing":
                     from backing_take_identity import capture_take_request, take_install_allowed
 
                     if not key_cycle_prefetch_still_valid(ss, int(snap.get("gen") or 0)):
+                        try:
+                            from backing_key_cycle import BACKING_KEY_CYCLE_SESSIONS_KEY as _pf_bag_key
+                            from backing_key_cycle import resolve_cycle_owner as _pf_owner
+                            from creative_key_sync import live_backing_source as _pf_src
+
+                            _pf_bag = ss.get(_pf_bag_key) or {}
+                            _pf_who = {
+                                "owner": _pf_owner(ss), "page": ss.get("studio_page"), "src": _pf_src(ss),
+                                "bags": {k: [bool((v or {}).get("enabled")), (v or {}).get("status")]
+                                         for k, v in dict(_pf_bag).items() if isinstance(v, dict)},
+                            }
+                        except Exception as _exc_w:
+                            _pf_who = {"err": str(_exc_w)[:120]}
                         _pf_skip("gen_invalid", gen=snap.get("gen"), now=ss.get("_kc_prefetch_gen"),
-                                 cancel=bool(ss.get("_kc_prefetch_cancel")))
+                                 cancel=bool(ss.get("_kc_prefetch_cancel")), who=_pf_who)
                         ss.pop("_kc_prefetch_snap", None)
                         return
                     if not take_install_allowed(ss, snap.get("take_request")):
@@ -25766,6 +25785,15 @@ elif _studio_page == "backing":
                             pass
                     if _ok and len(pending) <= 1:
                         ss.pop(BACKING_KEY_CYCLE_PREFETCH_TARGET_KEY, None)
+
+                @st.fragment(run_every=2)
+                def _key_cycle_prefetch_fragment() -> None:
+                    from backing_key_cycle import pinned_cycle_owner
+
+                    _snap0 = st.session_state.get("_kc_prefetch_snap")
+                    _owner0 = str(_snap0.get("owner") or "") if isinstance(_snap0, dict) else ""
+                    with pinned_cycle_owner(_owner0):
+                        _key_cycle_prefetch_tick()
 
                 _key_cycle_prefetch_fragment()
     except Exception:
