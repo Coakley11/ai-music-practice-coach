@@ -340,5 +340,113 @@ class APlayCarriedOverTheRewindRerunIsArmed(unittest.TestCase):
         self.assertEqual((self.ss.get("display_key"), self.ss.get("concert_key")), before)
 
 
+_CONSOLE_PARENT = (
+    '<html><body><div class="st-key-backing_key_cycle_pause_btn"><button><p>Pause</p></button></div>'
+    '<div class="ui-key-cycle-playbar kc-console" data-status="playing" data-seq="Am,Dm,Gm"'
+    ' data-kc-labels=\'["A minor","D minor","G minor"]\' data-kc-sounding-labels=\'["A minor","D minor","G minor"]\'>'
+    '<span class="kc-console-position">2 / 3</span><span class="kc-console-current">D minor</span>'
+    '<span class="ui-key-cycle-chip ui-key-cycle-chip-on" data-key="Dm">Dm</span>'
+    '<span class="ui-key-cycle-chip" data-key="Gm">Gm</span></div>'
+    '<iframe id="kc-panel" srcdoc="<div id=&quot;live-chart-root&quot;><div class=&quot;lead-sheet&quot;'
+    ' data-kc-chart-key=&quot;Dm&quot;>Dm chart</div></div>"></iframe>'
+    '<iframe id="kc-bridge"></iframe></body></html>')
+
+_SHOWN_JS = """() => { const bar = document.querySelector('.ui-key-cycle-playbar.kc-console');
+  const f = document.getElementById('kc-panel'); const d = f && f.contentDocument;
+  const sh = d && d.querySelector('#live-chart-root .lead-sheet');
+  const bufs = ['kc-buf-0', 'kc-buf-1'].map(i => document.getElementById(i)).filter(Boolean);
+  return { current: bar.querySelector('.kc-console-current').textContent.trim(),
+           pos: bar.querySelector('.kc-console-position').textContent.trim(),
+           chip: (bar.querySelector('.ui-key-cycle-chip-on') || {getAttribute: () => ''}).getAttribute('data-key'),
+           chart: sh ? sh.getAttribute('data-kc-chart-key') : '',
+           playing: bufs.filter(a => !a.paused && !a.muted && a.currentTime > 0.3).length,
+           repairs: (window.__kcDisplayRepairs || []).map(r => r.what) }; }"""
+
+_STALE_RENDER_JS = """() => { const bar = document.querySelector('.ui-key-cycle-playbar.kc-console');
+  bar.querySelector('.kc-console-current').textContent = 'D minor';
+  bar.querySelector('.kc-console-position').textContent = '2 / 3';
+  bar.querySelectorAll('.ui-key-cycle-chip').forEach(c => c.classList.toggle('ui-key-cycle-chip-on', c.getAttribute('data-key') === 'Dm'));
+  const d = document.getElementById('kc-panel').contentDocument;
+  d.getElementById('live-chart-root').innerHTML = '<div class="lead-sheet" data-kc-chart-key="Dm">Dm chart</div>'; }"""
+
+
+def _run_console(test: unittest.TestCase, first: dict, ops: list) -> list:
+    """The page holds the server-rendered console and a singing panel; ("stale",) re-renders both
+    from an older key as a late Streamlit run does; ("pause",) pauses the sounding take."""
+    try:
+        from playwright import sync_api
+    except Exception:  # pragma: no cover
+        test.skipTest("playwright not installed")
+    wav = _silent_wav(seconds=8.0)
+
+    def handle(route):
+        if route.request.url.endswith(".wav"):
+            rng = (route.request.headers.get("range") or "").replace("bytes=", "")
+            start, end = 0, len(wav) - 1
+            if rng:
+                a, _, b = rng.partition("-")
+                start, end = int(a or 0), (int(b) if b else len(wav) - 1)
+            route.fulfill(status=206 if rng else 200, body=wav[start:end + 1], headers={
+                "Content-Type": "audio/wav", "Accept-Ranges": "bytes",
+                "Content-Range": f"bytes {start}-{end}/{len(wav)}", "Content-Length": str(end - start + 1)})
+        else:
+            route.fulfill(status=200, content_type="text/html", body=_CONSOLE_PARENT)
+
+    snaps: list = []
+    errors: list = []
+    with sync_api.sync_playwright() as p_:
+        browser = p_.chromium.launch(headless=True, args=["--autoplay-policy=no-user-gesture-required"])
+        try:
+            page = browser.new_page()
+            page.on("pageerror", lambda e: errors.append(str(e)))
+            page.route("http://kc.test/**", handle)
+            page.goto("http://kc.test/app/")
+            page.wait_for_timeout(300)
+            page.evaluate("(html) => { document.getElementById('kc-bridge').srcdoc = html; }",
+                          kc.cycle_persistent_player_bridge_html(cmd_json=json.dumps(first)))
+            page.wait_for_function("() => typeof window.__kcApplyCmd === 'function'", timeout=15000)
+            page.wait_for_timeout(2000)
+            snaps.append(page.evaluate(_SHOWN_JS))
+            for op in ops:
+                if op[0] == "stale":
+                    page.evaluate(_STALE_RENDER_JS)
+                elif op[0] == "pause":
+                    page.evaluate("() => ['kc-buf-0','kc-buf-1'].forEach(i => { const a = document.getElementById(i); if (a) a.pause(); })")
+                elif op[0] == "wait":
+                    page.wait_for_timeout(int(op[1]))
+                snaps.append(page.evaluate(_SHOWN_JS))
+        finally:
+            browser.close()
+    test.assertEqual(errors, [], errors)
+    return snaps
+
+
+class AStaleRenderNeverOutlivesTheSoundingTake(unittest.TestCase):
+    """Browser runs 2026-11-21 on 51e6aaaa: after Next2 the G minor take sounded while a page render
+    the server built before it saw the Next put the console back to "2 / 12 D minor" (~4 s); after
+    Previous the D minor take sounded under G minor's Lead Sheet cells (~5 s). The console, the
+    highlighted chip and the Lead Sheet chart follow the take that is actually sounding."""
+
+    GM = dict(_cmd(30, "Gm", "", autoplay=True, forcePlay=True, restart=True),
+              currentChartHtml='<div class="lead-sheet" data-kc-chart-key="Gm">Gm chart</div>')
+
+    def test_a_stale_render_is_repaired_to_the_sounding_key(self) -> None:
+        snaps = _run_console(self, self.GM, [("wait", 600), ("stale",), ("wait", 1200)])
+        self.assertEqual(snaps[0]["playing"], 1, snaps[0])
+        after = snaps[-1]
+        self.assertEqual((after["current"], after["pos"], after["chip"]), ("G minor", "3 / 3", "Gm"), snaps)
+        self.assertEqual(after["chart"], "Gm", snaps)
+        self.assertIn("console", after["repairs"])
+        self.assertIn("chart", after["repairs"])
+
+    def test_nothing_is_rewritten_while_no_take_sounds(self) -> None:
+        snaps = _run_console(self, self.GM, [("wait", 600), ("pause",), ("wait", 300), ("stale",), ("wait", 1200)])
+        after = snaps[-1]
+        self.assertEqual(after["playing"], 0, snaps)
+        # the repair acts only on a take that is sounding (a paused Previous / Next is the page's own
+        # pause handling, unchanged here)
+        self.assertEqual(after["repairs"], [], snaps)
+
+
 if __name__ == "__main__":
     unittest.main()

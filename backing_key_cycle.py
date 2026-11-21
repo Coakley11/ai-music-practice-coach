@@ -9815,6 +9815,76 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       finally {{ parentWin.__kcSyncing = false; }}
     }}
     parentWin.__kcSyncVisibleTransport = syncVisibleTransport;
+    // A page render the server built before it learned of the newest Previous / Next (its ack takes
+    // ~2 s, the run ~2 s more) re-renders the Key Cycling console and reloads the singing panel with
+    // the older key's chart, after the page had already switched them with the audio. Browser runs
+    // 2026-11-21 on 51e6aaaa: Next2 -> G minor sounded while the console went back to "2 / 12 D
+    // minor" for ~4 s; Previous -> D minor sounded under G minor's Lead Sheet cells for ~5 s. Stale
+    // player commands are already dropped (ackedSwitchSeq); the console and chart are repaired here
+    // from the take that is actually sounding: exactly one unmuted Key Cycling take, past its start,
+    // no handoff in flight. Its key comes from the take's own file (never a label).
+    function kcRepairStaleDisplay() {{
+      try {{
+        if (!state || !state.enabled) return;
+        if (state.swapping || state.pendingHandoff || state.ending) return;
+        const sounding = ['kc-buf-0', 'kc-buf-1']
+          .map((id) => parentDoc.getElementById(id))
+          .filter((a) => a && !a.paused && !a.ended && !a.muted && Number(a.volume || 0) > 0.01
+            && Number(a.currentTime || 0) > 0.3);
+        if (sounding.length !== 1) return;
+        const el = sounding[0];
+        const live = String(kcUrlOwner(el) || '').trim();
+        if (!live) return;
+        const bar = parentDoc.querySelector('.ui-key-cycle-playbar.kc-console');
+        let stale = false;
+        if (bar) {{
+          const seqC = String(bar.getAttribute('data-seq') || '').split(',').map((k) => k.trim()).filter(Boolean);
+          let labs = [];
+          try {{ labs = JSON.parse(bar.getAttribute('data-kc-labels') || '[]'); }} catch (eJ) {{ labs = []; }}
+          const ix = seqC.indexOf(live);
+          if (ix >= 0) {{
+            const cur = bar.querySelector('.kc-console-current');
+            const pos = bar.querySelector('.kc-console-position');
+            if (cur && labs[ix] && String(cur.textContent || '').trim() !== String(labs[ix]).trim()) stale = true;
+            if (pos && String(pos.textContent || '').trim() !== String(ix + 1) + ' / ' + String(seqC.length)) stale = true;
+          }}
+        }}
+        const chip = parentDoc.querySelector('.ui-key-cycle-chip-on');
+        if (chip && String(chip.getAttribute('data-key') || '').trim() !== live) stale = true;
+        if (stale) {{
+          try {{ syncHighlight(live); }} catch (eH) {{}}
+          try {{
+            const bagR = parentWin.__kcDisplayRepairs || (parentWin.__kcDisplayRepairs = []);
+            bagR.push({{ t: Date.now(), what: 'console', key: live }});
+            if (bagR.length > 40) bagR.shift();
+          }} catch (eB) {{}}
+        }}
+        const shown = shownChartKey();
+        if (shown && shown !== live) {{
+          const chart = (parentWin.__kcChartByKey || {{}})[live];
+          if (chart) {{
+            applyLeadSheetHtml(chart, live);
+            const tNow = Number(el.currentTime || 0);
+            try {{ restartChordFollow(tNow); }} catch (eR) {{}}
+            try {{
+              parentDoc.querySelectorAll('iframe').forEach((frame) => {{
+                try {{
+                  const w = frame.contentWindow;
+                  if (w && typeof w.__kcRestartChordFollow === 'function') w.__kcRestartChordFollow(tNow);
+                }} catch (eW) {{}}
+              }});
+            }} catch (eIf) {{}}
+            try {{
+              const bagR = parentWin.__kcDisplayRepairs || (parentWin.__kcDisplayRepairs = []);
+              bagR.push({{ t: Date.now(), what: 'chart', key: live, was: shown }});
+              if (bagR.length > 40) bagR.shift();
+            }} catch (eB2) {{}}
+          }}
+        }}
+      }} catch (eRep) {{}}
+    }}
+    parentWin.__kcRepairStaleDisplay = kcRepairStaleDisplay;
+    try {{ window.setInterval(kcRepairStaleDisplay, 400); }} catch (eIv) {{}}
     try {{
       parentWin.__kcOnTransportClick = function (ev) {{
         const path = (typeof ev.composedPath === 'function') ? ev.composedPath() : [];
