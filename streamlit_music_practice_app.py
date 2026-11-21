@@ -7872,6 +7872,29 @@ def live_follow_along_component_html(
               }}
               // and the space Streamlit keeps for it, so the panels below start after the chart, not inside it
               if (h > 100) lsFitFrameHost(fe, Math.round(parseFloat(fe.style.height) || h));
+              // The page keeps this height while the frame reloads. A rerun that changes this HTML (a new key
+              // after a Key Cycling step, the cycle's own end) makes Streamlit create the frame again at its
+              // 820 px default before this script grows it back: browser run 2026-11-21 (360 px, b72dc357)
+              // measured 2686 -> 820 -> 2686 px, and Chrome's scroll anchoring moved the page 1.9-2.7k px each
+              // time -- for good when the cycle had just stopped (the follow controller never moves then).
+              // A stylesheet rule on the keyed host (not an inline style a rerun resets) holds the space; for
+              // the first 2 s of a new frame it only grows, then it follows the chart again.
+              if (h > 100) {{
+                const pd = fe.ownerDocument;
+                const born = window.__lsReserveBorn || (window.__lsReserveBorn = Date.now());
+                const prev = Number(pd.documentElement.getAttribute("data-ls-panel-h") || 0);
+                const keep = (Date.now() - born < 2000) ? Math.max(prev, h) : h;
+                if (keep !== prev) {{
+                  let rule = pd.getElementById("ls-panel-reserve");
+                  if (!rule) {{
+                    rule = pd.createElement("style");
+                    rule.id = "ls-panel-reserve";
+                    pd.head.appendChild(rule);
+                  }}
+                  pd.documentElement.setAttribute("data-ls-panel-h", String(keep));
+                  rule.textContent = ".st-key-ls_follow_panel_host {{ min-height: " + keep + "px; }}";
+                }}
+              }}
             }} catch (eFit) {{}}
           }};
           fit();
@@ -27524,11 +27547,14 @@ elif _studio_page == "backing":
                     scrolling=True,
                 )
         else:
-            components.html(
-                _kr_component_html,
-                height=820 if _karaoke_lyric_panel else 720,
-                scrolling=True,
-            )
+            # A keyed host the page can hold at the chart's height while the frame reloads (see the
+            # follow-along script's fit(): ``.st-key-ls_follow_panel_host``).
+            with st.container(key="ls_follow_panel_host"):
+                components.html(
+                    _kr_component_html,
+                    height=820 if _karaoke_lyric_panel else 720,
+                    scrolling=True,
+                )
         if _ls_autoplay and _ls_take:
             try:
                 from music_activity import observe_backing_practice
