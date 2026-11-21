@@ -15855,6 +15855,26 @@ def _render_backing_step2_playback_action(
         # A take finishing advances a Karaoke set: at most once, so it is
         # consumed on receipt.
         commit_card_command(st.session_state, _card_token)
+        try:  # forensics: what the set's advance decision saw (acceptance runs 2026-11-21)
+            import json as _ke_json
+            import os as _ke_os
+            import time as _ke_time
+            from pathlib import Path as _KeP
+
+            from backing_transport_intent import TRANSPORT_LOG_KEY as _ke_tlog
+
+            _ke_dir = _KeP(_ke_os.environ.get("MUSIC_APP_DATA_DIR") or "_runtime_key_cycle_8510")
+            _ke_dir.mkdir(parents=True, exist_ok=True)
+            with (_ke_dir / "_play_trace.jsonl").open("a", encoding="utf-8") as _ke_fh:
+                _ke_fh.write(_ke_json.dumps({
+                    "t": _ke_time.time(), "event": "card_ended",
+                    "transport": str(transport_intent(st.session_state) or ""),
+                    "cycle_active": bool(_kc_owns_song_end(st.session_state)),
+                    "karaoke": bool(km.is_karaoke_session_active(st.session_state)),
+                    "transport_log": list(st.session_state.get(_ke_tlog) or [])[-6:],
+                }, default=str) + "\n")
+        except Exception:
+            pass
         if (
             km.is_voice_mode(st.session_state)
             and km.is_karaoke_session_active(st.session_state)

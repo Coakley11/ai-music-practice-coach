@@ -98,5 +98,60 @@ class ResumeKeepsTheCycle(unittest.TestCase):
         self.assertIn("reset_for_cycle_settings", [w["trigger"] for w in self.writes])
 
 
+class _CallbackSt(_ControlsSt):
+    """Keeps each radio's on_change, so a test can fire it the way Streamlit does."""
+
+    def __init__(self, session, *, cycling):
+        super().__init__(session, cycling=cycling)
+        self.callbacks: dict = {}
+
+    def radio(self, label, *, options, key, **kwargs):
+        if kwargs.get("on_change"):
+            self.callbacks[str(label)] = kwargs["on_change"]
+        return super().radio(label, options=options, key=key, **kwargs)
+
+
+class ARadioChangeToTheSameSettingsKeepsTheCycle(unittest.TestCase):
+    """Acceptance run 2026-11-21 on 07fcbf5e (Karaoke Set, 390 px): about 2 s after Resume the Interval /
+    Direction callback itself fired -- the Resume click posted every widget's value -- and reset the cycle
+    playing D minor to its first key under a new cycle id, with the same Fourths / Ascending."""
+
+    def setUp(self) -> None:
+        for p_ in (
+            mock.patch("monetization_entitlements.can_use", return_value=True),
+            mock.patch.object(kc, "persist_key_cycle_position", return_value=True),
+        ):
+            p_.start()
+            self.addCleanup(p_.stop)
+        self.ss = _session()
+        self.ui = _CallbackSt(self.ss, cycling="On")
+        kc.start_key_cycle(self.ss, start_key="C", interval=5, direction="up")
+        kc.render_backing_key_cycle_controls(self.ui, self.ss)
+        from backing_transport_intent import begin_playback
+
+        begin_playback(self.ss, reason="test_play")
+        kc.advance_key_cycle_now(self.ss)                      # C -> F
+        kc.render_backing_key_cycle_controls(self.ui, self.ss)
+        self.cid = (kc.get_owner_cycle_session(self.ss) or {}).get("cycle_id")
+
+    def _state(self):
+        d = kc.get_owner_cycle_session(self.ss) or {}
+        return d.get("cycle_id"), d.get("current_playback_key"), d.get("interval"), d.get("direction")
+
+    def test_a_spurious_change_with_the_same_values_does_nothing(self) -> None:
+        self.assertIn("Interval", self.ui.callbacks)
+        self.ui.callbacks["Interval"]()                         # same "fourth" / "up" posted by a click
+        self.ui.callbacks["Direction"]()
+        kc.render_backing_key_cycle_controls(self.ui, self.ss)
+        self.assertEqual(self._state(), (self.cid, "F", 5, "up"))
+
+    def test_a_real_change_still_resets_to_the_saved_key(self) -> None:
+        self.ss["backing_key_cycle_step_ui"] = "whole"
+        self.ui.callbacks["Interval"]()
+        d = kc.get_owner_cycle_session(self.ss) or {}
+        self.assertEqual((d.get("interval"), d.get("current_playback_key")), (2, "C"))
+        self.assertNotEqual(d.get("cycle_id"), self.cid)
+
+
 if __name__ == "__main__":
     unittest.main()

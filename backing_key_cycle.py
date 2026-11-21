@@ -15646,6 +15646,27 @@ def render_backing_key_cycle_controls(st: Any, session: dict[str, Any]) -> None:
         )
         if not is_cycle_active(session):
             return
+        # A "change" to the cycle's own settings is not a change. A click elsewhere (the card's
+        # Resume) posts every widget's value, and a radio the server had set itself can then report
+        # one: acceptance run 2026-11-21 on 07fcbf5e (Karaoke Set, 390 px) -- about 2 s after Resume
+        # this callback reset the cycle playing D minor to its first key under a new cycle id, with
+        # the same Fourths / Ascending it already had.
+        live = get_owner_cycle_session(session, resolve_cycle_owner(session)) or {}
+        if (
+            live.get("enabled")
+            and int(live.get("interval") or 0) == int(mag)
+            and str(live.get("direction") or "up") == str(session[BACKING_KEY_CYCLE_DIRECTION_KEY])
+        ):
+            _log_cycle_key_write(
+                session,
+                trigger="settings_change_same_as_cycle_ignored",
+                old_key=str(live.get("current_playback_key") or ""),
+                new_key=str(live.get("current_playback_key") or ""),
+                cycle_id=str(live.get("cycle_id") or ""),
+                pass_id=live.get("pass_id"),
+                extra={"interval": int(mag), "direction": str(session[BACKING_KEY_CYCLE_DIRECTION_KEY])},
+            )
+            return
         reset_key_cycle_position_for_settings(
             session,
             interval=mag,

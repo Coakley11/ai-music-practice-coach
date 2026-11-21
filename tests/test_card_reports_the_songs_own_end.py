@@ -141,7 +141,7 @@ class TheSingingPanelsEndHook(unittest.TestCase):
 def test_the_server_advances_a_set_only_for_a_playing_song() -> None:
     src = (ROOT / "streamlit_music_practice_app.py").read_text(encoding="utf-8")
     i = src.index('elif _card_action == "ended":')
-    block = src[i:i + 2600]
+    block = src[i:i + 4200]
     assert 'and transport_intent(st.session_state) == "playing"' in block
     assert block.index('transport_intent(st.session_state) == "playing"') < block.index("transition_karaoke_performance(")
     assert "and not _kc_owns_song_end(st.session_state)" in block
