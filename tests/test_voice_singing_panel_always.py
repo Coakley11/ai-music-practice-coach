@@ -33,7 +33,8 @@ def test_countdown_and_auto_advance_stay_set_only() -> None:
 
 def test_the_fold_header_presses_the_one_lead_sheet_switch() -> None:
     js = _block("    function installFoldHeader() {{", 900)
-    assert '.st-key-backing_art_lead_sheet_btn button' in js
+    assert "const btn = cardLeadSheetSwitch();" in js
+    assert '.st-key-backing_art_lead_sheet_btn button' in _block("    function cardLeadSheetSwitch() {{", 300)
     assert "btn.click()" in js and "ev.preventDefault()" in js
     assert "installFoldHeader();" in _block("    if (KARAOKE_HOLD) {{", 300)
 
@@ -41,6 +42,6 @@ def test_the_fold_header_presses_the_one_lead_sheet_switch() -> None:
 def test_the_header_words_follow_the_switch_not_the_html() -> None:
     js = _block("    function syncFoldHeader(ls) {{", 600)
     assert "Collapse Lead Sheet" in js and "Expand Lead Sheet" in js
-    assert "syncFoldHeader(ls);" in _block("    function syncChartFold() {{", 400)
+    assert "syncFoldHeader(wrap.open);" in _block("    function syncChartFold() {{", 600)
     fold = _block("    if karaoke_hide_chart:", 1400)
     assert 'class="ls-fold-action"' in fold and "Lead Sheet" in fold
