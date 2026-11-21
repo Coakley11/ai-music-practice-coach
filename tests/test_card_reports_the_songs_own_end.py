@@ -129,6 +129,11 @@ class TheSingingPanelsEndHook(unittest.TestCase):
     def test_while_playing_it_reports_the_end(self) -> None:
         self.assertIn("ended", _hook(self, dict(_BASE, report_ended=False, transport="playing")))
 
+    def test_while_key_cycling_is_on_it_reports_nothing(self) -> None:
+        # acceptance run 2026-11-21 on 0cc15d8c: the Key Cycling Stop's click produced this end while the
+        # card still said playing (the server had not applied the Stop yet)
+        self.assertNotIn("ended", _hook(self, dict(_BASE, report_ended=False, transport="playing", cycle_active=True)))
+
     def test_after_a_stop_it_reports_nothing(self) -> None:
         self.assertNotIn("ended", _hook(self, dict(_BASE, report_ended=False, transport="stopped", server_playing=False)))
 
@@ -136,9 +141,24 @@ class TheSingingPanelsEndHook(unittest.TestCase):
 def test_the_server_advances_a_set_only_for_a_playing_song() -> None:
     src = (ROOT / "streamlit_music_practice_app.py").read_text(encoding="utf-8")
     i = src.index('elif _card_action == "ended":')
-    block = src[i:i + 1600]
+    block = src[i:i + 2600]
     assert 'and transport_intent(st.session_state) == "playing"' in block
     assert block.index('transport_intent(st.session_state) == "playing"') < block.index("transition_karaoke_performance(")
+    assert "and not _kc_owns_song_end(st.session_state)" in block
+    assert block.index("_kc_owns_song_end") < block.index("transition_karaoke_performance(")
+
+
+def test_key_cycling_owns_the_song_end_while_it_is_on() -> None:
+    from unittest import mock
+
+    import backing_key_cycle as kc
+    import streamlit_music_practice_app as app
+
+    with mock.patch("monetization_entitlements.can_use", return_value=True),             mock.patch.object(kc, "persist_key_cycle_position", return_value=True):
+        ss: dict = {"display_key": "A", "concert_key": "A"}
+        assert app._kc_owns_song_end(ss) is False
+        kc.start_key_cycle(ss, start_key="Am", interval=5, direction="up")
+        assert app._kc_owns_song_end(ss) is True
 
 
 if __name__ == "__main__":

@@ -15753,6 +15753,16 @@ def _backing_transport_status_message(
     return "Press Play Backing Track to generate and play.", "idle"
 
 
+def _kc_owns_song_end(session) -> bool:
+    """Key Cycling is on: its pass hand-offs, not the Karaoke set, decide what follows an end."""
+    try:
+        from backing_key_cycle import is_cycle_active
+
+        return bool(is_cycle_active(session))
+    except Exception:
+        return False
+
+
 def _render_backing_step2_playback_action(
     *,
     song_id: str,
@@ -15855,6 +15865,11 @@ def _render_backing_step2_playback_action(
             # Browser runs 2026-11-21 (Karaoke Set, 390 px): the Key Cycling Stop was followed by
             # an "ended" and the set moved on to its next song (Blackbird, G major).
             and transport_intent(st.session_state) == "playing"
+            # While Key Cycling is on, its own hand-offs own every end (the card's poll does not report
+            # one then either). Acceptance run 2026-11-21 on 0cc15d8c (390 px): the Key Cycling Stop's
+            # click produced an "ended" that this run handled before it applied that Stop -- transport
+            # still playing -- and the set moved on to Blackbird.
+            and not _kc_owns_song_end(st.session_state)
         ):
             # Natural end. The card transport (sheet closed) and the lead-sheet
             # audio "ended" callback (sheet open) both arrive as this intent.

@@ -299,6 +299,7 @@
         // reloads after the Key Cycling Stop can end at once (browser run 2026-11-21, Karaoke Set).
         window.parent.__backingReportKaraokeEnded = function () {
           if (intentNow() !== "playing" || Date.now() <= stoppingUntil) return;
+          if (args.cycle_active) return;  // Key Cycling's hand-offs own its ends (as report_ended says)
           send("ended");
         };
       } catch (e) {}
