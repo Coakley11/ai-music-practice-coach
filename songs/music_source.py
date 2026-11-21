@@ -5018,43 +5018,58 @@ def on_active_song_identity_changed(
             _saved_meter_override = capture_saved_meter_override(session)
         except ImportError:
             _saved_meter_override = None
-        reset_playback_song_tracking(st)
-        # Backing tempo ownership follows the active song -- retarget before the
-        # Backing invalidation below can read or persist the previous song's tempo.
-        retarget_backing_tempo_ownership(session, sync_id)
-        invalidate_backing(st)
+        # During a Voice Karaoke set Backing belongs to Now Singing. A Now Editing change applies the
+        # edited song's identity and Practice Key above, but not the Backing-side reset below - that
+        # moved Trial Song's tempo / groove onto Blackbird's performance and discarded its take
+        # (measured mid-set: no Karaoke panel, "Press Play"). The debt is recorded and End Set pays
+        # it, so Backing then sets itself up for the edited song.
+        _karaoke_set_owns_backing = False
         try:
-            from backing_source_navigation import invalidate_backing_restore_for_active_source_change
+            import karaoke_mode as _km
 
-            invalidate_backing_restore_for_active_source_change(
-                session,
-                previous_identity=str(prev_identity or ""),
-                new_identity=str(new_identity or ""),
-                reason="on_active_song_identity_changed",
-            )
-        except ImportError:
-            pass
-        try:
-            from songs.bpm_state import LAST_BPM_SONG
-
-            session.pop(LAST_BPM_SONG, None)
-        except ImportError:
-            session.pop("_last_bpm_song", None)
-        session.pop("last_backing_defaults_song_id", None)
-        try:
-            from studio_cache import invalidate_session_cache
-
-            invalidate_session_cache(session, "chart_bundle")
+            _karaoke_set_owns_backing = _km.now_editing_change_spares_sung_take(session)
         except Exception:
-            pass
-        prime_active_song_bpm(st, sync_id=sync_id, active_song_bpm=int(default_bpm))
-        _canon_result = canonicalize_backing_defaults_for_song(
-            st,
-            sync_id=sync_id,
-            active_song_bpm=int(default_bpm),
-            active_song_groove=str(default_groove),
-            active_song_meter=str(default_meter),
-        )
+            _karaoke_set_owns_backing = False
+        if _karaoke_set_owns_backing:
+            _canon_result = {"skipped_for_creative_context": True, "skipped_for_karaoke_set": True}
+        else:
+            reset_playback_song_tracking(st)
+            # Backing tempo ownership follows the active song -- retarget before the
+            # Backing invalidation below can read or persist the previous song's tempo.
+            retarget_backing_tempo_ownership(session, sync_id)
+            invalidate_backing(st)
+            try:
+                from backing_source_navigation import invalidate_backing_restore_for_active_source_change
+
+                invalidate_backing_restore_for_active_source_change(
+                    session,
+                    previous_identity=str(prev_identity or ""),
+                    new_identity=str(new_identity or ""),
+                    reason="on_active_song_identity_changed",
+                )
+            except ImportError:
+                pass
+            try:
+                from songs.bpm_state import LAST_BPM_SONG
+
+                session.pop(LAST_BPM_SONG, None)
+            except ImportError:
+                session.pop("_last_bpm_song", None)
+            session.pop("last_backing_defaults_song_id", None)
+            try:
+                from studio_cache import invalidate_session_cache
+
+                invalidate_session_cache(session, "chart_bundle")
+            except Exception:
+                pass
+            prime_active_song_bpm(st, sync_id=sync_id, active_song_bpm=int(default_bpm))
+            _canon_result = canonicalize_backing_defaults_for_song(
+                st,
+                sync_id=sync_id,
+                active_song_bpm=int(default_bpm),
+                active_song_groove=str(default_groove),
+                active_song_meter=str(default_meter),
+            )
 
     if identity_changed:
         try:

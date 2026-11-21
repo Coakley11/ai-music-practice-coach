@@ -363,6 +363,32 @@ def _source_defaults_from_session(session: dict[str, Any]) -> dict[str, Any]:
             groove = normalize_groove_label(groove)
     except ImportError:
         pass
+    loops = 2
+    in_set = _karaoke_voice_set_active(session)
+    if in_set:
+        # Karaoke Set (user rule 2026-11-19): each entry starts with its OWN song's groove and meter (never the
+        # live Feel widget, which still holds the previous entry's or Now Editing's) and with the SET's repeat
+        # count, not ordinary Backing's 2. BPM stays the entry's through backing_context's Karaoke branch.
+        try:
+            import karaoke_mode as _km
+
+            entry_groove = str(_km.resolve_karaoke_entry_groove(session) or "").strip()
+            if entry_groove:
+                try:
+                    from songs.playback_defaults import normalize_groove_label
+
+                    entry_groove = normalize_groove_label(entry_groove)
+                except ImportError:
+                    pass
+                groove = entry_groove
+            entry_meter = str(_km.resolve_karaoke_entry_meter(session) or "").strip()
+            if entry_meter:
+                meter = entry_meter
+            set_loops = int(_km.karaoke_set_loops(session) or 0)
+            if set_loops > 0:
+                loops = set_loops
+        except Exception:
+            pass
     return {
         "bpm": int(bpm or 100),
         "groove": groove,
@@ -371,8 +397,18 @@ def _source_defaults_from_session(session: dict[str, Any]) -> dict[str, Any]:
         "scope": "Full song",
         "single_section": "",
         "multi_sections": [],
-        "loops": 2,
+        "loops": loops,
     }
+
+
+def _karaoke_voice_set_active(session: dict[str, Any]) -> bool:
+    """A Karaoke Set is being performed (Voice + an active set): the set owns per-entry initialization."""
+    try:
+        import karaoke_mode as _km
+
+        return bool(_km.is_voice_mode(session) and _km.is_karaoke_session_active(session))
+    except Exception:
+        return False
 
 
 def get_backing_play_session(session: dict[str, Any]) -> dict[str, Any] | None:
@@ -1715,6 +1751,18 @@ def follow_active_song_activation(session: dict[str, Any]) -> bool:
     except (TypeError, ValueError):
         pass
     session[BACKING_SETTINGS_ACTIVATION_EPOCH_KEY] = epoch
+    if _karaoke_voice_set_active(session):
+        # During a Karaoke Set the set's per-entry initialization owns a song change (the entry's key, BPM, groove,
+        # meter, Full song and the SET's repeat count -- through the entry's new play session). The ordinary reset
+        # would put Backing's 2 repeats over the set's count. Adopted, never reset.
+        return False
+    _reset_backing_for_new_song(session, reason="active_song_activation")
+    return True
+
+
+def _reset_backing_for_new_song(session: dict[str, Any], *, reason: str) -> None:
+    """Backing's ordinary fresh start for a song: a new play session (the song's own BPM, groove and meter as
+    source defaults), Backing's default repeat count and Full song. The one body every fresh start runs."""
     expire_backing_play_session(session, song_changed=True)
     try:
         from backing_track_state import BACKING_LOOPS_DEFAULT, BACKING_STATE_KEY
@@ -1726,8 +1774,25 @@ def follow_active_song_activation(session: dict[str, Any]) -> bool:
         canon = dict(canon)
         canon["backing_track_loops"] = BACKING_LOOPS_DEFAULT
         session[BACKING_STATE_KEY] = canon
-    reset_backing_scope_to_full_song(session, reason="active_song_activation")
-    return True
+    reset_backing_scope_to_full_song(session, reason=reason)
+
+
+def reset_backing_after_karaoke_set(session: dict[str, Any]) -> None:
+    """End Set (user rule 2026-11-20): Now Editing comes back as an ordinary song with its normal defaults.
+
+    Repeat Count = Backing's default (2), Full song, and a fresh play session so BPM, groove and meter are the
+    song's own -- never the set's performance values and never a pre-set override from another song. Called by
+    karaoke_mode.stop_session after the set flag drops. The activation epoch is stamped first, so the next run
+    does not count End Set as a song change of its own; if End Set then hands a different song back, the ordinary
+    song-change reset runs again with the same result.
+    """
+    try:
+        from active_song_transition import active_song_activation_epoch
+
+        session[BACKING_SETTINGS_ACTIVATION_EPOCH_KEY] = int(active_song_activation_epoch(session) or 0)
+    except Exception:
+        pass
+    _reset_backing_for_new_song(session, reason="karaoke_set_ended")
 
 
 def expire_backing_play_session_on_page_exit(

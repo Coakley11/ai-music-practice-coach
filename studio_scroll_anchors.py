@@ -237,12 +237,27 @@ def render_pending_scroll_script(st: Any) -> None:
               const doc = window.parent ? window.parent.document : document;
               const el = doc.getElementById(target);
               if (el) {{
+                // The page-follow controller (lead_sheet_page_follow) owns automatic page moves. This queued jump
+                // is dropped, never fired late, while the person is scrolling or in the three seconds after, and
+                // after they paused / stopped the music (the controller keeps their place then).
+                let ctl = null;
+                try {{ ctl = (window.parent && window.parent.__lsFollow) || window.top.__lsFollow || null; }} catch (eCtl) {{ ctl = null; }}
+                try {{
+                  if (ctl && ((ctl.suspended && ctl.suspended())
+                      || (ctl.keeping && ctl.keeping() === 'user-stop'))) return true;
+                }} catch (eSus) {{}}
                 const sc = doc.querySelector('[data-testid="stMain"]');
                 if (sc && sc.contains(el)) {{
                   unshift(doc, sc);
                   const margin = parseFloat(doc.defaultView.getComputedStyle(el).scrollMarginTop) || 0;
                   const top = sc.scrollTop + el.getBoundingClientRect().top - sc.getBoundingClientRect().top - margin;
                   const max = Math.max(0, sc.scrollHeight - sc.clientHeight);
+                  const dest = Math.max(0, Math.min(top, max));
+                  try {{
+                    if (ctl && ctl.moves && Math.abs(dest - sc.scrollTop) >= 4) {{
+                      ctl.moves.push({{ t: Date.now(), from: Math.round(sc.scrollTop), to: Math.round(dest), why: 'anchor:' + target }});
+                    }}
+                  }} catch (eMv) {{}}
                   sc.scrollTo({{ top: Math.max(0, Math.min(top, max)), behavior: 'smooth' }});
                 }} else {{
                   el.scrollIntoView({{ behavior: 'smooth', block: 'nearest' }});

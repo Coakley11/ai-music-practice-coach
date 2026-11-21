@@ -42,9 +42,11 @@ class SetlistRowActivationTests(unittest.TestCase):
         widget = _APP.index('_pk_widget_key = "display_key"')
         self.assertLess(consumer, widget)
         self.assertLess(lyrics, widget)
-        block = _APP[consumer : consumer + 400]
-        self.assertIn("_activate_karaoke_entry(_pending_entry_activation)", block)
-        self.assertIn('"Lyrics & Cues"', block)
+        block = _APP[consumer : consumer + 700]
+        # Now Editing at the song's OWN key, and no jump to the Lyrics & Cues editor: that jump
+        # scrolled the setlist off a phone screen, which read as Karaoke disappearing (2026-11-18).
+        self.assertIn("_activate_karaoke_entry(_pending_entry_activation, apply_entry_key=False)", block)
+        self.assertNotIn("open_picker_editor", block)
 
     def test_the_activation_is_defined_before_its_pre_widget_consumers(self) -> None:
         self.assertLess(
@@ -80,11 +82,13 @@ class AddLyricsEditingHandoffTests(unittest.TestCase):
         self.assertIn('open_picker_editor(st.session_state, "Lyrics & Cues")', block)
         self.assertIn("set_pending_anchor(st.session_state, ANCHOR_LYRICS_EDITOR)", block)
 
-    def test_entry_key_is_only_applied_for_a_row_click(self) -> None:
+    def test_a_row_click_never_saves_the_setlist_key_as_the_songs_own(self) -> None:
+        """The setlist key is that entry's performance key. Committing it as the song's own (user
+        override + durable store) turned Blackbird's saved Practice Key into the setlist's E."""
         fn = _APP[_APP.index("def _activate_karaoke_entry("):]
         fn = fn[: fn.index("\n# === ")]
-        self.assertIn("apply_entry_key: bool = True", fn)
         self.assertIn("km.commit_entry_practice_key(st.session_state, row) if apply_entry_key else", fn)
+        self.assertIn("_karaoke_entry_own_catalog_key(pick)", fn)
 
 
 if __name__ == "__main__":

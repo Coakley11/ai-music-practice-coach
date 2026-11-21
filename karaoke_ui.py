@@ -1507,8 +1507,12 @@ def render_karaoke_missing_lyrics_cta(
     song_data: Mapping[str, Any] | None,
     active_song_title: str | None = None,
     on_open_editor: Callable[[], None] | None = None,
+    editor_unavailable_note: str = "",
 ) -> bool:
     """Show a friendly card when the active karaoke song has no lyrics.
+
+    ``editor_unavailable_note``: this song's source has no lyrics editor (Custom songs today), so
+    the card says so instead of offering a button that would open nothing.
 
     Returns ``True`` when the CTA was rendered (so the caller can skip
     rendering instrument-focused analysis below it). The CTA only
@@ -1564,6 +1568,9 @@ def render_karaoke_missing_lyrics_cta(
         "</div></div>",
         unsafe_allow_html=True,
     )
+    if editor_unavailable_note:
+        st.caption(editor_unavailable_note)
+        return True
     if st.button(
         feature_label("karaoke", "Open Lyrics & Cues editor"),
         key="karaoke_open_lyrics_editor",

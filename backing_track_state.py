@@ -27,11 +27,43 @@ def backing_presentation_is_initialized(session: dict, source_id: str) -> bool:
     )
 
 
+# Karaoke Set (user rule 2026-11-18): Lead Sheet On / Off is a SET-level choice -- turned on during a set it
+# stays on for every following song until the singer turns it off. The Karaoke owner's set model starts / stops
+# it (karaoke_mode.KARAOKE_SET_LEAD_SHEET_OPEN_KEY, same literal); only the explicit Lead Sheet choice writes it
+# while a set is active, and advancing to the next song keeps it.
+KARAOKE_SET_LEAD_SHEET_OPEN_KEY = "_karaoke_set_lead_sheet_open"
+
+
+def _karaoke_set_active(session: Any) -> bool:
+    try:
+        import karaoke_mode as km
+
+        return bool(km.is_karaoke_session_active(session))
+    except Exception:
+        return False
+
+
+def karaoke_set_lead_sheet_choice(session: Any) -> bool | None:
+    """The Lead Sheet On / Off the singer chose during the active Karaoke Set; None outside a set or before a choice."""
+    if not _karaoke_set_active(session):
+        return None
+    choice = session.get(KARAOKE_SET_LEAD_SHEET_OPEN_KEY)
+    return None if choice is None else bool(choice)
+
+
+def note_karaoke_set_lead_sheet_choice(session: Any, open_: bool) -> None:
+    """Record an explicit Lead Sheet On / Off as the set's choice (no-op outside an active Karaoke Set)."""
+    if _karaoke_set_active(session):
+        session[KARAOKE_SET_LEAD_SHEET_OPEN_KEY] = bool(open_)
+
+
 def initialize_backing_presentation(session: dict, source_id: str) -> bool:
     """Open the song/playback experience after an explicit Play gesture.
 
     Returns True only when this initializes a different source. A stale Lead
-    Sheet flag from a prior song must not auto-open the new source.
+    Sheet flag from a prior song must not auto-open the new source -- except
+    the singer's own On / Off during an active Karaoke Set, which every song
+    of the set follows.
     """
     source_id = str(source_id or "").strip()
     if not source_id:
@@ -39,7 +71,8 @@ def initialize_backing_presentation(session: dict, source_id: str) -> bool:
     already_initialized = backing_presentation_is_initialized(session, source_id)
     session[BACKING_PRESENTATION_SESSION_ID_KEY] = source_id
     if not already_initialized:
-        session["backing_lead_sheet_open"] = False
+        set_choice = karaoke_set_lead_sheet_choice(session)
+        session["backing_lead_sheet_open"] = bool(set_choice) if set_choice is not None else False
         session.pop("_pending_open_backing_lead_sheet", None)
     return not already_initialized
 
@@ -161,6 +194,12 @@ BACKING_DEVICE_COMPARE_LABELS: tuple[str, ...] = (
 )
 
 __all__ = (
+    "KARAOKE_PRE_SET_SCOPE_KEY",
+    "KARAOKE_SET_LEAD_SHEET_OPEN_KEY",
+    "karaoke_set_lead_sheet_choice",
+    "note_karaoke_set_lead_sheet_choice",
+    "restore_pre_set_scope",
+    "snapshot_pre_set_scope",
     "BACKING_DIRTY_KEY",
     "BACKING_LOOPS_DEFAULT",
     "BACKING_PENDING_SYNC_KEY",
@@ -2246,3 +2285,62 @@ def render_backing_state_debug(st: Any, session: dict[str, Any]) -> None:
     failure_class = trace.get("backing_sync_failure_class")
     if failure_class:
         st.sidebar.caption(f"**backing_sync_class:** `{failure_class}`")
+
+
+# --- Karaoke Set: Playback Scope is per performance, never the user's Backing preference -------------------------
+# User rule 2026-11-18: a scope change during a Karaoke Set (e.g. Intro only) applies to that performance only; the
+# next song and a new set start from Full song, and ending the set puts back the scope the user had in ordinary
+# Backing. The Karaoke owner calls these through a guarded getattr: snapshot at start_session, restore at
+# stop_session. The per-song reset inside a set is theirs (karaoke_ui sets the pending scope to Full song).
+KARAOKE_PRE_SET_SCOPE_KEY = "_karaoke_pre_set_backing_scope"
+_SCOPE_FIELDS = ("backing_track_scope", "backing_track_single_section", "backing_track_multi_sections", "backing_quick_section")
+_PS_SCOPE_FIELDS = ("scope", "single_section", "multi_sections")
+
+
+def _scope_owner_id(session: Any) -> str:
+    try:
+        from backing_context import backing_page_sync_id
+
+        sid = str(backing_page_sync_id(session) or "").strip()
+        if sid:
+            return sid
+    except Exception:
+        pass
+    return str(session.get("active_catalog_pick_key") or "").strip()
+
+
+def snapshot_pre_set_scope(session: Any) -> None:
+    """Retired (user rule 2026-11-20: End Set returns Full song, the ordinary default, not the pre-set scope).
+    Kept as a no-op for one release; clears a snapshot an older build left behind."""
+    session.pop(KARAOKE_PRE_SET_SCOPE_KEY, None)
+
+
+def restore_pre_set_scope(session: Any) -> None:
+    """Retired: End Set runs backing_play_session.reset_backing_after_karaoke_set (Full song). Drops a leftover
+    snapshot only."""
+    session.pop(KARAOKE_PRE_SET_SCOPE_KEY, None)
+
+
+# --- Karaoke Set: the repeat count is the SET's, the ordinary Loop Count comes back at End Set ---------------------
+# User rule 2026-11-19: during a set the repeat count is a set-level setting (karaoke_mode.KARAOKE_SET_LOOPS_KEY:
+# 1 at Start, carried to every following song, changed only by an explicit Loop Count change). Ordinary Backing's
+# Loop Count is remembered when the set starts and given back when it ends. The Karaoke owner calls these through
+# its guarded lifecycle hook (start_session / stop_session).
+KARAOKE_PRE_SET_LOOPS_KEY = "_karaoke_pre_set_backing_loops"
+#: Set by restore_pre_set_loops: the activation identity Backing had when the set started. The first song change
+#: Backing sees after the set is not a new song when it lands back on that identity (End Set gives Now Editing back).
+KARAOKE_POST_SET_ADOPT_KEY = "_karaoke_post_set_adopt_identity"
+
+
+def snapshot_pre_set_loops(session: Any) -> None:
+    """Retired (user rule 2026-11-20: End Set gives ordinary defaults, not the pre-set Loop Count). Kept as a
+    no-op for one release so a guarded caller never breaks; clears any snapshot an older build left behind."""
+    session.pop(KARAOKE_PRE_SET_LOOPS_KEY, None)
+    session.pop(KARAOKE_POST_SET_ADOPT_KEY, None)
+
+
+def restore_pre_set_loops(session: Any) -> None:
+    """Retired: End Set runs backing_play_session.reset_backing_after_karaoke_set instead. No-op apart from
+    dropping a leftover snapshot."""
+    session.pop(KARAOKE_PRE_SET_LOOPS_KEY, None)
+    session.pop(KARAOKE_POST_SET_ADOPT_KEY, None)

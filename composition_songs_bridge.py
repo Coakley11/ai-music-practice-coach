@@ -40,6 +40,9 @@ PENDING_COMPOSITION_ACTIVE_SONG_KEY = "_pending_composition_active_song_activati
 COMPOSITION_SONGS_SOURCE_READY_KEY = "_composition_songs_source_ready"
 # Songs → Composition Studio Edit: selected library UUID must win over last-active snapshot.
 PENDING_COMPOSER_STUDIO_EDIT_ID_KEY = "_pending_composer_studio_edit_document_id"
+# Which Studio step to open on with that handoff ("lyrics" for Add Lyrics). Applied once, after the
+# exact document has been reloaded, so it lands on THAT song and nowhere else.
+PENDING_COMPOSER_OPEN_PHASE_KEY = "_pending_composer_open_phase"
 # Songs New Song / Studio Start new song: empty seed must win over workspace restore.
 PENDING_COMPOSER_NEW_SONG_KEY = "_pending_composer_new_song"
 
@@ -1272,13 +1275,24 @@ def apply_pending_composer_studio_edit(session_state: dict[str, Any]) -> bool:
     The selected library UUID must win.
     """
     pending = str(session_state.pop(PENDING_COMPOSER_STUDIO_EDIT_ID_KEY, "") or "").strip()
+    phase = str(session_state.pop(PENDING_COMPOSER_OPEN_PHASE_KEY, "") or "").strip()
     if not pending:
         return False
     doc_id = composition_id_from_pick_key(pending) or pending
     if not doc_id:
         return False
     loaded = load_library_document(session_state, doc_id)
-    return isinstance(loaded, dict) and str(loaded.get("id") or "").strip() == doc_id
+    ok = isinstance(loaded, dict) and str(loaded.get("id") or "").strip() == doc_id
+    if ok and phase:
+        from composition_document import set_workflow_phase
+        from composition_session_state import get_active_document
+
+        # Which step is open is navigation, not content: set it on the loaded document in place,
+        # without touching its modified time or saving it.
+        active = get_active_document(session_state)
+        if isinstance(active, dict) and str(active.get("id") or "").strip() == doc_id:
+            set_workflow_phase(active, phase)
+    return ok
 
 
 def resolve_songs_composition_edit_id(session_state: dict[str, Any]) -> str:
@@ -1299,7 +1313,7 @@ def resolve_songs_composition_edit_id(session_state: dict[str, Any]) -> str:
     return composition_id_from_pick_key(pk)
 
 
-def open_saved_composition_for_studio_edit(st: Any, doc_id_or_pick: str) -> bool:
+def open_saved_composition_for_studio_edit(st: Any, doc_id_or_pick: str, *, phase: str = "") -> bool:
     """Songs → Composition Studio: open the exact saved library document.
 
     Loads ``composition::<uuid>`` via the canonical library helper, installs it
@@ -1319,6 +1333,10 @@ def open_saved_composition_for_studio_edit(st: Any, doc_id_or_pick: str) -> bool
     if not isinstance(loaded, dict) or str(loaded.get("id") or "").strip() != doc_id:
         return False
     session[PENDING_COMPOSER_STUDIO_EDIT_ID_KEY] = doc_id
+    if phase:
+        session[PENDING_COMPOSER_OPEN_PHASE_KEY] = str(phase)
+    else:
+        session.pop(PENDING_COMPOSER_OPEN_PHASE_KEY, None)
     try:
         from studio_page_persistence import save_page_snapshot
 

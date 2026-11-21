@@ -1475,6 +1475,22 @@ if pp.is_demo_mode(st) and not pp.demo_applied(st, "practice"):
     pdemo.load_practice_demo(st, SONG_PICKER_CATALOG, SONG_LIBRARY, ALL_SONG_RECORDS)
     st.rerun()
 
+def _karaoke_entry_own_catalog_key(pick: str) -> str:
+    """A Catalog song's own Practice Key: what the musician saved for it, else its original key."""
+    try:
+        from songs.practice_key_state import saved_practice_concert_key
+
+        own = str(saved_practice_concert_key(st.session_state, pick, default="") or "").strip()
+    except Exception:
+        own = ""
+    if own:
+        return own
+    _sel = st.session_state.get("selected_song")
+    if isinstance(_sel, dict) and str(_sel.get("pick_key") or "").strip() == pick:
+        return str(_sel.get("key") or "").strip()
+    return ""
+
+
 def _activate_karaoke_entry(entry: dict | None, *, apply_entry_key: bool = True) -> None:
     """Now Editing: a setlist row click makes that entry the global active song.
 
@@ -1496,6 +1512,27 @@ def _activate_karaoke_entry(entry: dict | None, *, apply_entry_key: bool = True)
     pick = str(row.get("pick_key") or "").strip()
     if not pick:
         return
+    # During a set the Backing cache IS the Now Singing take. A Now Editing change dropping it
+    # left the set with no take: back on Backing the Karaoke panel was gone ("Press Play Backing
+    # Track to generate and play") while the set said Song 1 of 3. Outside a set, unchanged.
+    _in_set = bool(km.is_voice_mode(st.session_state) and km.is_karaoke_session_active(st.session_state))
+    _invalidate = (lambda _st: None) if _in_set else invalidate_backing_cache
+    # During a set Backing belongs to Now Singing. The identity change itself reaches into it from
+    # shared code - tempo priming and the Backing defaults reset to the EDITED song (measured: Trial
+    # Song's 100 BPM / Pop groove landed on Blackbird's performance), and the cache clears that
+    # dropped the sung take. So Backing's state is put back exactly as it was afterwards, and the
+    # debt is recorded so End Set regenerates Backing for the edited song.
+    _kept_take: dict = {}
+    if _in_set:
+        try:
+            from songs.key_state import _BACKING_CACHE_KEYS as _take_keys
+
+            for _k in list(st.session_state.keys()):
+                _ks = str(_k)
+                if _ks in _take_keys or _ks.startswith(("backing_", "_backing_")):
+                    _kept_take[_ks] = st.session_state[_k]
+        except Exception:
+            _kept_take = {}
     st.session_state[km.EXPLICIT_GLOBAL_CHANGE_KEY] = True
     try:
         if not pick.startswith(("custom::", "composition::")):
@@ -1528,12 +1565,25 @@ def _activate_karaoke_entry(entry: dict | None, *, apply_entry_key: bool = True)
                 pick,
                 SONG_PICKER_CATALOG,
                 song_library=SONG_LIBRARY,
-                invalidate_backing=invalidate_backing_cache,
+                invalidate_backing=_invalidate,
                 origin="user",
             )
     except Exception:
         pass
     _entry_key = km.commit_entry_practice_key(st.session_state, row) if apply_entry_key else ""
+    if not apply_entry_key and not pick.startswith(("custom::", "composition::")):
+        # The song's OWN key, not the setlist's and not the previous song's: a setlist key is a
+        # performance key for that entry, and the live key still belongs to whatever was active
+        # before (Jazz tune C would otherwise be carried onto Blackbird).
+        _entry_key = _karaoke_entry_own_catalog_key(pick)
+        if _entry_key:
+            try:
+                from songs.key_state import request_display_key as _req_dk
+
+                _req_dk(st.session_state, _entry_key)
+            except Exception:
+                pass
+            st.session_state["concert_key"] = _entry_key
     if not pick.startswith(("custom::", "composition::")):
         # Durable commit, same as other catalog activations: the canonical
         # active-song blob carries this song at the entry's key and is saved
@@ -1549,7 +1599,7 @@ def _activate_karaoke_entry(entry: dict | None, *, apply_entry_key: bool = True)
                     selected_song=_sel,
                     original_key=str(_sel.get("key") or "").strip(),
                     display_key=_entry_key or str(st.session_state.get("display_key") or ""),
-                    invalidate_backing=invalidate_backing_cache,
+                    invalidate_backing=_invalidate,
                     reason="karaoke_selection",
                 )
         except Exception:
@@ -1557,7 +1607,15 @@ def _activate_karaoke_entry(entry: dict | None, *, apply_entry_key: bool = True)
     entry_id = str(row.get("entry_id") or "")
     st.session_state[km.KARAOKE_EDITING_PICK_KEY] = pick
     st.session_state[km.KARAOKE_EDITING_ENTRY_ID_KEY] = entry_id
-    invalidate_backing_cache(st)
+    _invalidate(st)
+    if _kept_take:
+        for _k, _v in _kept_take.items():
+            try:
+                if st.session_state.get(_k) != _v:
+                    st.session_state[_k] = _v
+            except Exception:
+                pass
+        km.now_editing_change_spares_sung_take(st.session_state)
     try:  # diagnostic: which operation changed the active song (active_song_change_ledger)
         from active_song_change_ledger import note_active_song as _asl_note
 
@@ -1582,20 +1640,35 @@ try:
 except ImportError:
     pass
 
+
+
 # === DEFERRED KARAOKE SETLIST ROW ACTIVATION ==================================
 # A setlist row click queues its entry; it is activated here, before any widget
 # exists, then the Lyrics & Cues editor opens for that song.
 _pending_entry_activation = st.session_state.pop(km.PENDING_KARAOKE_ENTRY_ACTIVATION_KEY, None)
 if isinstance(_pending_entry_activation, dict):
-    _activate_karaoke_entry(_pending_entry_activation)
-    from picker_song_editor import open_picker_editor as _pea_open_editor
-
-    _pea_open_editor(st.session_state, "Lyrics & Cues")
+    # Now Editing only: the song at its OWN Practice Key. The setlist key is the entry's
+    # performance key and is never saved as the song's own (it overwrote Blackbird's key with
+    # the setlist's E). And no jump to the Lyrics & Cues editor: it scrolled the setlist off
+    # screen on a phone, which read as Karaoke disappearing. The editor stays one tap away.
+    _activate_karaoke_entry(_pending_entry_activation, apply_entry_key=False)
 
 # === DEFERRED KARAOKE LYRICS NAVIGATION =======================================
 # Consumed BEFORE any page widgets are created so that navigate_studio_page
 # (which may expire the backing play session and reset widget-backed keys)
 # runs in a clean render cycle — never after Backing widgets exist.
+# Add Lyrics for a Composition song: open that exact saved composition in Composition Studio on
+# its Lyrics step. Before any widget exists, like the other Karaoke editing handoffs.
+PENDING_KARAOKE_COMPOSITION_LYRICS_KEY = "_pending_karaoke_composition_lyrics"
+_pending_comp_lyrics = str(st.session_state.pop(PENDING_KARAOKE_COMPOSITION_LYRICS_KEY, "") or "").strip()
+if _pending_comp_lyrics.startswith("composition::"):
+    try:
+        from composition_songs_bridge import open_saved_composition_for_studio_edit as _open_comp_edit
+
+        _open_comp_edit(st, _pending_comp_lyrics, phase="lyrics")
+    except Exception:
+        pass
+
 _pending_lyrics_nav = st.session_state.pop(km.PENDING_KARAOKE_LYRICS_NAV_KEY, None)
 if isinstance(_pending_lyrics_nav, dict):
     _pln_pk = str(_pending_lyrics_nav.get("pick_key") or "").strip()
@@ -2499,6 +2572,24 @@ def transpose_chord_tokens_in_cue(line: str, from_key: str, to_key: str) -> str:
     return prefix + sep.join(out)
 
 
+def cue_lines_by_cycle_key(lines: list[str], from_key: str, cycle_keys: list[str]) -> dict[str, list[str]]:
+    """The cue lines in every key of a Key Cycling cycle, or ``{}`` when no line changes with the key.
+
+    Key Cycling changes key in the browser, without a rerun, so a cue that spells a chord run
+    (``"Instrumental — G · D/F# · Em7"``) must arrive ready in each key of the cycle; the singing
+    panel shows the one for the key that sounds. Prose cues and lyrics never change with the key,
+    and are not repeated twelve times.
+    """
+    raw = [str(ln) for ln in (lines or [])]
+    keys = [str(k).strip() for k in (cycle_keys or []) if str(k or "").strip()]
+    if not raw or not keys or not str(from_key or "").strip():
+        return {}
+    by_key = {k: [transpose_chord_tokens_in_cue(ln, from_key, k) for ln in raw] for k in keys}
+    if not any(v != raw for v in by_key.values()):
+        return {}
+    return by_key
+
+
 def _distribute_chord_chips(
     chords: list[str], lyric_lines: list[str]
 ) -> list[tuple[str, str]]:
@@ -2950,7 +3041,7 @@ def render_abc(abc_text, *, measure_sync=None, follow_role="practice-melody"):
         if (firstCurrent) {{
           // M4: scrollIntoView here also scrolled the PAGE, pulling it back every measure (even over a
           // manual scroll). This frame now only scrolls itself; the page moves through the one page
-          // controller, which honours the six-second manual hold. An open, lit melody staff leads the page
+          // controller, which honours the three-second manual hold. An open, lit melody staff leads the page
           // over the Lead Sheet (user, 2026-11-14).
           try {{
             const de = document.scrollingElement || document.documentElement;
@@ -5114,6 +5205,27 @@ def _build_karaoke_lyrics_panel_html(
     )
 
 
+def _karaoke_panel_has_lyric_lines(section_lyrics_map: dict | None) -> bool:
+    """True when some section of the lyric panel has lyric lines to sing.
+
+    The Lead Sheet fold decides "is the chart the only performance display?" from this, known at
+    render time, instead of from the lyric lines in the DOM: those lines are only drawn by the
+    first chord event (before Play the panel says "Press play to follow the lyrics.") and vanish
+    in instrumental sections, so the DOM answer was "no lyrics" exactly when the fold was set.
+    """
+    if not isinstance(section_lyrics_map, dict):
+        return False
+    for data in section_lyrics_map.values():
+        if not isinstance(data, dict):
+            continue
+        if data.get("lyrics"):
+            return True
+        by_key = data.get("lyrics_by_key")
+        if isinstance(by_key, dict) and any(by_key.values()):
+            return True
+    return False
+
+
 def _build_karaoke_lyrics_panel_script(
     section_lyrics_map: dict | None,
     *,
@@ -5449,23 +5561,124 @@ def _build_karaoke_lyrics_panel_script(
           // Through the box follow, which asks the ONE page controller whether the singer is
           // scrolling and moves only this surface's own box. This line used to call
           // scrollIntoView on every tick: no hold, and it moved the whole page.
+          // Only while the lyric line IS the follow target (Lead Sheet closed). With the Lead Sheet
+          // open the chords are followed throughout; following the line here as well made the page
+          // alternate between chord and lyric (user, 2026-11-20: no alternation).
           try {{
-            if (window.__karaokeBoxFollow) window.__karaokeBoxFollow(activeLine);
+            const lyricTarget = window.__karaokeFollowTarget ? window.__karaokeFollowTarget() : activeLine;
+            if (lyricTarget === activeLine && window.__karaokeBoxFollow) window.__karaokeBoxFollow(activeLine);
           }} catch (eLf) {{}}
         }}
       }}
 
+      // ---- The chips follow the key that sounds (user P1 2026-11-20) ----
+      // LYRIC_MAP is drawn once by the server, in the key of that render. Key Cycling changes key
+      // in the browser (the next key's timeline replaces this one; no rerun), so chips built from
+      // LYRIC_MAP alone stayed in an earlier key: "Am7 / Dm7" under "E♭ minor". The chips now take
+      // their chord names from the same live timeline the Lead Sheet, Current / Next and the audio
+      // follow, through the same label projection -- one key, no second key state. LYRIC_MAP keeps
+      // each bar's shape (sub-chord weights, pushes, hits, N.C.); only the names come from the
+      // timeline. Without a timeline for the section the map's own chords are shown, as before.
+      function timelineKey(tl) {{
+        try {{
+          const byKey = window.parent && window.parent.__kcTimelineByKey;
+          if (byKey && tl) {{
+            for (const k of Object.keys(byKey)) {{ if (byKey[k] === tl) return k; }}
+          }}
+        }} catch (eK) {{}}
+        return "";
+      }}
+      function sectionRunBars(tl, event) {{
+        // The bars of this occurrence of the section, from its bar 1, each a list of its events.
+        if (!Array.isArray(tl) || !tl.length || !event) return null;
+        let i = Number(event.event_index);
+        if (!(tl[i] && tl[i].start_time === event.start_time)) {{
+          i = tl.indexOf(event);
+          if (i < 0) i = tl.findIndex((e) => e && e.start_time === event.start_time);
+          if (i < 0) return null;
+        }}
+        const sec = event.section || "";
+        const isBarStart = (e) => Number(e.bar_in_section) === 1 && !(Number(e.subdivision_index) > 0);
+        let s = i;
+        while (s > 0 && !isBarStart(tl[s]) && tl[s - 1] && tl[s - 1].section === sec) s--;
+        const bars = {{}};
+        let prevBar = 0;
+        for (let j = s; j < tl.length; j++) {{
+          const e = tl[j];
+          if (!e || (e.section || "") !== sec) break;
+          const b = Number(e.bar_in_section) || 0;
+          if (j > s && (b < prevBar || (isBarStart(e) && prevBar >= 1))) break;
+          (bars[b] = bars[b] || []).push(e);
+          prevBar = b;
+        }}
+        return bars;
+      }}
+      function liveChordsForSection(event, base, ctx) {{
+        const tl = (ctx && Array.isArray(ctx.timeline)) ? ctx.timeline : window.__karaokeTimeline;
+        const bars = sectionRunBars(tl, event);
+        if (!bars) return null;
+        const project = (ctx && typeof ctx.project === "function") ? ctx.project : ((c) => c);
+        const name = (e) => String(project(e.chord || "", e.chordSpace || "") || e.chord || "").trim();
+        const total = Math.max(Number(event.section_bars) || 0, (base || []).length);
+        const out = [];
+        for (let b = 1; b <= total; b++) {{
+          const evs = bars[b];
+          const raw = String((base || [])[b - 1] == null ? "" : base[b - 1]).trim();
+          if (!evs || !evs.length) {{ out.push(raw); continue; }}
+          if (raw && isNoChordToken(raw)) {{ out.push(raw); continue; }}
+          if (raw && isHitToken(raw) && evs.length === 1) {{ out.push(name(evs[0]) + ".hit"); continue; }}
+          const subs = raw ? parseBarSubdivisions(raw, 4) : [];
+          if (evs.length === 1 && subs.length <= 1) {{ out.push(name(evs[0])); continue; }}
+          // Subdivided: keep the bar's weights and pushes, take each sub-chord's name live.
+          const parts = evs.map((e, k) => {{
+            const sub = subs.length === evs.length ? subs[k] : null;
+            if (sub && isNoChordToken(sub.chord)) return String(sub.chord);
+            const w = sub ? sub.weight : (Number(e.beat_duration) || 1);
+            return name(e) + ":" + Number(w).toString() + (sub && sub.push ? "p" : "");
+          }});
+          out.push(parts.join("|"));
+        }}
+        return out;
+      }}
+      function linesForKey(data, key) {{
+        // Lyric cues that spell a chord run ("Instrumental — G · D/F# · Em7") come per cycle key.
+        const byKey = data && data.lyrics_by_key;
+        if (key && byKey && Array.isArray(byKey[key])) return byKey[key];
+        return (data && data.lyrics) || [];
+      }}
+      function renderLines(lines) {{
+        lpLyrics.innerHTML = lines
+          .map((l) => '<div class="karaoke-lp-lyric-line">' + escapeHtml(l) + "</div>")
+          .join("");
+      }}
+
       let lastSection = null;
-      window.__karaokeUpdateLyricPanel = function(event) {{
+      let lastTimeline = null;
+      window.__karaokeUpdateLyricPanel = function(event, ctx) {{
         if (!event) return;
         const sectionName = event.section || "";
+        const liveTl = (ctx && Array.isArray(ctx.timeline)) ? ctx.timeline : window.__karaokeTimeline;
+        const keyChanged = !!liveTl && liveTl !== lastTimeline && lastTimeline !== null;
+        if (liveTl) lastTimeline = liveTl;
+
+        // -- Same section, another key (Key Cycling's in-browser change): the chips and any
+        //    chord-run cue lines move to the key that sounds; the lyrics stay where they are.
+        if (sectionName === lastSection && keyChanged) {{
+          const data = dataFor(sectionName);
+          const base = (data && data.chords) || [];
+          if (base.length) buildChordStripForSection(sectionName, liveChordsForSection(event, base, ctx) || base);
+          if (data && data.lyrics_by_key && hasLyrics(sectionName)) {{
+            renderLines(linesForKey(data, timelineKey(liveTl)));
+          }}
+        }}
 
         // -- Section change: rebuild chord strip + swap lyrics. ----
         if (sectionName !== lastSection) {{
           lastSection = sectionName;
           const data = dataFor(sectionName);
-          const chords = (data && data.chords) || [];
-          const lines = (data && data.lyrics) || [];
+          const base = (data && data.chords) || [];
+          const chords = base.length ? (liveChordsForSection(event, base, ctx) || base) : base;
+          const lines = data ? linesForKey(data, timelineKey(liveTl)) : [];
 
           buildChordStripForSection(sectionName, chords);
 
@@ -5474,11 +5687,7 @@ def _build_karaoke_lyrics_panel_script(
             lpSection.textContent = displayLabelFor(sectionName);
             lpLyrics.classList.remove("empty");
             lpLyrics.classList.remove("instrumental");
-            lpLyrics.innerHTML = lines
-              .map((l) =>
-                '<div class="karaoke-lp-lyric-line">' + escapeHtml(l) + "</div>"
-              )
-              .join("");
+            renderLines(lines);
             const nxt = nextSectionAfter(event.event_index, false);
             lpNext.innerHTML = nxt
               ? ('Next: <strong>' + escapeHtml(displayLabelFor(nxt)) + '</strong>')
@@ -5630,6 +5839,17 @@ def live_follow_along_component_html(
     )
     page_follow_flag_js = "true" if page_follow else "false"
     karaoke_hold_flag_js = "true" if karaoke_hold_from_shared_controller else "false"
+    # The chart is the only performance display (so the fold stays open whatever the Lead Sheet
+    # switch says) only when there are no lyrics to sing at all - a fact fixed for this render.
+    chart_always_shown_js = "false" if _karaoke_panel_has_lyric_lines(karaoke_lyrics_panel) else "true"
+    # One token per performed take (entry + key + set position): the set-start bring-into-view
+    # below fires once per new song, never again when a rerun re-creates the same take's panel.
+    try:
+        karaoke_take_token_js = json.dumps(
+            km.render_generation(st.session_state) if km.is_karaoke_session_active(st.session_state) else ""
+        )
+    except Exception:
+        karaoke_take_token_js = json.dumps("")
     # Opened over a live take: start the native autoplay at the handed-over playhead.
     sheet_open_handoff_js = "true" if sheet_open_handoff else "false"
     timeline_json = json.dumps(timeline)
@@ -5713,9 +5933,13 @@ def live_follow_along_component_html(
         # component from a marker on the page (``.ks-ls-state``), so turning it on or off changes
         # nothing in this HTML and Streamlit keeps the iframe - and the music in it - running.
         chart_root_html = (
+            # Its header is the Lead Sheet's own collapse / expand control (user 2026-11-20): it presses
+            # the Backing card's Lead Sheet button - one state, the same no-remount switch - and the
+            # fold then follows the page marker as before. The action words are written by the
+            # script from that marker, so this HTML stays identical whatever the switch says.
             '<details class="live-chart-hidden-wrap" id="live-chart-wrap">'
-            "<summary><span class=\"live-chart-hidden-icon\">\U0001F3BC</span> "
-            "Show chord chart (optional)</summary>"
+            "<summary><span class=\"live-chart-hidden-icon\">\U0001F4D6</span> Lead Sheet "
+            '<span class="ls-fold-action">· Expand Lead Sheet</span></summary>'
             f'<div id="live-chart-root">{chart_html}</div>'
             "</details>"
         )
@@ -6525,13 +6749,14 @@ def live_follow_along_component_html(
       }}
     }} catch (eDev) {{}}
     const KARAOKE_HOLD = {karaoke_hold_flag_js};
+    const CHART_ALWAYS_SHOWN = {chart_always_shown_js};
     {hold_only_js}
 
     // Parts 9 and 10. This surface scrolls its own box, and the ONE page controller
     // (lead_sheet_page_follow) owns the question of whether the singer is scrolling: a wheel,
     // touch, key or press anywhere - including inside this iframe, which it watches - holds
-    // every follower for six seconds, and a held pointer holds it open. Asking it rather than
-    // timing our own six seconds is what keeps the two from disagreeing.
+    // every follower for three seconds, and a held pointer holds it open. Asking it rather than
+    // timing our own three seconds is what keeps the two from disagreeing.
     function followHeld() {{
       try {{
         const ctl = window.top.__lsFollow;
@@ -6549,17 +6774,55 @@ def live_follow_along_component_html(
     }}
     // Asked each time, not once at load: the lyric lines can be drawn after this script runs.
     function chartIsPrimary() {{ return !document.querySelector(".karaoke-lp-lyric-line"); }}
-    // Follows the switch when it CHANGES, so a singer who opens the chart by hand while the Lead
-    // Sheet is off is not overruled on the next tick.
-    let lastLeadSheetOpen = null;
+    // The fold has ONE source: the Lead Sheet switch (the page marker), unless the song has no
+    // lyrics at all and the chart is the only thing to perform from. It used to be decided once,
+    // when the switch value changed, from chartIsPrimary() - a DOM test for lyric lines that is
+    // always "no lyrics" before Play (the panel only says "Press play...") - so Lead sheet: Off
+    // chosen before Play latched the chart OPEN under an "Expand" header until the header was
+    // pressed. Now the wanted state is applied on every tick while the card switch exists (the
+    // header presses it, so there is no other way to open the fold), and the header words are
+    // written from the fold's real state, so card, fold and header cannot disagree.
+    let lastFoldWanted = null;
+    function cardLeadSheetSwitch() {{
+      try {{
+        const btn = window.parent.document.querySelector(".st-key-backing_art_lead_sheet_btn button");
+        return btn && !btn.disabled ? btn : null;
+      }} catch (eCs) {{ return null; }}
+    }}
+    function syncFoldHeader(ls) {{
+      try {{
+        const act = document.querySelector("#live-chart-wrap .ls-fold-action");
+        if (act) act.textContent = ls ? "\u00b7 Collapse Lead Sheet" : "\u00b7 Expand Lead Sheet";
+        const sum = document.querySelector("#live-chart-wrap > summary");
+        if (sum) sum.setAttribute("aria-label", ls ? "Collapse Lead Sheet" : "Expand Lead Sheet");
+      }} catch (eFh) {{}}
+    }}
+    // The header IS the Lead Sheet switch's second handle: pressing it presses the Backing card's
+    // Lead Sheet button (the one variable), and the fold follows the marker that button updates.
+    function installFoldHeader() {{
+      const sum = document.querySelector("#live-chart-wrap > summary");
+      if (!sum || sum.__lsHeader) return;
+      sum.__lsHeader = true;
+      sum.addEventListener("click", (ev) => {{
+        try {{
+          const btn = cardLeadSheetSwitch();
+          if (!btn) return;                      // no card switch: the plain fold still works
+          ev.preventDefault();
+          btn.click();
+        }} catch (eHc) {{}}
+      }});
+    }}
     function syncChartFold() {{
       const wrap = document.getElementById("live-chart-wrap");
       if (!wrap) return;
-      const ls = leadSheetOpenOnPage();
-      if (ls === lastLeadSheetOpen) return;
-      lastLeadSheetOpen = ls;
-      const want = chartIsPrimary() || ls;
-      if (wrap.open !== want) wrap.open = want;
+      const want = CHART_ALWAYS_SHOWN || leadSheetOpenOnPage();
+      // Without the card switch the summary is a plain fold: follow the switch only when it
+      // changes, so a fold opened by hand is not overruled on the next tick.
+      if (want !== lastFoldWanted || cardLeadSheetSwitch()) {{
+        lastFoldWanted = want;
+        if (wrap.open !== want) wrap.open = want;
+      }}
+      syncFoldHeader(wrap.open);
     }}
     // During a Karaoke Set the follow target is the Lead Sheet's current chord while the sheet is
     // open, and the current lyric line while it is closed. With no lyrics the chords ARE the
@@ -6584,14 +6847,40 @@ def live_follow_along_component_html(
     }}
     // Two scrollers, each moving only its own thing: this box puts the lyric in front of the
     // singer inside the iframe, and the ONE page controller brings the iframe itself back when
-    // the singer has scrolled the page away. Both obey the same six-second hold, so they cannot
+    // the singer has scrolled the page away. Both obey the same three-second hold, so they cannot
     // take turns fighting each other.
+    // An open uploaded-melody panel (My Uploaded Melodies) stops automatic scrolling here too: the musician
+    // is reading it by hand (user, 2026-11-20). The page controller decides; this asks it.
+    function followBlocked() {{
+      try {{
+        const ctl = window.top.__lsFollow;
+        return !!(ctl && ctl.blocked && ctl.blocked() && !(ctl.leading && ctl.leading()));
+      }} catch (eB) {{ return false; }}
+    }}
+    // Karaoke's Live Follow-Along Player is sticky at the top of this frame (position: sticky; top: 0), so the
+    // top of the box is never free. A line put at 32 % of the box sat UNDER it on a phone, where the player's
+    // 2 x 2 status cards make it taller than 32 % of the 820 px box (measured 2026-11-21, Karaoke Set, Lead
+    // Sheet off, 390 px: the lyric covered in 461/461 samples; at 1280 px the one-row player is shorter). The
+    // line goes below whatever is pinned there.
+    function boxTopClearance() {{
+      let clear = 0;
+      try {{
+        document.querySelectorAll(".live-player").forEach((p) => {{
+          const cs = window.getComputedStyle(p);
+          if (cs.position !== "sticky" && cs.position !== "fixed") return;
+          const h = p.getBoundingClientRect().height;
+          if (h > 0) clear = Math.max(clear, (parseFloat(cs.top) || 0) + h);
+        }});
+      }} catch (eCl) {{}}
+      return clear;
+    }}
     function followInsideBox(el) {{
-      if (!el || !el.isConnected || followHeld()) return false;
+      if (!el || !el.isConnected || followHeld() || followBlocked()) return false;
       const sc = boxScroller();
       if (sc) {{
         const c = el.getBoundingClientRect();
-        const want = sc.scrollTop + c.top - (sc.clientHeight * 0.32);
+        const readAt = Math.max(sc.clientHeight * 0.32, boxTopClearance() + 12);
+        const want = sc.scrollTop + c.top - readAt;
         if (Math.abs(want - sc.scrollTop) >= 10) {{
           const max = sc.scrollHeight - sc.clientHeight;
           sc.scrollTop = Math.max(0, Math.min(want, max));
@@ -6613,6 +6902,47 @@ def live_follow_along_component_html(
       return !!sc || pageMoved;
     }}
     window.__karaokeBoxFollow = followInsideBox;
+    // The page controller asks this frame directly when what covers its target is pinned inside this frame
+    // (no page move can clear that; this box can).
+    window.__lsBoxFollow = followInsideBox;
+    // Set start and each new song, Lead Sheet OFF: put the performance display in front of the
+    // singer once, so the countdown (drawn inside this frame) and the first lyric are on screen.
+    // Measured before this: the panel sat ~1800 px (desktop) / ~2100 px (phone) below the top of
+    // Backing and the 5-4-3-2-1 ran where nobody could see it. Through the ONE page controller,
+    // so it obeys the manual-scroll hold; retried for ~4 s because on the v3 controller the
+    // Start click itself opens a 3 s hold. With the Lead Sheet ON the sheet leads instead.
+    const KARAOKE_TAKE_TOKEN = {karaoke_take_token_js};
+    function bringKaraokePanelIntoView() {{
+      if (!KARAOKE_TAKE_TOKEN) return;
+      try {{
+        if (window.top.__karaokePanelShownTake === KARAOKE_TAKE_TOKEN) return;
+      }} catch (eTk) {{ return; }}
+      let tries = 0;
+      function attempt() {{
+        tries += 1;
+        try {{
+          const top = window.top;
+          if (top.__karaokePanelShownTake === KARAOKE_TAKE_TOKEN) return;
+          if (leadSheetOpenOnPage()) {{ top.__karaokePanelShownTake = KARAOKE_TAKE_TOKEN; return; }}
+          const el = document.getElementById("karaoke-lyric-panel") || document.getElementById("live-chord");
+          if (el && top.__lsFollow && top.__lsFollow.request
+              && window.top.__lsFollow.request("karaoke-lyrics", el, {{ why: "karaoke-set-start" }})) {{
+            top.__karaokePanelShownTake = KARAOKE_TAKE_TOKEN;
+            return;
+          }}
+          if (el && frameInView()) {{ top.__karaokePanelShownTake = KARAOKE_TAKE_TOKEN; return; }}
+        }} catch (eBp) {{}}
+        if (tries < 10) window.setTimeout(attempt, 420);
+      }}
+      window.setTimeout(attempt, 120);
+    }}
+    function frameInView() {{
+      try {{
+        const r = window.frameElement.getBoundingClientRect();
+        const vh = window.top.innerHeight || 0;
+        return r.top >= -4 && r.top < vh * 0.5;
+      }} catch (eFv) {{ return false; }}
+    }}
     window.__karaokeFollowTarget = karaokeFollowTarget;
     // Registering makes this surface one the page controller will move the page for. Only the
     // leading surface moves it, and only this one is registered from this frame, so the lyrics
@@ -7223,7 +7553,13 @@ def live_follow_along_component_html(
       // when a lyrics map was provided, so this is a no-op for
       // instrumentalists (no panel rendered, no listener registered).
       if (typeof window.__karaokeUpdateLyricPanel === "function") {{
-        try {{ window.__karaokeUpdateLyricPanel(event); }} catch (e) {{}}
+        // The panel's chips read the same timeline and label projection as Current / Next.
+        try {{
+          window.__karaokeUpdateLyricPanel(event, {{
+            timeline: tl,
+            project: (c, sp) => projectChordLabel(c, sp),
+          }});
+        }} catch (e) {{}}
       }}
       const nowPlayingBanner = document.querySelector(".now-playing");
       if (nowPlayingBanner) {{
@@ -7289,13 +7625,18 @@ def live_follow_along_component_html(
           if (label) label.textContent = "Now Playing";
         }}
         if (eventChanged && PAGE_FOLLOW) {{
-          // Full-height sheet: the page follows, through the one page controller (6 s manual hold,
+          // Full-height sheet: the page follows, through the one page controller (3 s manual hold,
           // never while paused or stopped). It only scrolls; audio and highlight are untouched.
+          // Normal Voice: this frame also carries the singing lyrics and the lyrics provider owns it, so
+          // the page follows ITS target - the chord while the Lead Sheet is open, the lyric line while it
+          // is closed - not the chord regardless (measured 2026-11-20: Lead Sheet off still stepped by chord).
           try {{
-            if (sheetIsPlaying() && window.top.__lsFollow) window.top.__lsFollow.request("lead-sheet", currentCell, {{ why: "chord" }});
+            const lyricLead = KARAOKE_HOLD ? karaokeFollowTarget() : null;
+            const toLyric = !!(lyricLead && lyricLead.classList && lyricLead.classList.contains("karaoke-lp-lyric-line"));
+            if (sheetIsPlaying() && window.top.__lsFollow) window.top.__lsFollow.request("lead-sheet", toLyric ? lyricLead : currentCell, {{ why: toLyric ? "karaoke-lyric" : "chord" }});
           }} catch (ePf) {{}}
         }} else if (eventChanged && clock && !clock.paused) {{
-          // Karaoke's own box. Through followInsideBox, so the singer's six seconds - the
+          // Karaoke's own box. Through followInsideBox, so the singer's three seconds - the
           // shared controller's - are respected, and so the lyrics win the target when a
           // performance has one. It still scrolls the shell rather than the page, which is why
           // this code was written: the page moving here buried the cycle transport.
@@ -7531,6 +7872,29 @@ def live_follow_along_component_html(
               }}
               // and the space Streamlit keeps for it, so the panels below start after the chart, not inside it
               if (h > 100) lsFitFrameHost(fe, Math.round(parseFloat(fe.style.height) || h));
+              // The page keeps this height while the frame reloads. A rerun that changes this HTML (a new key
+              // after a Key Cycling step, the cycle's own end) makes Streamlit create the frame again at its
+              // 820 px default before this script grows it back: browser run 2026-11-21 (360 px, b72dc357)
+              // measured 2686 -> 820 -> 2686 px, and Chrome's scroll anchoring moved the page 1.9-2.7k px each
+              // time -- for good when the cycle had just stopped (the follow controller never moves then).
+              // A stylesheet rule on the keyed host (not an inline style a rerun resets) holds the space; for
+              // the first 2 s of a new frame it only grows, then it follows the chart again.
+              if (h > 100) {{
+                const pd = fe.ownerDocument;
+                const born = window.__lsReserveBorn || (window.__lsReserveBorn = Date.now());
+                const prev = Number(pd.documentElement.getAttribute("data-ls-panel-h") || 0);
+                const keep = (Date.now() - born < 2000) ? Math.max(prev, h) : h;
+                if (keep !== prev) {{
+                  let rule = pd.getElementById("ls-panel-reserve");
+                  if (!rule) {{
+                    rule = pd.createElement("style");
+                    rule.id = "ls-panel-reserve";
+                    pd.head.appendChild(rule);
+                  }}
+                  pd.documentElement.setAttribute("data-ls-panel-h", String(keep));
+                  rule.textContent = ".st-key-ls_follow_panel_host {{ min-height: " + keep + "px; }}";
+                }}
+              }}
             }} catch (eFit) {{}}
           }};
           fit();
@@ -7555,11 +7919,13 @@ def live_follow_along_component_html(
       }} catch (ePfI) {{}}
     }}
     // The hold-only install puts the controller on the page without claiming it; this claims
-    // it for the lyrics, which is what brings the page back after the singer's six seconds.
+    // it for the lyrics, which is what brings the page back after the singer's three seconds.
     if (KARAOKE_HOLD) {{
       if (!registerKaraokeFollow()) window.setTimeout(registerKaraokeFollow, 400);
+      installFoldHeader();
       syncChartFold();
       window.setInterval(syncChartFold, 300);
+      bringKaraokePanelIntoView();
     }}
     window.setInterval(() => {{
       const playing = sheetIsPlaying();
@@ -10713,6 +11079,24 @@ def request_backing_loops_adjust(delta: int) -> None:
     new_loops = max(1, min(10, current + int(delta)))
     st.session_state[PENDING_BACKING_LOOPS] = new_loops
     st.session_state["_backing_loops_pending_flush"] = True
+    _note_karaoke_set_loops(new_loops)
+
+
+def _note_karaoke_set_loops(loops: Any) -> None:
+    """An explicit Loop Count change during a Karaoke Set becomes the SET's repeat count (no-op outside a set)."""
+    try:
+        import karaoke_mode as _km
+
+        if _km.is_voice_mode(st.session_state):
+            _km.note_karaoke_set_loops(st.session_state, loops)
+    except Exception:
+        pass
+
+
+def _on_backing_loops_slider_change() -> None:
+    """The Loop Count slider moved: the set's count during a Karaoke Set, then the ordinary filter commit."""
+    _note_karaoke_set_loops(st.session_state.get("backing_track_loops"))
+    _on_backing_filter_change()
 
 
 def _flush_pending_backing_loops_edit() -> None:
@@ -11082,6 +11466,9 @@ def _toggle_backing_lead_sheet_from_card(ready: bool, set_leadsheet_open: Any, v
     st.session_state[BACKING_LEAD_SHEET_ON_PLAY_KEY] = on
     if not on:
         st.session_state["backing_lead_sheet_open"] = False
+    from backing_track_state import note_karaoke_set_lead_sheet_choice
+
+    note_karaoke_set_lead_sheet_choice(st.session_state, on)
 
 
 def _render_backing_art_actions(*, leadsheet_ready: bool, set_leadsheet_open: Any, sheet_visible: bool = False) -> bool:
@@ -11211,6 +11598,26 @@ def _render_backing_card_practice_key(original_key: str, practice_key: str) -> N
 
         orig_cell = backing_key_label("original") + f'<div class="ui-skp-value">{html.escape(orig_name)}</div>'
         pk_label = backing_key_label("practice")
+    _sing_pick = str(km.now_singing_pick_key(st.session_state) or "").strip()
+    if (
+        km.is_voice_mode(st.session_state)
+        and km.is_karaoke_session_active(st.session_state)
+        and _sing_pick
+    ):
+        # 2026-11-19: ALSO when the sung song is the Now Editing song. The sidebar control
+        # then holds that song's own Practice Key, which can differ from the setlist entry's
+        # (Trial Song saved in E on Songs, queued in D): the card read E while D played.
+        # During a set this card is the Now Singing entry, sung in ITS key (the audio is built in
+        # it). When another song is Now Editing, the sidebar's Practice Key control holds THAT
+        # song's key - Blackbird E read "I'm playing in C" because Jazz tune was being edited. So
+        # the card gets its own control showing the sung entry's effective key; changing it is a
+        # temporary retune of this performance (the same path every Practice Key control takes),
+        # never a change to the song or the setlist. The sidebar control keeps its slot, for the
+        # song it belongs to. When the two are the same song the owner control below stays.
+        _sing_key = str(km.current_session_practice_key(st.session_state) or "").strip()
+        if _sing_key:
+            _render_backing_card_performance_key(original_key, _sing_key, orig_cell=orig_cell, pk_label=pk_label)
+            return
     proxy = globals().get("_sidebar_pk_proxy")
     if not proxy or proxy.get("rendered"):
         # No owner widget this run (Fixed Key, or the sidebar drew it): the keys as text.
@@ -11244,6 +11651,50 @@ def _render_backing_card_practice_key(original_key: str, practice_key: str) -> N
                 _cap = "Concert pitch" + (f' · {html.escape(_rel)}' if _rel else "")
             st.markdown(
                 f'<p class="ui-skp-cap">{_cap}</p>',
+                unsafe_allow_html=True,
+            )
+
+
+def _render_backing_card_performance_key(original_key: str, sing_key: str, *, orig_cell: str, pk_label: str) -> None:
+    """Original | the Now Singing entry's key, as a control that retunes THIS performance only."""
+    from song_card_keys import KEY_SEARCH_FILTER_MODE, key_relation_caption, pretty_key_name
+
+    try:
+        from music_theory import conventional_key_options
+
+        options = list(conventional_key_options(original_key or sing_key, sing_key))
+    except Exception:
+        options = []
+    if sing_key not in options:
+        options = [sing_key] + options
+    # Keyed by the performed take: a new song, a new set or End Set never inherits a stale value.
+    wkey = f"karaoke_card_perf_key_{km.render_generation(st.session_state)}"
+    if st.session_state.get(wkey) not in options:
+        st.session_state.pop(wkey, None)
+
+    def _on_perf_key_change() -> None:
+        _karaoke_retune_after_explicit_key_change(str(st.session_state.get(wkey) or ""))
+
+    with st.container(key="backing_card_key_row"):
+        c_orig, c_pk = st.columns(2, gap="small")
+        with c_orig:
+            st.markdown(orig_cell, unsafe_allow_html=True)
+        with c_pk:
+            st.markdown(pk_label, unsafe_allow_html=True)
+            st.selectbox(
+                "Key for this performance",
+                options,
+                index=options.index(sing_key),
+                key=wkey,
+                format_func=lambda k: pretty_key_name(k) or str(k),
+                filter_mode=KEY_SEARCH_FILTER_MODE,
+                on_change=_on_perf_key_change,
+                label_visibility="collapsed",
+                help="This performance only: the song and your setlist keep their saved key.",
+            )
+            _rel = key_relation_caption(original_key, str(st.session_state.get(wkey) or sing_key))
+            st.markdown(
+                f'<p class="ui-skp-cap">{html.escape(_rel) if _rel else "This performance only"}</p>',
                 unsafe_allow_html=True,
             )
 
@@ -15228,7 +15679,7 @@ def _render_backing_scope_controls(
                     1,
                     key="backing_track_loops",
                     label_visibility="collapsed",
-                    on_change=_on_backing_filter_change,
+                    on_change=_on_backing_loops_slider_change,
                 )
             with _loop_r:
                 st.button(
@@ -15302,6 +15753,16 @@ def _backing_transport_status_message(
     return "Press Play Backing Track to generate and play.", "idle"
 
 
+def _kc_owns_song_end(session) -> bool:
+    """Key Cycling is on: its pass hand-offs, not the Karaoke set, decide what follows an end."""
+    try:
+        from backing_key_cycle import is_cycle_active
+
+        return bool(is_cycle_active(session))
+    except Exception:
+        return False
+
+
 def _render_backing_step2_playback_action(
     *,
     song_id: str,
@@ -15331,11 +15792,14 @@ def _render_backing_step2_playback_action(
     # (backing_card_commands): a run cut off before then handles it again.
     from backing_card_commands import (
         apply_card_command,
+        card_command_for_this_run,
+        carry_card_play_over_rerun,
         commit_card_command,
-        pending_card_command,
     )
 
-    _card_action, _card_token = pending_card_command(st.session_state)
+    # The pending card command, or a Play carried over the rerun below (the card's own value is gone
+    # in the run after a rerun).
+    _card_action, _card_token = card_command_for_this_run(st.session_state)
     _play_clicked = False
     if _card_action in ("play", "stop", "pause", "resume"):
         _card_outcome = apply_card_command(
@@ -15352,6 +15816,28 @@ def _render_backing_step2_playback_action(
         # Play (and a Resume that restarts a changed selection) is committed
         # once armed, further down this run.
         _play_clicked = _card_outcome.play
+        # Play after Key Cycling finished its final key: start again from the first key. The cycle
+        # holds the final key when it ends, and this run already resolved its chart and audio from
+        # that key, so arming the first key here left nothing to publish -- the card said Starting
+        # and nothing sounded (browser probe 2026-11-21). Rewind first and run again. The card's
+        # value is gone in the next run (diagnostic trace 2026-11-21: the rerun saw no command and the
+        # cycle stayed Held at the first key), so the Play is carried over the rerun until committed.
+        _kc_play_after_finish = False
+        if _play_clicked:
+            try:
+                from backing_key_cycle import (
+                    is_cycle_active as _kc_pf_active,
+                    rewind_key_cycle_to_first_key as _kc_pf_rewind,
+                )
+
+                if _kc_pf_active(st.session_state) and st.session_state.get("_kc_cycle_finished_final"):
+                    _kc_pf_rewind(st.session_state)
+                    carry_card_play_over_rerun(st.session_state, _card_token)
+                    _kc_play_after_finish = True
+            except Exception:
+                _kc_play_after_finish = False
+        if _kc_play_after_finish:
+            st.rerun()
         if _play_clicked:
             try:  # diagnostic marker: the ledger shows what the operations after Play did
                 from active_song_change_ledger import note_active_song as _asl_note
@@ -15369,11 +15855,41 @@ def _render_backing_step2_playback_action(
         # A take finishing advances a Karaoke set: at most once, so it is
         # consumed on receipt.
         commit_card_command(st.session_state, _card_token)
+        try:  # forensics: what the set's advance decision saw (acceptance runs 2026-11-21)
+            import json as _ke_json
+            import os as _ke_os
+            import time as _ke_time
+            from pathlib import Path as _KeP
+
+            from backing_transport_intent import TRANSPORT_LOG_KEY as _ke_tlog
+
+            _ke_dir = _KeP(_ke_os.environ.get("MUSIC_APP_DATA_DIR") or "_runtime_key_cycle_8510")
+            _ke_dir.mkdir(parents=True, exist_ok=True)
+            with (_ke_dir / "_play_trace.jsonl").open("a", encoding="utf-8") as _ke_fh:
+                _ke_fh.write(_ke_json.dumps({
+                    "t": _ke_time.time(), "event": "card_ended",
+                    "transport": str(transport_intent(st.session_state) or ""),
+                    "cycle_active": bool(_kc_owns_song_end(st.session_state)),
+                    "karaoke": bool(km.is_karaoke_session_active(st.session_state)),
+                    "transport_log": list(st.session_state.get(_ke_tlog) or [])[-6:],
+                }, default=str) + "\n")
+        except Exception:
+            pass
         if (
             km.is_voice_mode(st.session_state)
             and km.is_karaoke_session_active(st.session_state)
             and km.auto_advance_enabled(st.session_state)
             and playback_allowed(st.session_state)
+            # A song ends while it is playing: after a Stop (the card's, or Key Cycling's, which
+            # stops the transport) an "ended" is the stopped take, not the song finishing.
+            # Browser runs 2026-11-21 (Karaoke Set, 390 px): the Key Cycling Stop was followed by
+            # an "ended" and the set moved on to its next song (Blackbird, G major).
+            and transport_intent(st.session_state) == "playing"
+            # While Key Cycling is on, its own hand-offs own every end (the card's poll does not report
+            # one then either). Acceptance run 2026-11-21 on 0cc15d8c (390 px): the Key Cycling Stop's
+            # click produced an "ended" that this run handled before it applied that Stop -- transport
+            # still playing -- and the set moved on to Blackbird.
+            and not _kc_owns_song_end(st.session_state)
         ):
             # Natural end. The card transport (sheet closed) and the lead-sheet
             # audio "ended" callback (sheet open) both arrive as this intent.
@@ -15760,9 +16276,23 @@ st.markdown(
       try {{
         document.body.dataset.vocalFocus = "{ 'true' if km.is_voice_mode(st.session_state) else 'false' }";
         document.body.dataset.karaokeSession = "{ 'true' if (km.is_voice_mode(st.session_state) and km.is_karaoke_session_active(st.session_state)) else 'false' }";
+        document.body.dataset.voicePerformance = "{ 'true' if km.is_voice_mode(st.session_state) else 'false' }";
       }} catch (e) {{}}
     </script>
     """,
+    unsafe_allow_html=True,
+)
+# The page-follow controller's context (lead_sheet_page_follow): a plain marker element, because Streamlit does not
+# run a <script> inside st.markdown, so the body attributes above cannot be relied on. Voice -> exactly one follow
+# destination (the Lead Sheet while open, else the singing panel; never a melody staff), in a Karaoke Set or not.
+st.markdown(
+    '<span class="ls-follow-context" hidden aria-hidden="true" '
+    # Also the Voice styling flag: app_ui's vocal-focus CSS matches this element with :has(), because the
+    # body attribute the <script> above writes is never set (Streamlit does not run it).
+    f'data-vocal-focus="{"true" if km.is_voice_mode(st.session_state) else "false"}" '
+    f'data-voice-performance="{1 if km.is_voice_mode(st.session_state) else 0}" '
+    f'data-karaoke-set="{1 if (km.is_voice_mode(st.session_state) and km.is_karaoke_session_active(st.session_state)) else 0}">'
+    "</span>",
     unsafe_allow_html=True,
 )
 
@@ -18258,13 +18788,14 @@ def _on_backing_filter_change() -> None:
             capture_live_backing_scope_override(st.session_state)
         except ImportError:
             pass
-        # During a Karaoke set an explicit Feel / meter change belongs to the
-        # entry being sung: the next entry keeps its own style, and returning
-        # here restores this choice.
+        # During a Karaoke set an explicit Feel / meter change is TEMPORARY: it belongs to
+        # the current performance of the entry being sung (user rule 2026-11-19). It is not a
+        # setlist edit and is never saved - the next entry, Previous Song back to this one and
+        # a new set all start from the song's own groove.
         if km.is_voice_mode(st.session_state) and km.is_karaoke_session_active(st.session_state):
             _ov_groove = str(st.session_state.get("backing_groove_style") or "").strip()
             _ov_meter = str(st.session_state.get("backing_time_signature") or "").strip()
-            if km.record_entry_feel_override(
+            km.record_entry_feel_override(
                 st.session_state,
                 groove=_ov_groove
                 if _ov_groove and _ov_groove != km.resolve_karaoke_entry_groove(st.session_state)
@@ -18272,13 +18803,7 @@ def _on_backing_filter_change() -> None:
                 meter=_ov_meter
                 if _ov_meter and _ov_meter != km.resolve_karaoke_entry_meter(st.session_state)
                 else "",
-            ):
-                # A saved setting of a setlist entry, so a deliberate setlist edit: saved to the
-                # account like every other one, not left to an autosave the strict policy keeps
-                # off the cloud.
-                from karaoke_ui import persist_karaoke_setlist
-
-                persist_karaoke_setlist(st)
+            )
     except Exception:
         pass
     # Flush widget → canonical before play-session capture so Feel Pop after
@@ -21004,6 +21529,12 @@ elif _studio_page == "practice":
                                             melody=_pm_melody,
                                             song_identity=_pm_song_identity,
                                         )
+                                        try:
+                                            from backing_melody_modes import MODE_PRACTICE, request_melody_mode
+
+                                            request_melody_mode(st.session_state, MODE_PRACTICE)
+                                        except ImportError:
+                                            pass
                                         set_pending_anchor(
                                             st.session_state, ANCHOR_BACKING_FOLLOW_ALONG
                                         )
@@ -21848,14 +22379,29 @@ elif _studio_page == "backing":
         pass
     st.session_state.pop("_active_bpm_sync_id", None)
     st.session_state.pop("_backing_trace_sync_id", None)
+    # During a Voice set this page plays Now Singing, so its source identity is the SUNG entry's.
+    # It took is_custom from the song being EDITED: with Trial Song (Custom) as Now Editing while
+    # Blackbird was sung, the id became a Custom one, Backing found no presentation for it and hid
+    # the player and the Karaoke panel mid-set ("Press Play Backing Track to generate and play").
+    _kr_sync_pick = km.effective_catalog_pick_key(st.session_state)
+    _kr_sync_set = bool(km.is_voice_mode(st.session_state) and km.is_karaoke_session_active(st.session_state))
+    if _kr_sync_set:
+        _kr_sync_custom = _kr_sync_pick.startswith("custom::")
+        _kr_sync_entry = km.current_session_entry(st.session_state) or {}
+        _kr_sync_name = str(_kr_sync_entry.get("title") or "") if _kr_sync_custom else ""
+        _kr_sync_rev = _kr_sync_pick.removeprefix("custom::") if _kr_sync_custom else ""
+    else:
+        _kr_sync_custom = cpl_session_is_active(st.session_state)
+        _kr_sync_name = str(_cpl_active.get("name", "") if _cpl_active else "")
+        _kr_sync_rev = str(_cpl_active.get("id", "") if _cpl_active else "")
     _song_bpm_sync_id = resolve_active_bpm_sync_id(
         st.session_state,
         song_title=str(song),
         song_artist=str(song_data.get("artist", "")),
-        custom_name=str(_cpl_active.get("name", "") if _cpl_active else ""),
-        custom_revision=str(_cpl_active.get("id", "") if _cpl_active else ""),
-        is_custom=cpl_session_is_active(st.session_state),
-        pick_key=km.effective_catalog_pick_key(st.session_state),
+        custom_name=_kr_sync_name,
+        custom_revision=_kr_sync_rev,
+        is_custom=_kr_sync_custom,
+        pick_key=_kr_sync_pick,
     )
     _creative_backing_ctx = None
     try:
@@ -22145,10 +22691,9 @@ elif _studio_page == "backing":
             render_source_context_debug(st, st.session_state)
         except ImportError:
             pass
-    # The voice-mode `data-vocal-focus="true"` body attribute is set
-    # globally at app init (search for `dataset.vocalFocus` upstream),
-    # so the larger-lyric / vocal-focused CSS automatically applies on
-    # this page whenever the active instrument is Voice.
+    # The Voice styling flag is the rendered `.ls-follow-context[data-vocal-focus]` marker
+    # (app init, every run; the old body-attribute <script> never ran), so the larger-lyric /
+    # vocal-focused CSS applies on this page whenever the active instrument is Voice.
 
     from songs.music_source import custom_selected_song_record as _custom_selected_song_record
 
@@ -23602,6 +24147,19 @@ elif _studio_page == "backing":
         st.session_state,
         "backing_audio_state",
         audio_key=str(_audio_signature_key or ""),
+        # Karaoke Set lifecycle evidence (2026-11-19): what this song is actually played with.
+        groove=str(st.session_state.get("backing_groove_style") or ""),
+        meter=str(st.session_state.get("backing_time_signature") or ""),
+        loops=st.session_state.get("backing_track_loops"),
+        set_loops=km.karaoke_set_loops(st.session_state),
+        entry_groove=str(km.resolve_karaoke_entry_groove(st.session_state) or "")
+        if km.is_karaoke_session_active(st.session_state)
+        else "",
+        bpm_widgets=",".join(
+            f"{str(_k).split('::')[-1][-18:]}={st.session_state.get(_k)}"
+            for _k in list(st.session_state.keys())
+            if str(_k).startswith("backing_track_bpm::")
+        ),
         chord_count=len(backing_chords or []),
         level=str(level or ""),
         scope=str(st.session_state.get("backing_track_scope") or ""),
@@ -23712,26 +24270,30 @@ elif _studio_page == "backing":
     # in before performing. The CTA only renders for Voice / Vocals /
     # Singer; instrument mode never sees it.
     def _open_lyrics_editor_from_backing() -> None:
-        _singing_pk = km.now_singing_pick_key(st.session_state)
-        _singing_eid = km.now_singing_entry_id(st.session_state)
-        if _singing_pk:
-            st.session_state[km.KARAOKE_EDITING_PICK_KEY] = _singing_pk
-        if _singing_eid:
-            st.session_state[km.KARAOKE_EDITING_ENTRY_ID_KEY] = _singing_eid
-        # Carry the entry's identity and key: without them the consumer cannot
-        # build a complete selected_song, and an incomplete selection is
-        # re-resolved back to the previous song by pick-key reconciliation.
-        _sing_entry = (
-            km.entry_by_id(st.session_state, _singing_eid) if _singing_eid else None
-        ) or km.current_session_entry(st.session_state) or {}
-        km.record_lyrics_target_request(st.session_state, _singing_pk or "", _singing_eid or "")
+        # The song ON THIS CARD, by its own id and source. This prompt only shows when no set is
+        # running, and Now Singing is then the setlist's FIRST entry (stop_session rewinds to it),
+        # so following Now Singing opened Blackbird under a card that said Jazz tune.
+        _card_pk = str(st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
+        if not _card_pk:
+            return
+        km.record_lyrics_target_request(st.session_state, _card_pk, "")
+        if _card_pk.startswith("composition::"):
+            # A Composition's lyrics live in Composition Studio: open that exact saved song on its
+            # Lyrics step (the existing Songs -> Studio edit handoff). Queued for the next run's
+            # pre-widget consumer: loading the document here, mid-script, wrote widget-backed
+            # Backing keys after their widgets existed and raised (backing_groove_style).
+            st.session_state[PENDING_KARAOKE_COMPOSITION_LYRICS_KEY] = _card_pk
+            st.rerun()
+            return
+        _card_sel = st.session_state.get("selected_song")
+        _card_sel = _card_sel if isinstance(_card_sel, dict) else {}
         st.session_state[km.PENDING_KARAOKE_LYRICS_NAV_KEY] = {
-            "pick_key": _singing_pk or "",
-            "entry_id": _singing_eid or "",
+            "pick_key": _card_pk,
+            "entry_id": "",
             "target_page": "picker",
-            "practice_key": str(_sing_entry.get("practice_key") or ""),
-            "title": str(_sing_entry.get("title") or ""),
-            "genre": str(_sing_entry.get("genre") or ""),
+            "practice_key": "",
+            "title": str(song_data.get("title") or _card_sel.get("title") or ""),
+            "genre": str(_card_sel.get("genre") or ""),
         }
         st.rerun()
 
@@ -23741,6 +24303,14 @@ elif _studio_page == "backing":
             song_data=song_data,
             active_song_title=str(song_data.get("title") or song),
             on_open_editor=_open_lyrics_editor_from_backing,
+            # Custom songs have no lyrics editor yet (the app's own help says so): say it plainly
+            # rather than open a page with nothing to edit.
+            editor_unavailable_note=(
+                "Custom songs don't have a lyrics editor yet, so there is nothing to open for this one. "
+                "Catalog songs use Lyrics & Cues on Songs; Composition songs use Composition Studio."
+                if str(st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").startswith("custom::")
+                else ""
+            ),
         )
 
     def _open_setlist_lyrics_editor(pick_key: str, entry_id: str) -> None:
@@ -25124,10 +25694,16 @@ elif _studio_page == "backing":
                     "gen": arm_key_cycle_prefetch(st.session_state),
                     "take_request": capture_take_request(st.session_state, prefetch=True),
                 }
+                try:
+                    from backing_key_cycle import resolve_cycle_owner as _pf_resolve_owner
+
+                    # The owner this full run armed the prefetch for; every tick serves it.
+                    _pf_snap["owner"] = str(_pf_resolve_owner(st.session_state) or "")
+                except Exception:
+                    _pf_snap["owner"] = ""
                 st.session_state["_kc_prefetch_snap"] = _pf_snap
 
-                @st.fragment(run_every=2)
-                def _key_cycle_prefetch_fragment() -> None:
+                def _key_cycle_prefetch_tick() -> None:
                     from copy import deepcopy as _dc
                     import json
                     import os
@@ -25135,26 +25711,72 @@ elif _studio_page == "backing":
                     from pathlib import Path
 
                     ss = st.session_state
+
+                    def _pf_skip(reason: str, **extra: Any) -> None:
+                        # Diagnosis only (MUSIC_APP_DATA_DIR runs): why a tick did no prefetch work,
+                        # logged once per change of reason so a silent stall names its cause.
+                        if not os.environ.get("MUSIC_APP_DATA_DIR"):
+                            return
+                        try:
+                            if ss.get("_kc_pf_last_skip") == reason:
+                                return
+                            ss["_kc_pf_last_skip"] = reason
+                            _d = Path(os.environ["MUSIC_APP_DATA_DIR"])
+                            _d.mkdir(parents=True, exist_ok=True)
+                            with (_d / "_kc_prefetch.jsonl").open("a", encoding="utf-8") as _fh:
+                                _fh.write(json.dumps({"t": _time.time(), "event": "skip", "reason": reason, **extra}, default=str) + "\n")
+                        except Exception:
+                            pass
+
                     snap = ss.get("_kc_prefetch_snap")
                     if not isinstance(snap, dict):
+                        _pf_skip("no_snap")
                         return
-                    from backing_take_identity import take_install_allowed
+                    from backing_take_identity import capture_take_request, take_install_allowed
 
-                    if (
-                        not key_cycle_prefetch_still_valid(ss, int(snap.get("gen") or 0))
-                        or not take_install_allowed(ss, snap.get("take_request"))
-                    ):
+                    if not key_cycle_prefetch_still_valid(ss, int(snap.get("gen") or 0)):
+                        try:
+                            from backing_key_cycle import BACKING_KEY_CYCLE_SESSIONS_KEY as _pf_bag_key
+                            from backing_key_cycle import resolve_cycle_owner as _pf_owner
+                            from creative_key_sync import live_backing_source as _pf_src
+
+                            _pf_bag = ss.get(_pf_bag_key) or {}
+                            _pf_who = {
+                                "owner": _pf_owner(ss), "page": ss.get("studio_page"), "src": _pf_src(ss),
+                                "bags": {k: [bool((v or {}).get("enabled")), (v or {}).get("status")]
+                                         for k, v in dict(_pf_bag).items() if isinstance(v, dict)},
+                            }
+                        except Exception as _exc_w:
+                            _pf_who = {"err": str(_exc_w)[:120]}
+                        _pf_skip("gen_invalid", gen=snap.get("gen"), now=ss.get("_kc_prefetch_gen"),
+                                 cancel=bool(ss.get("_kc_prefetch_cancel")), who=_pf_who)
+                        ss.pop("_kc_prefetch_snap", None)
+                        return
+                    if not take_install_allowed(ss, snap.get("take_request")):
+                        try:
+                            _was, _now = snap.get("take_request"), capture_take_request(ss, prefetch=True)
+                            _diff = {
+                                f: [str(getattr(_was, f, None)), str(getattr(_now, f, None))]
+                                for f in ("source", "practice_key", "mode", "cycle", "transport_generation")
+                                if getattr(_was, f, None) != getattr(_now, f, None)
+                            }
+                        except Exception as _exc_d:
+                            _diff = {"err": str(_exc_d)[:120]}
+                        _pf_skip("take_request_changed", diff=_diff)
                         ss.pop("_kc_prefetch_snap", None)
                         return
                     if not _kc_pf_active(ss):
+                        _pf_skip("cycle_inactive")
                         return
                     try:
                         from backing_key_cycle import key_cycle_settings_pending as _pf_pending
 
                         if _pf_pending(ss):
+                            _pf_skip("settings_pending")
                             return
                     except Exception:
                         pass
+                    _pf_skip("working")
                     targets = [str(t) for t in (snap.get("neighbors") or []) if t]
                     try:
                         from backing_key_cycle import cycle_prefetch_neighbor_keys as _kc_live_neighbors
@@ -25178,6 +25800,13 @@ elif _studio_page == "backing":
                         _log = None
                     pending = []
                     ready_targets = []
+                    # Synthesized takes that still need their follow timeline. They go to the FRONT
+                    # of the queue: the cache-hit path below builds the timeline and hands the take
+                    # to the player on this tick. Queued behind targets not yet synthesized, the
+                    # next key's take (ready in ~1 s) waited a whole round of ticks, and when the
+                    # ticks stopped it reached the player ~159 s after Play -- the first pass had
+                    # long ended in silence at 1 / 12 (browser runs 2026-11-20, dev 0c679a6f).
+                    _await_tl: list[str] = []
                     for tgt in targets:
                         if not tgt or tgt == from_key:
                             continue
@@ -25285,8 +25914,8 @@ elif _studio_page == "backing":
                                 # otherwise the full prefetch path below builds it with the events.
                                 _hit_tl = _BACKING_TIMELINE_CACHE.get(_hit_sig)
                                 if not _hit_tl:
-                                    if tgt not in pending:
-                                        pending.append(tgt)
+                                    if tgt not in _await_tl:
+                                        _await_tl.append(tgt)
                                     continue
                                 _pf_path = spill_backing_wav_to_disk(
                                     ss, _BACKING_WAV_CACHE.get(_hit_sig) or b"", _hit_sig, update_session=False
@@ -25403,6 +26032,8 @@ elif _studio_page == "backing":
                                 )
                         except Exception:
                             pass
+                    if _await_tl:
+                        pending = list(_await_tl) + [p for p in pending if p not in _await_tl]
                     if not pending:
                         ss.pop(BACKING_KEY_CYCLE_PREFETCH_TARGET_KEY, None)
                         return
@@ -25725,6 +26356,15 @@ elif _studio_page == "backing":
                     if _ok and len(pending) <= 1:
                         ss.pop(BACKING_KEY_CYCLE_PREFETCH_TARGET_KEY, None)
 
+                @st.fragment(run_every=2)
+                def _key_cycle_prefetch_fragment() -> None:
+                    from backing_key_cycle import pinned_cycle_owner
+
+                    _snap0 = st.session_state.get("_kc_prefetch_snap")
+                    _owner0 = str(_snap0.get("owner") or "") if isinstance(_snap0, dict) else ""
+                    with pinned_cycle_owner(_owner0):
+                        _key_cycle_prefetch_tick()
+
                 _key_cycle_prefetch_fragment()
     except Exception:
         pass
@@ -25846,12 +26486,13 @@ elif _studio_page == "backing":
     # and the Lead Sheet switch owns only the optional chord chart inside it. Computed here,
     # before the two gates below, because ``_karaoke_voice`` is not set until much later - long
     # after the page player has already decided whether to mount.
+    # User rule 2026-11-20: the singing panel is ALWAYS there in Voice - in a Karaoke Set or singing
+    # one song on its own - and the Lead Sheet switch governs only the optional Lead Sheet inside it
+    # (folded behind the lyrics when Off). Countdown and auto-advance stay set-only: they read
+    # ``_karaoke_engaged`` (Voice AND an active set), not this.
     _karaoke_needs_surface = False
     try:
-        _karaoke_needs_surface = bool(
-            km.is_voice_mode(st.session_state)
-            and km.is_karaoke_session_active(st.session_state)
-        )
+        _karaoke_needs_surface = bool(km.is_voice_mode(st.session_state))
     except Exception:
         _karaoke_needs_surface = False
     #: Exactly one of these two surfaces may mount, or two players sound at once. The page
@@ -26389,6 +27030,10 @@ elif _studio_page == "backing":
         st.session_state["backing_lead_sheet_open"] = bool(open_)
         # The card's Lead sheet On / Off is this same choice (Play reopens it for the next take).
         st.session_state[BACKING_LEAD_SHEET_ON_PLAY_KEY] = bool(open_)
+        # During a Karaoke Set it is also the set's choice: every following song opens (or not) the same way.
+        from backing_track_state import note_karaoke_set_lead_sheet_choice
+
+        note_karaoke_set_lead_sheet_choice(st.session_state, bool(open_))
         # Opened over a live take: the follow-along player mounts with native
         # autoplay and starts at the playhead the card transport handed over
         # (its own JS pauses it again when nothing was playing at the click).
@@ -26527,19 +27172,39 @@ elif _studio_page == "backing":
             # original key beside correctly transposed chord chips.
             _cue_from_key = str(original_key or song_data.get("key") or "").strip()
             _cue_to_key = str(chart_display_key or "").strip()
+            # Key Cycling changes key in the browser, without a rerun: a cue that spells a chord
+            # run must be ready in every key of the cycle (the panel picks the one that sounds,
+            # by the same key names as the cycle's timelines). Only cues that change with the
+            # key are sent this way -- prose cues and lyrics stay a single list.
+            _cue_cycle_keys: list[str] = []
+            try:
+                from backing_key_cycle import (
+                    cycle_key_sequence as _lp_cycle_keys,
+                    is_cycle_active as _lp_cycle_on,
+                )
+
+                if _cue_from_key and _lp_cycle_on(st.session_state):
+                    _cue_cycle_keys = [
+                        str(_k).strip()
+                        for _k in (_lp_cycle_keys(st.session_state) or [])
+                        if str(_k or "").strip()
+                    ]
+            except Exception:
+                _cue_cycle_keys = []
             for _sec_name, _sec_chords in (chart_sections or {}).items():
-                _lines = _lyric_lines_for_section(
+                _raw_lines = _lyric_lines_for_section(
                     _sec_name,
                     _catalog_cues,
                     _user_section_text,
                     limit=16,
                 )
+                _lines = list(_raw_lines)
                 if _cue_from_key and _cue_to_key:
                     _lines = [
                         transpose_chord_tokens_in_cue(
                             _ln, _cue_from_key, _cue_to_key
                         )
-                        for _ln in _lines
+                        for _ln in _raw_lines
                     ]
                 _panel_map[str(_sec_name)] = {
                     "lyrics": _lines,
@@ -26549,6 +27214,10 @@ elif _studio_page == "backing":
                         else []
                     ),
                 }
+                if _cue_cycle_keys and _raw_lines:
+                    _by_key = cue_lines_by_cycle_key(_raw_lines, _cue_from_key, _cue_cycle_keys)
+                    if _by_key:
+                        _panel_map[str(_sec_name)]["lyrics_by_key"] = _by_key
             if any(entry.get("lyrics") for entry in _panel_map.values()):
                 _karaoke_lyric_panel = _panel_map
             elif not _karaoke_show_chords:
@@ -26828,7 +27497,7 @@ elif _studio_page == "backing":
                 karaoke_countdown_seconds=km.countdown_seconds(st.session_state),
                 # Karaoke keeps its own scroll box - M4 left it that way deliberately - but not
                 # its own idea of when the singer is scrolling. This installs the shared page
-                # controller so this surface can ask its six-second hold, without registering as
+                # controller so this surface can ask its three-second hold, without registering as
                 # a page-follow provider and without page_follow's full-height layout.
                 karaoke_hold_from_shared_controller=bool(_karaoke_needs_surface),
                 karaoke_lyrics_panel=_karaoke_lyric_panel,
@@ -26851,7 +27520,7 @@ elif _studio_page == "backing":
                 reading_key=_fa_reading_key,
                 chord_tone_hints_switch=not km.is_karaoke_session_active(st.session_state),
                 # Backing (not Karaoke, whose lyric panel keeps its own box): the whole chart on the page,
-                # the page following the music with a six-second hold after any manual scroll or touch.
+                # the page following the music with a three-second hold after any manual scroll or touch.
                 page_follow=not (_karaoke_engaged or km.is_karaoke_session_active(st.session_state)),
         )
         if _karaoke_engaged:
@@ -26918,11 +27587,14 @@ elif _studio_page == "backing":
                     scrolling=True,
                 )
         else:
-            components.html(
-                _kr_component_html,
-                height=820 if _karaoke_lyric_panel else 720,
-                scrolling=True,
-            )
+            # A keyed host the page can hold at the chart's height while the frame reloads (see the
+            # follow-along script's fit(): ``.st-key-ls_follow_panel_host``).
+            with st.container(key="ls_follow_panel_host"):
+                components.html(
+                    _kr_component_html,
+                    height=820 if _karaoke_lyric_panel else 720,
+                    scrolling=True,
+                )
         if _ls_autoplay and _ls_take:
             try:
                 from music_activity import observe_backing_practice
@@ -26932,6 +27604,24 @@ elif _studio_page == "backing":
             # The take is mounted to play: the one-shot request is spent.
             st.session_state.pop("_backing_play_request", None)
         st.markdown("</div>", unsafe_allow_html=True)
+
+    # Melodies under the Lead Sheet (user rules 2026-11-20, backing_melody_modes.py): Practice Melody and My
+    # Uploaded Melodies are one choice -- only the active mode's panels are drawn, so a hidden display never takes
+    # part in scrolling. The Original Melody (below) coexists with either.
+    # An active Karaoke Set shows only the Karaoke lyrics and the optional Lead Sheet (user, 2026-11-20): no
+    # Original, Practice or Uploaded Melody and no melody-mode choice while the set runs.
+    try:
+        _bk_in_karaoke_set = bool(km.is_voice_mode(st.session_state) and km.is_karaoke_session_active(st.session_state))
+    except Exception:
+        _bk_in_karaoke_set = False
+    try:
+        from backing_melody_modes import MODE_PRACTICE as _BK_MODE_PRACTICE, MODE_UPLOADED as _BK_MODE_UPLOADED
+        from backing_melody_modes import render_melody_mode_selector as _bk_render_melody_mode
+
+        _bk_melody_mode = "" if _bk_in_karaoke_set else _bk_render_melody_mode(st, st.session_state)
+    except ImportError:
+        _BK_MODE_PRACTICE, _BK_MODE_UPLOADED = "practice", "uploaded"
+        _bk_melody_mode = "" if _bk_in_karaoke_set else _BK_MODE_PRACTICE
 
     # Practice Melody projection (Slice E/F1) -- an optional layer on top of
     # Backing, never a second owner of song/key/source state. Consuming the
@@ -26979,7 +27669,7 @@ elif _studio_page == "backing":
         except Exception:
             pass
 
-    if _pmb_melody is not None:
+    if _bk_melody_mode == _BK_MODE_PRACTICE and _pmb_melody is not None:
         with st.expander(
             f"{FEATURE_ICONS['backing']} Practice Melody", expanded=True
         ):
@@ -27035,6 +27725,52 @@ elif _studio_page == "backing":
                 practice_melody_sections_abc(_pmb_melody, _pmb_display_sections),
                 measure_sync=_pmb_measure_sync,
             )
+    elif _bk_melody_mode == _BK_MODE_PRACTICE:
+        # No Practice Melody handed over from Practice yet: make one here, from this song's chart, with the same
+        # generator and level the Practice page uses (the melody then also shows on Practice). It never changes
+        # the song, key, instrument or backing settings, and never starts or stops playback.
+        if st.button(
+            f"{FEATURE_ICONS['backing']} Show a Practice Melody for this song",
+            key="backing_practice_melody_create",
+        ):
+            _pmb_created = None
+            try:
+                from composition_hum_transcription import parse_meter as _pmb_parse_meter
+                from practice_melody_backing import begin_practice_melody_backing_handoff
+                from practice_melody_session import resolve_practice_melody
+
+                _pmb_sections = sections if isinstance(sections, dict) else {}
+                _pmb_created = resolve_practice_melody(
+                    st.session_state,
+                    song_identity=_pmb_song_identity,
+                    song_id_for_generation=_pmb_song_identity,
+                    song_title=song,
+                    sections=_pmb_sections,
+                    section_order=(song_data or {}).get("section_order") or list(_pmb_sections.keys()),
+                    key_center=_pmb_target_key,
+                    level=level,
+                    tempo_bpm=float(st.session_state.get("backing_track_bpm") or bpm or 100),
+                    style=str(st.session_state.get("backing_groove_style") or ""),
+                    meter=_pmb_parse_meter(str(backing_time_signature or "4/4")),
+                    focus=focus,
+                    instrument=str(instrument or ""),
+                )
+                if _pmb_created is not None:
+                    begin_practice_melody_backing_handoff(
+                        st.session_state, melody=_pmb_created, song_identity=_pmb_song_identity
+                    )
+            except Exception:
+                _pmb_created = None
+            if _pmb_created is not None:
+                st.rerun()
+            st.info("This song has no structured chord/section data yet, so a Practice Melody can't be made for it.")
+    elif _bk_melody_mode == _BK_MODE_UPLOADED:
+        try:
+            from backing_melody_modes import render_uploaded_references
+
+            render_uploaded_references(st, st.session_state)
+        except Exception:
+            st.caption("Uploaded melodies could not be shown right now. The music is unaffected.")
 
     if _developer_mode_enabled():
         with st.expander("📋 Form timeline & section order (dev)", expanded=False):
@@ -27071,104 +27807,112 @@ elif _studio_page == "backing":
                 hide_index=True,
             )
 
-    # ----- Original Melody panel (Composition songs only) -----
-    # One synchronized lead-sheet score per section (chords above the staff, lyrics
-    # below the notes). It follows Backing's own transport; the melody itself is
-    # never played here -- the musician plays it.
+    # ----- Original Melody panel -----
+    # The song's own synchronized melody, whatever its source (backing_melody_modes.original_melody_sections):
+    # today a Composition's composed melody; later a properly integrated synchronized melody for a Catalog or
+    # Custom song. Shown in either melody mode, it always leads the page while open. One synchronized
+    # lead-sheet score per section (chords above the staff, lyrics below the notes). It follows Backing's own
+    # transport; the melody itself is never played here -- the musician plays it.
     _bk_comp_doc = _composition_doc if _chart_bundle and _chart_bundle.get("source") == SOURCE_COMPOSITION else None
-    if _bk_comp_doc:
-        from composition_songs_bridge import (
-            composition_section_melody_events as _bk_melody_events,
-            composition_section_lyrics_alignment as _bk_lyrics_alignment,
+    try:
+        from backing_melody_modes import original_melody_sections as _bk_original_melody_sections
+
+        _bk_melody_by_sec, _bk_om_source = _bk_original_melody_sections(
+            composition_doc=_bk_comp_doc, song_data=song_data if isinstance(song_data, dict) else None,
         )
-        _bk_melody_by_sec = _bk_melody_events(_bk_comp_doc)
-        if _bk_melody_by_sec:
+    except Exception:
+        _bk_melody_by_sec, _bk_om_source = {}, ""
+    if _bk_melody_by_sec and not _bk_in_karaoke_set:
+        _bk_align_by_sec = {}
+        if _bk_om_source == "composition":
+            from composition_songs_bridge import composition_section_lyrics_alignment as _bk_lyrics_alignment
+
             _bk_align_by_sec = _bk_lyrics_alignment(_bk_comp_doc)
-            with st.expander(
-                feature_label("practice_melody_original", "Original Melody"),
-                expanded=True,
-            ):
-                st.caption(
-                    f"The composed melody for **{song}** · key **{chart_display_key}**. "
-                    "Chords, notes and lyrics follow the backing track."
-                )
-                from composition_melody_notation import build_section_score_model as _bk_score
-                from composition_melody_projection import (
-                    clef_for_instrument as _bk_clef_for,
-                    melody_range_notice as _bk_range_notice,
-                    project_melody_events as _bk_project,
-                )
-                _bk_orig_key = str(original_key or "C").strip()
-                _bk_practice_key = str(concert_key or _bk_orig_key).strip()
-                _bk_written = chart_key_mode == "written"
-                _bk_inst_semitones = _bk_project(
-                    [], original_key=_bk_orig_key, practice_key=_bk_practice_key,
+        with st.expander(
+            feature_label("practice_melody_original", "Original Melody"),
+            expanded=True,
+        ):
+            st.caption(
+                f"The {'composed' if _bk_om_source == 'composition' else 'original'} melody for **{song}** · "
+                f"key **{chart_display_key}**. Chords, notes and lyrics follow the backing track."
+            )
+            from composition_melody_notation import build_section_score_model as _bk_score
+            from composition_melody_projection import (
+                clef_for_instrument as _bk_clef_for,
+                melody_range_notice as _bk_range_notice,
+                project_melody_events as _bk_project,
+            )
+            _bk_orig_key = str(original_key or "C").strip()
+            _bk_practice_key = str(concert_key or _bk_orig_key).strip()
+            _bk_written = chart_key_mode == "written"
+            _bk_inst_semitones = _bk_project(
+                [], original_key=_bk_orig_key, practice_key=_bk_practice_key,
+                instrument=instrument, session_state=st.session_state,
+                written=_bk_written,
+            )[2]
+            _bk_clef = _bk_clef_for(instrument)
+            _bk_display_key = str(
+                (written_key if (_bk_written and _bk_inst_semitones) else "")
+                or concert_key or original_key or "C"
+            )
+            _bk_comp_pg = (_bk_comp_doc or {}).get("global") if isinstance(
+                (_bk_comp_doc or {}).get("global"), dict
+            ) else {}
+            _bk_meter = str(_bk_comp_pg.get("time_signature") or backing_time_signature or "4/4")
+            _bk_bpm = int(_bk_comp_pg.get("bpm") or bpm or 96)
+
+            _bk_projected: dict[str, list] = {}
+            for _bk_sec_name, _bk_events in _bk_melody_by_sec.items():
+                _bk_projected[_bk_sec_name] = _bk_project(
+                    _bk_events, original_key=_bk_orig_key, practice_key=_bk_practice_key,
                     instrument=instrument, session_state=st.session_state,
                     written=_bk_written,
-                )[2]
-                _bk_clef = _bk_clef_for(instrument)
-                _bk_display_key = str(
-                    (written_key if (_bk_written and _bk_inst_semitones) else "")
-                    or concert_key or original_key or "C"
-                )
-                _bk_comp_pg = _bk_comp_doc.get("global") if isinstance(
-                    _bk_comp_doc.get("global"), dict
-                ) else {}
-                _bk_meter = str(_bk_comp_pg.get("time_signature") or backing_time_signature or "4/4")
-                _bk_bpm = int(_bk_comp_pg.get("bpm") or bpm or 96)
+                )[0]
+            _bk_notice = _bk_range_notice(
+                [ev for evs in _bk_projected.values() for ev in evs],
+                instrument, st.session_state,
+            )
+            if _bk_notice:
+                st.caption(_bk_notice)
 
-                _bk_projected: dict[str, list] = {}
-                for _bk_sec_name, _bk_events in _bk_melody_by_sec.items():
-                    _bk_projected[_bk_sec_name] = _bk_project(
-                        _bk_events, original_key=_bk_orig_key, practice_key=_bk_practice_key,
-                        instrument=instrument, session_state=st.session_state,
-                        written=_bk_written,
-                    )[0]
-                _bk_notice = _bk_range_notice(
-                    [ev for evs in _bk_projected.values() for ev in evs],
-                    instrument, st.session_state,
+            for _bk_sec_name, _bk_render_events in _bk_projected.items():
+                _bk_sec_chords = (chart_sections or {}).get(_bk_sec_name, [])
+                # Lyrics sit under the notes only for a singer. Instrumentalists read the
+                # melody alone; the stored lyrics and alignment are never touched.
+                _bk_voice = str(instrument or "").strip() == "Voice"
+                _bk_sec_lyrics = (section_lyrics or {}).get(_bk_sec_name, "") if _bk_voice else ""
+                _bk_sec_align = _bk_align_by_sec.get(_bk_sec_name) if _bk_voice else None
+                _bk_model = _bk_score(
+                    events=_bk_render_events,
+                    chords=_bk_sec_chords,
+                    key=_bk_display_key,
+                    meter=_bk_meter,
+                    bpm=_bk_bpm,
+                    title=_bk_sec_name,
+                    lyrics_text=_bk_sec_lyrics,
+                    lyrics_alignment=_bk_sec_align,
+                    clef=_bk_clef,
                 )
-                if _bk_notice:
-                    st.caption(_bk_notice)
-
-                for _bk_sec_name, _bk_render_events in _bk_projected.items():
-                    _bk_sec_chords = (chart_sections or {}).get(_bk_sec_name, [])
-                    # Lyrics sit under the notes only for a singer. Instrumentalists read the
-                    # melody alone; the stored lyrics and alignment are never touched.
-                    _bk_voice = str(instrument or "").strip() == "Voice"
-                    _bk_sec_lyrics = (section_lyrics or {}).get(_bk_sec_name, "") if _bk_voice else ""
-                    _bk_sec_align = _bk_align_by_sec.get(_bk_sec_name) if _bk_voice else None
-                    _bk_model = _bk_score(
-                        events=_bk_render_events,
-                        chords=_bk_sec_chords,
-                        key=_bk_display_key,
-                        meter=_bk_meter,
-                        bpm=_bk_bpm,
-                        title=_bk_sec_name,
-                        lyrics_text=_bk_sec_lyrics,
-                        lyrics_alignment=_bk_sec_align,
-                        clef=_bk_clef,
-                    )
-                    if _bk_model.get("abc"):
-                        st.markdown(f"##### {_bk_sec_name}")
-                        if _bk_voice and str(_bk_sec_lyrics).strip() and not _bk_model.get("lyrics_aligned"):
-                            st.caption(
-                                "These lyrics are not aligned to the melody yet. Align them in "
-                                "Composition Studio to see each syllable under its note."
+                if _bk_model.get("abc"):
+                    st.markdown(f"##### {_bk_sec_name}")
+                    if _bk_voice and str(_bk_sec_lyrics).strip() and not _bk_model.get("lyrics_aligned"):
+                        st.caption(
+                            "These lyrics are not aligned to the melody yet. Align them in "
+                            "Composition Studio to see each syllable under its note."
+                        )
+                    _bk_msync = None
+                    try:
+                        if _follow_timeline and _bk_render_events:
+                            from composition_playback_sync import build_composition_measure_sync_data as _bk_cmsync
+                            from practice_melody_sync import resolve_melody_measure_timing as _bk_resolve
+                            _bk_msync_data = _bk_cmsync(
+                                _bk_sec_name, _bk_render_events, meter=_bk_meter,
                             )
+                            if _bk_msync_data:
+                                _bk_msync = _bk_resolve(_bk_msync_data, _follow_timeline)
+                    except Exception:
                         _bk_msync = None
-                        try:
-                            if _follow_timeline and _bk_render_events:
-                                from composition_playback_sync import build_composition_measure_sync_data as _bk_cmsync
-                                from practice_melody_sync import resolve_melody_measure_timing as _bk_resolve
-                                _bk_msync_data = _bk_cmsync(
-                                    _bk_sec_name, _bk_render_events, meter=_bk_meter,
-                                )
-                                if _bk_msync_data:
-                                    _bk_msync = _bk_resolve(_bk_msync_data, _follow_timeline)
-                        except Exception:
-                            _bk_msync = None
-                        render_abc(_bk_model["abc"], measure_sync=_bk_msync, follow_role="original-melody")
+                    render_abc(_bk_model["abc"], measure_sync=_bk_msync, follow_role="original-melody")
 
     try:
         from backing_track_state import enable_backing_user_edits

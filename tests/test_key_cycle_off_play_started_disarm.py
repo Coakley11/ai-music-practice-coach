@@ -199,4 +199,4 @@ def test_parent_realm_watchdog_emits_play_started_once_per_cycle_epoch() -> None
     # Parent-realm watchdog (iframe-realm timers die when Streamlit remounts the frame).
     assert "st._playStartedAckKey !== psKey" in src
     assert "act && !act.paused && !act.muted && Number(act.currentTime || 0) >= 0.2" in src
-    assert "__kcWatchVersion = 32" in src and "__kcWatchVersion !== 32" in src
+    assert "__kcWatchVersion = 33" in src and "__kcWatchVersion !== 33" in src

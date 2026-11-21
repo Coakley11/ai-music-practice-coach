@@ -10,7 +10,9 @@ the Original Melody (a Composition's own melody, one staff per section), then th
 Sheet -- each only while it is open on screen and has the playing measure lit (a staff's measures are aligned to
 the Backing timeline); otherwise nothing moves the page. Closing the leader hands the page to the next one at once,
 and among several section staves the one that lit a measure most recently leads. A melody with no measure alignment (an uploaded
-PDF, a staff without a timeline) never registers, so it never claims the page.
+PDF, a staff without a timeline) never registers, so it never claims the page. My Uploaded Melodies (user, 2026-11-20):
+while any uploaded panel is open the musician is reading it by hand, so only the Original Melody may lead; with it
+closed nothing moves the page (no hold either -- closing the last panel hands the page to the Lead Sheet at once).
 
 That is the only code that moves the page. It never fights the person: while they scroll -- for as long as they
 like -- it holds still, and it waits three seconds after their LAST manual scroll (user, 2026-11-18: the three
@@ -18,9 +20,11 @@ seconds start when they stop; scrolling again restarts them; 2026-11-16: six was
 wheel / trackpad scroll, a finger dragging the page, a scroll key, the scrollbar, and the glide after any of those;
 a pointer or finger held down holds the page. Moving the mouse, a click or tap that does not scroll, a chord
 lighting up and its own scrolling never hold -- nor does opening or closing a panel, which hands over to the
-notation that now leads at once. It never moves while the music is paused or stopped. When the three seconds run
-out during playback it returns smoothly to the measure playing NOW, and keeps it genuinely on screen: inside the
-window, clear of the sticky header and the compact transport bar, with the next row below it for reading ahead.
+notation that now leads at once. It never moves while the music is paused or stopped, and it keeps the page from
+being moved under the person then: a Pause / Stop rerun that re-renders the page around the reading position is
+scrolled back so what they were looking at stays put (until they scroll, press something, or play again).
+When the three seconds run out during playback it returns smoothly to the measure playing NOW, and keeps it
+genuinely on screen: inside the window, clear of the sticky header and the compact transport bar, with the next row below it for reading ahead.
 
 It only ever reads ``getBoundingClientRect`` and writes the page scroller's ``scrollTop``: it never touches an
 audio element, the follow timeline or the highlight, so it cannot change what is heard or which chord is lit.
@@ -36,12 +40,17 @@ from __future__ import annotations
 HOLD_MS = 3000
 # Bumped whenever the controller's behaviour changes: an open page keeps the copy it installed (one per top
 # window) and only a newer version replaces it -- v2 pages kept the 6 s hold and the old spacer after a deploy.
-CONTROLLER_VERSION = 5
+CONTROLLER_VERSION = 7
 # Who leads the page when several are open and playing (higher wins; user, 2026-11-16).
 LEAD_SHEET_PRIORITY = 10
 MELODY_PRIORITY = 20                 # the Practice Melody staff
 ORIGINAL_MELODY_PRIORITY = 30        # a Composition's Original Melody (one staff per section)
 FOLLOW_ROLES = {"practice-melody": MELODY_PRIORITY, "original-melody": ORIGINAL_MELODY_PRIORITY}
+#: My Uploaded Melodies (user, 2026-11-20): while any uploaded panel is open, only a melody staff (the Original or
+#: the Practice Melody, which outrank it) may lead; otherwise nothing moves the page -- not the Lead Sheet, not the
+#: singing lyrics. A panel is an expander keyed
+#: ``backing_melody_modes.UPLOADED_PANEL_KEY_PREFIX`` + id (Streamlit gives it the class ``st-key-<key>``).
+UPLOADED_PANEL_CLASS_PREFIX = "st-key-bk_upref_"
 
 # Plain JS (not an f-string), inserted into the follow surfaces' templates as a value. Streamlit lays out the next
 # element where a component's element container ends, and that container keeps the height the component was created
@@ -79,7 +88,7 @@ function lsWatchFrameHost(fe, fit) {
 # Plain string (not an f-string): it is inserted into the components' f-string templates as a value.
 _CONTROLLER_JS = r"""
 (function installLeadSheetPageFollow() {
-  var V = __V__, HOLD_MS = __HOLD__, LS_PRIORITY = __LS_PRIO__;
+  var V = __V__, HOLD_MS = __HOLD__, LS_PRIORITY = __LS_PRIO__, MELODY_PRIORITY = __PM_PRIO__, UPREF = __UPREF__;
   // ``shell`` is the browser's top window: every surface finds the controller there (window.top.__lsFollow).
   // ``top`` is the window that HOLDS THE STREAMLIT APP -- the one whose page the musician scrolls. Locally they are the
   // same window. On Streamlit Community Cloud they are not: the app runs in a same-origin iframe (under /~/+/) inside
@@ -192,6 +201,7 @@ _CONTROLLER_JS = r"""
   function interact(kind) {
     var t = now();
     C.lastInteraction = t; C.lastSignal = t; C.lastKind = kind;
+    C.futile = null; C.keep = null;
     if (C.pointerDown) C.pressScrolled = true;
     if (t < C.selfScrollUntil) {
       // Stop a return already under way: the person's scroll wins at once.
@@ -206,10 +216,11 @@ _CONTROLLER_JS = r"""
     try { var t = ev && ev.target; return !!(t && t.closest && t.closest("summary")); } catch (e) { return false; }
   }
   function press(ev) {
-    if (panelToggle(ev)) return;
+    if (panelToggle(ev)) { C.keep = null; return; }
     C.pointerDown = true; C.pressScrolled = false;
     // a tap that stops the page while it still glides from the person's own scroll is part of that scroll
     if (now() - C.lastSignal < GLIDE_MS) interact("press-stops-glide");
+    pressPlace(ev);
   }
   // Released: the three seconds start now only if this press scrolled the page (a drag, the scrollbar).
   function release(kind) {
@@ -292,13 +303,19 @@ _CONTROLLER_JS = r"""
     var e = d.elementFromPoint(x - ox, y - oy);
     return (e && (e === el || el.contains(e))) ? null : (e || d.documentElement);
   }
-  // The fixed / sticky box a covering element belongs to (top window only), in window coordinates, or null.
+  // The fixed / sticky box a covering element belongs to, in top-window coordinates, or null. ``inFrame``: that box is
+  // pinned inside a frame, not on the page -- Karaoke's Live Follow-Along Player is sticky at the top of its own
+  // iframe -- so no page move can ever clear it; only that frame's own scroller can (measured 2026-11-21, Karaoke
+  // Set, Lead Sheet off, 390 px: the lyric 'covered' in 461/461 samples and 9 page catch-ups that changed nothing).
   function pinnedBox(e) {
     try {
-      for (var n = e; n && n !== doc.body && n !== doc.documentElement; n = n.parentElement) {
-        if (n.ownerDocument !== doc) return null;
-        var pos = top.getComputedStyle(n).position;
-        if (pos === "fixed" || pos === "sticky") { var r = n.getBoundingClientRect(); return { top: r.top, bottom: r.bottom }; }
+      var d = e && e.ownerDocument, w = d && d.defaultView;
+      for (var n = e; n && d && n !== d.body && n !== d.documentElement; n = n.parentElement) {
+        var pos = w.getComputedStyle(n).position;
+        if (pos === "fixed" || pos === "sticky") {
+          var r = rectInTop(n);
+          return r ? { top: r.top, bottom: r.bottom, inFrame: d !== doc } : null;
+        }
       }
     } catch (e2) {}
     return null;
@@ -362,14 +379,40 @@ _CONTROLLER_JS = r"""
   // that asked most recently.
   // An active Karaoke Set (user, 2026-11-16): the Lead Sheet if open, else the Karaoke lyrics -- a melody staff
   // never leads then, whatever is on the page.
+  // Read from a marker the app renders on every run (``.ls-follow-context``): a <script> in st.markdown is not run by
+  // Streamlit, so a body attribute written that way cannot be relied on (kept only as a fallback).
+  function followContext(name) {
+    try {
+      var m = doc.querySelector(".ls-follow-context");
+      if (m && m.hasAttribute("data-" + name)) return m.getAttribute("data-" + name) === "1";
+    } catch (e) {}
+    return null;
+  }
   function karaokeSetActive() {
+    var m = followContext("karaoke-set");
+    if (m !== null) return m;
     try { return doc.body.getAttribute("data-karaoke-session") === "true"; } catch (e) { return false; }
   }
+  // An uploaded melody panel is open (My Uploaded Melodies): the musician is reading it by hand. Then only the
+  // Original Melody may lead the page; the Practice Melody and the Lead Sheet never do (user, 2026-11-20).
+  C.blocked = function () {
+    try {
+      return !!doc.querySelector('[class*="' + UPREF + '"] details[open], details[open][class*="' + UPREF + '"]');
+    } catch (e) { return false; }
+  };
+  // The one order (user, 2026-11-20), every instrument including normal Voice:
+  //   Original Melody -> Practice Melody -> an open uploaded melody (nothing moves) -> Lead Sheet -> singing lyrics.
+  // An active Karaoke Set: the Lead Sheet while it is open, else the Karaoke lyrics; never a melody staff.
+  // A shown Lead Sheet always outranks the lyrics, even between its lit chords, so the two never take turns.
   function activeProvider() {
-    var best = null, karaoke = karaokeSetActive();
-    liveProviders().forEach(function (p) {
+    var best = null, karaoke = karaokeSetActive(), cap = C.blocked() ? MELODY_PRIORITY : -1;
+    var pool = liveProviders(), sheetShown = pool.some(function (p) { return p.id === "lead-sheet" && shown(p); });
+    pool.forEach(function (p) {
       if (!shown(p) || !lit(p)) return;
-      if (karaoke && (Number(p.priority) || 0) > LS_PRIORITY) return;
+      var pr0 = Number(p.priority) || 0;
+      if (karaoke && pr0 > LS_PRIORITY) return;
+      if (pr0 < cap) return;
+      if (sheetShown && pr0 < LS_PRIORITY) return;
       var pr = Number(p.priority) || 0, bp = best ? (Number(best.priority) || 0) : -1;
       if (!best || pr > bp || (pr === bp && (p.lastAt || p.at || 0) >= (best.lastAt || best.at || 0))) best = p;
     });
@@ -453,7 +496,7 @@ _CONTROLLER_JS = r"""
     var vt = viewTop(sc) + topInset(), vb = viewBottom(sc) - bottomInset();
     // something pinned over the chord (an overlay the insets above do not know): keep clear of it as well
     var pin = opts.pinned;
-    if (pin && pin.bottom - pin.top < 0.5 * (vb - vt)) {
+    if (pin && !pin.inFrame && pin.bottom - pin.top < 0.5 * (vb - vt)) {
       if ((pin.top + pin.bottom) / 2 < (vt + vb) / 2) vt = Math.max(vt, pin.bottom + 8);
       else vb = Math.min(vb, pin.top - 8);
     }
@@ -482,8 +525,17 @@ _CONTROLLER_JS = r"""
       liveProviders().forEach(function (q) { if (q.frame === fe) me = q; });
     } catch (e) {}
     if (me) me.lastAt = now();
+    // Paused or stopped: a late request from a surface (a highlight drawn as the music stopped, a box follow queued
+    // before Pause) never moves the page. The Karaoke set-start request is made before the take plays (the
+    // countdown) and is the one exception.
+    if (me && !(opts && opts.why === "karaoke-set-start")) {
+      var on = false;
+      try { on = !!me.playing(); } catch (eP) {}
+      if (!on) return false;
+    }
     var p = activeProvider();
     if (p && (me ? p !== me : p.id !== id)) return false;
+    if (!p && C.blocked()) return false;     // an uploaded panel is open and no Original Melody leads: nothing moves
     return C.follow(el, opts);
   };
 
@@ -576,10 +628,187 @@ _CONTROLLER_JS = r"""
     pz.setAttribute("aria-label", paused ? "Resume" : "Pause");
   }
 
+  // ---- Pause and Stop leave the page where it is ----
+  // Measured 2026-11-21 (13de912d, Key Cycling, 1280 / 390 / 360 px): the page jumped 900-2,000 px on Pause and Stop
+  // with no move of ours. The rerun a Pause / Stop starts re-renders what is around the reading position -- the Key
+  // Cycling console and its transport come and go, a follow frame is remounted at the height Streamlit declared for
+  // it (720 / 820 px) until it re-fits to 2-4,000 px -- and the browser clamps or re-anchors the scroll position on
+  // the way. Nothing the person asked for. So while the music is paused or stopped and the person has not touched the
+  // page since, the controller keeps what they were looking at where it was: a few page elements on screen are noted
+  // every tick while the music plays (and at a transport press while it does not); if, after playback stops, they
+  // move on screen, the page is scrolled back by exactly that much. It ends on Play / Resume, a manual scroll, any
+  // press that is not a transport control, a move of ours, and after KEEP_MS. It never moves the page anywhere new.
+  var KEEP_MS = 15000, KEEP_SLACK = 24;
+  var TRANSPORT_SEL = '[class*="st-key-backing_key_cycle_"], [class*="st-key-kc_transport_row"], '
+    + '[class*="st-key-stop_backing_btn"], [class*="st-key-backing_card_transport"], #ls-mini-transport, '
+    + '#live-stop-btn, #live-loop-start-btn';
+  C.keep = null; C.keeps = []; C.place = null; C.wasPlaying = false;
+  // "" when not keeping; else why: "user-stop" (the person paused / stopped the music) or "stop" (it stopped by itself).
+  C.keeping = function () { return C.keep ? C.keep.why : ""; };
+  C.transportPressAt = 0;
+  function anyPlaying() {
+    var on = false;
+    liveProviders().forEach(function (p) { try { if (p.playing()) on = true; } catch (e) {} });
+    return on;
+  }
+  function isTransport(ev) {
+    try {
+      var t = ev && ev.target;
+      if (!t || !t.closest) return false;
+      if (t.closest(TRANSPORT_SEL)) return true;
+      var w = t.ownerDocument && t.ownerDocument.defaultView, fe = w && w !== top && w.frameElement;
+      return !!(fe && fe.closest && fe.closest(TRANSPORT_SEL));
+    } catch (e) { return false; }
+  }
+  // inside the page scroller and not pinned there (a sticky / fixed box does not move with the page)
+  function movesWithPage(e, sc) {
+    try {
+      if (!sc.contains(e) || e === sc) return false;
+      for (var n = e; n && n !== sc; n = n.parentElement) {
+        var pos = top.getComputedStyle(n).position;
+        if (pos === "fixed" || pos === "sticky") return false;
+      }
+      return true;
+    } catch (e2) { return false; }
+  }
+  // A Streamlit keyed block around n (class st-key-<key>), found again by that key when n itself is re-created.
+  function keyedBlock(n, sc) {
+    try {
+      for (; n && n !== sc; n = n.parentElement) {
+        var cl = n.classList || [];
+        for (var i = 0; i < cl.length; i++) {
+          if (cl[i].indexOf("st-key-") === 0 && /^[A-Za-z0-9_-]+$/.test(cl[i])
+              && doc.querySelectorAll("." + cl[i]).length === 1) return cl[i];
+        }
+      }
+    } catch (e) {}
+    return "";
+  }
+  function notePlace() {
+    try {
+      var sc = scroller(), vt = viewTop(sc) + topInset(), vb = viewBottom(sc) - bottomInset();
+      if (!(vb - vt > 40)) return null;
+      var x = Math.round(top.innerWidth / 2), ys = [0.15, 0.45, 0.75], out = [];
+      for (var i = 0; i < ys.length; i++) {
+        var e = doc.elementFromPoint(x, vt + ys[i] * (vb - vt));
+        if (!e || !movesWithPage(e, sc)) continue;
+        var host = (e.closest && e.closest('[data-testid="stElementContainer"]')) || e;
+        var r = host.getBoundingClientRect();
+        if (!(r.height > 0)) continue;
+        var key = keyedBlock(host, sc), kn = key ? doc.querySelector("." + key) : null;
+        out.push({ el: host, top: r.top, key: key, keyTop: kn ? kn.getBoundingClientRect().top : null });
+      }
+      return out.length ? { t: now(), anchors: out } : null;
+    } catch (e3) { return null; }
+  }
+  // How far what was on screen has moved on screen since it was noted (null: none of it can be found).
+  function placeDrift(pl) {
+    for (var i = 0; i < pl.anchors.length; i++) {
+      var a = pl.anchors[i];
+      try {
+        if (a.el && a.el.isConnected) {
+          var r = a.el.getBoundingClientRect();
+          if (r.height > 0) return r.top - a.top;
+        }
+        if (a.key && a.keyTop !== null) {
+          var kn = doc.querySelector("." + a.key);
+          if (kn && kn.getBoundingClientRect().height > 0) return kn.getBoundingClientRect().top - a.keyTop;
+        }
+      } catch (e) {}
+    }
+    return null;
+  }
+  function lastMoveAt() { return C.moves.length ? C.moves[C.moves.length - 1].t : 0; }
+  // A Stop control: Key Cycling's Stop, the card's Stop (its button while it is not offering Play), the compact bar's.
+  var STOP_SEL = '[class*="st-key-backing_key_cycle_stop_btn"], [class*="st-key-stop_backing_btn"], #ls-mini-stop';
+  function pressStops(ev) {
+    try {
+      var t = ev && ev.target;
+      if (!t || !t.closest) return false;
+      if (t.closest(STOP_SEL)) return true;
+      var b = t.closest("#btn"), w = t.ownerDocument && t.ownerDocument.defaultView, fe = w && w !== top && w.frameElement;
+      return !!(b && fe && fe.closest && fe.closest('[class*="st-key-backing_card_transport"]')
+                && b.getAttribute("data-state") !== "stopped");
+    } catch (e) { return false; }
+  }
+  // A transport press while the music plays (Pause, Stop) marks the stop that follows as the person's. Stop pressed
+  // while paused keeps the place from now. Any other press -- Play, Resume, anything that is not a transport control
+  // -- is the person asking for something new: never hold the page against it.
+  function pressPlace(ev) {
+    if (!isTransport(ev)) { C.keep = null; return; }
+    C.transportPressAt = now();
+    if (anyPlaying()) return;
+    if (!pressStops(ev)) { C.keep = null; return; }
+    var pl = notePlace();
+    C.keep = pl ? { since: now(), place: pl, why: "user-stop" } : null;
+  }
+  function keepTick() {
+    var t = now();
+    if (anyPlaying()) {
+      C.wasPlaying = true;
+      C.keep = null;
+      // noted only while the page is settled: not during a move of ours, not while the person scrolls; twice a
+      // second is enough (a Pause / Stop silences the music at the press, well before its rerun re-renders the page)
+      if (t >= C.selfScrollUntil && !C.suspended() && (!C.place || t - C.place.t >= 450)) C.place = notePlace();
+      return;
+    }
+    if (C.wasPlaying) {
+      C.wasPlaying = false;
+      // a move of ours still gliding when the music stopped ends where it is: no automatic scroll after a stop
+      if (t < C.selfScrollUntil) {
+        C.selfScrollUntil = 0;
+        try { var sc0 = scroller(); sc0.scrollTo({ top: sc0.scrollTop, behavior: "auto" }); } catch (e0) {}
+      }
+      var pl = C.place;
+      if (!pl || pl.t < lastMoveAt() || pl.t < C.lastInteraction) pl = notePlace();
+      C.keep = pl ? { since: t, place: pl, why: t - C.transportPressAt < 2500 ? "user-stop" : "stop" } : null;
+    }
+    var k = C.keep;
+    if (!k) return;
+    if (t - k.since > KEEP_MS || C.lastInteraction > k.since || lastMoveAt() > k.since) { C.keep = null; return; }
+    if (C.pointerDown) return;
+    var d = placeDrift(k.place);
+    if (d === null || Math.abs(d) <= KEEP_SLACK) return;
+    var sc = scroller(), max = sc.scrollHeight - sc.clientHeight;
+    var want = Math.max(0, Math.min(sc.scrollTop + d, max));
+    if (Math.abs(want - sc.scrollTop) < 4) return;    // not reachable yet (a frame still re-fitting): next tick
+    C.keeps.push({ t: t, from: Math.round(sc.scrollTop), to: Math.round(want), why: "keep-" + k.why });
+    if (C.keeps.length > 30) C.keeps.shift();
+    try { sc.scrollTo({ top: want, behavior: "auto" }); } catch (e) { sc.scrollTop = want; }
+  }
+
+  // ---- a catch-up that cannot clear the measure is not repeated ----
+  // Measured 2026-11-21 (Karaoke Set, 390 px): 9 'catchup-covered' moves, the lyric still covered after each (the
+  // page swung 6,000 <-> 6,144). Each target gets CATCHUP_TRIES per reason; a new target, the target seen clear, or a
+  // manual scroll starts the count again.
+  var CATCHUP_TRIES = 2;
+  C.futile = null;
+  function catchUpAllowed(el, why) {
+    var f = C.futile;
+    if (!f || f.el !== el || f.why !== why) { C.futile = { el: el, why: why, n: 1, t: now() }; return true; }
+    if (f.n >= CATCHUP_TRIES) { f.gaveUp = true; return false; }
+    f.n += 1;
+    return true;
+  }
+  // Covered by a box pinned inside the target's own frame (Karaoke's sticky player): the page cannot clear that. The
+  // frame's own follower can -- it scrolls its box so the line sits below what is pinned there -- so it is asked
+  // instead (window.__lsBoxFollow in that frame), within the same tries; the page is never moved for it.
+  function frameRefollow(el, nv) {
+    if (!catchUpAllowed(el, "frame-" + nv.why)) return;
+    try {
+      var w = el.ownerDocument.defaultView;
+      if (w && w !== top && typeof w.__lsBoxFollow === "function") w.__lsBoxFollow(el);
+    } catch (e) {}
+  }
+
   // ---- the clock: return after the hold, keep the bar in step ----
   var timer = top.setInterval(function () {
     try {
       watchAll();
+      // Scrolling an uploaded PDF while it is the reason nothing follows leaves no hold behind: closing the last
+      // panel hands the page to the next display at once, not three seconds later (a held pointer still holds).
+      if (C.blocked() && !activeProvider()) { C.lastInteraction = 0; C.wasSuspended = false; }
+      keepTick();
       var s = C.suspended();
       // The leading surface changed (the melody opened, closed, or another section's staff lit up): go to
       // its playing measure now, unless the person is scrolling (then the return after the hold does it).
@@ -617,8 +846,10 @@ _CONTROLLER_JS = r"""
             var ce = lead.current(), nv = ce && C.notVisible(ce);
             if (nv && (nv.why === "outside" || nv.why === "edge" || nv.why === "covered")) {
               C.lastHidden = { t: now(), why: nv.why };
-              C.follow(ce, { why: "catchup-" + nv.why, force: true, pinned: nv.pinned });
-            }
+              if (nv.pinned && nv.pinned.inFrame) frameRefollow(ce, nv);
+              else if (catchUpAllowed(ce, nv.why))
+                C.follow(ce, { why: "catchup-" + nv.why, force: true, pinned: nv.pinned });
+            } else if (!nv) C.futile = null;
           }
         } catch (eCu) {}
       }
@@ -654,6 +885,8 @@ def page_follow_controller_js() -> str:
         _CONTROLLER_JS.replace("__V__", str(CONTROLLER_VERSION))
         .replace("__HOLD__", str(HOLD_MS))
         .replace("__LS_PRIO__", str(LEAD_SHEET_PRIORITY))
+        .replace("__PM_PRIO__", str(MELODY_PRIORITY))
+        .replace("__UPREF__", json.dumps(UPLOADED_PANEL_CLASS_PREFIX))
     )
     return (
         "(function () { try { var t = window.top;"

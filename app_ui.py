@@ -8738,7 +8738,7 @@ div[data-testid="stTabs"] [data-baseweb="tab-highlight"] {
    singer's primary instrument is the lyric, so make it the focal point. */
 .mode-karaoke .ui-lyrics-panel,
 .inst-voice + .ui-lyrics-panel,
-[data-vocal-focus="true"] .ui-lyrics-panel {
+body:has(.ls-follow-context[data-vocal-focus="true"]) .ui-lyrics-panel {
   border-radius: var(--r-md);
   border: 1px solid rgba(190, 24, 93, 0.18);
   background: linear-gradient(180deg, #ffffff 0%, #fff7fb 100%);
@@ -8746,14 +8746,14 @@ div[data-testid="stTabs"] [data-baseweb="tab-highlight"] {
 }
 
 /* Larger lyric typography in voice mode (applied via body wrapper) */
-[data-vocal-focus="true"] .lyric-line,
-[data-vocal-focus="true"] .section-card .lyric-text,
-[data-vocal-focus="true"] .ui-bar-lyric {
+body:has(.ls-follow-context[data-vocal-focus="true"]) .lyric-line,
+body:has(.ls-follow-context[data-vocal-focus="true"]) .section-card .lyric-text,
+body:has(.ls-follow-context[data-vocal-focus="true"]) .ui-bar-lyric {
   font-size: 1.10rem !important;
   line-height: 1.55 !important;
   letter-spacing: 0.005em;
 }
-[data-vocal-focus="true"] .ui-bar-label {
+body:has(.ls-follow-context[data-vocal-focus="true"]) .ui-bar-label {
   opacity: 0.55;
 }
 
@@ -8882,32 +8882,32 @@ div[data-testid="stTabs"] [data-baseweb="tab-highlight"] {
 
 /* ---------- Karaoke voice mode: lyrics primary, chords secondary ----------
    Applies whenever the page is rendered in karaoke / voice mode
-   (driven by `document.body.dataset.vocalFocus` set in the main app). */
-[data-vocal-focus="true"] .ui-bar {
+   (driven by the rendered .ls-follow-context[data-vocal-focus] marker; a <script> in st.markdown never runs). */
+body:has(.ls-follow-context[data-vocal-focus="true"]) .ui-bar {
   background: rgba(255, 255, 255, 0.90);
 }
-[data-vocal-focus="true"] .ui-bar .chord-cell,
-[data-vocal-focus="true"] .chord-cell {
+body:has(.ls-follow-context[data-vocal-focus="true"]) .ui-bar .chord-cell,
+body:has(.ls-follow-context[data-vocal-focus="true"]) .chord-cell {
   opacity: 0.78;
   filter: saturate(0.92);
 }
-[data-vocal-focus="true"] .chord-cell.current-chord {
+body:has(.ls-follow-context[data-vocal-focus="true"]) .chord-cell.current-chord {
   opacity: 1 !important;
   filter: none !important;
 }
-[data-vocal-focus="true"] .lyric-line,
-[data-vocal-focus="true"] .section-card .lyric-text,
-[data-vocal-focus="true"] .ui-bar-lyric {
+body:has(.ls-follow-context[data-vocal-focus="true"]) .lyric-line,
+body:has(.ls-follow-context[data-vocal-focus="true"]) .section-card .lyric-text,
+body:has(.ls-follow-context[data-vocal-focus="true"]) .ui-bar-lyric {
   font-size: 1.18rem !important;
   font-weight: 600;
   color: #0f172a;
 }
-[data-vocal-focus="true"] .section-card.current .lyric-line,
-[data-vocal-focus="true"] .section-card.current .lyric-text {
+body:has(.ls-follow-context[data-vocal-focus="true"]) .section-card.current .lyric-line,
+body:has(.ls-follow-context[data-vocal-focus="true"]) .section-card.current .lyric-text {
   font-size: 1.32rem !important;
   font-weight: 700;
 }
-[data-vocal-focus="true"] .section-card { padding-block: 16px; }
+body:has(.ls-follow-context[data-vocal-focus="true"]) .section-card { padding-block: 16px; }
 
 /* ---------- Song library panel (Song Selection page) ---------------
    Scoped to ``st.container(key="song_library_panel")`` so the
