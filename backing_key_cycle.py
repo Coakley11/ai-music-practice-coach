@@ -3227,12 +3227,71 @@ def pinned_cycle_owner(owner: str):
         _CYCLE_OWNER_PIN.reset(token)
 
 
+def _karaoke_now_singing_entry(session: dict[str, Any]) -> dict[str, Any] | None:
+    """The Now Singing entry while a Karaoke Set runs (Voice + active set), else None.
+
+    Read from the stored queue without reconciling it (``karaoke_mode._performance_entry``):
+    reconciliation can end the set, and this is asked from inside Key Cycling's own resolvers.
+    """
+    if not key_cycle_in_karaoke_set(session):
+        return None
+    try:
+        import karaoke_mode as km
+
+        entry = km._performance_entry(session)
+    except Exception:
+        return None
+    if not isinstance(entry, dict) or not str(entry.get("pick_key") or "").strip():
+        return None
+    return entry
+
+
+def karaoke_now_singing_cycle_key(session: dict[str, Any]) -> str:
+    """The key a running Karaoke Set's Now Singing entry is performed in, or "".
+
+    User rule 2026-11-21: during a set Now Singing is the performing song, and Key Cycling starts
+    from its saved performance key (or tonight's retune of it), with that key's own mode. Now
+    Editing -- the global song, e.g. a Composition in C -- is a separate identity and must not
+    supply the cycle's base key: it did, and a set singing Blue Bossa in Am cycled C / F / Bb
+    major over Blue Bossa's minor chart (browser run 2026-11-20 on 13de912d).
+    """
+    entry = _karaoke_now_singing_entry(session)
+    if entry is None:
+        return ""
+    try:
+        import karaoke_mode as km
+
+        return str(km.effective_entry_practice_key(session, entry) or "").strip()
+    except Exception:
+        return ""
+
+
+def _karaoke_now_singing_cycle_owner(session: dict[str, Any]) -> str:
+    """The cycle owner of the Now Singing entry's own source, or "" outside a set."""
+    entry = _karaoke_now_singing_entry(session)
+    if entry is None:
+        return ""
+    pick = str(entry.get("pick_key") or "").strip()
+    if pick.startswith("composition::"):
+        return OWNER_COMPOSITION
+    if pick.startswith("custom::"):
+        return OWNER_CUSTOM
+    return OWNER_CATALOG
+
+
 def resolve_cycle_owner(session: dict[str, Any]) -> str:
     """Backing owner bag for the current page (isolated cycle sessions)."""
     page = str(session.get("studio_page") or "").strip().lower()
     _pin = _CYCLE_OWNER_PIN.get()
     if _pin and page == "backing":
         return _pin
+    if page == "backing":
+        # A running Karaoke Set: Backing performs the Now Singing entry, so its cycle belongs to
+        # that entry's source -- never to the Now Editing song (a Composition being edited made a
+        # Catalog entry's cycle the Composition's, and an editing change would move it).
+        _sung_owner = _karaoke_now_singing_cycle_owner(session)
+        if _sung_owner:
+            return _sung_owner
     src = ""
     try:
         from creative_key_sync import live_backing_source
@@ -3521,7 +3580,15 @@ def persist_key_cycle_position(session: dict[str, Any]) -> bool:
 
 
 def current_backing_owner_practice_key(session: dict[str, Any]) -> str:
-    """Canonical saved Practice Key for the current Backing owner (never the cycle key)."""
+    """Canonical saved Practice Key for the current Backing owner (never the cycle key).
+
+    During a running Karaoke Set it is the Now Singing entry's performance key (see
+    ``karaoke_now_singing_cycle_key``): Key Cycling's base, start and drift check follow the song
+    being performed, not the Now Editing song. Nothing is written.
+    """
+    sung = karaoke_now_singing_cycle_key(session)
+    if sung:
+        return sung
     try:
         from backing_practice_key_control import canonical_concert_key_for_owner
 
@@ -15958,6 +16025,7 @@ def html_escape(text: str) -> str:
 __all__ = [
     "KC_PRE_KARAOKE_SET_KEY",
     "key_cycle_in_karaoke_set",
+    "karaoke_now_singing_cycle_key",
     "key_cycle_karaoke_set_started",
     "key_cycle_karaoke_set_ended",
     "BACKING_KEY_CYCLE_CONTINUE_PLAY_KEY",
