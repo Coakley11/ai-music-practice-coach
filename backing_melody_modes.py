@@ -231,7 +231,7 @@ def render_uploaded_references(st: Any, session: Any) -> int:
     rows = [r for r in documents_for_owner(owner, st=st) if str(r.get("document_id") or "")]
     if not rows:
         st.caption(
-            "No uploaded melodies for this song yet. Add PDFs in Practice → Chart & Melody → My Uploaded "
+            "No uploaded melodies for this song yet. Add PDFs or photos in Practice → Chart & Melody → My Uploaded "
             "Melodies; they appear here to read while the backing plays."
         )
         return 0
