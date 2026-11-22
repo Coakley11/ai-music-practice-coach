@@ -3350,6 +3350,7 @@ def synthesize_chords_to_numpy(
         rhythm_rms=float(np.sqrt(np.mean(audio ** 2))),
         keys_rms=float(np.sqrt(np.mean(keys_bus ** 2))),
         strings_rms=float(np.sqrt(np.mean(strings_bus ** 2))) if strings_bus is not None else 0.0,
+        guitar_rms=float(np.sqrt(np.mean(guitar_bus ** 2))) if guitar_bus is not None else 0.0,
     )
     want = {"rhythm", "keys", "strings", "guitar"} if layers is None else set(layers)
     if "rhythm" not in want:
