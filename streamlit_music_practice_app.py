@@ -11720,11 +11720,20 @@ def _render_backing_card_performance_key(original_key: str, sing_key: str, *, or
     if sing_key not in options:
         options = [sing_key] + options
     # Keyed by the performed take: a new song, a new set or End Set never inherits a stale value.
-    wkey = f"karaoke_card_perf_key_{km.render_generation(st.session_state)}"
+    _drawn_for = km.render_generation(st.session_state)
+    wkey = f"karaoke_card_perf_key_{_drawn_for}"
     if st.session_state.get(wkey) not in options:
         st.session_state.pop(wkey, None)
 
     def _on_perf_key_change() -> None:
+        # Only the control drawn for the take now being sung may re-key it. Measured on 092f6855 (390 px, Karaoke
+        # Set): ~0.7 s after Blackbird (E) ended and the set moved on, THIS callback of Blackbird's control fired with
+        # its E and re-keyed Trial Song (saved D) to E - chips, chart and the rebuilt audio in Blackbird's key, and
+        # again for Jazz tune (C -> E). A stale widget from the previous take is not the singer's choice.
+        if km.render_generation(st.session_state) != _drawn_for:
+            km._retune_trace(st.session_state, "stale_card_control_ignored", requested=str(st.session_state.get(wkey) or ""),
+                             drawn_for=_drawn_for, now=km.render_generation(st.session_state))
+            return
         _karaoke_retune_after_explicit_key_change(str(st.session_state.get(wkey) or ""))
 
     with st.container(key="backing_card_key_row"):
