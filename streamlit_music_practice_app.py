@@ -18887,6 +18887,19 @@ def _on_backing_filter_change() -> None:
     # A setting is never a transport command: stopped stays stopped, paused
     # stays paused (and Resume starts the new selection from its first chord).
     note_playback_settings_changed(st.session_state, reason="backing_filter")
+    # ...and playing stays playing: the take for the new selection is built and played
+    # (from its first chord). Measured on a8857bb7 (390 px, ordinary Voice, Trial Song):
+    # a Groove chosen while it played was kept, but the take no longer matched the
+    # selection, so the player unmounted and nothing built the new one - silence, the
+    # card at "starting" for 30 s+, the singing panel gone, the transport still
+    # "playing". Key Cycling rebuilds its own key (below) and is left to it.
+    try:
+        from backing_key_cycle import is_cycle_active as _rb_kc_on
+
+        if transport_intent(st.session_state) == "playing" and not _rb_kc_on(st.session_state):
+            st.session_state["_backing_rebuild_while_playing"] = True
+    except Exception:
+        pass
     try:
         from backing_key_cycle import note_key_cycle_arrangement_settings_changed
 
@@ -24728,11 +24741,22 @@ elif _studio_page == "backing":
     # The poller keeps the marker until this full run consumes and installs the
     # completed future, preserving the original Play intent across reruns.
     _async_wav_ready = backing_wav_build_ready(st.session_state)
+    # A setting changed while the music played (see _on_backing_filter_change): build the new
+    # selection's take and play it - only while still playing and only when the installed take
+    # really no longer matches (a callback that changed nothing rebuilds nothing).
+    _rebuild_while_playing = bool(
+        st.session_state.pop("_backing_rebuild_while_playing", False)
+        and playback_allowed(st.session_state)
+        and transport_intent(st.session_state) == "playing"
+        and not _backing_audio_ready
+        and backing_chords
+    )
     _play_needs_generate = bool(
         (_play_clicked and not _backing_audio_ready) or _async_wav_ready
         or (playback_allowed(st.session_state)
             and st.session_state.get("_backing_play_request")
             and st.session_state.get(BACKING_NEEDS_REGEN))
+        or _rebuild_while_playing
     )
     # Settings pending (BPM/feel/scope) must always rebuild on Play — even if a
     # sticky dual-buffer URL is still audibly playing the prior arrangement.
