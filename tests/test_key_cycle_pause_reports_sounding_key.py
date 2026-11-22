@@ -165,8 +165,11 @@ class TestBackwardCompatibleChannel(_Base):
         html = (_ROOT / "backing_transport_component" / "index.html").read_text(encoding="utf-8")
         self.assertIn('send("pause", kc ? { kc: kc } : null);', html)
         self.assertIn("if (!args.cycle_active) return null;", html)
-        for action in ('send("resume")', 'send("ended")'):
-            self.assertIn(action, html)
+        self.assertIn('send("resume")', html)
+        # "ended" names its sender (via: sheet / card, 2026-11-21: one end signal per song) and never carries kc.
+        self.assertIn('send("ended", { via: "sheet" });', html)
+        self.assertIn('send("ended", { via: "card" });', html)
+        self.assertNotIn('send("ended", { kc', html)
         js = (_ROOT / "backing_key_cycle.py").read_text(encoding="utf-8")
         self.assertIn("parentWin.__kcPauseSounding = {{", js)
         self.assertIn("W.__kcLiveKey = liveKey;", js)

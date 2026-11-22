@@ -185,8 +185,9 @@
       function send(action, extra) {
         nonce += 1;
         const value = { action: action, nonce: nonce, session: SESSION };
-        // Optional, additive fields (today only Pause's ``kc``); every other
-        // command is sent exactly as before.
+        // Optional, additive fields: Pause's ``kc`` (Key Cycling only) and
+        // "ended"'s ``via`` (which player reported the end); the server reads
+        // only ``action``/``nonce``/``session`` for every other command.
         if (extra && typeof extra === "object") {
           Object.keys(extra).forEach(function (k) { if (extra[k] != null) value[k] = extra[k]; });
         }
