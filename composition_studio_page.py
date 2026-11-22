@@ -3629,6 +3629,7 @@ def _render_hum_sing_panel(
         capture["note_detection"] = bool(result.get("events"))
         capture["count_in_bars"] = cin_bars
         capture["count_in_sec"] = float(result.get("count_in_sec") or 0.0)
+        capture["count_in_applied"] = bool(result.get("count_in_applied"))
         _save_doc(session_state, doc)
         st.rerun()
 
@@ -3667,8 +3668,15 @@ def _render_hum_sing_panel(
                 ):
                     cin_bars = int(session_state.get(f"composer_hum_count_in_{active_id}") or COUNT_IN_ONE_BAR)
                     recorded = session_state.get(_hum_audio_key(active_id)) or b""
+                    # The transcriber decides whether this take really begins with a
+                    # count-in, and the preview must trim the same amount it removed from
+                    # the notation. Falling back to the REQUESTED count-in whenever the
+                    # applied value was zero cut the first bar off the audio while the
+                    # staff still showed it - the recording and the chords disagreed by a
+                    # bar. Only proposals saved before the transcriber recorded its
+                    # decision need the old fallback.
                     trim_sec = float(proposal.get("count_in_sec") or 0.0)
-                    if trim_sec <= 0:
+                    if trim_sec <= 0 and "count_in_applied" not in proposal:
                         trim_sec = float(session_state.get(f"composer_hum_count_in_sec_{active_id}") or 0.0)
                     preview_label = (
                         "Playing · your recording + chords"
