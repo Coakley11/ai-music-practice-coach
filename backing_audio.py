@@ -360,6 +360,8 @@ def _release_ramp(length: int) -> np.ndarray:
 
 
 def _add_tone(audio, sr, start_sec, dur_sec, midi_num, volume, wave_type="sine"):
+    if wave_type == "bass" and _BASS_TACET.get():
+        return  # Backing Engine 2.0: an ensemble without a bass player (a Lo-fi duo)
     start = int(start_sec * sr)
     if start >= len(audio) or dur_sec <= 0:
         return
@@ -420,8 +422,12 @@ def _add_tone(audio, sr, start_sec, dur_sec, midi_num, volume, wave_type="sine")
     audio[start:end] += out * volume
 
 
+# Keys level over the drums alone when an ensemble has no bass player (the keys carry harmony and low end).
+_KEYS_OVER_BEAT = 1.3
 # The improved kit for the song being rendered; None keeps today's drum voices.
 _ACTIVE_DRUM_KIT: contextvars.ContextVar[Any] = contextvars.ContextVar("backing_drum_kit", default=None)
+# True while rendering a jam whose ensemble has no bass player (backing_performance_plan).
+_BASS_TACET: contextvars.ContextVar[bool] = contextvars.ContextVar("backing_bass_tacet", default=False)
 
 
 def _add_noise_hit(audio, sr, start_sec, dur_sec, volume, seed=0, *, tone: float = 0.0):
@@ -2154,7 +2160,25 @@ def _with_drum_kit(render):
     return synthesize
 
 
+def _with_performance(render):
+    """A jam whose ensemble has no bass player renders with the bass tacet; every other render as before."""
+
+    @functools.wraps(render)
+    def synthesize(*args, **kwargs):
+        plan = kwargs.get("performance")
+        if plan is None or plan.plays("bass"):
+            return render(*args, **kwargs)
+        token = _BASS_TACET.set(True)
+        try:
+            return render(*args, **kwargs)
+        finally:
+            _BASS_TACET.reset(token)
+
+    return synthesize
+
+
 @_with_drum_kit
+@_with_performance
 def synthesize_chords_to_numpy(
     chords,
     bpm=100,
@@ -2169,8 +2193,13 @@ def synthesize_chords_to_numpy(
     musical_profile=None,
     layers=None,
     strings: bool = False,
+    performance=None,
 ):
     """Render the backing track.
+
+    ``performance`` (Backing Engine 2.0, generated jams only) is a
+    :class:`backing_performance_plan.PerformancePlan`: who plays and how, from the jam's ensemble, mood,
+    groove intensity and difficulty. ``None`` renders exactly as before.
 
     ``strings`` adds the optional string section (arrangement setting).
     ``layers`` (diagnostics / tests) limits the mix to some of ``"rhythm"``
@@ -2178,6 +2207,9 @@ def synthesize_chords_to_numpy(
     renders every layer that is switched on.
     """
 
+    plan = performance
+    if plan is not None:
+        level = plan.level  # the jam's own difficulty, not the sidebar's ability level
     timing = meter_timing(bpm, time_signature)
     pulse = timing.pulse_sec
     bar = timing.bar_sec
@@ -2193,15 +2225,16 @@ def synthesize_chords_to_numpy(
             [str(e.get("chord") or "") for e in chord_list if not is_no_chord_token(str(e.get("chord") or ""))],
             chord_notes_for_guitar, bpm, str(song_groove_seed(song_title, song_artist) if song_title else 0),
         )
-        if style == "Rock groove" and _rg.enabled()
+        if style == "Rock groove" and _rg.enabled() and (plan is None or plan.plays("guitar"))
         else None
     )
     pianist = (
         _pn.start(
             style, song_groove_seed(song_title, song_artist) if song_title else 0,
             has_guitar=guitar_part is not None, level=level, chord_notes=chord_notes, bass_note=bass_note,
+            **({"performance": plan.keys} if plan is not None else {}),
         )
-        if _pn.mode()
+        if _pn.mode() and (plan is None or plan.plays("keys"))
         else None
     )
     prev_comp: list[int] | None = None
@@ -2231,6 +2264,9 @@ def synthesize_chords_to_numpy(
     _kit_song_seed = 0
     if _style_kit is not None:
         _style_kit.style = str(style)  # the kit tunes to the style actually played
+        if plan is not None:
+            _style_kit.touch = float(plan.drums.velocity)
+            _style_kit.fill_rate = float(plan.drums.fills)
         _kit_song_seed = zlib.crc32(repr((song_title, song_artist, style, [c.get("chord") if isinstance(c, dict) else c for c in (chords or [])])).encode("utf-8", "replace"))
     # The song's groove profile (drums / bass / comp rhythm per section role).
     # Song tweaks keep their values; the groove fills in what they left alone.
@@ -2259,7 +2295,7 @@ def synthesize_chords_to_numpy(
     bass_density = float(song_profile.get("bass_density", 1.0)) * float(song_profile.get("density_mul", 1.0))
     bossa_bass_state: dict[str, Any] = {"prev": None, "planned": None}
     jazz_bass_state: dict[str, Any] = {"prev": None, "planned": None, "head": None}
-    upright = style == "Jazz swing" and bool(_bv.upright_mode())
+    upright = style == "Jazz swing" and bool(_bv.upright_mode()) and (plan is None or plan.plays("bass"))
     upright_takes: dict = {}
     # The recorded upright plays into its own bus, shaped once before the mix is balanced.
     upright_bus = np.zeros_like(audio) if upright and _bv.uses_own_bus() else None
@@ -2348,6 +2384,8 @@ def synthesize_chords_to_numpy(
         # exactly as before). It narrows the loudness spread between sections and
         # reshapes the bar's grid; the bass, comp and drum blocks below read it.
         section_tex = _sa.bar_texture(style, section_plan[idx])
+        if plan is not None:
+            section_tex = plan.texture(section_tex, role)  # the jam's groove intensity, around the form
         tex_bass = section_tex.bass if section_tex is not None else "groove"
         if section_tex is not None:
             intensity = _sa.shape_intensity(
@@ -2856,8 +2894,8 @@ def synthesize_chords_to_numpy(
         # one snare crack on beat 1 to punctuate the band-stab. The
         # kick + percussion blocks below are skipped via
         # ``bar_drums_silent``.
-        bar_drums_silent = bar_is_hit
-        if bar_is_hit:
+        bar_drums_silent = bar_is_hit or (plan is not None and not plan.plays("drums"))
+        if bar_is_hit and (plan is None or plan.plays("drums")):
             _add_noise_hit(
                 audio,
                 sr,
@@ -3087,6 +3125,7 @@ def synthesize_chords_to_numpy(
                         drums=str(section_tex.drums) if section_tex is not None else "",
                         song_seed=_kit_song_seed,
                         bar_index=idx,
+                        fill_rate=float(plan.drums.fills) if plan is not None else 1.0,
                     )
                 ),
                 lambda _b: _groove_time(bar_start, _b, pulse, style, swing=swing_amt, pocket=pocket_offset),
@@ -3252,6 +3291,8 @@ def synthesize_chords_to_numpy(
         _target = _KEYS_BALANCE.get(style, 0.55) * float(song_profile.get("keys_level", 1.0))
         if upright_bus is not None:
             _target *= _bv.KEYS_LIFT  # the trio's balance with the recorded upright (bass under piano and drums)
+        if plan is not None and plan.plays("keys") and not plan.plays("bass"):
+            _target = _KEYS_OVER_BEAT  # a duo with no bass player: the keys lead, the beat sits under them
         keys_bus *= float(np.clip(_target * _rhythm_rms / _keys_rms, 0.25, 12.0))
     if strings_bus is not None:
         _strings_rms = float(np.sqrt(np.mean(strings_bus ** 2)))
@@ -3275,6 +3316,8 @@ def synthesize_chords_to_numpy(
         if _rhythm_rms > 1e-6 and _guitar_rms > 1e-6:
             keys_bus *= _ROCK_KEYS_BEHIND_GUITAR
             guitar_bus = guitar_bus * float(np.clip(_ROCK_GUITAR_BALANCE * _rhythm_rms / _guitar_rms, 0.05, 20.0))
+    if plan is not None and not plan.plays("keys"):
+        keys_bus[:] = 0.0  # a band without keys (a Rock trio): the comping lays out entirely
     LAST_MIX_STATS.clear()
     LAST_MIX_STATS.update(
         rhythm_rms=float(np.sqrt(np.mean(audio ** 2))),
@@ -3337,6 +3380,7 @@ def generate_backing_track(
     intensity: str = "",
     musical_profile=None,
     strings: bool = False,
+    performance=None,
 ):
 
     if musical_profile is None and (mood or intensity):
@@ -3365,6 +3409,7 @@ def generate_backing_track(
         time_signature=time_signature,
         musical_profile=musical_profile,
         strings=bool(strings),
+        **({"performance": performance} if performance is not None else {}),
     )
     return pcm16_wav_bytes_from_float(audio, sr)
 

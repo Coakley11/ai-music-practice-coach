@@ -167,6 +167,10 @@ class DrumKit:
         self.defer_hats = bool(defer_hats)  # hold hi-hat hits so a closing hat can choke an open one
         self._hat_rests: list[tuple[float, float]] = []
         self._hats: list[tuple[np.ndarray, float, np.ndarray, float, bool]] = []
+        # Backing Engine 2.0: the jam's touch (a softer or harder sample layer, not only a level) and how
+        # often the drummer fills. 1.0 = the style's own drummer, exactly as before.
+        self.touch = 1.0
+        self.fill_rate = 1.0
 
     def _place(self, audio: np.ndarray, start_sec: float, sample: np.ndarray, gain: float) -> None:
         start = int(start_sec * self.sr)
@@ -176,6 +180,8 @@ class DrumKit:
         audio[start:end] += sample[: end - start] * gain
 
     def _hit(self, audio: np.ndarray, start: float, voice: str, volume: float, energy: float, seed: int, full: str, extra: float = 0.0) -> None:
+        if self.touch != 1.0:
+            volume = float(volume) * float(self.touch)
         vel = min(1.0, float(volume) / _FULL[full])
         rr = abs(int(seed)) % 4
         recorded = self._recorded(voice, vel, seed, extra)
@@ -284,6 +290,7 @@ class BarContext:
     drums: str = ""  # the section's drum texture, such as "hats" or "minimal"
     song_seed: int = 0  # the same song plays the same drumming on every render
     bar_index: int = 0  # the bar's place in the whole render, repeats included
+    fill_rate: float = 1.0  # Backing Engine 2.0: < 1 a drummer who leaves more space, > 1 one who fills more
 
 
 @dataclass(frozen=True)
@@ -350,6 +357,8 @@ def _phrase_move(ctx: BarContext) -> list[Hit]:
         chance *= 2.4
     if chorus:
         chance *= 1.25
+    if ctx.fill_rate != 1.0:
+        chance = min(0.85, chance * float(ctx.fill_rate))
     if bar == 0:
         return []
     if _roll(ctx, 1) >= chance:
@@ -402,7 +411,9 @@ def bar_extras(ctx: BarContext) -> list[Hit]:
         return []
     out = _style_bed(ctx)
     if ctx.ends_section:
-        out += _section_fill(ctx)
+        # A drummer asked for space sometimes lets the section end with the groove alone.
+        if ctx.fill_rate >= 1.0 or _roll(ctx, 21) < float(ctx.fill_rate):
+            out += _section_fill(ctx)
     else:
         out += _phrase_move(ctx)
     return out
