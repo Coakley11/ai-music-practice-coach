@@ -819,6 +819,11 @@ def _invalidate_stale_backing_for_karaoke_transition(session_state: dict) -> Non
     session_state.pop("_kc_current_static_url", None)
     session_state.pop("_kc_arrangement_url", None)
     session_state["_pending_backing_scope"] = "Full song"
+    # Every entry starts at Repeat 1 (user rule 2026-11-21): the Loop Count widget still held the outgoing
+    # entry's count - or ordinary Backing's 2 at Start - and the new play session read it back as the singer's
+    # override, so Blackbird opened a set at Repeat 2 and a Repeat 2 chosen for one song carried to the next
+    # (measured on dev f1e8941a, 390 px). Applied to the widget before it renders, like the scope above.
+    session_state["_pending_backing_loops"] = km.KARAOKE_SET_LOOPS_DEFAULT
     session_state.pop("_pending_backing_single_section", None)
     session_state.pop("_pending_backing_multi_sections", None)
     session_state.pop("backing_track_single_section", None)
