@@ -38,11 +38,13 @@ class FollowRules(unittest.TestCase):
         self.assertIn('id: "karaoke-lyrics", priority: 5', SRC)
         self.assertNotIn('id: "lead-sheet", priority: 10, frame: fe, transport: false', SRC)
 
-    def test_sheet_open_follows_chords_closed_follows_lyrics_no_lyrics_follows_chords(self):
+    def test_sheet_open_follows_chords_closed_follows_lyrics_no_lyrics_follows_the_panel(self):
+        # User rule 2026-11-21: with no lyric line the singing panel itself is followed, not the chart.
         start = SRC.index("function karaokeFollowTarget()")
         body = SRC[start:start + 500]
-        self.assertIn("if (chartIsPrimary() || leadSheetOpenOnPage()) return chord;", body)
+        self.assertIn("if (leadSheetOpenOnPage()) return chord;", body)
         self.assertIn(".karaoke-lp-lyric-line.active", body)
+        self.assertIn("return karaokePanelEl() || (chartIsPrimary() ? chord : null);", body)
 
     def test_no_timer_of_its_own(self):
         start = SRC.index("function followHeld()")

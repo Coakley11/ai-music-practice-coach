@@ -5313,6 +5313,29 @@ def _build_karaoke_lyrics_panel_script(
         const data = dataFor(sectionName);
         return !!(data && Array.isArray(data.lyrics) && data.lyrics.length);
       }}
+      // No lyric line anywhere in the song (user rule 2026-11-21: the panel is there anyway).
+      const SONG_HAS_LYRICS = Object.keys(LYRIC_MAP).some((k) => {{
+        const d = LYRIC_MAP[k] || {{}};
+        if (Array.isArray(d.lyrics) && d.lyrics.length) return true;
+        const bk = d.lyrics_by_key;
+        return !!(bk && Object.keys(bk).some((kk) => Array.isArray(bk[kk]) && bk[kk].length));
+      }});
+      const SONG_HAS_CHORDS = Object.keys(LYRIC_MAP).some((k) => {{
+        const d = LYRIC_MAP[k] || {{}};
+        return Array.isArray(d.chords) && d.chords.length > 0;
+      }});
+      function noLyricsLine() {{
+        return '<div class="karaoke-lp-lyric-empty">' +
+          '<span class="karaoke-lp-instr-icon" aria-hidden="true">&#9835;</span> ' +
+          (SONG_HAS_CHORDS ? "No lyrics for this song - follow the chords." : "No lyrics for this song - follow the music.") +
+          "</div>";
+      }}
+      if (!SONG_HAS_LYRICS) {{
+        try {{
+          const ph = lpLyrics.querySelector(".karaoke-lp-lyric-empty");
+          if (ph) ph.textContent = "Press play to start. This song has no lyrics.";
+        }} catch (ePh) {{}}
+      }}
 
       function nextSectionAfter(eventIndex, lyricsOnly) {{
         if (!Array.isArray(window.__karaokeTimeline)) return "";
@@ -5692,6 +5715,16 @@ def _build_karaoke_lyrics_panel_script(
             lpNext.innerHTML = nxt
               ? ('Next: <strong>' + escapeHtml(displayLabelFor(nxt)) + '</strong>')
               : "";
+          }} else if (!SONG_HAS_LYRICS) {{
+            // A song without lyrics: the section, the chords (Show Chords on) and what comes next.
+            lpSection.textContent = displayLabelFor(sectionName) || "Now Playing";
+            lpLyrics.classList.add("empty");
+            lpLyrics.classList.remove("instrumental");
+            lpLyrics.innerHTML = noLyricsLine();
+            const nxtSec = nextSectionAfter(event.event_index, false);
+            lpNext.innerHTML = nxtSec
+              ? ('Next: <strong>' + escapeHtml(displayLabelFor(nxtSec)) + '</strong>')
+              : "";
           }} else {{
             // Instrumental section - show "get ready" + preview the
             // next *lyric-bearing* section so the singer can prep
@@ -5841,7 +5874,13 @@ def live_follow_along_component_html(
     karaoke_hold_flag_js = "true" if karaoke_hold_from_shared_controller else "false"
     # The chart is the only performance display (so the fold stays open whatever the Lead Sheet
     # switch says) only when there are no lyrics to sing at all - a fact fixed for this render.
-    chart_always_shown_js = "false" if _karaoke_panel_has_lyric_lines(karaoke_lyrics_panel) else "true"
+    # User rule 2026-11-21: with the singing panel there (always, in Voice) the panel is the performance
+    # display even for a song without lyrics, so the Lead Sheet switch alone decides the fold.
+    chart_always_shown_js = (
+        "false"
+        if (karaoke_lyrics_panel or _karaoke_panel_has_lyric_lines(karaoke_lyrics_panel))
+        else "true"
+    )
     # One token per performed take (entry + key + set position): the set-start bring-into-view
     # below fires once per new song, never again when a rerun re-creates the same take's panel.
     try:
@@ -6828,12 +6867,24 @@ def live_follow_along_component_html(
     // open, and the current lyric line while it is closed. With no lyrics the chords ARE the
     // performance display, so they are followed. The view not followed keeps its highlighting
     // but never drives the scroll.
+    //
+    // User rule 2026-11-21: the singing panel is always there in Voice and is the follow destination
+    // while the Lead Sheet is closed, lyrics or not. A song without lyrics (or an instrumental section)
+    // follows the panel itself - its countdown, cues and chords - never the folded chart.
+    function karaokePanelEl() {{
+      const p = document.getElementById("karaoke-lyric-panel");
+      return p && p.isConnected ? p : null;
+    }}
+    function isPanelTarget(el) {{
+      return !!(el && el.closest && el.closest("#karaoke-lyric-panel"));
+    }}
+    window.__karaokeIsPanelTarget = isPanelTarget;
     function karaokeFollowTarget() {{
       const chord = document.querySelector(".live-chart-cell.current-chord, .chord-cell.current-chord");
-      if (chartIsPrimary() || leadSheetOpenOnPage()) return chord;
+      if (leadSheetOpenOnPage()) return chord;
       const line = document.querySelector(".karaoke-lp-lyric-line.active");
       if (line && line.isConnected) return line;
-      return chord;
+      return karaokePanelEl() || (chartIsPrimary() ? chord : null);
     }}
     let lastBoxTarget = null;
     // Karaoke's box is this IFRAME: the component is mounted at a fixed height with
@@ -6891,8 +6942,7 @@ def live_follow_along_component_html(
       let pageMoved = false;
       try {{
         if (window.top.__lsFollow && window.top.__lsFollow.request) {{
-          const why = el.classList && el.classList.contains("karaoke-lp-lyric-line")
-            ? "karaoke-lyric" : "chord";
+          const why = isPanelTarget(el) ? "karaoke-lyric" : "chord";
           // Spelled out rather than through a local alias: the one-page-mover test counts
           // these call sites textually, and a site it cannot see is a site it cannot guard.
           pageMoved = !!window.top.__lsFollow.request("lead-sheet", el, {{ why: why }});
@@ -7632,7 +7682,7 @@ def live_follow_along_component_html(
           // is closed - not the chord regardless (measured 2026-11-20: Lead Sheet off still stepped by chord).
           try {{
             const lyricLead = KARAOKE_HOLD ? karaokeFollowTarget() : null;
-            const toLyric = !!(lyricLead && lyricLead.classList && lyricLead.classList.contains("karaoke-lp-lyric-line"));
+            const toLyric = !!(lyricLead && window.__karaokeIsPanelTarget && window.__karaokeIsPanelTarget(lyricLead));
             if (sheetIsPlaying() && window.top.__lsFollow) window.top.__lsFollow.request("lead-sheet", toLyric ? lyricLead : currentCell, {{ why: toLyric ? "karaoke-lyric" : "chord" }});
           }} catch (ePf) {{}}
         }} else if (eventChanged && clock && !clock.paused) {{
@@ -11083,7 +11133,8 @@ def request_backing_loops_adjust(delta: int) -> None:
 
 
 def _note_karaoke_set_loops(loops: Any) -> None:
-    """An explicit Loop Count change during a Karaoke Set becomes the SET's repeat count (no-op outside a set)."""
+    """An explicit Loop Count change during a Karaoke Set: the current song's performance only (user rule
+    2026-11-21 - the next entry starts at Repeat 1 again; no-op outside a set)."""
     try:
         import karaoke_mode as _km
 
@@ -27218,13 +27269,12 @@ elif _studio_page == "backing":
                     _by_key = cue_lines_by_cycle_key(_raw_lines, _cue_from_key, _cue_cycle_keys)
                     if _by_key:
                         _panel_map[str(_sec_name)]["lyrics_by_key"] = _by_key
-            if any(entry.get("lyrics") for entry in _panel_map.values()):
-                _karaoke_lyric_panel = _panel_map
-            elif not _karaoke_show_chords:
-                # Chords OFF and no lyrics: still mount the panel so the
-                # performance shows a clean waiting display instead of falling
-                # through to the chord chart. Audio and transport are untouched.
-                _karaoke_lyric_panel = _panel_map or {"Performance": {"lyrics": [], "chords": []}}
+            # User rule 2026-11-21: in Voice the singing panel is ALWAYS mounted - in a Karaoke Set or
+            # not, with or without lyrics. A song with no lyrics used to get no panel while Show Chords
+            # was on, so the chart became the performance display and took the page follow. Without
+            # lyrics the panel still carries the countdown, section cues, Next and (Show Chords on)
+            # the synchronized chords; Show Chords off leaves out only the chords.
+            _karaoke_lyric_panel = _panel_map or {"Performance": {"lyrics": [], "chords": []}}
         _karaoke_song_title = str(song_data.get("title") or song or "Now Singing")
         # Chords OFF must hide the in-performance chord chart too, not just the
         # panel's chord lists, otherwise the grid remains as a chord overlay.

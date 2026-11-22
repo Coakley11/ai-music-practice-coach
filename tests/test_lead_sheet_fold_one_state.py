@@ -81,8 +81,10 @@ def test_the_header_still_presses_the_one_card_switch() -> None:
     assert "const btn = cardLeadSheetSwitch();" in install and "btn.click();" in install
 
 
-def test_a_song_without_lyrics_keeps_its_chart_as_the_display() -> None:
-    assert "const CHART_ALWAYS_SHOWN = true;" in _surface(INSTRUMENTAL_ONLY)
+def test_a_song_without_lyrics_still_folds_with_the_lead_sheet_switch() -> None:
+    # User rule 2026-11-21: the singing panel is there in Voice with or without lyrics, so the switch alone
+    # decides the fold; the chart is the only display only where there is no singing panel (not Voice).
+    assert "const CHART_ALWAYS_SHOWN = false;" in _surface(INSTRUMENTAL_ONLY)
     assert "const CHART_ALWAYS_SHOWN = true;" in _surface(None)
 
 

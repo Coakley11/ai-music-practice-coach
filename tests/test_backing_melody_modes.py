@@ -161,7 +161,9 @@ def test_with_the_lead_sheet_open_the_lyric_line_never_takes_the_page_from_the_c
     assert "window.__karaokeBoxFollow(activeLine)" in body
     assert "lyricTarget === activeLine && window.__karaokeBoxFollow" in body
     tgt = APP[APP.index("function karaokeFollowTarget()"):APP.index("let lastBoxTarget = null;")]
-    assert "if (chartIsPrimary() || leadSheetOpenOnPage()) return chord;" in tgt
+    assert "if (leadSheetOpenOnPage()) return chord;" in tgt
+    # Lead Sheet closed: the lit lyric line, else the singing panel itself (user rule 2026-11-21) - never the chart.
+    assert "return karaokePanelEl() || (chartIsPrimary() ? chord : null);" in tgt
 
 
 def test_in_normal_voice_the_full_height_sheet_follows_the_lyrics_when_the_lead_sheet_is_closed():
@@ -170,5 +172,6 @@ def test_in_normal_voice_the_full_height_sheet_follows_the_lyrics_when_the_lead_
     i = APP.index("if (eventChanged && PAGE_FOLLOW) {{")
     branch = APP[i:APP.index("}} else if (eventChanged && clock && !clock.paused) {{", i)]
     assert "const lyricLead = KARAOKE_HOLD ? karaokeFollowTarget() : null;" in branch
-    assert 'toLyric = !!(lyricLead && lyricLead.classList && lyricLead.classList.contains("karaoke-lp-lyric-line"))' in branch
+    # A lyric line or the singing panel itself (a song without lyrics) is the singing target (user rule 2026-11-21).
+    assert "toLyric = !!(lyricLead && window.__karaokeIsPanelTarget && window.__karaokeIsPanelTarget(lyricLead))" in branch
     assert 'request("lead-sheet", toLyric ? lyricLead : currentCell, {{ why: toLyric ? "karaoke-lyric" : "chord" }})' in branch
