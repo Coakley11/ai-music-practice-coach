@@ -72,14 +72,16 @@ class SetDefaultsPerEntry(unittest.TestCase):
         with _entry("Waltz", "3/4"):
             self.assertEqual(_source_defaults_from_session(s)["meter"], "3/4")
 
-    def test_repeat_1_at_start_then_the_sets_count_is_carried(self) -> None:
+    def test_every_entry_starts_at_repeat_1_a_change_is_not_carried(self) -> None:
+        # User rule 2026-11-21 (supersedes 2026-11-19's carried set count): a Repeat change is the sung
+        # song's performance only; the next entry starts at Repeat 1.
         s = _ordinary()
         s[km.KARAOKE_SESSION_ACTIVE_KEY] = True
         s[km.KARAOKE_SET_LOOPS_KEY] = km.KARAOKE_SET_LOOPS_DEFAULT
         with _entry("Pop"):
             self.assertEqual(_source_defaults_from_session(s)["loops"], 1)
-            km.note_karaoke_set_loops(s, 2)            # the singer's explicit Loop Count change
-            self.assertEqual(_source_defaults_from_session(s)["loops"], 2)   # the next entry starts at 2
+            self.assertEqual(km.note_karaoke_set_loops(s, 2), 2)   # the singer's explicit Loop Count change
+            self.assertEqual(_source_defaults_from_session(s)["loops"], 1)   # the next entry starts at 1
 
     def test_outside_a_set_nothing_changes(self) -> None:
         s = _ordinary()

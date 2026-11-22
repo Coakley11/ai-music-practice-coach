@@ -712,10 +712,11 @@ def reset_entry_performance(session_state: Any, entry_id: str) -> None:
             pass
 
 
-#: Repeat count for the active set (user rule 2026-11-19): the existing Backing Loop Count, but a
-#: SET-level setting - 1 when a set starts (not Backing's 2), carried to every following song
-#: until the singer changes it, and gone with the set. Backing reads it for its play-session
-#: defaults during a set; the Loop Count control writes it through note_karaoke_set_loops.
+#: Repeat count every entry STARTS with during a set: the existing Backing Loop Count, 1 in a set (not
+#: Backing's 2). User rule 2026-11-21 (superseding 2026-11-19's "carried to every following song"): a
+#: Repeat change is TEMPORARY - it is the current song's performance only (kept by that performance's
+#: play-session override) and never carries to the next entry, a loop back through the setlist or a new
+#: set. Backing reads this for its play-session defaults during a set; it is gone with the set.
 KARAOKE_SET_LOOPS_KEY = "_karaoke_set_loops"
 KARAOKE_SET_LOOPS_DEFAULT = 1
 
@@ -732,18 +733,17 @@ def karaoke_set_loops(session_state: Any) -> int:
 
 
 def note_karaoke_set_loops(session_state: Any, loops: Any) -> int:
-    """An explicit Loop Count change during a set: it becomes the set's (no-op outside a set)."""
+    """An explicit Loop Count change during a set: the CURRENT song's performance only (user rule 2026-11-21).
+
+    Returns the clamped count (0 outside a set) and stores nothing set-wide: the sung song keeps it through its
+    own play-session override, and the next entry - or this one again later - starts from Repeat 1.
+    """
     if not is_karaoke_session_active(session_state):
         return 0
     try:
-        n = max(1, min(10, int(loops)))
+        return max(1, min(10, int(loops)))
     except (TypeError, ValueError):
         return 0
-    try:
-        session_state[KARAOKE_SET_LOOPS_KEY] = n
-    except Exception:
-        return 0
-    return n
 
 
 def entry_default_practice_key(entry: Any) -> str:

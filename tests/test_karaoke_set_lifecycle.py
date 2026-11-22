@@ -106,7 +106,7 @@ def test_previous_song_reinitialises_the_entry_but_keeps_set_settings() -> None:
     assert km.current_session_practice_key(s) == "D"
     assert km.resolve_karaoke_entry_groove(s) == "Bossa nova"
     assert km.resolve_karaoke_entry_meter(s) == "4/4"
-    assert km.karaoke_set_loops(s) == 3
+    assert km.karaoke_set_loops(s) == 1                     # user rule 2026-11-21: Repeat is per performance
     assert s[km.KARAOKE_SET_LEAD_SHEET_OPEN_KEY] is True
 
 
@@ -124,17 +124,18 @@ def test_a_repeat_of_the_same_entry_keeps_its_temporary_choices() -> None:
     assert km.resolve_karaoke_entry_groove(s) == "Samba"
 
 
-def test_repeat_count_is_set_level_and_a_new_set_starts_at_one(hooks) -> None:
+def test_every_entry_starts_at_repeat_one_and_a_new_set_too(hooks) -> None:
+    # User rule 2026-11-21 (supersedes the set-level count): a change is the current song's only.
     s = _new_set()
     assert km.note_karaoke_set_loops(s, 3) == 0              # no set: Backing keeps its own
     assert km.karaoke_set_loops(s) == 0
     km.start_session(s)
-    km.note_karaoke_set_loops(s, 2)
+    assert km.note_karaoke_set_loops(s, 2) == 2
     km.advance_session(s)
-    assert km.karaoke_set_loops(s) == 2
+    assert km.karaoke_set_loops(s) == 1
     km.note_karaoke_set_loops(s, 3)
     km.advance_session(s)
-    assert km.karaoke_set_loops(s) == 3
+    assert km.karaoke_set_loops(s) == 1
     km.stop_session(s)
     assert km.karaoke_set_loops(s) == 0
     assert km.KARAOKE_SET_LOOPS_KEY not in s
