@@ -153,16 +153,16 @@ def test_three_seconds_is_the_hold_everywhere():
     assert "six-second" not in lowered and "six seconds" not in lowered and "6 s manual hold" not in lowered
 
 
-def test_with_the_lead_sheet_open_the_lyric_line_never_takes_the_page_from_the_chords():
-    """Voice / Karaoke: one destination at a time. The lit lyric line follows only while it IS the karaoke frame's
-    target (Lead Sheet closed); with the sheet open the chords lead throughout, with no chord/lyric alternation."""
+def test_one_destination_the_singing_panel_leads_with_the_lead_sheet_open_or_closed():
+    """Voice / Karaoke: one destination at a time. User rule 2026-11-21 (superseding 2026-11-20's open-sheet rule):
+    the lit lyric line, else the singing panel itself, leads whether the Lead Sheet is open or closed."""
     i = APP.index("function highlightActiveLine(event)")
     body = APP[i:APP.index("window.__karaokeUpdateLyricPanel = function", i)]
     assert "window.__karaokeBoxFollow(activeLine)" in body
     assert "lyricTarget === activeLine && window.__karaokeBoxFollow" in body
     tgt = APP[APP.index("function karaokeFollowTarget()"):APP.index("let lastBoxTarget = null;")]
-    assert "if (leadSheetOpenOnPage()) return chord;" in tgt
-    # Lead Sheet closed: the lit lyric line, else the singing panel itself (user rule 2026-11-21) - never the chart.
+    assert "leadSheetOpenOnPage()" not in tgt
+    # The lit lyric line, else the singing panel itself (user rule 2026-11-21) - never the chart while there is a panel.
     assert "return karaokePanelEl() || (chartIsPrimary() ? chord : null);" in tgt
 
 

@@ -5584,9 +5584,8 @@ def _build_karaoke_lyrics_panel_script(
           // Through the box follow, which asks the ONE page controller whether the singer is
           // scrolling and moves only this surface's own box. This line used to call
           // scrollIntoView on every tick: no hold, and it moved the whole page.
-          // Only while the lyric line IS the follow target (Lead Sheet closed). With the Lead Sheet
-          // open the chords are followed throughout; following the line here as well made the page
-          // alternate between chord and lyric (user, 2026-11-20: no alternation).
+          // Only while the lyric line IS the follow target - one destination, no alternation (user,
+          // 2026-11-20). Since 2026-11-21 the panel leads with the Lead Sheet open too.
           try {{
             const lyricTarget = window.__karaokeFollowTarget ? window.__karaokeFollowTarget() : activeLine;
             if (lyricTarget === activeLine && window.__karaokeBoxFollow) window.__karaokeBoxFollow(activeLine);
@@ -6868,9 +6867,10 @@ def live_follow_along_component_html(
     // performance display, so they are followed. The view not followed keeps its highlighting
     // but never drives the scroll.
     //
-    // User rule 2026-11-21: the singing panel is always there in Voice and is the follow destination
-    // while the Lead Sheet is closed, lyrics or not. A song without lyrics (or an instrumental section)
-    // follows the panel itself - its countdown, cues and chords - never the folded chart.
+    // User rule 2026-11-21 (superseding 2026-11-20's "the Lead Sheet while it is open"): in Voice the
+    // singing panel is always there and ALWAYS leads the follow - Lead Sheet open or closed, lyrics or not.
+    // The lit lyric line, else the panel itself (a song without lyrics, an instrumental section). An open
+    // Lead Sheet keeps its highlighting but never moves the page.
     function karaokePanelEl() {{
       const p = document.getElementById("karaoke-lyric-panel");
       return p && p.isConnected ? p : null;
@@ -6881,7 +6881,6 @@ def live_follow_along_component_html(
     window.__karaokeIsPanelTarget = isPanelTarget;
     function karaokeFollowTarget() {{
       const chord = document.querySelector(".live-chart-cell.current-chord, .chord-cell.current-chord");
-      if (leadSheetOpenOnPage()) return chord;
       const line = document.querySelector(".karaoke-lp-lyric-line.active");
       if (line && line.isConnected) return line;
       return karaokePanelEl() || (chartIsPrimary() ? chord : null);
@@ -6955,12 +6954,12 @@ def live_follow_along_component_html(
     // The page controller asks this frame directly when what covers its target is pinned inside this frame
     // (no page move can clear that; this box can).
     window.__lsBoxFollow = followInsideBox;
-    // Set start and each new song, Lead Sheet OFF: put the performance display in front of the
+    // Set start and each new song (Lead Sheet open or not, user rule 2026-11-21): put the performance display in front of the
     // singer once, so the countdown (drawn inside this frame) and the first lyric are on screen.
     // Measured before this: the panel sat ~1800 px (desktop) / ~2100 px (phone) below the top of
     // Backing and the 5-4-3-2-1 ran where nobody could see it. Through the ONE page controller,
     // so it obeys the manual-scroll hold; retried for ~4 s because on the v3 controller the
-    // Start click itself opens a 3 s hold. With the Lead Sheet ON the sheet leads instead.
+    // Start click itself opens a 3 s hold.
     const KARAOKE_TAKE_TOKEN = {karaoke_take_token_js};
     function bringKaraokePanelIntoView() {{
       if (!KARAOKE_TAKE_TOKEN) return;
@@ -6973,7 +6972,6 @@ def live_follow_along_component_html(
         try {{
           const top = window.top;
           if (top.__karaokePanelShownTake === KARAOKE_TAKE_TOKEN) return;
-          if (leadSheetOpenOnPage()) {{ top.__karaokePanelShownTake = KARAOKE_TAKE_TOKEN; return; }}
           const el = document.getElementById("karaoke-lyric-panel") || document.getElementById("live-chord");
           if (el && top.__lsFollow && top.__lsFollow.request
               && window.top.__lsFollow.request("karaoke-lyrics", el, {{ why: "karaoke-set-start" }})) {{
@@ -7960,7 +7958,10 @@ def live_follow_along_component_html(
           ctl.register({{
             id: "lead-sheet", priority: 10, frame: fe, transport: true,
             playing: sheetIsPlaying,
-            current: () => document.querySelector(".live-chart-cell.current-chord, .chord-cell.current-chord"),
+            // Voice (KARAOKE_HOLD): this frame carries the singing panel, and the panel leads (user rule
+            // 2026-11-21) - the chart's chord only where there is no panel.
+            current: () => (KARAOKE_HOLD && window.__karaokeFollowTarget && window.__karaokeFollowTarget())
+              || document.querySelector(".live-chart-cell.current-chord, .chord-cell.current-chord"),
             pauseButton: () => document.getElementById("live-stop-btn"),
           }});
           return true;

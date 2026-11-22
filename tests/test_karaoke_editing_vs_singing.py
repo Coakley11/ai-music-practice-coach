@@ -174,7 +174,8 @@ class SetStartBringsThePanelIntoView(unittest.TestCase):
         # The token itself is the set gate (empty outside a set): the page attribute it used to
         # check is not set on Backing (measured null), which silently skipped every request.
         self.assertNotIn("data-karaoke-session", js)
-        self.assertIn("if (leadSheetOpenOnPage())", js)
+        # User rule 2026-11-21: the singing panel leads with the Lead Sheet open too, so set start brings it in.
+        self.assertNotIn("if (leadSheetOpenOnPage())", js)
         self.assertIn('window.top.__lsFollow.request("karaoke-lyrics", el', js)
         self.assertIn('document.getElementById("karaoke-lyric-panel")', js)
         self.assertNotIn("scrollIntoView", js)

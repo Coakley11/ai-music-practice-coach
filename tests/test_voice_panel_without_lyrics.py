@@ -98,8 +98,10 @@ class AVoiceSongWithoutLyricsInTheBrowser(unittest.TestCase):
     def test_the_lead_sheet_closed_follows_the_panel_not_the_chart(self) -> None:
         self.assertEqual(_browser(self, NO_LYRICS, ls_open=False)["target"], "panel")
 
-    def test_the_lead_sheet_open_still_follows_the_chart(self) -> None:
-        self.assertEqual(_browser(self, NO_LYRICS, ls_open=True)["target"], "chart")
+    def test_the_lead_sheet_open_still_follows_the_panel(self) -> None:
+        # User rule 2026-11-21: the panel leads with the Lead Sheet open too.
+        self.assertEqual(_browser(self, NO_LYRICS, ls_open=True)["target"], "panel")
+        self.assertEqual(_browser(self, WITH_LYRICS, ls_open=True)["target"], "panel")
 
     def test_a_song_with_lyrics_is_unchanged(self) -> None:
         out = _browser(self, WITH_LYRICS, ls_open=False)

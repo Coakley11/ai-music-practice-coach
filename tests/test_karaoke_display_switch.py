@@ -34,15 +34,19 @@ class TheSwitchChangesNoHTML(unittest.TestCase):
 
 
 class FollowRules(unittest.TestCase):
+    def test_in_voice_the_lead_sheet_provider_follows_the_panel(self):
+        start = SRC.index('id: "lead-sheet", priority: 10, frame: fe, transport: true,')
+        self.assertIn("KARAOKE_HOLD && window.__karaokeFollowTarget && window.__karaokeFollowTarget()", SRC[start:start + 500])
+
     def test_lyrics_register_below_the_lead_sheet(self):
         self.assertIn('id: "karaoke-lyrics", priority: 5', SRC)
         self.assertNotIn('id: "lead-sheet", priority: 10, frame: fe, transport: false', SRC)
 
-    def test_sheet_open_follows_chords_closed_follows_lyrics_no_lyrics_follows_the_panel(self):
-        # User rule 2026-11-21: with no lyric line the singing panel itself is followed, not the chart.
+    def test_the_panel_leads_with_the_sheet_open_or_closed(self):
+        # User rule 2026-11-21: the lit lyric line, else the singing panel itself; the Lead Sheet never leads in Voice.
         start = SRC.index("function karaokeFollowTarget()")
         body = SRC[start:start + 500]
-        self.assertIn("if (leadSheetOpenOnPage()) return chord;", body)
+        self.assertNotIn("leadSheetOpenOnPage()", body)
         self.assertIn(".karaoke-lp-lyric-line.active", body)
         self.assertIn("return karaokePanelEl() || (chartIsPrimary() ? chord : null);", body)
 
