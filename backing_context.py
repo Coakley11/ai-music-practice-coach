@@ -133,6 +133,8 @@ class BackingContext:
     bound_pick_key: str = ""
     sbi_source_owner: str = ""
     sbi_material_kind: str = ""
+    # Generated jams only: Jam Session Generator's band ("" = Style Jam's default band).
+    ensemble: str = ""
 
     def __post_init__(self) -> None:
         if not self.source_label:
@@ -190,6 +192,7 @@ class BackingContext:
             bound_pick_key=str(raw.get("bound_pick_key") or ""),
             sbi_source_owner=str(raw.get("sbi_source_owner") or ""),
             sbi_material_kind=str(raw.get("sbi_material_kind") or "").strip().lower(),
+            ensemble=str(raw.get("ensemble") or ""),
         )
 
 
@@ -1726,13 +1729,14 @@ def _entry_jam_context_from_owner_snapshot(
     key = display_key = concert_key
     chart_display_key = _resolve_chart_display_key(session, concert_key)
     style = str(snap.style or "").strip() or "Jazz Swing"
-    difficulty = str(snap.level or session.get("improv_difficulty") or "Intermediate").strip()
+    difficulty = str(snap.level or "Intermediate").strip()
     from backing_musical_profile import normalize_backing_play_intensity
     from songs.playback_defaults import normalize_groove_label
 
     rhythm_groove = _entry_jam_rhythm_groove_label(style, str(snap.groove or ""))
     backing_style = normalize_groove_label(style or "Pop groove")
-    groove_intensity = normalize_backing_play_intensity(str(snap.intensity or ""), difficulty=difficulty)
+    # The musician's Groove intensity, independent of Difficulty (Medium if absent).
+    groove_intensity = normalize_backing_play_intensity(str(snap.intensity or ""))
     bpm = int(snap.bpm or 110)
     mood = str(snap.mood or "Mellow").strip()
     meter = str(snap.meter or "4/4").strip()
@@ -1817,6 +1821,7 @@ def _entry_jam_context_from_owner_snapshot(
         jam_id=jam_id,
         entry_mode=entry_mode,
         bound_pick_key="",
+        ensemble=str(getattr(snap, "ensemble", "") or ""),
     )
 
 
@@ -2028,16 +2033,25 @@ def build_entry_jam_context(session: dict[str, Any]) -> BackingContext:
     except ImportError:
         pass
 
-    groove_intensity = str(
-        session.get("improv_groove") or style_meta.get("groove") or style_meta.get("groove_intensity") or "Medium"
-    ).strip()
     from backing_musical_profile import normalize_backing_play_intensity
+    from generated_workflow_artifact import owner_jam_performance_settings
     from songs.playback_defaults import normalize_groove_label
 
-    difficulty = str(session.get("improv_difficulty") or style_meta.get("difficulty") or "Intermediate").strip()
-    groove_intensity = normalize_backing_play_intensity(groove_intensity, difficulty=difficulty)
+    # Each jam's own Groove intensity / Difficulty / Ensemble: the Generator no
+    # longer reads Style Jam's widgets, and Difficulty never replaces Intensity.
+    _jam_owner = "jam_session_generator" if entry_mode == "Jam Session Generator" else "style_jam"
+    _jam_perf = owner_jam_performance_settings(
+        session,
+        _jam_owner,
+        fallback_intensity=str(style_meta.get("groove_intensity") or style_meta.get("groove") or "")
+        if _jam_owner == "style_jam"
+        else "",
+        fallback_level=str(style_meta.get("difficulty") or "") if _jam_owner == "style_jam" else "",
+    )
+    difficulty = _jam_perf["level"]
+    groove_intensity = _jam_perf["intensity"]
     if _catalog_groove_label_leak(groove_intensity, style):
-        groove_intensity = normalize_backing_play_intensity("", difficulty=difficulty)
+        groove_intensity = normalize_backing_play_intensity("")
     rhythm_groove = _entry_jam_rhythm_groove_label(
         style,
         str(session.get("improv_groove") or groove if entry_mode == "Jam Session Generator" else session.get("improv_groove") or ""),
@@ -2196,6 +2210,7 @@ def build_entry_jam_context(session: dict[str, Any]) -> BackingContext:
         jam_id=jam_id,
         entry_mode=entry_mode,
         bound_pick_key="" if entry_mode in {"Style Jam Mode", "Jam Session Generator"} else pick_key,
+        ensemble=_jam_perf["ensemble"],
     )
 
 

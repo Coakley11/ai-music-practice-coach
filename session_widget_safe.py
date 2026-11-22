@@ -34,6 +34,8 @@ WIDGET_BOUND_KEYS: frozenset[str] = frozenset(
         "improv_difficulty",
         "improv_groove",
         "improv_jam_mood",
+        "improv_jam_intensity",
+        "improv_jam_difficulty",
         "improv_ensemble",
         "improv_jam_style",
         "show_chart_in_instrument_key",
@@ -60,6 +62,8 @@ PENDING_IMPROV_DIFFICULTY_KEY = "_pending_improv_difficulty"
 PENDING_IMPROV_GROOVE_KEY = "_pending_improv_groove"
 PENDING_IMPROV_JAM_MOOD_KEY = "_pending_improv_jam_mood"
 PENDING_IMPROV_ENSEMBLE_KEY = "_pending_improv_ensemble"
+PENDING_IMPROV_JAM_INTENSITY_KEY = "_pending_improv_jam_intensity"
+PENDING_IMPROV_JAM_DIFFICULTY_KEY = "_pending_improv_jam_difficulty"
 PENDING_IMPROV_JAM_STYLE_KEY = "_pending_improv_jam_style"
 PENDING_CHART_IN_INSTRUMENT_KEY = "_pending_show_chart_in_instrument_key"
 PENDING_SONG_PICKER_ACTIVE_SOURCE_KEY = "_pending_song_picker_active_source"
@@ -88,6 +92,8 @@ _PENDING_FOR_WIDGET_KEY: dict[str, str] = {
     "improv_groove": PENDING_IMPROV_GROOVE_KEY,
     "improv_jam_mood": PENDING_IMPROV_JAM_MOOD_KEY,
     "improv_ensemble": PENDING_IMPROV_ENSEMBLE_KEY,
+    "improv_jam_intensity": PENDING_IMPROV_JAM_INTENSITY_KEY,
+    "improv_jam_difficulty": PENDING_IMPROV_JAM_DIFFICULTY_KEY,
     "improv_jam_style": PENDING_IMPROV_JAM_STYLE_KEY,
     "show_chart_in_instrument_key": PENDING_CHART_IN_INSTRUMENT_KEY,
     "song_picker_active_source": PENDING_SONG_PICKER_ACTIVE_SOURCE_KEY,

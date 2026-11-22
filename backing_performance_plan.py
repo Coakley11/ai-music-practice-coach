@@ -323,3 +323,58 @@ def resolve_performance_plan(
         keys=perf["keys"], bass=perf["bass"], drums=perf["drums"], guitar=perf["guitar"],
         unavailable=tuple(missing), fallbacks=tuple(fallbacks),
     )
+
+
+# Rollback switch for the jam wiring (slice 2). Generated jams use their plan unless this is set to
+# "off"; songs never get one, whatever it says.
+JAM_PERFORMANCE_SWITCH = "MUSIC_JAM_PERFORMANCE"
+
+
+def jam_performance_enabled() -> bool:
+    import os
+
+    return str(os.environ.get(JAM_PERFORMANCE_SWITCH, "on") or "on").strip().lower() not in {
+        "0", "off", "false", "no",
+    }
+
+
+def performance_plan_for_backing_context(ctx: Any, *, style: str) -> PerformancePlan | None:
+    """The plan for the take the Backing page is about to build, or ``None`` (unchanged sound).
+
+    Only a generated jam (``source == "entry_jam"``: Entry & Style Jam, Jam Session Generator) gets a
+    plan; Catalog, Custom, Composition, Karaoke, Missions and Song-Based Improvisation get ``None`` and
+    render byte-for-byte as before. ``style`` is the groove the engine will actually play (the Backing
+    Feel), so the plan and the audio can never disagree about the style. Mood, intensity, difficulty
+    and ensemble are the jam's own, as sealed into its Backing context.
+    """
+    if ctx is None or str(getattr(ctx, "source", "") or "") != "entry_jam":
+        return None
+    if not jam_performance_enabled():
+        return None
+    return resolve_performance_plan(
+        style=str(style or getattr(ctx, "style", "") or ""),
+        mood=str(getattr(ctx, "mood", "") or ""),
+        intensity=str(getattr(ctx, "groove_intensity", "") or ""),
+        level=str(getattr(ctx, "difficulty", "") or ""),
+        ensemble=str(getattr(ctx, "ensemble", "") or ""),
+    )
+
+
+_ROLE_NAMES = {"keys": "piano", "guitar": "guitar", "bass": "bass", "drums": "drums"}
+_MISSING_NAMES = {"horns": "horns", "percussion": "Latin percussion", "guitar": "guitar"}
+
+
+def band_summary(plan: PerformancePlan | None) -> str:
+    """What the Backing card says the band is: exactly the roles the engine renders.
+
+    A member the ensemble calls for but no renderer plays yet is named as not available, never
+    implied ("piano, bass, drums · horns not available yet").
+    """
+    if plan is None:
+        return ""
+    playing = ", ".join(_ROLE_NAMES.get(r, r) for r in plan.roles)
+    text = playing[:1].upper() + playing[1:]
+    missing = [_MISSING_NAMES.get(m, m) for m in plan.unavailable]
+    if missing:
+        text += " · " + " & ".join(missing) + " not available yet"
+    return text

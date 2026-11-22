@@ -2155,11 +2155,21 @@ def _tab_entry_modes(
                         "Lo-fi duo",
                     ],
                     key="improv_ensemble",
+                    # The band is part of the arrangement: a new choice re-seals the jam's Backing.
+                    on_change=on_improv_jam_setting_change,
                 )
                 style = st.selectbox(
                     "Groove style",
                     list(STYLE_JAM_STYLES),
                     key="improv_jam_style",
+                    on_change=on_improv_jam_setting_change,
+                )
+                # The Generator's own Difficulty (it used to borrow Style Jam's hidden one).
+                st.selectbox(
+                    "Difficulty",
+                    list(DIFFICULTY_LEVELS),
+                    key="improv_jam_difficulty",
+                    format_func=level_label,
                     on_change=on_improv_jam_setting_change,
                 )
             with e2:
@@ -2203,6 +2213,12 @@ def _tab_entry_modes(
                     "Atmosphere",
                     list(MOOD_OPTIONS),
                     key="improv_jam_mood",
+                    on_change=on_improv_jam_setting_change,
+                )
+                st.selectbox(
+                    "Groove intensity",
+                    list(GROOVE_INTENSITY),
+                    key="improv_jam_intensity",
                     on_change=on_improv_jam_setting_change,
                 )
 

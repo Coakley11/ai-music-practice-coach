@@ -187,6 +187,8 @@ _PAGE_LOCAL_KEYS: dict[str, frozenset[str]] = {
             "improv_jam_key",
             "improv_jam_bpm",
             "improv_jam_mood",
+            "improv_jam_intensity",
+            "improv_jam_difficulty",
             "ii_selected_chord",
             "ii_selected_section",
             "ii_selected_chord_index",

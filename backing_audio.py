@@ -2166,15 +2166,42 @@ def _with_performance(render):
     @functools.wraps(render)
     def synthesize(*args, **kwargs):
         plan = kwargs.get("performance")
-        if plan is None or plan.plays("bass"):
+        if plan is None:
             return render(*args, **kwargs)
-        token = _BASS_TACET.set(True)
+        token = _BASS_TACET.set(True) if not plan.plays("bass") else None
         try:
-            return render(*args, **kwargs)
+            out = render(*args, **kwargs)
         finally:
-            _BASS_TACET.reset(token)
+            if token is not None:
+                _BASS_TACET.reset(token)
+        _trace_performance_render(plan, args, kwargs)
+        return out
 
     return synthesize
+
+
+def _trace_performance_render(plan, args, kwargs) -> None:
+    """Off unless MUSIC_BE2_TRACE names a file: one JSON line per jam take (QA proof that the
+    musician's settings reached the engine). Never raises into a render."""
+    path = os.environ.get("MUSIC_BE2_TRACE", "").strip()
+    if not path:
+        return
+    try:
+        import json as _json
+        import time as _time
+
+        chords = args[0] if args else kwargs.get("chords") or []
+        names = [str(c.get("chord") if isinstance(c, dict) else c) for c in list(chords)[:8]]
+        stats = {k: v for k, v in dict(LAST_MIX_STATS).items() if isinstance(v, (int, float, str, bool))}
+        rec = {
+            "t": round(_time.time(), 3), "tag": plan.tag(), "plan": plan.describe(),
+            "style": kwargs.get("style"), "bpm": kwargs.get("bpm"), "level_arg": kwargs.get("level"),
+            "meter": kwargs.get("time_signature"), "chords": names, "n_chords": len(list(chords)), "mix": stats,
+        }
+        with open(path, "a", encoding="utf-8") as fh:
+            fh.write(_json.dumps(rec, default=str) + chr(10))
+    except Exception:
+        pass
 
 
 @_with_drum_kit

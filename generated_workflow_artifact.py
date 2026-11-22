@@ -25,6 +25,45 @@ _ENTRY_MODE_FOR_OWNER: dict[str, str] = {
     "jam_session_generator": "Jam Session Generator",
 }
 
+# Each generated owner keeps its own Groove intensity and Difficulty. The
+# Generator used to read Style Jam's widgets (it had none of its own), and the
+# sealed snapshot replaced Groove intensity with a value derived from
+# Difficulty, so the band never heard the musician's intensity choice.
+JAM_INTENSITY_KEY_FOR_OWNER: dict[str, str] = {
+    "style_jam": "improv_groove",
+    "jam_session_generator": "improv_jam_intensity",
+}
+JAM_DIFFICULTY_KEY_FOR_OWNER: dict[str, str] = {
+    "style_jam": "improv_difficulty",
+    "jam_session_generator": "improv_jam_difficulty",
+}
+JAM_ENSEMBLE_KEY = "improv_ensemble"
+_JAM_DIFFICULTIES = ("Beginner", "Intermediate", "Advanced")
+
+
+def owner_jam_performance_settings(
+    session: Any, owner: str, *, fallback_intensity: str = "", fallback_level: str = ""
+) -> dict[str, str]:
+    """The owner's own Groove intensity, Difficulty and (Generator only) Ensemble.
+
+    Three independent choices: Difficulty never stands in for Intensity. A
+    missing or unrecognised intensity is Medium, a missing difficulty Intermediate.
+    """
+    from backing_musical_profile import normalize_backing_play_intensity
+
+    def _get(key: str) -> str:
+        try:
+            return str(session.get(key) or "").strip()
+        except Exception:
+            return ""
+
+    raw_intensity = _get(JAM_INTENSITY_KEY_FOR_OWNER.get(owner, "")) or str(fallback_intensity or "").strip()
+    intensity = normalize_backing_play_intensity(raw_intensity)  # no Difficulty fallback
+    level = _get(JAM_DIFFICULTY_KEY_FOR_OWNER.get(owner, "")) or str(fallback_level or "").strip()
+    level = next((d for d in _JAM_DIFFICULTIES if d.lower() == level.lower()), "Intermediate")
+    ensemble = _get(JAM_ENSEMBLE_KEY) if owner == "jam_session_generator" else ""
+    return {"intensity": intensity, "level": level, "ensemble": ensemble}
+
 
 @dataclass
 class GeneratedWorkflowArtifactSnapshot:
@@ -52,6 +91,8 @@ class GeneratedWorkflowArtifactSnapshot:
     exact_return_destination: str = "creative"
     entry_mode: str = ""
     bound_pick_key: str = ""
+    # Jam Session Generator's band ("Jazz trio", "Rock trio", ...); "" = Style Jam's default band.
+    ensemble: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -97,6 +138,7 @@ class GeneratedWorkflowArtifactSnapshot:
             exact_return_destination=str(raw.get("exact_return_destination") or "creative"),
             entry_mode=str(raw.get("entry_mode") or ""),
             bound_pick_key=str(raw.get("bound_pick_key") or ""),
+            ensemble=str(raw.get("ensemble") or ""),
         )
 
 
@@ -341,10 +383,15 @@ def build_snapshot_from_session(
         mode=pm,
         section_names=list(section_map.keys()),
     )
-    from backing_musical_profile import normalize_backing_play_intensity
-
-    diff_label = level or str(session.get("improv_difficulty") or "Intermediate")
-    play_intensity = normalize_backing_play_intensity("", difficulty=diff_label)
+    # Style Jam's workflow blob carries its intensity as ``groove``; the live
+    # widget (mounted when Open Backing is clicked) is the musician's choice.
+    perf = owner_jam_performance_settings(
+        session,
+        owner,
+        fallback_intensity=groove if owner == "style_jam" else "",
+        fallback_level=level if owner == "style_jam" else "",
+    )
+    play_intensity = perf["intensity"]
     return GeneratedWorkflowArtifactSnapshot(
         workflow_owner=owner,
         workflow_session_id=sid or artifact_id,
@@ -361,7 +408,7 @@ def build_snapshot_from_session(
         intensity=play_intensity,
         bpm=bpm,
         meter=meter,
-        level=level or str(session.get("improv_difficulty") or "Intermediate"),
+        level=perf["level"],
         section_map=section_map,
         selected_scope="Full song",
         selected_section_ids=list(section_map.keys()),
@@ -370,6 +417,7 @@ def build_snapshot_from_session(
         exact_return_destination="creative",
         entry_mode=entry,
         bound_pick_key="",
+        ensemble=perf["ensemble"],
     )
 
 

@@ -166,7 +166,8 @@ def commit_style_jam_control_settings(session: dict[str, Any]) -> bool:
     if entry == "Jam Session Generator":
         style = str(session.get("improv_jam_style") or "").strip()
         mood = str(session.get("improv_jam_mood") or "").strip()
-        groove = str(session.get("improv_groove") or "").strip()
+        # The Generator's own Groove intensity, not Style Jam's widget.
+        groove = str(session.get("improv_jam_intensity") or "").strip()
         try:
             tempo = int(session.get("improv_jam_bpm") or 0)
         except (TypeError, ValueError):

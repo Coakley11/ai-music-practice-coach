@@ -574,11 +574,12 @@ def generate_jam_session(
     tempo: int = 120,
     mood: str = "Dark",
     seed: int | None = None,
+    difficulty: str = "Intermediate",
 ) -> dict[str, Any]:
     sections = generate_style_progression(
         style=style,
         key_center=key_center,
-        difficulty="Intermediate",
+        difficulty=str(difficulty or "Intermediate"),
         mood=mood,
         seed=seed,
     )

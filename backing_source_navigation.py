@@ -5070,6 +5070,14 @@ def restore_session_widgets_from_backing_context(
                 session["improv_jam_bpm"] = int(ctx.bpm)
             if ctx.mood:
                 session["improv_jam_mood"] = ctx.mood
+            # The Generator's own Groove intensity / Difficulty / Ensemble come back
+            # as chosen (Style Jam's widgets are not touched).
+            if ctx.groove_intensity:
+                session["improv_jam_intensity"] = ctx.groove_intensity
+            if ctx.difficulty:
+                session["improv_jam_difficulty"] = ctx.difficulty
+            if str(getattr(ctx, "ensemble", "") or ""):
+                session["improv_ensemble"] = ctx.ensemble
             jam = session.get("improv_jam_session")
             if isinstance(jam, dict) and ctx.progression:
                 sections = jam.get("sections")
