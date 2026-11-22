@@ -11820,11 +11820,18 @@ def render_backing_card_transport_control(*, enabled: bool) -> None:
             _cycle_on = True
             report_ended = False
         elif km.is_karaoke_session_active(st.session_state):
-            # Sheet closed: this control's audio poll is the end signal.
-            # Sheet open: the follow-along player's "ended" event calls
-            # __backingReportKaraokeEnded, which is this same intent. Reporting
-            # ended here too would advance twice.
-            report_ended = not bool(st.session_state.get("backing_lead_sheet_open"))
+            # ONE end signal per song. The follow-along player's "ended" event calls
+            # __backingReportKaraokeEnded (this same intent); reporting ended from this control's
+            # audio poll too advances the set twice. Since 2026-11-20 that player (with the singing
+            # panel) is mounted in Voice whatever the Lead Sheet switch says, so in Voice it is the
+            # only sender - not only with the sheet open. Measured on f7419c6f (390 px, Karaoke Set,
+            # Lead Sheet off): Blackbird ended -> Trial Song, and 3.0 s later a second "ended" moved
+            # the set on to Jazz tune, skipping Trial Song (the earlier stale re-key had masked it by
+            # stopping the transport). Outside Voice no singing surface is mounted: the poll reports.
+            report_ended = not (
+                km.is_voice_mode(st.session_state)
+                or bool(st.session_state.get("backing_lead_sheet_open"))
+            )
     except Exception:
         pass
     _now_singing = ""
@@ -15932,6 +15939,7 @@ def _render_backing_step2_playback_action(
                     "transport": str(transport_intent(st.session_state) or ""),
                     "cycle_active": bool(_kc_owns_song_end(st.session_state)),
                     "karaoke": bool(km.is_karaoke_session_active(st.session_state)),
+                    "via": str((st.session_state.get("backing_card_transport") or {}).get("via") or ""),
                     "transport_log": list(st.session_state.get(_ke_tlog) or [])[-6:],
                 }, default=str) + "\n")
         except Exception:

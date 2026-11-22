@@ -300,7 +300,7 @@
         window.parent.__backingReportKaraokeEnded = function () {
           if (intentNow() !== "playing" || Date.now() <= stoppingUntil) return;
           if (args.cycle_active) return;  // Key Cycling's hand-offs own its ends (as report_ended says)
-          send("ended");
+          send("ended", { via: "sheet" });
         };
       } catch (e) {}
       function backingAudio() {
@@ -532,7 +532,7 @@
         const settledStopped = !playing && (now - notPlayingSince > 700);
         if (wasPlaying && settledStopped) {
           wasPlaying = false;
-          if (now > stoppingUntil && args.report_ended && intentNow() === "playing" && anyEnded()) send("ended");
+          if (now > stoppingUntil && args.report_ended && intentNow() === "playing" && anyEnded()) send("ended", { via: "card" });
         }
         if (playing) wasPlaying = true;
         const intent = intentNow();
