@@ -3272,6 +3272,28 @@ def format_backing_context_banner(
     return f"Backing source: {ctx.source_label}"
 
 
+def _karaoke_entry_loops(session: dict[str, Any], song_loops: int) -> int | None:
+    """The Repeat a context hands Backing: the song's own outside a Karaoke Set; inside one, every entry's 1.
+
+    User rule 2026-11-21: every Karaoke entry starts at Repeat 1, whatever the song itself saves. Measured on
+    f7419c6f (390 px, Karaoke Set): Next to Trial Song (a Custom song saved with loops 2) gave Repeat 2 - its
+    context queued the song's own 2 after the entry activation had queued 1. A Repeat the singer chose for the
+    performance in progress (the play session's loops override) is left alone: None = no write.
+    """
+    try:
+        import karaoke_mode as _km
+
+        if not (_km.is_voice_mode(session) and _km.is_karaoke_session_active(session)):
+            return int(song_loops)
+        from backing_play_session import backing_play_session_has_override
+
+        if backing_play_session_has_override(session, "loops"):
+            return None
+        return int(_km.karaoke_set_loops(session) or _km.KARAOKE_SET_LOOPS_DEFAULT)
+    except Exception:
+        return int(song_loops)
+
+
 def apply_backing_context_to_session(
     session: dict[str, Any],
     ctx: BackingContext,
@@ -3520,10 +3542,14 @@ def apply_backing_context_to_session(
 
     if skip_transport:
         pass
-    elif widget_safe:
-        session[PENDING_BACKING_LOOPS] = int(ctx.loops or 2)
     else:
-        session["backing_track_loops"] = int(ctx.loops or 2)
+        _ctx_loops = _karaoke_entry_loops(session, int(ctx.loops or 2))
+        if _ctx_loops is None:
+            pass
+        elif widget_safe:
+            session[PENDING_BACKING_LOOPS] = _ctx_loops
+        else:
+            session["backing_track_loops"] = _ctx_loops
 
     if not skip_transport:
         applied_bpm = int(ctx.bpm or 0)
