@@ -66,6 +66,11 @@ ANCHOR_BACKING_FOLLOW_ALONG = "anchor_backing_follow_along"
 ANCHOR_BACKING_PLAYBACK_SETTINGS = "anchor_backing_playback_settings"
 """Backing page -> Advanced playback settings (the album-cover card's settings button)."""
 
+
+#: Sections the person asks for by a button (the Backing card's Advanced settings). Jumping there is their own
+#: move: their tap does not drop it, and it starts the page-follow hold (user, 2026-11-21).
+USER_NAV_ANCHORS = frozenset({ANCHOR_BACKING_PLAYBACK_SETTINGS})
+
 ANCHOR_PRACTICE_COACH = "anchor_practice_coach"
 """Practice page → just above the practice setup + section/jump bar."""
 
@@ -215,6 +220,7 @@ def render_pending_scroll_script(st: Any) -> None:
 
     if slot is None:
         return
+    user_nav_js = "true" if safe in USER_NAV_ANCHORS else "false"
     with slot:
         components.html(
             f"""
@@ -242,8 +248,12 @@ def render_pending_scroll_script(st: Any) -> None:
                 // after they paused / stopped the music (the controller keeps their place then).
                 let ctl = null;
                 try {{ ctl = (window.parent && window.parent.__lsFollow) || window.top.__lsFollow || null; }} catch (eCtl) {{ ctl = null; }}
+                // A section the person asked for by a button (USER_NAV_ANCHORS) is their own move: their tap must
+                // not drop it, and where it lands starts the three-second hold, so the follow does not take the page
+                // straight back (measured on 092f6855, 390 px, playing: Advanced settings, then 'catchup-outside').
+                const userNav = {user_nav_js};
                 try {{
-                  if (ctl && ((ctl.suspended && ctl.suspended())
+                  if (!userNav && ctl && ((ctl.suspended && ctl.suspended())
                       || (ctl.keeping && ctl.keeping() === 'user-stop'))) return true;
                 }} catch (eSus) {{}}
                 const sc = doc.querySelector('[data-testid="stMain"]');
@@ -259,6 +269,7 @@ def render_pending_scroll_script(st: Any) -> None:
                     }}
                   }} catch (eMv) {{}}
                   sc.scrollTo({{ top: Math.max(0, Math.min(top, max)), behavior: 'smooth' }});
+                  try {{ if (userNav && ctl && ctl.userNavigated) ctl.userNavigated('anchor'); }} catch (eUn) {{}}
                 }} else {{
                   el.scrollIntoView({{ behavior: 'smooth', block: 'nearest' }});
                 }}

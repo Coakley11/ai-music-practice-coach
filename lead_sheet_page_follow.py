@@ -40,7 +40,7 @@ from __future__ import annotations
 HOLD_MS = 3000
 # Bumped whenever the controller's behaviour changes: an open page keeps the copy it installed (one per top
 # window) and only a newer version replaces it -- v2 pages kept the 6 s hold and the old spacer after a deploy.
-CONTROLLER_VERSION = 7
+CONTROLLER_VERSION = 8
 # Who leads the page when several are open and playing (higher wins; user, 2026-11-16).
 LEAD_SHEET_PRIORITY = 10
 MELODY_PRIORITY = 20                 # the Practice Melody staff
@@ -192,7 +192,26 @@ _CONTROLLER_JS = r"""
   // and the page still gliding from one of those (touch momentum, a smooth key scroll) -- a pointer or finger held
   // down holds the page however long it stays still. What does not: moving or hovering the mouse, a click or tap that
   // does not scroll the page, a chord lighting up, and this controller's own scrolling.
-  C.suspended = function () { return C.pointerDown || (now() - C.lastInteraction < HOLD_MS); };
+  // v8 (user, 2026-11-21): a dropdown the person has open (a Streamlit selectbox's option list, e.g. Groove in
+  // Advanced playback settings) holds every follower for as long as it is open, and its closing starts the usual
+  // three seconds - picking from a list is the person's own work on the page, like a scroll. Measured on 092f6855
+  // (390 px, playing): the page was taken back to the singing panel while the Groove list was being opened, so no
+  // choice could be made during playback.
+  function controlOpen() {
+    try {
+      var lists = doc.querySelectorAll('[role="listbox"], [role="option"]');
+      for (var i = 0; i < lists.length; i++) {
+        var r = lists[i].getBoundingClientRect();
+        if (r.width > 0 && r.height > 0) return true;
+      }
+    } catch (e) {}
+    return false;
+  }
+  C.controlOpen = controlOpen;
+  C.suspended = function () {
+    if (controlOpen()) { C.lastInteraction = now(); return true; }
+    return C.pointerDown || (now() - C.lastInteraction < HOLD_MS);
+  };
   C.remainingMs = function () { return C.pointerDown ? HOLD_MS : Math.max(0, HOLD_MS - (now() - C.lastInteraction)); };
   // A page scroll this soon after the person's own input (or after their previous scroll) is still theirs: the
   // glide after a flick, a key's smooth scroll, the scrollbar's arrows.
@@ -209,6 +228,9 @@ _CONTROLLER_JS = r"""
       try { var sc = scroller(); sc.scrollTo({ top: sc.scrollTop, behavior: "auto" }); } catch (e) {}
     }
   }
+  // A page move the person asked for (a button that takes them to a section, e.g. the Backing card's Advanced
+  // settings): where they asked to be is where they are reading, so it starts the same hold a scroll does.
+  C.userNavigated = function (kind) { interact(kind || "navigate"); };
   // Opening or closing a panel (a click / tap on an expander's header) is not scrolling: the page hands over to
   // the notation that now leads at once instead of holding (measured: 6.4 s after closing the Practice Melody),
   // even when the panel's new height makes the page scroll. A drag or wheel that starts on a header still holds.
