@@ -83,6 +83,32 @@ def is_document_image_mime(mime_type: Any) -> bool:
     return str(mime_type or "").strip().lower().startswith("image/")
 
 
+#: A photographed page is one big image; a phone's 48 MP sensor is the largest a musician will
+#: send. Above this a "photo" is a decompression bomb or a scan at a resolution nobody can read on a
+#: screen anyway, and decoding it would hold hundreds of MB on the server.
+DOCUMENT_MAX_IMAGE_PIXELS = 50_000_000
+
+_HEIF_READY: bool | None = None
+
+
+def heif_support() -> bool:
+    """True when HEIC/HEIF photos can be decoded here (``pillow-heif`` installed and registered).
+
+    Registered once. Without it a HEIC photo is still kept exactly as uploaded; it just cannot be
+    drawn by the server, and the viewer says so and offers the file instead.
+    """
+    global _HEIF_READY
+    if _HEIF_READY is None:
+        try:
+            import pillow_heif  # type: ignore[import-not-found]
+
+            pillow_heif.register_heif_opener()
+            _HEIF_READY = True
+        except Exception:
+            _HEIF_READY = False
+    return bool(_HEIF_READY)
+
+
 def document_mime_types_accepted() -> tuple[str, ...]:
     """Every MIME type a saved reference can legitimately carry.
 

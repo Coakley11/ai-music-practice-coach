@@ -371,8 +371,46 @@ def validate_document_bytes(data: Any) -> tuple[bytes | None, str, str]:
     if mime.startswith("image/"):
         if len(data) > DOCUMENT_MAX_SIZE_BYTES:
             return None, "", "document_too_large"
+        err = _image_decode_error(data, mime)
+        if err:
+            return None, "", err
         return data, mime, ""
     return None, "", "unsupported_document_type"
+
+
+def _image_decode_error(data: bytes, mime: str) -> str:
+    """"" when the photo really decodes, else why not (2026-11-22, Slice 1).
+
+    A signature alone accepted a JPEG cut off halfway through an upload. The pixel count is read
+    from the header before anything is decoded, so an oversized image is refused without the work.
+    A HEIC photo is accepted unchecked where ``pillow-heif`` is missing: it is kept as uploaded and
+    the viewer offers it for download rather than drawing it.
+    """
+    import io
+
+    from upload_media import DOCUMENT_MAX_IMAGE_PIXELS, heif_support
+
+    try:
+        from PIL import Image
+    except ImportError:
+        return ""
+    if mime in ("image/heic", "image/heif") and not heif_support():
+        return ""
+    try:
+        with Image.open(io.BytesIO(data)) as im:
+            w, h = im.size
+            if w <= 0 or h <= 0:
+                return "image_unreadable"
+            if w * h > DOCUMENT_MAX_IMAGE_PIXELS:
+                return "image_too_many_pixels"
+            if im.format == "JPEG":
+                im.draft("RGB", (min(w, 1024), min(h, 1024)))   # every byte is still read, at low cost
+            im.load()
+    except Image.DecompressionBombError:
+        return "image_too_many_pixels"
+    except Exception:
+        return "image_unreadable"
+    return ""
 
 
 def validate_pdf_bytes(data: Any) -> tuple[bytes | None, str]:
