@@ -1643,7 +1643,13 @@ def restore_jam_visit_practice_key_after_hydrate(session: dict[str, Any]) -> str
     want = str(resolve_jam_visit_practice_key(session) or "").strip()
     if not want:
         return ""
-    style = "Style Jam" in entry or tool == "entry_style_jam"
+    # The key belongs to the jam the restored Creative session is (resolve_jam_visit_practice_key decides the
+    # same way). During a reload the entry mode can still be the other jam's, restored earlier from the
+    # workspace -- writing there would hand the Generator's key to Style Jam (or the reverse).
+    if tool in {"entry_style_jam", "jam_session_generator"}:
+        style = tool == "entry_style_jam"
+    else:
+        style = "Style Jam" in entry
     widget_key = "improv_style_key" if style else "improv_jam_key"
     pending_key = PENDING_IMPROV_STYLE_KEY if style else PENDING_IMPROV_JAM_KEY
     session[pending_key] = want

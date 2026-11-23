@@ -227,7 +227,18 @@ def build_workflow_blob_from_legacy(session: dict[str, Any], owner: str) -> Work
             blob.section_map = {str(k): list(v) for k, v in gen.items() if isinstance(v, list)}
             blob.progression_owner = "improv_generated_sections"
         meta = session.get("improv_style_meta")
-        if isinstance(meta, dict):
+        # The style meta is shared: the Generator writes it too (entry_mode says whose it is). Another mode's
+        # meta never becomes Style Jam's mood / groove / tempo -- Style Jam's own controls are used instead.
+        meta_mode = str(meta.get("entry_mode") or "").strip() if isinstance(meta, dict) else ""
+        if isinstance(meta, dict) and meta_mode and "Style Jam" not in meta_mode:
+            blob.groove = str(session.get("improv_groove") or "").strip()
+            blob.mood = str(session.get("improv_mood") or "").strip()
+            try:
+                blob.tempo_bpm = int(session.get("improv_style_bpm") or 0)
+            except (TypeError, ValueError):
+                pass
+            blob.meter = str(session.get("improv_style_meter") or "4/4")
+        elif isinstance(meta, dict):
             blob.groove = str(meta.get("groove") or "")
             blob.mood = str(meta.get("mood") or "")
             try:

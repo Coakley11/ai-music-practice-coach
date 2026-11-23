@@ -373,3 +373,83 @@ class ReloadTests(unittest.TestCase):
                               display_key="Eb", concert_key="Eb", bpm=72, style="Jazz swing", groove="")
         self.assertNotIn("sealed_jam_snapshot", song.to_dict())
         self.assertEqual(BackingContext.from_dict({**song.to_dict(), "sealed_jam_snapshot": {"a": 1}}).sealed_jam_snapshot, {})
+
+
+# --------------------------------------------------------------------------- the other jam after a reload
+# Browser write trace 2026-11-23 (H4, 1500 px): the reload restores only the Generator's record. (1) The jam-key
+# restore saw a stale "Style Jam Mode" entry and put the Generator's key A in Style Jam's slot. (2) Switching to
+# Style Jam rebuilt its record from the shared style meta, which the Generator had written last (Dreamy / Heavy /
+# 120), and projected that onto Style Jam's controls.
+GEN_META = {"style": "Rock", "bpm": 120, "groove": "Heavy", "groove_intensity": "Heavy", "key": "A",
+            "mood": "Gritty", "difficulty": "Intermediate", "meter": "4/4", "entry_mode": "Jam Session Generator"}
+
+
+def _style_jam_after_generator_reload() -> dict:
+    """After the reload: only the Generator's record; Style Jam's controls back from the page snapshot; the
+    style meta last written by the Generator."""
+    s = _both_jams()
+    store = s["_music_workflow_state_store"]
+    store["blobs"] = {k: v for k, v in store["blobs"].items() if v.get("workflow_owner") != "style_jam"}
+    for k in (STYLE_FLAG, GEN_FLAG, "_improv_style_controls_mounted_last_run", "_improv_jam_controls_mounted_last_run"):
+        s.pop(k, None)
+    s.update(STYLE_CHOICE)
+    s["improv_style_key"] = "Bb"
+    s["improv_style_meta"] = dict(GEN_META)
+    s["improv_entry_mode"] = "Style Jam Mode"
+    return s
+
+
+class OtherJamAfterReloadTests(unittest.TestCase):
+    def test_the_reload_key_restore_fills_the_restored_jams_own_slot(self) -> None:
+        from creative_key_sync import restore_jam_visit_practice_key_after_hydrate
+        from creative_session_state import CreativeSession, set_creative_session
+
+        s = {
+            "_suite_active_workspace_id": "daniel",
+            "studio_page": "creative",
+            "improv_entry_mode": "Style Jam Mode",  # stale: restored from the workspace before the session
+            "improv_style_key": "Bb",
+            "improv_jam_key": "A",
+            "display_key": "Eb",
+            "concert_key": "Eb",
+        }
+        set_creative_session(s, CreativeSession(session_id="gen-1", tool_type="jam_session_generator",
+                                                entry_mode="Jam Session Generator", concert_key="A", display_key="A",
+                                                style="Rock", sections={"Riff": ["A", "D"]}))
+        restore_jam_visit_practice_key_after_hydrate(s)
+        self.assertEqual(s.get("improv_style_key"), "Bb")
+        self.assertNotEqual(s.get("_pending_improv_style_key"), "A")
+        self.assertTrue(str(s.get("improv_jam_key") or s.get("_pending_improv_jam_key") or "").startswith("A"))
+
+    def test_a_rebuilt_style_jam_record_never_takes_the_generators_meta(self) -> None:
+        from music_workflow_compatibility import build_workflow_blob_from_legacy
+
+        s = _style_jam_after_generator_reload()
+        blob = build_workflow_blob_from_legacy(s, "style_jam")
+        self.assertEqual((blob.mood, blob.groove, blob.tempo_bpm), ("Dreamy", "Light", 104))
+        self.assertEqual(blob.keys.practice_tonic, "Bb")
+
+    def test_style_jams_own_meta_still_feeds_its_record(self) -> None:
+        from music_workflow_compatibility import build_workflow_blob_from_legacy
+
+        s = _style_jam_after_generator_reload()
+        s["improv_style_meta"] = dict(GEN_META, style="Funk", mood="Energetic", groove="Heavy", bpm=96,
+                                      entry_mode="Style Jam Mode")
+        blob = build_workflow_blob_from_legacy(s, "style_jam")
+        self.assertEqual((blob.mood, blob.groove, blob.tempo_bpm), ("Energetic", "Heavy", 96))
+
+    def test_switching_to_style_jam_after_the_reload_keeps_its_own_settings(self) -> None:
+        from jam_control_ownership import seed_jam_controls_before_mount
+        from music_workflow_activation import ActivateWorkflowRequest, activate_workflow
+
+        s = _style_jam_after_generator_reload()
+        gen_before = _gen_settings(_record(s, "jam_session_generator"))
+        res = activate_workflow(s, ActivateWorkflowRequest(target_owner="style_jam", target_session_id="Funk",
+                                                           activation_source="test_entry_mode_switch"))
+        self.assertTrue(res.ok, res)
+        rec = _record(s, "style_jam")
+        self.assertEqual((rec["mood"], rec["groove"], rec["tempo_bpm"]), ("Dreamy", "Light", 104))
+        seed_jam_controls_before_mount(s, "style_jam")
+        self.assertEqual({k: s.get(k) for k in STYLE_CHOICE}, STYLE_CHOICE)
+        self.assertEqual(s.get("improv_style_key"), "Bb")
+        self.assertEqual(_gen_settings(_record(s, "jam_session_generator")), gen_before)
