@@ -175,3 +175,40 @@ def test_in_normal_voice_the_full_height_sheet_follows_the_lyrics_when_the_lead_
     # A lyric line or the singing panel itself (a song without lyrics) is the singing target (user rule 2026-11-21).
     assert "toLyric = !!(lyricLead && window.__karaokeIsPanelTarget && window.__karaokeIsPanelTarget(lyricLead))" in branch
     assert 'request("lead-sheet", toLyric ? lyricLead : currentCell, {{ why: toLyric ? "karaoke-lyric" : "chord" }})' in branch
+
+
+# ---- icons (user, 2026-11-22): the Backing buttons reuse the Practice page's own icons ----------------------------
+
+def test_backing_mode_buttons_reuse_the_practice_page_icons_and_keep_their_labels():
+    from music_feature_icons import FEATURE_ICONS, feature_label
+
+    # The Practice page labels these two panels with these exact concepts (same source of icons).
+    assert 'feature_label("practice_melody_generated", "Generated Practice Melody")' in APP
+    assert 'feature_label("practice_melody_uploaded", "My Uploaded Melodies")' in APP
+    assert bmm.mode_button_label("practice") == feature_label("practice_melody_generated", "Practice Melody")
+    assert bmm.mode_button_label("uploaded") == feature_label("practice_melody_uploaded", "My Uploaded Melodies")
+    assert bmm.mode_button_label("practice") == FEATURE_ICONS["practice_melody_generated"] + " Practice Melody"
+    assert bmm.mode_button_label("uploaded") == FEATURE_ICONS["practice_melody_uploaded"] + " My Uploaded Melodies"
+    assert bmm.MODE_LABELS == {"practice": "Practice Melody", "uploaded": "My Uploaded Melodies"}  # labels unchanged
+
+
+def test_the_selector_still_offers_the_same_two_values_and_returns_the_choice():
+    seen = {}
+
+    class FakeSt:
+        def segmented_control(self, label, options, **kw):
+            seen["options"], seen["format_func"], seen["key"] = list(options), kw.get("format_func"), kw.get("key")
+            return "uploaded"
+
+        def markdown(self, *a, **k):
+            return None
+
+        def radio(self, label, options, **kw):
+            seen["options"], seen["format_func"], seen["key"] = list(options), kw.get("format_func"), kw.get("key")
+            return "uploaded"
+
+    session = {}
+    picked = bmm.render_melody_mode_selector(FakeSt(), session)
+    assert seen["options"] == ["practice", "uploaded"] and seen["key"] == bmm.MODE_KEY  # values / key unchanged
+    assert [seen["format_func"](m) for m in seen["options"]] == [bmm.mode_button_label(m) for m in bmm.MODES]
+    assert picked == "uploaded"
