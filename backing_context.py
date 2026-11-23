@@ -2014,6 +2014,7 @@ def build_entry_jam_context(session: dict[str, Any]) -> BackingContext:
         groove = str(session.get("improv_groove") or style_meta.get("groove") or style).strip()
         bpm = int(session.get("improv_style_bpm") or style_meta.get("bpm") or 110)
         mood = str(session.get("improv_mood") or style_meta.get("mood") or "Mellow").strip()
+    _jam_blob_applied = False
     try:
         from music_workflow_state_store import get_active_workflow_pointer, get_workflow_blob
 
@@ -2024,6 +2025,7 @@ def build_entry_jam_context(session: dict[str, Any]) -> BackingContext:
             if blob is not None and int(getattr(blob, "tempo_bpm", 0) or 0) > 0:
                 bpm = int(blob.tempo_bpm)
             if blob is not None:
+                _jam_blob_applied = True
                 if str(blob.style or "").strip():
                     style = str(blob.style).strip()
                 if str(blob.mood or "").strip():
@@ -2032,6 +2034,22 @@ def build_entry_jam_context(session: dict[str, Any]) -> BackingContext:
                     groove = str(blob.groove).strip()
     except ImportError:
         pass
+    if not _jam_blob_applied and entry_mode == "Jam Session Generator":
+        # No workflow pointer (e.g. after a reload onto Backing): while Creative is not live, the jam on screen
+        # (the persisted Backing context) outranks the Generator widgets' transient defaults.
+        try:
+            from generated_workflow_artifact import creative_jam_controls_live, stored_entry_jam_context
+
+            _stored = (
+                None if creative_jam_controls_live(session, "jam_session_generator")
+                else stored_entry_jam_context(session, "jam_session_generator")
+            )
+            if _stored is not None:
+                style = str(_stored.style or style)
+                mood = str(_stored.mood or mood)
+                bpm = int(_stored.bpm or bpm)
+        except ImportError:
+            pass
 
     from backing_musical_profile import normalize_backing_play_intensity
     from generated_workflow_artifact import owner_jam_performance_settings

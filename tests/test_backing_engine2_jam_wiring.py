@@ -251,3 +251,130 @@ class CardTests(unittest.TestCase):
             return  # the SBI card needs a fuller session; the point is only that no jam badge is drawn
         html = " ".join(str(c.args[0]) for c in st.markdown.call_args_list if c.args)
         self.assertNotIn("Band · ", html)
+
+
+def _leave_creative(session: dict) -> None:
+    """What Backing sees once Creative is off screen: Streamlit drops the unmounted jam widgets and the
+    Creative initialiser re-seeds their transient defaults (studio_page_state.init_improvisation_state);
+    no jam control is mounted this run."""
+    from studio_page_state import init_improvisation_state
+
+    for k in ("improv_mood", "improv_groove", "improv_difficulty", "improv_style", "improv_style_bpm",
+              "improv_ensemble", "improv_jam_mood", "improv_jam_intensity", "improv_jam_difficulty",
+              "improv_jam_style", "improv_jam_bpm"):
+        session.pop(k, None)
+    session.pop("_improv_jam_key_mounted_this_run", None)
+    session.pop("_improv_style_key_mounted_this_run", None)
+    init_improvisation_state(session, is_custom_active=False)
+    session["studio_page"] = "backing"
+
+
+class OffScreenControlsTests(unittest.TestCase):
+    """Browser finding 2026-11-22 (1500 px, Generator): the Rock trio take played once, then Backing reruns
+    rebuilt the jam from Creative's reset widget defaults (Dark / Medium / Intermediate / Jazz trio)."""
+
+    def test_generator_jam_keeps_its_settings_after_creative_unmounts(self) -> None:
+        from generated_workflow_artifact import live_jam_canonical_snapshot_for_render
+
+        session = _generator(improv_ensemble="Rock trio", improv_jam_style="Rock", improv_jam_mood="Gritty",
+                             improv_jam_intensity="Light", improv_jam_difficulty="Advanced")
+        _sealed_context(session, "jam_session_generator")
+        _leave_creative(session)
+        snap = live_jam_canonical_snapshot_for_render(session)
+        if snap is not None:
+            self.assertEqual(snap.mood, "Gritty")
+        ctx = build_entry_jam_context(session)
+        self.assertEqual((ctx.ensemble, ctx.mood, ctx.groove_intensity, ctx.difficulty),
+                         ("Rock trio", "Gritty", "Light", "Advanced"))
+        plan = performance_plan_for_backing_context(ctx, style="Rock groove")
+        self.assertEqual((plan.ensemble, plan.mood, plan.intensity, plan.level),
+                         ("Rock trio", "Gritty", "Light", "Advanced"))
+
+    def test_style_jam_keeps_its_settings_after_creative_unmounts(self) -> None:
+        session = _style_jam(improv_style="Funk", improv_mood="Energetic", improv_groove="Heavy",
+                             improv_difficulty="Beginner")
+        _sealed_context(session, "style_jam")
+        _leave_creative(session)
+        ctx = build_entry_jam_context(session)
+        self.assertEqual((ctx.mood, ctx.groove_intensity, ctx.difficulty), ("Energetic", "Heavy", "Beginner"))
+
+    def test_live_controls_still_win_on_creative(self) -> None:
+        """On Creative (controls live) a changed control is the musician's choice: the reseal takes it."""
+        session = _generator(improv_ensemble="Rock trio", improv_jam_mood="Gritty", improv_jam_intensity="Light")
+        _sealed_context(session, "jam_session_generator")
+        session["improv_jam_intensity"] = "Heavy"
+        session["improv_ensemble"] = "Jazz trio"
+        assert seal_backing_handoff_snapshot_for_creative_open(session)
+        ctx = build_entry_jam_context(session)
+        self.assertEqual((ctx.ensemble, ctx.groove_intensity), ("Jazz trio", "Heavy"))
+        # ... and that choice is now the jam's own record, so leaving Creative keeps it.
+        _leave_creative(session)
+        ctx = build_entry_jam_context(session)
+        self.assertEqual((ctx.ensemble, ctx.groove_intensity), ("Jazz trio", "Heavy"))
+
+    def test_a_reseal_on_backing_never_takes_the_reset_widgets(self) -> None:
+        """Any of the re-seal paths (key change, invalidate) can run on Backing; it must keep the jam."""
+        session = _generator(improv_ensemble="Rock trio", improv_jam_style="Rock", improv_jam_mood="Gritty",
+                             improv_jam_intensity="Light", improv_jam_difficulty="Advanced")
+        _sealed_context(session, "jam_session_generator")
+        _leave_creative(session)
+        session["improv_jam_mood"] = "Dark"  # what Backing actually saw (2026-11-22 trace)
+        session["improv_ensemble"] = "Jazz trio"
+        session["improv_jam_intensity"] = "Medium"
+        session["improv_jam_difficulty"] = "Intermediate"
+        assert seal_backing_handoff_snapshot_for_creative_open(session)
+        ctx = build_entry_jam_context(session)
+        self.assertEqual((ctx.ensemble, ctx.mood, ctx.groove_intensity, ctx.difficulty),
+                         ("Rock trio", "Gritty", "Light", "Advanced"))
+
+    def test_return_to_creative_takes_the_jams_own_mode_not_a_reset_widget(self) -> None:
+        from backing_source_navigation import resolve_entry_jam_entry_mode
+
+        ctx = _sealed_context(_generator(improv_ensemble="Rock trio"), "jam_session_generator")
+        back: dict = {"improv_entry_mode": "Style Jam Mode"}  # the widget's reset value on Backing
+        self.assertEqual(resolve_entry_jam_entry_mode(back, ctx=ctx), "Jam Session Generator")
+        restore_session_widgets_from_backing_context(back, ctx, widget_safe=False)
+        self.assertEqual(back.get("improv_ensemble"), "Rock trio")
+        self.assertNotIn("improv_groove", back)  # Style Jam's controls untouched
+
+
+class ReloadOntoBackingTests(unittest.TestCase):
+    """After a reload onto Backing the sealed snapshot, the hand-off entry mode and (often) the workflow pointer are
+    gone; the persisted Backing context still names the jam. It outranks the widgets' transient defaults."""
+
+    def _reloaded(self) -> tuple[dict, BackingContext]:
+        from backing_context import set_backing_context
+        from generated_workflow_artifact import BACKING_OWNER_ARTIFACT_SNAPSHOT_KEY
+
+        session = _generator(improv_ensemble="Rock trio", improv_jam_style="Rock", improv_jam_mood="Gritty",
+                             improv_jam_intensity="Light", improv_jam_difficulty="Advanced", improv_jam_bpm=120)
+        sealed = _sealed_context(session, "jam_session_generator")
+        set_backing_context(session, sealed)
+        persisted = {"backing_context": session["backing_context"]}
+        # A fresh session: only what is persisted, with the widgets at their reset values on Backing.
+        fresh: dict = dict(_generator(improv_entry_mode="Style Jam Mode", improv_ensemble="Jazz trio",
+                                      improv_jam_mood="Dark", improv_jam_intensity="Medium",
+                                      improv_jam_difficulty="Intermediate", improv_jam_style="Rock"))
+        fresh.update(persisted)
+        fresh["studio_page"] = "backing"
+        for k in ("_backing_handoff_entry_mode", BACKING_OWNER_ARTIFACT_SNAPSHOT_KEY,
+                  "_music_active_workflow", "_music_workflow_state_store"):
+            fresh.pop(k, None)
+        return fresh, sealed
+
+    def test_reload_keeps_the_generator_jam_on_backing(self) -> None:
+        from backing_source_navigation import resolve_entry_jam_entry_mode
+
+        fresh, sealed = self._reloaded()
+        self.assertEqual(resolve_entry_jam_entry_mode(fresh), "Jam Session Generator")
+        perf = owner_jam_performance_settings(fresh, "jam_session_generator")
+        self.assertEqual((perf["ensemble"], perf["intensity"], perf["level"]), ("Rock trio", "Light", "Advanced"))
+
+    def test_on_creative_the_live_widgets_still_decide(self) -> None:
+        from backing_source_navigation import resolve_entry_jam_entry_mode
+
+        fresh, _ = self._reloaded()
+        fresh["studio_page"] = "creative"
+        self.assertEqual(resolve_entry_jam_entry_mode(fresh), "Style Jam Mode")  # the musician's own switch
+        perf = owner_jam_performance_settings(fresh, "jam_session_generator")
+        self.assertEqual(perf["ensemble"], "Jazz trio")

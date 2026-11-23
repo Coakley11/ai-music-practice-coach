@@ -4458,15 +4458,28 @@ def resolve_entry_jam_entry_mode(
                 return snap_entry
     except ImportError:
         pass
+    # The jam being returned from names its own mode. The widget may hold a transient default
+    # (it resets whenever Creative's controls unmount), so it comes second.
+    if ctx is not None:
+        ctx_entry = str(ctx.entry_mode or "").strip()
+        if ctx_entry in ("Style Jam Mode", "Jam Session Generator"):
+            return ctx_entry
+    try:
+        from generated_workflow_artifact import creative_jam_controls_live, stored_entry_jam_context
+
+        if not (
+            creative_jam_controls_live(session, "style_jam") or creative_jam_controls_live(session, "jam_session_generator")
+        ):
+            stored = stored_entry_jam_context(session)  # Backing, e.g. after a reload: the jam on screen
+            if stored is not None:
+                return str(stored.entry_mode)
+    except ImportError:
+        pass
     widget = str(session.get("improv_entry_mode") or "").strip()
     if widget == "Style Jam Mode":
         return "Style Jam Mode"
     if widget == "Jam Session Generator":
         return "Jam Session Generator"
-    if ctx is not None:
-        ctx_entry = str(ctx.entry_mode or "").strip()
-        if ctx_entry in ("Style Jam Mode", "Jam Session Generator"):
-            return ctx_entry
     if widget == "Jam Session Generator":
         return widget
     try:

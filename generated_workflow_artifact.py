@@ -41,6 +41,81 @@ JAM_ENSEMBLE_KEY = "improv_ensemble"
 _JAM_DIFFICULTIES = ("Beginner", "Intermediate", "Advanced")
 
 
+_JAM_MOUNT_FLAG_FOR_OWNER = {
+    "style_jam": "_improv_style_key_mounted_this_run",
+    "jam_session_generator": "_improv_jam_key_mounted_this_run",
+}
+
+
+def creative_jam_controls_live(session: Any, owner: str) -> bool:
+    """True when the owner's Creative controls hold the musician's current choice.
+
+    They do while Creative is the page being run (a control's on_change, Generate, Open in Backing) or
+    while the controls were mounted this run. Anywhere else -- Backing reruns, a reload onto Backing --
+    the widgets hold transient defaults (``studio_page_state.init_improvisation_state``), which are not
+    a choice anyone made.
+    """
+    try:
+        if session.get(_JAM_MOUNT_FLAG_FOR_OWNER.get(owner, "")):
+            return True
+        return str(session.get("studio_page") or "").strip().lower() == "creative"
+    except Exception:
+        return False
+
+
+def _owner_blob(session: Any, owner: str) -> Any:
+    """The owner's active workflow blob, or None."""
+    try:
+        from music_workflow_state_store import get_active_workflow_pointer, get_workflow_blob
+
+        ptr = get_active_workflow_pointer(session)
+        if not ptr or str(ptr.workflow_owner or "") != owner:
+            return None
+        return get_workflow_blob(session, owner, str(ptr.workflow_session_id or ""))
+    except Exception:
+        return None
+
+
+def stored_entry_jam_context(session: Any, owner: str = "") -> Any:
+    """The persisted Backing context when it is a generated jam (of ``owner``'s mode, when given), else None.
+
+    It survives a reload; the sealed snapshot and the workflow pointer may not.
+    """
+    try:
+        from backing_context import get_backing_context
+
+        ctx = get_backing_context(session)
+    except Exception:
+        return None
+    if ctx is None or str(getattr(ctx, "source", "") or "") != "entry_jam":
+        return None
+    entry = str(getattr(ctx, "entry_mode", "") or "")
+    if entry not in ("Style Jam Mode", "Jam Session Generator"):
+        return None
+    if owner and entry != _ENTRY_MODE_FOR_OWNER.get(owner, ""):
+        return None
+    return ctx
+
+
+def record_jam_performance_in_blob(session: Any, owner: str, perf: dict[str, str]) -> None:
+    """Write the jam's own intensity / difficulty / ensemble into its blob (only from live controls)."""
+    if owner not in _JAM_MOUNT_FLAG_FOR_OWNER or not creative_jam_controls_live(session, owner):
+        return
+    blob = _owner_blob(session, owner)
+    if blob is None:
+        return
+    want = (str(perf.get("intensity") or ""), str(perf.get("level") or ""), str(perf.get("ensemble") or ""))
+    if (blob.play_intensity, blob.play_level, blob.ensemble) == want:
+        return
+    blob.play_intensity, blob.play_level, blob.ensemble = want
+    try:
+        from music_workflow_state_store import save_workflow_blob
+
+        save_workflow_blob(session, blob, source="jam_performance_settings")
+    except Exception:
+        pass
+
+
 def owner_jam_performance_settings(
     session: Any, owner: str, *, fallback_intensity: str = "", fallback_level: str = ""
 ) -> dict[str, str]:
@@ -48,8 +123,31 @@ def owner_jam_performance_settings(
 
     Three independent choices: Difficulty never stands in for Intensity. A
     missing or unrecognised intensity is Medium, a missing difficulty Intermediate.
+
+    While the owner's Creative controls are live they are the musician's choice. Otherwise the jam's
+    own record (its workflow blob) decides: off-screen widgets hold transient defaults, and reading them
+    rebuilt a Rock trio / Gritty / Light / Advanced jam as Jazz trio / Medium / Intermediate on Backing.
     """
     from backing_musical_profile import normalize_backing_play_intensity
+
+    if not creative_jam_controls_live(session, owner):
+        blob = _owner_blob(session, owner)
+        if blob is not None and (blob.play_intensity or blob.play_level):
+            src = (blob.play_intensity, blob.play_level, blob.ensemble)
+        else:
+            stored = stored_entry_jam_context(session, owner)  # after a reload
+            src = (
+                (stored.groove_intensity, stored.difficulty, getattr(stored, "ensemble", ""))
+                if stored is not None and (stored.groove_intensity or stored.difficulty)
+                else None
+            )
+        if src is not None:
+            level = next((d for d in _JAM_DIFFICULTIES if d.lower() == str(src[1] or "").lower()), "Intermediate")
+            return {
+                "intensity": normalize_backing_play_intensity(str(src[0] or "")),
+                "level": level,
+                "ensemble": str(src[2] or "") if owner == "jam_session_generator" else "",
+            }
 
     def _get(key: str) -> str:
         try:
@@ -340,7 +438,7 @@ def build_snapshot_from_session(
                     pt, pm = _tonic_mode_from_token(jk)
                 except ImportError:
                     pass
-    if owner == "jam_session_generator":
+    if owner == "jam_session_generator" and (creative_jam_controls_live(session, owner) or not blob_authoritative):
         jm = str(session.get("improv_jam_mood") or "").strip()
         if jm:
             mood = jm
@@ -392,6 +490,7 @@ def build_snapshot_from_session(
         fallback_level=level if owner == "style_jam" else "",
     )
     play_intensity = perf["intensity"]
+    record_jam_performance_in_blob(session, owner, perf)
     return GeneratedWorkflowArtifactSnapshot(
         workflow_owner=owner,
         workflow_session_id=sid or artifact_id,
@@ -641,13 +740,14 @@ def rebuild_jam_owner_artifact_snapshot_from_canonical_blob(
             snap.selected_scope = prev.selected_scope
         if prev.selected_section_ids:
             snap.selected_section_ids = list(prev.selected_section_ids)
-    # Widget mood/style are control metadata, not a second key authority.
-    jm = str(session.get("improv_jam_mood") or "").strip()
-    if jm:
-        snap.mood = jm
-    js = str(session.get("improv_jam_style") or "").strip()
-    if js:
-        snap.style = js
+    # Widget mood/style are control metadata, not a second key authority -- and only while live.
+    if creative_jam_controls_live(session, "jam_session_generator"):
+        jm = str(session.get("improv_jam_mood") or "").strip()
+        if jm:
+            snap.mood = jm
+        js = str(session.get("improv_jam_style") or "").strip()
+        if js:
+            snap.style = js
     session[BACKING_OWNER_ARTIFACT_SNAPSHOT_KEY] = snap.to_dict()
     return snap
 
@@ -664,8 +764,9 @@ def live_jam_canonical_snapshot_for_render(
         return None
     snap = GeneratedWorkflowArtifactSnapshot.from_dict(session.get(BACKING_OWNER_ARTIFACT_SNAPSHOT_KEY))
     if jam_owner_snapshot_is_current(snap, blob, sid):
-        jm = str(session.get("improv_jam_mood") or "").strip()
-        js = str(session.get("improv_jam_style") or "").strip()
+        live = creative_jam_controls_live(session, "jam_session_generator")
+        jm = str(session.get("improv_jam_mood") or "").strip() if live else ""
+        js = str(session.get("improv_jam_style") or "").strip() if live else ""
         if snap is not None and (jm or js):
             if jm:
                 snap.mood = jm
@@ -777,6 +878,9 @@ __all__ = [
     "invalidate_jam_backing_render_snapshot",
     "jam_owner_snapshot_is_current",
     "live_jam_canonical_snapshot_for_render",
+    "creative_jam_controls_live",
+    "record_jam_performance_in_blob",
+    "stored_entry_jam_context",
     "owner_for_entry_mode",
     "peek_backing_owner_artifact_snapshot",
     "rebuild_jam_owner_artifact_snapshot_from_canonical_blob",
