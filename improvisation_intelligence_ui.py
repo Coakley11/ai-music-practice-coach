@@ -2022,6 +2022,13 @@ def _tab_entry_modes(
             unsafe_allow_html=True,
         )
         _render_creative_practice_focus_caption(st, session_state)
+        try:
+            # Drawn again after another mode: start from Style Jam's own record, never a first option.
+            from jam_control_ownership import seed_jam_controls_before_mount
+
+            seed_jam_controls_before_mount(session_state, "style_jam")
+        except ImportError:
+            pass
         with st.container(key="improv_style_jam_controls"):
             c1, c2, c3 = st.columns(3)
             with c1:
@@ -2048,7 +2055,12 @@ def _tab_entry_modes(
                     format_func=display_key_label,
                     on_change=on_improv_style_key_change,
                 )
-                session_state["_improv_style_key_mounted_this_run"] = True
+                try:
+                    from jam_control_ownership import note_controls_mounted
+
+                    note_controls_mounted(session_state, "style_jam")
+                except ImportError:
+                    session_state["_improv_style_key_mounted_this_run"] = True
             with c2:
                 st.selectbox(
                     "Difficulty",
@@ -2141,19 +2153,16 @@ def _tab_entry_modes(
             pass
         st.markdown(creative_tool_heading_markdown("Jam Session Generator"))
         _render_creative_practice_focus_caption(st, session_state)
+        from jam_control_ownership import JAM_ENSEMBLES, seed_jam_controls_before_mount
+
+        # Drawn again after another mode: start from the Generator's own record, never a first option.
+        seed_jam_controls_before_mount(session_state, "jam_session_generator")
         with st.container(key="improv_jam_gen_controls"):
             e1, e2 = st.columns(2)
             with e1:
                 ensemble = st.selectbox(
                     "Ensemble",
-                    [
-                        "Jazz trio",
-                        "Jazz quartet",
-                        "Neo-soul band",
-                        "Rock trio",
-                        "Latin quartet",
-                        "Lo-fi duo",
-                    ],
+                    list(JAM_ENSEMBLES),
                     key="improv_ensemble",
                     # The band is part of the arrangement: a new choice re-seals the jam's Backing.
                     on_change=on_improv_jam_setting_change,
@@ -2200,7 +2209,12 @@ def _tab_entry_modes(
                     format_func=display_key_label,
                     on_change=on_improv_jam_key_change,
                 )
-                session_state["_improv_jam_key_mounted_this_run"] = True
+                try:
+                    from jam_control_ownership import note_controls_mounted
+
+                    note_controls_mounted(session_state, "jam_session_generator")
+                except ImportError:
+                    session_state["_improv_jam_key_mounted_this_run"] = True
                 tempo = st.slider(
                     "Tempo",
                     70,

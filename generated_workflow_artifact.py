@@ -50,15 +50,14 @@ _JAM_MOUNT_FLAG_FOR_OWNER = {
 def creative_jam_controls_live(session: Any, owner: str) -> bool:
     """True when the owner's Creative controls hold the musician's current choice.
 
-    They do while Creative is the page being run (a control's on_change, Generate, Open in Backing) or
-    while the controls were mounted this run. Anywhere else -- Backing reruns, a reload onto Backing --
-    the widgets hold transient defaults (``studio_page_state.init_improvisation_state``), which are not
-    a choice anyone made.
+    Only when they were drawn in this run or the previous one (in a control's callback: the previous one).
+    Anywhere else -- the other jam's mode on screen, Backing reruns, a reload -- the widgets hold transient
+    defaults, which are not a choice anyone made. See ``jam_control_ownership``.
     """
     try:
-        if session.get(_JAM_MOUNT_FLAG_FOR_OWNER.get(owner, "")):
-            return True
-        return str(session.get("studio_page") or "").strip().lower() == "creative"
+        from jam_control_ownership import creative_jam_controls_live as _live
+
+        return _live(session, owner)
     except Exception:
         return False
 
@@ -114,6 +113,105 @@ def record_jam_performance_in_blob(session: Any, owner: str, perf: dict[str, str
         save_workflow_blob(session, blob, source="jam_performance_settings")
     except Exception:
         pass
+
+
+def restore_generated_jam_from_backing_context(session: Any) -> bool:
+    """After a reload, give the generated jam on Backing back its own record, pointer and sealed snapshot.
+
+    The persisted Backing context carries the sealed jam it was built from (``sealed_jam_snapshot``). The
+    jam's workflow record and the active pointer are not always persisted, and a stale Creative workspace
+    copy (another jam's id, no sections) used to stand in: the jam came back as one merged section under the
+    wrong identity. Only what is missing is filled in: an existing record for this jam is kept (it may hold
+    newer Creative changes), and a pointer to any other live workflow is never overridden.
+    """
+    try:
+        from backing_context import get_backing_context
+        from music_workflow_state_store import (
+            ActiveWorkflowPointer,
+            KeyAuthority,
+            WorkflowStateBlob,
+            get_active_workflow_pointer,
+            get_workflow_blob,
+            save_workflow_blob,
+            set_active_workflow_pointer,
+        )
+    except ImportError:
+        return False
+    try:
+        ctx = get_backing_context(session)
+    except Exception:
+        return False
+    raw = getattr(ctx, "sealed_jam_snapshot", None) if ctx is not None else None
+    if ctx is None or str(ctx.source or "") != "entry_jam" or not isinstance(raw, dict) or not raw:
+        return False
+    snap = GeneratedWorkflowArtifactSnapshot.from_dict(raw)
+    owner = str(getattr(snap, "workflow_owner", "") or "") if snap is not None else ""
+    sid = str(getattr(snap, "workflow_session_id", "") or "").strip() if snap is not None else ""
+    if snap is None or owner not in _JAM_MOUNT_FLAG_FOR_OWNER or not sid or not snap.section_map:
+        return False
+    ptr = get_active_workflow_pointer(session)
+    same = bool(ptr) and ptr.workflow_owner == owner and str(ptr.workflow_session_id or "") == sid
+    if ptr is not None and ptr.workflow_owner and not same:
+        dangling = ptr.workflow_owner == owner and get_workflow_blob(
+            session, owner, str(ptr.workflow_session_id or "")
+        ) is None
+        if not dangling:
+            return False  # another workflow is live: Backing does not override it
+    changed = False
+    if get_workflow_blob(session, owner, sid) is None:
+        blob = WorkflowStateBlob(
+            workflow_owner=owner,
+            workflow_session_id=sid,
+            generated_session_id=sid,  # as generation sets it (the snapshot's artifact_id is a revision id)
+            keys=KeyAuthority(
+                original_tonic=str(snap.practice_tonic or "C"),
+                original_mode=str(snap.practice_mode or "major"),
+                practice_tonic=str(snap.practice_tonic or "C"),
+                practice_mode=str(snap.practice_mode or "major"),
+                key_owner=owner,
+            ),
+            style=str(snap.style or ""),
+            mood=str(snap.mood or ""),
+            groove=str(snap.groove or ""),
+            tempo_bpm=int(snap.bpm or 0),
+            meter=str(snap.meter or "4/4"),
+            section_map=copy.deepcopy(snap.section_map),
+            progression=list(snap.progression or []),
+            source_type="generated",
+            play_intensity=str(snap.intensity or ""),
+            play_level=str(snap.level or ""),
+            ensemble=str(snap.ensemble or "") if owner == "jam_session_generator" else "",
+        )
+        save_workflow_blob(session, blob, source="restore_generated_jam_from_backing_context")
+        changed = True
+    if not same:
+        set_active_workflow_pointer(
+            session,
+            ActiveWorkflowPointer(workflow_owner=owner, workflow_session_id=sid),
+            source="restore_generated_jam_from_backing_context",
+        )
+        changed = True
+    if not session.get(BACKING_OWNER_ARTIFACT_SNAPSHOT_KEY):
+        session[BACKING_OWNER_ARTIFACT_SNAPSHOT_KEY] = snap.to_dict()
+        changed = True
+    if owner == "jam_session_generator":
+        session["_jam_session_generator_session_id"] = sid
+        jam = session.get("improv_jam_session")
+        if not isinstance(jam, dict) or str(jam.get("id") or "") != sid or not jam.get("sections"):
+            try:
+                from improv_jam_session_projection import build_improv_jam_session_from_blob, set_improv_jam_session
+
+                blob = get_workflow_blob(session, owner, sid)
+                if blob is not None:
+                    fresh = build_improv_jam_session_from_blob(blob, existing={})
+                    fresh["id"] = sid
+                    set_improv_jam_session(
+                        session, fresh, writer="restore_generated_jam_from_backing_context", phase="reload"
+                    )
+                    changed = True
+            except ImportError:
+                pass
+    return changed
 
 
 def owner_jam_performance_settings(
@@ -880,6 +978,7 @@ __all__ = [
     "live_jam_canonical_snapshot_for_render",
     "creative_jam_controls_live",
     "record_jam_performance_in_blob",
+    "restore_generated_jam_from_backing_context",
     "stored_entry_jam_context",
     "owner_for_entry_mode",
     "peek_backing_owner_artifact_snapshot",

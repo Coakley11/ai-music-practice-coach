@@ -113,6 +113,16 @@ def legacy_session_id_for_owner(session: dict[str, Any], owner: str) -> str:
         record_legacy_field_read(session, "improv_style", adapter="session_id")
         return str(session.get("improv_style") or "style_jam").strip() or "style_jam"
     if owner == "jam_session_generator":
+        # The Generator's active workflow names its own session (as Style Jam's does). The legacy jam dict can
+        # be a stale Creative workspace copy after a reload (its "id" was once a style name, "Jazz swing").
+        try:
+            from music_workflow_state_store import get_active_workflow_pointer
+
+            ptr = get_active_workflow_pointer(session)
+            if ptr and str(ptr.workflow_owner or "") == "jam_session_generator" and str(ptr.workflow_session_id or "").strip():
+                return str(ptr.workflow_session_id).strip()
+        except ImportError:
+            pass
         record_legacy_field_read(session, "improv_jam_session", adapter="session_id")
         jam = session.get("improv_jam_session")
         if isinstance(jam, dict) and jam.get("id"):

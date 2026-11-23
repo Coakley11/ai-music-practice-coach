@@ -27,8 +27,14 @@ def begin_music_script_run(session_state: dict[str, Any]) -> None:
     """Start-of-script hook — reset page tracker only on true new browser session."""
     session_state.pop(STREAMLIT_WIDGETS_LOCKED_KEY, None)
     session_state.pop("_music_pre_widget_bootstrap_ran_this_run", None)
-    session_state.pop("_improv_jam_key_mounted_this_run", None)
-    session_state.pop("_improv_style_key_mounted_this_run", None)
+    try:
+        # Last run's "jam controls drawn" flags become "drawn last run" (jam_control_ownership).
+        from jam_control_ownership import note_script_run_started
+
+        note_script_run_started(session_state)
+    except ImportError:
+        session_state.pop("_improv_jam_key_mounted_this_run", None)
+        session_state.pop("_improv_style_key_mounted_this_run", None)
     session_state.pop("_cpl_title_mounted_this_run", None)
     try:
         from creative_mission_config_persistence import CREATIVE_MISSION_WIDGETS_INSTANTIATED_KEY

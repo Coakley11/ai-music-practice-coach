@@ -4439,6 +4439,23 @@ def _tool_type_for_backing_context(ctx: BackingContext) -> str:
     return "entry_style_jam"
 
 
+def _jam_sections_from_context(ctx: Any) -> dict[str, list[str]]:
+    """A generated jam's own section map, from the sealed jam its Backing context carries.
+
+    Only when those sections spell exactly the context's progression (e.g. not after a Style Jam key
+    change re-transposed the context); otherwise {} and the caller keeps its own fallback.
+    """
+    raw = getattr(ctx, "sealed_jam_snapshot", None)
+    sm = raw.get("section_map") if isinstance(raw, dict) else None
+    if not isinstance(sm, dict) or not sm:
+        return {}
+    sections = {str(k): [str(c) for c in (v or [])] for k, v in sm.items() if isinstance(v, list)}
+    flat = [c for chs in sections.values() for c in chs]
+    if not flat or flat != [str(c) for c in (getattr(ctx, "progression", None) or [])]:
+        return {}
+    return sections
+
+
 def resolve_entry_jam_entry_mode(
     session: dict[str, Any],
     *,
@@ -5096,7 +5113,7 @@ def restore_session_widgets_from_backing_context(
                 sections = jam.get("sections")
                 if not isinstance(sections, dict) or not sections:
                     label = str(ctx.progression_label or ctx.style or "Jam").strip() or "Jam"
-                    jam = {**jam, "sections": {label: list(ctx.progression)}}
+                    jam = {**jam, "sections": _jam_sections_from_context(ctx) or {label: list(ctx.progression)}}
                     session["improv_jam_session"] = jam
         else:
             if ctx.style:
@@ -5215,7 +5232,8 @@ def restore_session_widgets_from_backing_context(
                 sess.meter = str(ctx.meter).strip()
             if ctx.progression:
                 label = str(ctx.progression_label or ctx.style or "Jam").strip() or "Jam"
-                sess.sections = {label: list(ctx.progression)}
+                # The jam's own sections (A / B / A'), never one merged section, when the context has them.
+                sess.sections = _jam_sections_from_context(ctx) or {label: list(ctx.progression)}
             if concert:
                 sess.concert_key = concert
                 if sess.tool_type in {"entry_style_jam", "jam_session_generator"}:

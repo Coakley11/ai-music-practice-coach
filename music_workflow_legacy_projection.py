@@ -321,7 +321,8 @@ def restore_workflow_blob_to_session(session: dict[str, Any], blob: WorkflowStat
             skip_style_controls = True
         if not skip_style_controls:
             session["improv_style"] = str(blob.style or blob.generated_session_id or "").strip()
-            session["improv_mood"] = str(blob.mood or "").strip()
+            if str(blob.mood or "").strip():  # an empty mood would show the first option (Bright)
+                session["improv_mood"] = str(blob.mood).strip()
             session["improv_groove"] = str(blob.groove or "").strip()
             if blob.tempo_bpm:
                 session["improv_style_bpm"] = int(blob.tempo_bpm)
@@ -359,7 +360,8 @@ def restore_workflow_blob_to_session(session: dict[str, Any], blob: WorkflowStat
             skip_jam_controls = True
         if not skip_jam_controls:
             session["improv_jam_style"] = str(blob.style or "").strip()
-            session["improv_jam_mood"] = str(blob.mood or "").strip()
+            if str(blob.mood or "").strip():  # an empty mood would show the first option (Bright)
+                session["improv_jam_mood"] = str(blob.mood).strip()
             if blob.tempo_bpm:
                 session["improv_jam_bpm"] = int(blob.tempo_bpm)
         try:

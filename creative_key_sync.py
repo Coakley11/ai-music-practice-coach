@@ -5009,44 +5009,41 @@ def on_improv_style_key_change() -> None:
     )
 
 
-def on_improv_style_jam_setting_change() -> None:
-    """BPM / groove / style / mood / difficulty change — refresh meta and invalidate backing handoff."""
+def _on_jam_control_change(owner: str, writer: str) -> None:
+    """A jam control changed: write that jam's own record, and re-seal Backing only for the jam on screen.
+
+    Callbacks run before the script, with every widget value the browser holds. A control that was not on
+    screen in the run the musician interacted with did not change by their hand: the browser reports a
+    redrawn control's first option (Beginner, Light, ...) as a change. Such a callback writes nothing.
+    """
     import streamlit as st
 
-    before_pick = guard_creative_catalog_pick_before_edit(
-        st.session_state, writer="on_improv_style_jam_setting_change"
-    )
-    try:
-        from music_workflow_generated_session import commit_style_jam_control_settings
+    from jam_control_ownership import controls_drawn_last_run, current_jam_owner, jam_callback_scope
 
-        commit_style_jam_control_settings(st.session_state)
-    except ImportError:
-        pass
-    sync_creative_style_jam_meta(st.session_state)
-    invalidate_creative_backing_context(st.session_state)
-    verify_creative_catalog_pick_after_edit(
-        st.session_state, before_pick=before_pick, writer="on_improv_style_jam_setting_change"
-    )
+    if not controls_drawn_last_run(st.session_state, owner):
+        return
+    with jam_callback_scope(owner):
+        before_pick = guard_creative_catalog_pick_before_edit(st.session_state, writer=writer)
+        try:
+            from music_workflow_generated_session import commit_style_jam_control_settings
+
+            commit_style_jam_control_settings(st.session_state, owner=owner)
+        except ImportError:
+            pass
+        if current_jam_owner(st.session_state) == owner:
+            sync_creative_style_jam_meta(st.session_state)
+            invalidate_creative_backing_context(st.session_state)
+        verify_creative_catalog_pick_after_edit(st.session_state, before_pick=before_pick, writer=writer)
+
+
+def on_improv_style_jam_setting_change() -> None:
+    """Style Jam: BPM / groove / style / mood / difficulty change -- its own record, then its Backing hand-off."""
+    _on_jam_control_change("style_jam", "on_improv_style_jam_setting_change")
 
 
 def on_improv_jam_setting_change() -> None:
-    """Jam Session BPM / mood change — refresh meta and invalidate backing handoff."""
-    import streamlit as st
-
-    before_pick = guard_creative_catalog_pick_before_edit(
-        st.session_state, writer="on_improv_jam_setting_change"
-    )
-    try:
-        from music_workflow_generated_session import commit_style_jam_control_settings
-
-        commit_style_jam_control_settings(st.session_state)
-    except ImportError:
-        pass
-    sync_creative_style_jam_meta(st.session_state)
-    invalidate_creative_backing_context(st.session_state)
-    verify_creative_catalog_pick_after_edit(
-        st.session_state, before_pick=before_pick, writer="on_improv_jam_setting_change"
-    )
+    """Jam Session Generator: a control change -- its own record, then its Backing hand-off."""
+    _on_jam_control_change("jam_session_generator", "on_improv_jam_setting_change")
 
 
 def ensure_creative_analysis_mode_restored(session_state: dict[str, Any]) -> str:

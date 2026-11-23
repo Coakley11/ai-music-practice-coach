@@ -45,6 +45,8 @@ def _style_jam(**over: object) -> dict:
         "improv_style_bpm": 110,
         "display_key": "C",
         "concert_key": "C",
+        # On Creative with Style Jam's controls drawn (what the page sets while it draws them).
+        "_improv_style_key_mounted_this_run": True,
     }
     s.update(over)
     return s
@@ -65,6 +67,8 @@ def _generator(**over: object) -> dict:
         "improv_jam_difficulty": "Intermediate",
         "display_key": "Eb",
         "concert_key": "Eb",
+        # On Creative with the Generator's controls drawn (what the page sets while it draws them).
+        "_improv_jam_key_mounted_this_run": True,
     }
     s.update(over)
     return s
@@ -263,8 +267,9 @@ def _leave_creative(session: dict) -> None:
               "improv_ensemble", "improv_jam_mood", "improv_jam_intensity", "improv_jam_difficulty",
               "improv_jam_style", "improv_jam_bpm"):
         session.pop(k, None)
-    session.pop("_improv_jam_key_mounted_this_run", None)
-    session.pop("_improv_style_key_mounted_this_run", None)
+    for k in ("_improv_jam_key_mounted_this_run", "_improv_style_key_mounted_this_run",
+              "_improv_jam_controls_mounted_last_run", "_improv_style_controls_mounted_last_run"):
+        session.pop(k, None)
     init_improvisation_state(session, is_custom_active=False)
     session["studio_page"] = "backing"
 
@@ -357,6 +362,7 @@ class ReloadOntoBackingTests(unittest.TestCase):
                                       improv_jam_difficulty="Intermediate", improv_jam_style="Rock"))
         fresh.update(persisted)
         fresh["studio_page"] = "backing"
+        fresh.pop("_improv_jam_key_mounted_this_run", None)  # a reload draws no jam controls yet
         for k in ("_backing_handoff_entry_mode", BACKING_OWNER_ARTIFACT_SNAPSHOT_KEY,
                   "_music_active_workflow", "_music_workflow_state_store"):
             fresh.pop(k, None)
@@ -375,6 +381,9 @@ class ReloadOntoBackingTests(unittest.TestCase):
 
         fresh, _ = self._reloaded()
         fresh["studio_page"] = "creative"
+        fresh["_improv_style_key_mounted_this_run"] = True  # the musician switched to Style Jam: drawn
         self.assertEqual(resolve_entry_jam_entry_mode(fresh), "Style Jam Mode")  # the musician's own switch
+        fresh.pop("_improv_style_key_mounted_this_run")
+        fresh["_improv_jam_key_mounted_this_run"] = True  # the Generator's controls drawn: they decide
         perf = owner_jam_performance_settings(fresh, "jam_session_generator")
         self.assertEqual(perf["ensemble"], "Jazz trio")

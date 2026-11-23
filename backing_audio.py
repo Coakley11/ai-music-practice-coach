@@ -2191,7 +2191,8 @@ def _trace_performance_render(plan, args, kwargs) -> None:
         import time as _time
 
         chords = args[0] if args else kwargs.get("chords") or []
-        names = [str(c.get("chord") if isinstance(c, dict) else c) for c in list(chords)[:8]]
+        # Every chord (bounded), so QA can compare the take with the card section by section.
+        names = [str(c.get("chord") if isinstance(c, dict) else c) for c in list(chords)[:256]]
         stats = {k: v for k, v in dict(LAST_MIX_STATS).items() if isinstance(v, (int, float, str, bool))}
         rec = {
             "t": round(_time.time(), 3), "tag": plan.tag(), "plan": plan.describe(),

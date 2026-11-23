@@ -135,6 +135,10 @@ class BackingContext:
     sbi_material_kind: str = ""
     # Generated jams only: Jam Session Generator's band ("" = Style Jam's default band).
     ensemble: str = ""
+    # Generated jams only: the sealed jam this context was built from (GeneratedWorkflowArtifactSnapshot dict:
+    # session identity, full section map, settings). The Backing context is persisted on every save; the
+    # jam's own workflow record and sealed snapshot are not always, so a reload restores them from here.
+    sealed_jam_snapshot: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if not self.source_label:
@@ -147,7 +151,10 @@ class BackingContext:
             self.source_signature = compute_source_signature(self)
 
     def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        d = asdict(self)
+        if not d.get("sealed_jam_snapshot"):
+            d.pop("sealed_jam_snapshot", None)  # every other source keeps its persisted shape
+        return d
 
     @classmethod
     def from_dict(cls, raw: Any) -> BackingContext | None:
@@ -193,6 +200,9 @@ class BackingContext:
             sbi_source_owner=str(raw.get("sbi_source_owner") or ""),
             sbi_material_kind=str(raw.get("sbi_material_kind") or "").strip().lower(),
             ensemble=str(raw.get("ensemble") or ""),
+            sealed_jam_snapshot=dict(raw.get("sealed_jam_snapshot") or {})
+            if source == "entry_jam" and isinstance(raw.get("sealed_jam_snapshot"), dict)
+            else {},
         )
 
 
@@ -1822,6 +1832,7 @@ def _entry_jam_context_from_owner_snapshot(
         entry_mode=entry_mode,
         bound_pick_key="",
         ensemble=str(getattr(snap, "ensemble", "") or ""),
+        sealed_jam_snapshot=snap.to_dict(),
     )
 
 
@@ -6512,6 +6523,15 @@ def hydrate_backing_context_after_restore(session: dict[str, Any]) -> None:
             clear_backing_context(session)
             _stamp_style_jam_live_concert_key(session, preserved=preserved_style_jam_key)
             return
+    if ctx.source == "entry_jam":
+        try:
+            # The jam on Backing gets back its own record, pointer and sealed snapshot (full sections,
+            # identity, settings) before anything else restores Creative from older copies.
+            from generated_workflow_artifact import restore_generated_jam_from_backing_context
+
+            restore_generated_jam_from_backing_context(session)
+        except ImportError:
+            pass
     try:
         from backing_source_navigation import restore_session_widgets_from_backing_context
 
@@ -6599,6 +6619,14 @@ def reconcile_backing_context_on_backing_page(session: dict[str, Any], *, st_lik
         from creative_return_trace import emit_creative_return_trace
 
         emit_creative_return_trace(session, "RECONCILE_BACKING_PAGE_START")
+    except ImportError:
+        pass
+    try:
+        # A generated jam on Backing whose record / pointer / sealed snapshot did not survive a reload gets
+        # them back from its persisted context (fills only what is missing; idempotent).
+        from generated_workflow_artifact import restore_generated_jam_from_backing_context
+
+        restore_generated_jam_from_backing_context(session)
     except ImportError:
         pass
     try:
