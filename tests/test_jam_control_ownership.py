@@ -453,3 +453,22 @@ class OtherJamAfterReloadTests(unittest.TestCase):
         self.assertEqual({k: s.get(k) for k in STYLE_CHOICE}, STYLE_CHOICE)
         self.assertEqual(s.get("improv_style_key"), "Bb")
         self.assertEqual(_gen_settings(_record(s, "jam_session_generator")), gen_before)
+
+    def test_restoring_style_jams_session_never_takes_the_active_generators_key(self) -> None:
+        """H4b trace: the reload restores the Generator's pointer (key A); restoring Style Jam's own Creative
+        session (Bb) then took the active Generator identity's key -- the mirror of the existing guard that
+        keeps a leftover Style Jam identity off a Generator session."""
+        from creative_session_state import CreativeSession, apply_creative_session_to_session, set_creative_session
+        from music_workflow_state_store import get_active_workflow_pointer
+
+        s = _both_jams()
+        self.assertEqual(get_active_workflow_pointer(s).workflow_owner, "jam_session_generator")
+        for k in (STYLE_FLAG, GEN_FLAG):
+            s.pop(k, None)
+        sess = CreativeSession(session_id="sj-1", tool_type="entry_style_jam", entry_mode="Style Jam Mode",
+                               concert_key="Bb", display_key="Bb", style="Funk", mood="Dreamy",
+                               groove_intensity="Light", difficulty="Advanced", bpm=104)
+        set_creative_session(s, sess)
+        apply_creative_session_to_session(s, sess, widget_safe=False)
+        self.assertEqual(str(s.get("improv_style_key") or s.get("_pending_improv_style_key") or ""), "Bb")
+        self.assertEqual(sess.concert_key, "Bb")

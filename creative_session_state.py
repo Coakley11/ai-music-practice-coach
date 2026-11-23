@@ -684,6 +684,12 @@ def apply_creative_session_to_session(
                     sess.tool_type == "jam_session_generator"
                     and ident_owner == "style_jam"
                 )
+                # The mirror: the Generator's active identity (restored with its jam on reload) never
+                # becomes Style Jam's key when Style Jam's own Creative session is restored.
+                leftover_generator = (
+                    sess.tool_type == "entry_style_jam"
+                    and ident_owner == "jam_session_generator"
+                )
                 leftover_other_jam = (
                     sess.tool_type == "jam_session_generator"
                     and ident_owner == "jam_session_generator"
@@ -691,7 +697,7 @@ def apply_creative_session_to_session(
                     and ident_sid
                     and ident_sid != jam_id
                 )
-                if leftover_style or leftover_other_jam:
+                if leftover_style or leftover_generator or leftover_other_jam:
                     ident = None
                 elif ident is not None:
                     concert = ident.practice_key_token
