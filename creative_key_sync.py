@@ -3864,6 +3864,10 @@ def prepare_creative_sidebar_display_key(st: Any, session: dict[str, Any]) -> li
                         session.pop("display_key", None)
                 elif live_dk in {pending_jam, commit_jam} - {""}:
                     jam_tok = live_dk
+            if not _style_on_screen and live_dk and live_dk not in options:
+                # The sidebar keeps the song's key (C#m) while the Generator's own key is major: a value missing
+                # from the options showed the first option (C) instead.
+                options = [live_dk] + options
             # The generated workflow key is a temporary projection.  Do not
             # write it through the global source's Practice Key widget.
             # Only Style Jam's own key goes into Style Jam's control: with the Generator active this token is the

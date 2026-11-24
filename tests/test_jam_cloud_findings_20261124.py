@@ -167,8 +167,10 @@ class GeneratorKeyNeverStyleJamsTests(unittest.TestCase):
              "improv_entry_mode": "Jam Session Generator", "instrument": "Piano", "improv_style_key": "F",
              "improv_jam_key": "Eb", "display_key": "C#m", "concert_key": "C#m", "_pending_improv_jam_key": "Eb",
              "practice_key_by_source": {"creative::jam_session_generator": "Eb", CALIFORNIA: "C#m"}}
-        self._prepare(s)
+        options = self._prepare(s)
         self.assertIn(s.get("display_key"), {"C#m", "Eb"})
+        # A value missing from the options shows the first option (C): the key shown must be one of them.
+        self.assertIn(s.get("display_key"), options)
         self.assertEqual(s["improv_style_key"], "F")
 
     def test_style_jams_own_pending_edit_still_reaches_its_control(self) -> None:
