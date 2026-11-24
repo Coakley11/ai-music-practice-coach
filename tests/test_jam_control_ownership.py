@@ -472,3 +472,46 @@ class OtherJamAfterReloadTests(unittest.TestCase):
         apply_creative_session_to_session(s, sess, widget_safe=False)
         self.assertEqual(str(s.get("improv_style_key") or s.get("_pending_improv_style_key") or ""), "Bb")
         self.assertEqual(sess.concert_key, "Bb")
+
+
+class SidebarKeyNeverWritesTheOtherJamTests(unittest.TestCase):
+    """The sidebar's key preparation (every run while a jam owns the left panel) writes Style Jam's control only
+    for Style Jam: with the Generator active its token is the Generator's key (browser H4: Style Jam Bb -> A)."""
+
+    @staticmethod
+    def _session(mode: str) -> dict:
+        return {"studio_page": "creative", "improv_intelligence_tab": "Entry & Jam", "improv_entry_mode": mode,
+                "improv_jam_key": "A", "improv_style_key": "Bb", "concert_key": "A", "display_key": "A",
+                "instrument": "Piano"}
+
+    def _prepare(self, s: dict) -> list:
+        from types import SimpleNamespace
+
+        from creative_key_sync import prepare_creative_sidebar_display_key
+
+        return prepare_creative_sidebar_display_key(SimpleNamespace(session_state=s), s)
+
+    def test_with_the_generator_active_style_jams_key_is_left_alone(self):
+        s = self._session("Jam Session Generator")
+        self._prepare(s)
+        self.assertEqual(s["improv_style_key"], "Bb")
+        self.assertEqual(s["improv_jam_key"], "A")
+
+    def test_with_the_generator_active_the_sidebar_still_follows_the_generator(self):
+        s = self._session("Jam Session Generator")
+        opts = self._prepare(s)
+        self.assertIn("A", opts)
+        self.assertEqual(s["display_key"], "A")
+
+    def test_with_style_jam_active_its_own_key_is_kept(self):
+        s = self._session("Style Jam Mode")
+        self._prepare(s)
+        self.assertEqual(s["improv_style_key"], "Bb")
+
+    def test_with_style_jam_active_and_no_key_yet_its_control_is_still_filled(self):
+        # Unchanged behaviour for Style Jam itself: with no key of its own its control takes the sidebar's key.
+        s = self._session("Style Jam Mode")
+        s["improv_style_key"] = ""
+        self._prepare(s)
+        self.assertEqual(s["improv_style_key"], "A")
+

@@ -3832,7 +3832,10 @@ def prepare_creative_sidebar_display_key(st: Any, session: dict[str, Any]) -> li
                     jam_tok = live_dk
             # The generated workflow key is a temporary projection.  Do not
             # write it through the global source's Practice Key widget.
-            session["improv_style_key"] = jam_tok
+            # Only Style Jam's own key goes into Style Jam's control: with the Generator active this token is the
+            # Generator's key, and writing it here gave Style Jam the Generator's key after the Generator's reload.
+            if "Style Jam" in str(session.get("improv_entry_mode") or ""):
+                session["improv_style_key"] = jam_tok
             session.pop(PENDING_DISPLAY_KEY, None)
             return options
     if visit_src in {"missions", "sbi_active"} and visit_tok:
