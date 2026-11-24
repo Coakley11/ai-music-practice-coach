@@ -4456,6 +4456,32 @@ def _jam_sections_from_context(ctx: Any) -> dict[str, list[str]]:
     return sections
 
 
+def _style_jam_sections_for_restore(session: dict[str, Any], ctx: Any) -> dict[str, list[str]]:
+    """Style Jam's own sections when Creative is restored from its Backing context ({} = keep what it has).
+
+    Style Jam's record owns its sections, then the sealed jam's own section map. A Backing context's flat
+    progression under its label is not a section map: it folded A / B / A' into one section, and under a
+    song's label ("Jazz tune · Dmaj7–G7–C7–G7") it showed another song's chords as Style Jam's jam.
+    """
+    try:
+        from jam_control_ownership import owner_record
+
+        rec = owner_record(session, "style_jam")
+        sm = getattr(rec, "section_map", None) if rec is not None else None
+        if isinstance(sm, dict) and sm:
+            return {str(k): [str(c) for c in (v or [])] for k, v in sm.items() if isinstance(v, list)}
+    except ImportError:
+        pass
+    own = _jam_sections_from_context(ctx)
+    if own:
+        return own
+    current = session.get("improv_generated_sections")
+    if isinstance(current, dict) and current:
+        return {}
+    label = str(getattr(ctx, "style", "") or "Style Jam").strip() or "Style Jam"
+    return {label: [str(c) for c in (getattr(ctx, "progression", None) or [])]}
+
+
 def resolve_entry_jam_entry_mode(
     session: dict[str, Any],
     *,
@@ -5155,8 +5181,9 @@ def restore_session_widgets_from_backing_context(
             if ctx.meter:
                 session["improv_style_meter"] = ctx.meter
             if ctx.progression:
-                label = str(ctx.progression_label or ctx.style or "Style Jam").strip() or "Style Jam"
-                session["improv_generated_sections"] = {label: list(ctx.progression)}
+                sections = _style_jam_sections_for_restore(session, ctx)
+                if sections:
+                    session["improv_generated_sections"] = sections
         meta = dict(session.get("improv_style_meta") or {})
         meta_bpm = int(ctx.bpm or meta.get("bpm") or 100)
         try:
@@ -5231,9 +5258,18 @@ def restore_session_widgets_from_backing_context(
             if ctx.meter:
                 sess.meter = str(ctx.meter).strip()
             if ctx.progression:
-                label = str(ctx.progression_label or ctx.style or "Jam").strip() or "Jam"
-                # The jam's own sections (A / B / A'), never one merged section, when the context has them.
-                sess.sections = _jam_sections_from_context(ctx) or {label: list(ctx.progression)}
+                if sess.tool_type == "entry_style_jam":
+                    # Style Jam's session takes Style Jam's own sections (its record), never the context's
+                    # label over its flat progression.
+                    own = _style_jam_sections_for_restore(session, ctx) or dict(
+                        session.get("improv_generated_sections") or {}
+                    )
+                    if own:
+                        sess.sections = own
+                else:
+                    label = str(ctx.progression_label or ctx.style or "Jam").strip() or "Jam"
+                    # The jam's own sections (A / B / A'), never one merged section, when the context has them.
+                    sess.sections = _jam_sections_from_context(ctx) or {label: list(ctx.progression)}
             if concert:
                 sess.concert_key = concert
                 if sess.tool_type in {"entry_style_jam", "jam_session_generator"}:
