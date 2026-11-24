@@ -110,6 +110,16 @@ def legacy_session_id_for_owner(session: dict[str, Any], owner: str) -> str:
         stored = str(session.get("_style_jam_workflow_session_id") or "").strip()
         if stored:
             return stored
+        # Style Jam's own latest record names its session. The style control is a poor id: other tools write
+        # it (Song-Based Improvisation leaves "Song Default"), which started a second, stale Style Jam record.
+        try:
+            from jam_control_ownership import owner_record
+
+            rec = owner_record(session, "style_jam")
+            if rec is not None and str(getattr(rec, "workflow_session_id", "") or "").strip():
+                return str(rec.workflow_session_id).strip()
+        except ImportError:
+            pass
         record_legacy_field_read(session, "improv_style", adapter="session_id")
         return str(session.get("improv_style") or "style_jam").strip() or "style_jam"
     if owner == "jam_session_generator":

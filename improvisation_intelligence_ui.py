@@ -2036,6 +2036,7 @@ def _tab_entry_modes(
                     "Style",
                     list(STYLE_JAM_STYLES),
                     key="improv_style",
+                    persist_state="session",
                     on_change=on_improv_style_jam_setting_change,
                 )
                 try:
@@ -2052,6 +2053,7 @@ def _tab_entry_modes(
                     "Concert Key",
                     _style_key_opts,
                     key="improv_style_key",
+                    persist_state="session",
                     format_func=display_key_label,
                     on_change=on_improv_style_key_change,
                 )
@@ -2066,6 +2068,7 @@ def _tab_entry_modes(
                     "Difficulty",
                     list(DIFFICULTY_LEVELS),
                     key="improv_difficulty",
+                    persist_state="session",
                     format_func=level_label,
                     on_change=on_improv_style_jam_setting_change,
                 )
@@ -2073,6 +2076,7 @@ def _tab_entry_modes(
                     "Mood",
                     list(MOOD_OPTIONS),
                     key="improv_mood",
+                    persist_state="session",
                     on_change=on_improv_style_jam_setting_change,
                 )
             with c3:
@@ -2081,6 +2085,7 @@ def _tab_entry_modes(
                     60,
                     200,
                     key="improv_style_bpm",
+                    persist_state="session",
                     step=1,
                     on_change=on_improv_style_jam_setting_change,
                 )
@@ -2088,6 +2093,7 @@ def _tab_entry_modes(
                     "Groove intensity",
                     list(GROOVE_INTENSITY),
                     key="improv_groove",
+                    persist_state="session",
                     on_change=on_improv_style_jam_setting_change,
                 )
 
@@ -2164,6 +2170,7 @@ def _tab_entry_modes(
                     "Ensemble",
                     list(JAM_ENSEMBLES),
                     key="improv_ensemble",
+                    persist_state="session",
                     # The band is part of the arrangement: a new choice re-seals the jam's Backing.
                     on_change=on_improv_jam_setting_change,
                 )
@@ -2171,6 +2178,7 @@ def _tab_entry_modes(
                     "Groove style",
                     list(STYLE_JAM_STYLES),
                     key="improv_jam_style",
+                    persist_state="session",
                     on_change=on_improv_jam_setting_change,
                 )
                 # The Generator's own Difficulty (it used to borrow Style Jam's hidden one).
@@ -2178,6 +2186,7 @@ def _tab_entry_modes(
                     "Difficulty",
                     list(DIFFICULTY_LEVELS),
                     key="improv_jam_difficulty",
+                    persist_state="session",
                     format_func=level_label,
                     on_change=on_improv_jam_setting_change,
                 )
@@ -2206,6 +2215,7 @@ def _tab_entry_modes(
                     "Concert Key",
                     _jam_key_opts,
                     key="improv_jam_key",
+                    persist_state="session",
                     format_func=display_key_label,
                     on_change=on_improv_jam_key_change,
                 )
@@ -2220,6 +2230,7 @@ def _tab_entry_modes(
                     70,
                     180,
                     key="improv_jam_bpm",
+                    persist_state="session",
                     step=1,
                     on_change=on_improv_jam_setting_change,
                 )
@@ -2227,12 +2238,14 @@ def _tab_entry_modes(
                     "Atmosphere",
                     list(MOOD_OPTIONS),
                     key="improv_jam_mood",
+                    persist_state="session",
                     on_change=on_improv_jam_setting_change,
                 )
                 st.selectbox(
                     "Groove intensity",
                     list(GROOVE_INTENSITY),
                     key="improv_jam_intensity",
+                    persist_state="session",
                     on_change=on_improv_jam_setting_change,
                 )
 

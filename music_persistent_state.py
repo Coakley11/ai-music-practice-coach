@@ -767,6 +767,7 @@ _PERSIST_KEYS: tuple[str, ...] = (
     "improv_style_meta",
     "improv_jam_session",
     "_jam_session_generator_session_id",
+    "_style_jam_workflow_session_id",
     "improv_style_key",
     "improv_style",
     "improv_style_bpm",
