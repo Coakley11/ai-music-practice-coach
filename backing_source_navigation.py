@@ -5015,7 +5015,10 @@ def restore_session_widgets_from_backing_context(
             pass
         return str(candidate or "").strip()
 
-    if ctx.source in {"custom_progression", "regular_song"}:
+    # Song sources (Catalog, Custom, Composition) return to their own pages, not Creative: they never become a
+    # Creative tool. A Composition song's context restored on reload used to turn the Creative session into a
+    # Style Jam holding the song's chords ("Jazz tune · Dmaj7–G7–C7–G7" as Style Jam's jam).
+    if ctx.source in {"custom_progression", "regular_song", "composition_song"}:
         concert = str(
             ctx.concert_key or ctx.display_key or ctx.key or session.get("display_key") or ""
         ).strip()

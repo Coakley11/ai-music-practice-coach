@@ -349,5 +349,56 @@ class SongPracticeKeyUntouchedTests(unittest.TestCase):
         self.assertEqual(s["practice_key_by_source"].get("creative::jam_session_generator"), "Eb")
 
 
+class CompositionSongContextNeverStyleJamTests(unittest.TestCase):
+    """Android retest 2026-11-24: a reload while a Composition song ("Jazz tune", D) is the active song restores
+    its own Backing context. That restore turned the Creative session into a Style Jam holding the song's chords
+    ("Jazz tune · Dmaj7–G7–C7–G7" under the green "Generated Bossa Nova in D" heading)."""
+
+    def _jazz_tune_ctx(self):
+        from backing_context import BackingContext
+
+        return BackingContext(
+            source="composition_song", source_label="Composition song", active_song_id="composition::jazz",
+            bpm=120, groove="Swing", song_title="Jazz tune", key="D", display_key="D", concert_key="D",
+            style="Jazz", progression=["Dmaj7", "G7", "C7", "G7"], progression_label="Jazz tune · Dmaj7–G7–C7–G7",
+        )
+
+    def _restore(self, prior):
+        from backing_source_navigation import restore_session_widgets_from_backing_context
+        from creative_session_state import get_creative_session, set_creative_session
+
+        s = {"studio_page": "creative", "instrument": "Piano", "improv_entry_mode": "Style Jam Mode",
+             "improv_style": "Bossa Nova", "improv_style_key": "D"}
+        set_creative_session(s, prior)
+        restore_session_widgets_from_backing_context(s, self._jazz_tune_ctx(), widget_safe=False)
+        return s, get_creative_session(s)
+
+    def test_style_jam_never_gets_the_songs_chords(self):
+        from creative_session_state import CreativeSession
+
+        s, sess = self._restore(CreativeSession(
+            session_id="b", tool_type="entry_style_jam", entry_mode="Style Jam Mode", style="Bossa Nova",
+            concert_key="D", display_key="D", mood="Dreamy", bpm=112))
+        self.assertFalse(s.get("improv_generated_sections"), s.get("improv_generated_sections"))
+        self.assertEqual(s.get("improv_style"), "Bossa Nova")
+        self.assertEqual((sess.tool_type, sess.style, dict(sess.sections or {})), ("entry_style_jam", "Bossa Nova", {}))
+
+    def test_song_based_session_is_not_turned_into_a_style_jam(self):
+        from creative_session_state import CreativeSession
+
+        s, sess = self._restore(CreativeSession(
+            session_id="a", tool_type="song_based_improvisation", entry_mode="Song-Based Improvisation",
+            concert_key="D", display_key="D", sections={"Verse": ["Dmaj7", "G7"]}))
+        self.assertEqual(sess.tool_type, "song_based_improvisation")
+        self.assertFalse(s.get("improv_generated_sections"), s.get("improv_generated_sections"))
+
+    def test_the_songs_practice_key_still_follows_its_context(self):
+        from creative_session_state import CreativeSession
+
+        s, _ = self._restore(CreativeSession(session_id="c", tool_type="entry_style_jam", entry_mode="Style Jam Mode",
+                                             style="Bossa Nova", concert_key="D", display_key="D"))
+        self.assertEqual(s.get("display_key"), "D")
+
+
 if __name__ == "__main__":
     unittest.main()
