@@ -1277,22 +1277,24 @@ def apply_specialized_jam_practice_key(session: dict[str, Any], new_key: str) ->
             set_creative_session(session, sess)
     except Exception:
         pass
-    # Keep improv_jam_session coherent: UUID + key must survive disk hydrate.
-    try:
-        jam = session.get("improv_jam_session")
-        jam = dict(jam) if isinstance(jam, dict) else {}
-        sid = str(
-            jam.get("id")
-            or session.get("_jam_session_generator_session_id")
-            or ""
-        ).strip()
-        if sid:
-            jam["id"] = sid
-            session["_jam_session_generator_session_id"] = sid
-        jam["key"] = new
-        session["improv_jam_session"] = jam
-    except Exception:
-        pass
+    # Keep improv_jam_session coherent: UUID + key must survive disk hydrate. It is the Generator's jam:
+    # a Style Jam key edit never rewrites the Generator's key.
+    if jam_owner != "style_jam":
+        try:
+            jam = session.get("improv_jam_session")
+            jam = dict(jam) if isinstance(jam, dict) else {}
+            sid = str(
+                jam.get("id")
+                or session.get("_jam_session_generator_session_id")
+                or ""
+            ).strip()
+            if sid:
+                jam["id"] = sid
+                session["_jam_session_generator_session_id"] = sid
+            jam["key"] = new
+            session["improv_jam_session"] = jam
+        except Exception:
+            pass
     try:
         from h3_live_key_trace import emit_display_key_write
 
@@ -1422,7 +1424,8 @@ def apply_specialized_jam_practice_key(session: dict[str, Any], new_key: str) ->
             save_workflow_blob(session, blob, source="sidebar_jam_backing_canonical")
             session["_jam_pk_mutation"]["fallback_blob"] = True
         if blob is not None:
-            jam = session.get("improv_jam_session")
+            # improv_jam_session is the Generator's jam: Style Jam's record never becomes its key or sections.
+            jam = session.get("improv_jam_session") if jam_owner != "style_jam" else None
             if isinstance(jam, dict):
                 jam = dict(jam)
                 jam["key"] = str(blob.keys.practice_tonic or tonic or new)
@@ -1745,6 +1748,37 @@ def _key_steps_to_center(key_center: str) -> int:
     root, _suffix = split_chord(str(key_center or "C"))
     target = normalize_root(root)
     return semitone_distance("C", target)
+
+
+def _own_jam_key_edit_tokens(session: dict[str, Any]) -> tuple[str, str]:
+    """(pending, committed) key edits that belong to the jam on screen ('' where none does).
+
+    The commit token is shared by every Practice Key edit: it counts only when this jam's own saved key
+    is that token (its own edit), never for a catalog song's or the other jam's edit.
+    """
+    style = "Style Jam" in str(session.get("improv_entry_mode") or "")
+    pending = str(session.get(PENDING_IMPROV_STYLE_KEY if style else PENDING_IMPROV_JAM_KEY) or "").strip()
+    commit = str(session.get("_pk_user_commit_token") or "").strip()
+    if commit:
+        own = ""
+        try:
+            from songs.practice_key_state import (
+                CREATIVE_JAM_SESSION_PICK,
+                CREATIVE_STYLE_JAM_PICK,
+                get_practice_concert_key,
+            )
+
+            own = str(
+                get_practice_concert_key(
+                    session, CREATIVE_STYLE_JAM_PICK if style else CREATIVE_JAM_SESSION_PICK, default=""
+                )
+                or ""
+            ).strip()
+        except Exception:
+            own = ""
+        if own != commit:
+            commit = ""
+    return pending, commit
 
 
 def creative_entry_concert_key(session: dict[str, Any]) -> str:
@@ -3818,13 +3852,9 @@ def prepare_creative_sidebar_display_key(st: Any, session: dict[str, Any]) -> li
             if jam_tok not in options:
                 options = [jam_tok] + options
             live_dk = str(session.get("display_key") or "").strip()
-            pending_jam = str(session.get(PENDING_IMPROV_JAM_KEY) or "").strip()
-            commit_jam = str(session.get("_pk_user_commit_token") or "").strip()
-            # The commit token is pick-scoped: Perfect's own C# commit is not a
-            # jam edit (it pulled a Style Jam in E onto Perfect's C#).
-            _commit_pick = str(session.get("_pk_user_commit_pick") or "").strip()
-            if _commit_pick and not _commit_pick.startswith("creative::"):
-                commit_jam = ""
+            # Only the jam on screen's own edit may replace its token: the Generator's pending key and a
+            # commit token another owner made are not Style Jam's (they gave Style Jam F the Generator's Eb).
+            pending_jam, commit_jam = _own_jam_key_edit_tokens(session)
             if live_dk and live_dk != jam_tok:
                 if jam_tok in {pending_jam, commit_jam} and live_dk not in {pending_jam, commit_jam}:
                     session.pop("display_key", None)
@@ -3870,13 +3900,9 @@ def prepare_creative_sidebar_display_key(st: Any, session: dict[str, Any]) -> li
             if jam_tok not in options:
                 options = [jam_tok] + options
             live_dk = str(session.get("display_key") or "").strip()
-            pending_jam = str(session.get(PENDING_IMPROV_JAM_KEY) or "").strip()
-            commit_jam = str(session.get("_pk_user_commit_token") or "").strip()
-            # The commit token is pick-scoped: Perfect's own C# commit is not a
-            # jam edit (it pulled a Style Jam in E onto Perfect's C#).
-            _commit_pick = str(session.get("_pk_user_commit_pick") or "").strip()
-            if _commit_pick and not _commit_pick.startswith("creative::"):
-                commit_jam = ""
+            # Only the jam on screen's own edit may replace its token: the Generator's pending key and a
+            # commit token another owner made are not Style Jam's (they gave Style Jam F the Generator's Eb).
+            pending_jam, commit_jam = _own_jam_key_edit_tokens(session)
             if live_dk and live_dk != jam_tok:
                 if jam_tok in {pending_jam, commit_jam} and live_dk not in {pending_jam, commit_jam}:
                     session.pop("display_key", None)
