@@ -286,6 +286,38 @@ class StyleJamOwnProgressionTests(unittest.TestCase):
         self.assertEqual(list(got), ["Bossa Nova"])
 
 
+class StaleSavedCreativeCopyTests(unittest.TestCase):
+    """After a second reload the Generator's summary read "~110 BPM · Mellow" for its 120 / Dark jam: the saved
+    Creative copy (refreshed only on explicit context saves) still held the Generator's first, empty jam."""
+
+    STALE_JAM = {"id": "Song Default", "mood": "Mellow", "sections": {}}
+
+    def _session(self) -> dict:
+        s = _then_generator(_style_jam_bossa_f(), key="Eb")
+        s["creative_workspace_state"] = {"improv_jam_session": dict(self.STALE_JAM),
+                                         "improv_generated_sections": {"Jazz tune · Dmaj7–G7–C7–G7": ["Dmaj7"]}}
+        return s
+
+    def test_the_saved_copy_never_overwrites_a_jam_its_record_backs(self) -> None:
+        from creative_context_snapshot_persistence import project_context_from_canonical
+        from creative_workspace_state_persistence import project_creative_workspace_to_session
+
+        for project in (project_context_from_canonical, project_creative_workspace_to_session):
+            s = self._session()
+            jam, gen = dict(s["improv_jam_session"]), dict(s["improv_generated_sections"])
+            project(s, overwrite=True)
+            self.assertEqual(s["improv_jam_session"], jam, project.__name__)
+            self.assertEqual(s["improv_generated_sections"], gen, project.__name__)
+
+    def test_a_missing_value_is_still_filled_from_the_saved_copy(self) -> None:
+        from creative_context_snapshot_persistence import project_context_from_canonical
+
+        s = self._session()
+        s.pop("improv_jam_session")
+        project_context_from_canonical(s, overwrite=True)
+        self.assertEqual(s["improv_jam_session"], self.STALE_JAM)
+
+
 # --------------------------------------------------------------------------- 7. the song's own Practice Key
 class SongPracticeKeyUntouchedTests(unittest.TestCase):
     def test_generator_and_style_jam_key_edits_never_change_california_dreamins_key(self) -> None:

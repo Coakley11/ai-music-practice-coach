@@ -303,6 +303,15 @@ def project_creative_workspace_to_session(session: dict[str, Any], *, overwrite:
         val = meta[key]
         if key == CREATIVE_SESSION_KEY and isinstance(val, dict):
             val = _sanitize_creative_session_for_projection(val)
+        if key in session and session.get(key):
+            try:
+                from creative_context_snapshot_persistence import _jam_record_owns_context_key
+
+                # A jam's own record outranks the older saved Creative copy of that jam.
+                if _jam_record_owns_context_key(session, key):
+                    continue
+            except ImportError:
+                pass
         if overwrite or key not in session:
             session[key] = copy.deepcopy(val)
 

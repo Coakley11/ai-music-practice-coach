@@ -467,12 +467,38 @@ def snapshot_hydrated_context(session: dict[str, Any], *, source: str = "prepare
     d["hydration_source"] = source
 
 
+# A generated jam's own fields: its workflow record owns them once it has one.
+_JAM_RECORD_OWNED_CONTEXT_KEYS: dict[str, str] = {
+    "improv_jam_session": "jam_session_generator",
+    "improv_generated_sections": "style_jam",
+}
+
+
+def _jam_record_owns_context_key(session: dict[str, Any], key: str) -> bool:
+    """True when the jam owning ``key`` has its own record with sections (that record is the authority)."""
+    owner = _JAM_RECORD_OWNED_CONTEXT_KEYS.get(key)
+    if not owner:
+        return False
+    try:
+        from jam_control_ownership import owner_record
+
+        rec = owner_record(session, owner)
+        return bool(rec is not None and getattr(rec, "section_map", None))
+    except Exception:
+        return False
+
+
 def project_context_from_canonical(session: dict[str, Any], *, overwrite: bool = False) -> None:
     for key in CREATIVE_CONTEXT_CANONICAL_KEYS:
         if not context_configured_in_canonical(session, key):
             continue
         val = canonical_context_value(session, key)
         if val is None:
+            continue
+        # The saved Creative copy of a jam is only refreshed on explicit context saves, so it can be older
+        # than the jam (the Generator's first, empty "Song Default" jam). Never write it over the live jam
+        # its own record backs: after a second reload the summary read "~110 BPM · Mellow" for a 120 / Dark jam.
+        if key in session and session.get(key) and _jam_record_owns_context_key(session, key):
             continue
         if key == "creative_session" and isinstance(val, dict):
             val = copy.deepcopy(val)
