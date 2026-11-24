@@ -479,6 +479,29 @@ class SavedLeakNeverReplacesStyleJamTests(unittest.TestCase):
         for key in ("improv_generated_sections", "improv_style_meta"):
             self.assertFalse(leaked_style_jam_copy_key(s, key, {}))
 
+    def test_leak_saved_by_3587e435_never_reaches_style_jams_controls(self):
+        from creative_session_state import CreativeSession, apply_creative_session_to_session
+
+        s = {"improv_style": "Bossa Nova", "improv_style_bpm": 112, "improv_groove": "Light",
+             "improv_generated_sections": dict(self.OWN)}
+        leaked = CreativeSession(session_id="z", tool_type="entry_style_jam", entry_mode="Style Jam Mode", style="Jazz",
+                                 concert_key="D", display_key="D", bpm=120, groove_intensity="Medium",
+                                 sections={"Jazz": ["Dmaj7", "G7", "C7", "G7"]})
+        apply_creative_session_to_session(s, leaked, widget_safe=False)
+        self.assertEqual((s["improv_style"], s["improv_style_bpm"], s["improv_groove"]), ("Bossa Nova", 112, "Light"))
+        self.assertEqual(s["improv_generated_sections"], self.OWN)
+
+    def test_other_sections_in_a_style_jam_session_are_not_written_as_style_jams(self):
+        from creative_session_state import CreativeSession, apply_creative_session_to_session
+
+        s = {"improv_generated_sections": dict(self.OWN)}
+        sess = CreativeSession(session_id="w", tool_type="entry_style_jam", entry_mode="Style Jam Mode",
+                               style="Bossa Nova", concert_key="F", display_key="F", bpm=75,
+                               sections={"Bossa": ["Fmaj7", "Bbmaj7"]})
+        apply_creative_session_to_session(s, sess, widget_safe=False)
+        self.assertEqual((s["improv_style"], s["improv_style_bpm"]), ("Bossa Nova", 75))
+        self.assertEqual(s["improv_generated_sections"], self.OWN)
+
     def test_style_jams_own_session_still_applies(self):
         from creative_session_state import CreativeSession, apply_creative_session_to_session
 
