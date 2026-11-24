@@ -474,11 +474,23 @@ _JAM_RECORD_OWNED_CONTEXT_KEYS: dict[str, str] = {
 }
 
 
-def _jam_record_owns_context_key(session: dict[str, Any], key: str) -> bool:
-    """True when the jam owning ``key`` has its own record with sections (that record is the authority)."""
+def _has_jam_sections(key: str, value: Any) -> bool:
+    if not isinstance(value, dict) or not value:
+        return False
+    if key == "improv_jam_session":
+        return bool(value.get("sections"))
+    return True
+
+
+def _jam_record_owns_context_key(session: dict[str, Any], key: str, saved: Any = None) -> bool:
+    """True when the live jam in ``key`` outranks a saved Creative copy: the jam has its own record with
+    sections, or the live jam has sections and the saved copy has none (it is the jam before it was
+    generated -- on a reload this runs before any record is loaded)."""
     owner = _JAM_RECORD_OWNED_CONTEXT_KEYS.get(key)
     if not owner:
         return False
+    if _has_jam_sections(key, session.get(key)) and not _has_jam_sections(key, saved):
+        return True
     try:
         from jam_control_ownership import owner_record
 
@@ -498,7 +510,7 @@ def project_context_from_canonical(session: dict[str, Any], *, overwrite: bool =
         # The saved Creative copy of a jam is only refreshed on explicit context saves, so it can be older
         # than the jam (the Generator's first, empty "Song Default" jam). Never write it over the live jam
         # its own record backs: after a second reload the summary read "~110 BPM · Mellow" for a 120 / Dark jam.
-        if key in session and session.get(key) and _jam_record_owns_context_key(session, key):
+        if key in session and session.get(key) and _jam_record_owns_context_key(session, key, val):
             continue
         if key == "creative_session" and isinstance(val, dict):
             val = copy.deepcopy(val)

@@ -3855,9 +3855,13 @@ def prepare_creative_sidebar_display_key(st: Any, session: dict[str, Any]) -> li
             # Only the jam on screen's own edit may replace its token: the Generator's pending key and a
             # commit token another owner made are not Style Jam's (they gave Style Jam F the Generator's Eb).
             pending_jam, commit_jam = _own_jam_key_edit_tokens(session)
+            _style_on_screen = "Style Jam" in str(session.get("improv_entry_mode") or "")
             if live_dk and live_dk != jam_tok:
                 if jam_tok in {pending_jam, commit_jam} and live_dk not in {pending_jam, commit_jam}:
-                    session.pop("display_key", None)
+                    # Only for Style Jam, whose control is written below. With the Generator on screen nothing
+                    # writes the sidebar key afterwards, so dropping it showed its first option (C).
+                    if _style_on_screen:
+                        session.pop("display_key", None)
                 elif live_dk in {pending_jam, commit_jam} - {""}:
                     jam_tok = live_dk
             # The generated workflow key is a temporary projection.  Do not

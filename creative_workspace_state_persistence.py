@@ -308,7 +308,7 @@ def project_creative_workspace_to_session(session: dict[str, Any], *, overwrite:
                 from creative_context_snapshot_persistence import _jam_record_owns_context_key
 
                 # A jam's own record outranks the older saved Creative copy of that jam.
-                if _jam_record_owns_context_key(session, key):
+                if _jam_record_owns_context_key(session, key, val):
                     continue
             except ImportError:
                 pass

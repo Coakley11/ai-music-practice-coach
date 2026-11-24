@@ -161,6 +161,16 @@ class GeneratorKeyNeverStyleJamsTests(unittest.TestCase):
         self._prepare(s)
         self.assertEqual(s["improv_style_key"], "F")
 
+    def test_with_the_generator_on_screen_the_sidebar_keeps_a_real_key(self) -> None:
+        # Browser v3: the sidebar key was dropped and the control fell to its first option (C).
+        s = {"studio_page": "creative", "improv_intelligence_tab": "Entry & Jam",
+             "improv_entry_mode": "Jam Session Generator", "instrument": "Piano", "improv_style_key": "F",
+             "improv_jam_key": "Eb", "display_key": "C#m", "concert_key": "C#m", "_pending_improv_jam_key": "Eb",
+             "practice_key_by_source": {"creative::jam_session_generator": "Eb", CALIFORNIA: "C#m"}}
+        self._prepare(s)
+        self.assertIn(s.get("display_key"), {"C#m", "Eb"})
+        self.assertEqual(s["improv_style_key"], "F")
+
     def test_style_jams_own_pending_edit_still_reaches_its_control(self) -> None:
         s = {"studio_page": "creative", "improv_intelligence_tab": "Entry & Jam", "improv_entry_mode": "Style Jam Mode",
              "instrument": "Piano", "improv_style_key": "F", "display_key": "G", "concert_key": "G",
@@ -308,6 +318,16 @@ class StaleSavedCreativeCopyTests(unittest.TestCase):
             project(s, overwrite=True)
             self.assertEqual(s["improv_jam_session"], jam, project.__name__)
             self.assertEqual(s["improv_generated_sections"], gen, project.__name__)
+
+    def test_on_reload_before_any_record_loads_an_empty_saved_jam_never_replaces_a_generated_one(self) -> None:
+        # Browser trace t3: the disk restore projects the saved copy before the workflow store is loaded.
+        from creative_context_snapshot_persistence import project_context_from_canonical
+
+        s = self._session()
+        live = dict(s["improv_jam_session"])
+        s.pop("_music_workflow_state_store", None)
+        project_context_from_canonical(s, overwrite=True)
+        self.assertEqual(s["improv_jam_session"], live)
 
     def test_a_missing_value_is_still_filled_from_the_saved_copy(self) -> None:
         from creative_context_snapshot_persistence import project_context_from_canonical
