@@ -18664,7 +18664,21 @@ else:
                 resolve_backing_pk_control_owner,
             )
 
-            if resolve_backing_pk_control_owner(st.session_state) == OWNER_STYLE_JAM:
+            try:
+                from jam_control_ownership import GENERATOR as _GEN, current_jam_owner
+
+                # On Creative with the Generator on screen, improv_jam_key is its own control (a chosen Eb),
+                # not a remount leftover: Style Jam's key never goes into the sidebar then.
+                _generator_on_screen = bool(
+                    str(st.session_state.get("studio_page") or "").strip().lower() == "creative"
+                    and current_jam_owner(st.session_state) == _GEN
+                )
+            except ImportError:
+                _generator_on_screen = False
+            if (
+                resolve_backing_pk_control_owner(st.session_state) == OWNER_STYLE_JAM
+                and not _generator_on_screen
+            ):
                 _sj_pk = str(canonical_concert_key_for_owner(st.session_state) or "").strip()
                 _leftover_jam = str(st.session_state.get("improv_jam_key") or "").strip()
                 if (
