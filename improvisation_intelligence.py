@@ -375,6 +375,21 @@ def generate_style_progression(
     return sections
 
 
+def is_style_jam_section_map(sections: Any) -> bool:
+    """True when every section is named the way ``generate_style_progression`` names Style Jam's: "<part> (<style>)".
+
+    Sections another source left in Style Jam's slot (a song's Backing label such as "Jazz tune · Dmaj7–G7–C7–G7",
+    or its style "Jazz") are not Style Jam's generated jam.
+    """
+    if not isinstance(sections, dict) or not sections:
+        return False
+    for name in sections:
+        n = str(name or "").strip()
+        if not (n.endswith(")") and n.find(" (") > 0):
+            return False
+    return True
+
+
 def _key_steps_to_center(key_center: str) -> int:
     from music_theory import semitone_distance
 

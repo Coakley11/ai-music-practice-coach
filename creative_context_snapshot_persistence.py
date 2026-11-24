@@ -491,6 +491,16 @@ def _jam_record_owns_context_key(session: dict[str, Any], key: str, saved: Any =
         return False
     if _has_jam_sections(key, session.get(key)) and not _has_jam_sections(key, saved):
         return True
+    if key == "improv_generated_sections":
+        # A saved copy holding another source's chords (a song's Backing context restored as Style Jam before the
+        # Composition-song fix) never replaces the Style Jam that was generated since.
+        try:
+            from improvisation_intelligence import is_style_jam_section_map
+
+            if is_style_jam_section_map(session.get(key)) and not is_style_jam_section_map(saved):
+                return True
+        except ImportError:
+            pass
     try:
         from jam_control_ownership import owner_record
 
@@ -500,12 +510,39 @@ def _jam_record_owns_context_key(session: dict[str, Any], key: str, saved: Any =
         return False
 
 
+def leaked_style_jam_copy_key(session: dict[str, Any], key: str, val: Any) -> bool:
+    """True for the Style Jam part of a saved Creative copy whose Style Jam sections are another source's chords.
+
+    Before the Composition-song restore fix, a song's Backing context was restored as Style Jam: the copy then
+    holds that song's chords as Style Jam's sections, and its style / tempo / feel as Style Jam's settings
+    ({"style": "Jazz", "bpm": 120, "groove": "Medium"}). None of that copy's Style Jam values are Style Jam's.
+    """
+    blob = session.get(CREATIVE_WORKSPACE_STATE_KEY)
+    if not isinstance(blob, dict):
+        return False
+    sec = blob.get("improv_generated_sections")
+    if not isinstance(sec, dict) or not sec:
+        return False
+    try:
+        from improvisation_intelligence import is_style_jam_section_map
+
+        if is_style_jam_section_map(sec):
+            return False
+    except ImportError:
+        return False
+    if key in {"improv_generated_sections", "improv_style_meta"}:
+        return True
+    return key == "creative_session" and isinstance(val, dict) and val.get("tool_type") == "entry_style_jam"
+
+
 def project_context_from_canonical(session: dict[str, Any], *, overwrite: bool = False) -> None:
     for key in CREATIVE_CONTEXT_CANONICAL_KEYS:
         if not context_configured_in_canonical(session, key):
             continue
         val = canonical_context_value(session, key)
         if val is None:
+            continue
+        if leaked_style_jam_copy_key(session, key, val):
             continue
         # The saved Creative copy of a jam is only refreshed on explicit context saves, so it can be older
         # than the jam (the Generator's first, empty "Song Default" jam). Never write it over the live jam

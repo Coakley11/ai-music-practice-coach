@@ -843,6 +843,17 @@ def apply_creative_session_to_session(
         elif sync_live_sections:
             sync_live_sections(session, source="creative_session_unbound")
     else:
+        try:
+            from improvisation_intelligence import is_style_jam_section_map
+
+            leaked = bool(sess.sections) and not is_style_jam_section_map(sess.sections)
+        except ImportError:
+            leaked = False
+        if leaked:
+            # A Style Jam session holding another source's chords (a song's Backing context restored as Style Jam
+            # before the Composition-song fix, with that song's style / tempo / feel) is not Style Jam's: its
+            # values never reach Style Jam's controls or sections.
+            return
         _set("improv_style", sess.style)
         if widget_safe:
             try:

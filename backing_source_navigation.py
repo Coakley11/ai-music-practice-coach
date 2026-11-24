@@ -4478,8 +4478,9 @@ def _style_jam_sections_for_restore(session: dict[str, Any], ctx: Any) -> dict[s
     current = session.get("improv_generated_sections")
     if isinstance(current, dict) and current:
         return {}
-    label = str(getattr(ctx, "style", "") or "Style Jam").strip() or "Style Jam"
-    return {label: [str(c) for c in (getattr(ctx, "progression", None) or [])]}
+    style = str(getattr(ctx, "style", "") or "Style Jam").strip() or "Style Jam"
+    # Named as Style Jam's generator names its sections ("<part> (<style>)").
+    return {f"A ({style})": [str(c) for c in (getattr(ctx, "progression", None) or [])]}
 
 
 def resolve_entry_jam_entry_mode(

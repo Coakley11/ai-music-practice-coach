@@ -36,6 +36,7 @@ from improvisation_intelligence import (
     flatten_sections,
     generate_jam_session,
     generate_style_progression,
+    is_style_jam_section_map,
     level_coaching_summary,
 )
 from creative_key_sync import (
@@ -2116,6 +2117,10 @@ def _tab_entry_modes(
             st.rerun()
 
         gen = session_state.get("improv_generated_sections")
+        if gen and not is_style_jam_section_map(gen):
+            # Another source's chords in Style Jam's slot (saved before the Composition-song restore fix) are not
+            # this Style Jam's generated jam: not shown under its heading, not opened in Backing. Left as stored.
+            gen = None
         if gen:
             _style_label = str(session_state.get("improv_style") or "Style jam")
             _key_token = str(session_state.get("improv_style_key") or "C")
