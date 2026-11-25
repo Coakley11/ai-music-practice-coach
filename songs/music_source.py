@@ -4834,11 +4834,16 @@ def on_active_song_identity_changed(
     song_data: dict[str, Any] | None = None,
     invalidate_backing,
     force_reset: bool = False,
+    keep_restored_backing: bool = False,
 ) -> bool:
     """Reset display key and backing defaults when the active song identity changes.
 
     Must run before widget-bound session keys (``display_key``, BPM slider, etc.)
     are instantiated for the rerun.
+
+    ``keep_restored_backing``: a saved session is being restored (reload), not a new song chosen. The song's
+    identity and Practice Key are applied as usual, but Backing is not reset to the song's defaults: the saved
+    Backing (a jam's Feel, tempo, progression, or the song's own) is restored after this runs.
     """
     from songs.key_state import apply_display_key_for_active_song, song_display_identity
     from songs.playback_defaults import (
@@ -5032,6 +5037,10 @@ def on_active_song_identity_changed(
             _karaoke_set_owns_backing = False
         if _karaoke_set_owns_backing:
             _canon_result = {"skipped_for_creative_context": True, "skipped_for_karaoke_set": True}
+        elif keep_restored_backing:
+            # Reload: the song's default tempo / groove queued here were flushed onto Backing after the saved
+            # session had been restored (a Style Jam's Bossa nova card became "Jazz swing").
+            _canon_result = {"skipped_for_creative_context": True, "skipped_for_restore": True}
         else:
             reset_playback_song_tracking(st)
             # Backing tempo ownership follows the active song -- retarget before the
@@ -5166,8 +5175,9 @@ def on_active_song_identity_changed(
             # Explicit specialized Backing handoff outranks Custom/Catalog identity
             # force_reset (workspace sticky restore must not reclaim Mission PK visit).
             handoff = str(session.get("_backing_explicit_handoff_source") or "").strip()
-            skip_reset = handoff in {"mission", "song_improv", "entry_jam"} and not session.get(
-                "_backing_released_specialized_context"
+            skip_reset = keep_restored_backing or (
+                handoff in {"mission", "song_improv", "entry_jam"}
+                and not session.get("_backing_released_specialized_context")
             )
             if not skip_reset:
                 reset_backing_on_active_song_change(
