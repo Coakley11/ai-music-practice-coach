@@ -129,6 +129,35 @@ class StyleJamCardTests(unittest.TestCase):
         self.assertIn("jam_art.style_jam_summary(", self.src)
 
 
+class GeneratorCardTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.src = _branch_source('from jam_control_ownership import JAM_ENSEMBLES, seed_jam_controls_before_mount', "")
+
+    def test_the_card_band_and_groups_are_keyed_containers(self) -> None:
+        self.assertIn("st.container(key=jam_art.GENERATOR_CARD)", self.src)
+        self.assertIn("st.container(key=jam_art.GENERATOR_BAND)", self.src)
+        self.assertIn('st.container(key="improv_jam_gen_controls")', self.src)  # phone density CSS hook
+        self.assertIn("st.container(key=jam_art.GENERATOR_ACTIONS)", self.src)
+        self.assertIn("st.container(key=jam_art.GENERATOR_RESULT)", self.src)
+        self.assertIn('st.container(key=f"{jam_art.GENERATOR_SECTION_PREFIX}{_sec_i}")', self.src)
+        self.assertIn('jam_art.hero_html(\n                    "jam_generator"', self.src)
+        self.assertIn("jam_art.lineup_html(str(ensemble or \"\"))", self.src)
+
+    def test_seeding_still_happens_before_any_generator_widget(self) -> None:
+        seed = self.src.index('seed_jam_controls_before_mount(session_state, "jam_session_generator")')
+        self.assertLess(seed, self.src.index('key="improv_ensemble"'))
+        self.assertLess(seed, self.src.index("jam_art.hero_html("))
+
+    def test_generated_panel_reads_only_the_generators_own_jam(self) -> None:
+        self.assertIn('jam = session_state.get("improv_jam_session")', self.src)
+        self.assertIn('_jam_sections = jam.get("sections") or {}', self.src)
+        self.assertIn("sections=_jam_sections,", self.src)
+        self.assertIn("for _sec_i, (sec, chs) in enumerate(_jam_sections.items()):", self.src)
+        self.assertIn("jam_art.generator_summary(jam, key_label=_jam_key_label)", self.src)
+        for foreign in ("improv_generated_sections", "song_data", "preview_sections", "improv_ctx"):
+            self.assertNotIn(foreign, self.src)
+
+
 class CssScopeTests(unittest.TestCase):
     def setUp(self) -> None:
         self.css = jam_art.jam_cards_css()

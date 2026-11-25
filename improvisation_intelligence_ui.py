@@ -2200,15 +2200,35 @@ def _tab_entry_modes(
                 st.caption(f"Key change diagnostic: {_diag.get('failed_predicate')}")
         except ImportError:
             pass
-        st.markdown(creative_tool_heading_markdown("Jam Session Generator"))
-        _render_creative_practice_focus_caption(st, session_state)
         from jam_control_ownership import JAM_ENSEMBLES, seed_jam_controls_before_mount
 
         # Drawn again after another mode: start from the Generator's own record, never a first option.
         seed_jam_controls_before_mount(session_state, "jam_session_generator")
-        with st.container(key="improv_jam_gen_controls"):
-            e1, e2 = st.columns(2)
-            with e1:
+        # The Generator card (jam_card_art): a dark-blue, band-first identity around the same widgets.
+        _jam_gen_card = st.container(key=jam_art.GENERATOR_CARD)
+        with _jam_gen_card:
+            st.markdown(jam_art.jam_cards_css(), unsafe_allow_html=True)
+            st.markdown(
+                jam_art.hero_html(
+                    "jam_generator",
+                    kicker="Full-band jam session",
+                    title=creative_tool_display_label("Jam Session Generator"),
+                    line=(
+                        "Choose who is on stage, set the music, and generate a whole jam: "
+                        "song form, chords and a band ready to play it in Backing."
+                    ),
+                    chips=(
+                        ("Band", str(session_state.get("improv_ensemble") or "")),
+                        ("Groove", str(session_state.get("improv_jam_style") or "")),
+                    ),
+                ),
+                unsafe_allow_html=True,
+            )
+            _render_creative_practice_focus_caption(st, session_state)
+            st.markdown(jam_art.step_html(1, "Choose your band"), unsafe_allow_html=True)
+        with _jam_gen_card, st.container(key=jam_art.GENERATOR_BAND):
+            _band_pick_col, _band_lineup_col = st.columns([1, 1.6])
+            with _band_pick_col:
                 ensemble = st.selectbox(
                     "Ensemble",
                     list(JAM_ENSEMBLES),
@@ -2217,6 +2237,13 @@ def _tab_entry_modes(
                     # The band is part of the arrangement: a new choice re-seals the jam's Backing.
                     on_change=on_improv_jam_setting_change,
                 )
+            with _band_lineup_col:
+                st.markdown(jam_art.lineup_html(str(ensemble or "")), unsafe_allow_html=True)
+        with _jam_gen_card:
+            st.markdown(jam_art.step_html(2, "Musical settings"), unsafe_allow_html=True)
+        with _jam_gen_card, st.container(key="improv_jam_gen_controls"):
+            e1, e2 = st.columns(2)
+            with e1:
                 style = st.selectbox(
                     "Groove style",
                     list(STYLE_JAM_STYLES),
@@ -2277,6 +2304,9 @@ def _tab_entry_modes(
                     step=1,
                     on_change=on_improv_jam_setting_change,
                 )
+            # Same creation order as before (Atmosphere, then Groove intensity), on a row of their own.
+            e3, e4 = st.columns(2)
+            with e3:
                 st.selectbox(
                     "Atmosphere",
                     list(MOOD_OPTIONS),
@@ -2284,6 +2314,7 @@ def _tab_entry_modes(
                     persist_state="session",
                     on_change=on_improv_jam_setting_change,
                 )
+            with e4:
                 st.selectbox(
                     "Groove intensity",
                     list(GROOVE_INTENSITY),
@@ -2292,13 +2323,18 @@ def _tab_entry_modes(
                     on_change=on_improv_jam_setting_change,
                 )
 
-        _jam_gen_clicked = st.button(
-            "Generate jam session",
-            type="primary",
-            key="improv_gen_jam",
-            on_click=_queue_jam_session_generation_intent,
-            args=(session_state,),
-        )
+        with _jam_gen_card:
+            st.markdown(jam_art.step_html(3, "Generate"), unsafe_allow_html=True)
+        with _jam_gen_card, st.container(key=jam_art.GENERATOR_ACTIONS):
+            _jam_gen_clicked = st.button(
+                "Generate jam session",
+                type="primary",
+                key="improv_gen_jam",
+                on_click=_queue_jam_session_generation_intent,
+                args=(session_state,),
+            )
+            if session_state.get("improv_jam_session"):
+                st.caption("Generate again for a new take with the same band and settings.")
         if _jam_gen_clicked:
             _consume_generated_progression_after_click(
                 session_state, owner="jam_session_generator", st=st
@@ -2307,17 +2343,35 @@ def _tab_entry_modes(
 
         jam = session_state.get("improv_jam_session")
         if jam:
-            st.markdown(f"### {jam.get('title', 'Jam session')}")
-            st.caption(jam.get("prompt", ""))
-            for sec, chs in (jam.get("sections") or {}).items():
-                st.markdown(f"**{sec}**")
-                render_creative_progression_block(st, session_state, {sec: chs})
-            _render_open_practice_backing_row(
-                st,
-                on_open_backing=on_open_backing,
-                on_open_practice=on_open_practice,
-                workflow="jam",
-            )
+            # What was generated: the Generator's own jam record only (never the active song's chords).
+            try:
+                from music_theory import display_key_label as _jam_key_label
+            except ImportError:
+                _jam_key_label = str  # type: ignore[assignment]
+            _jam_sections = jam.get("sections") or {}
+            _jam_summary = jam_art.generator_summary(jam, key_label=_jam_key_label)
+            with _jam_gen_card, st.container(key=jam_art.GENERATOR_RESULT):
+                st.markdown(
+                    jam_art.result_head_html(
+                        kicker="Your generated jam",
+                        title=_jam_summary["title"],
+                        line=_jam_summary["line"],
+                        sections=_jam_sections,
+                    ),
+                    unsafe_allow_html=True,
+                )
+                if str(jam.get("ensemble") or "").strip():
+                    st.markdown(jam_art.lineup_html(str(jam.get("ensemble"))), unsafe_allow_html=True)
+                for _sec_i, (sec, chs) in enumerate(_jam_sections.items()):
+                    with st.container(key=f"{jam_art.GENERATOR_SECTION_PREFIX}{_sec_i}"):
+                        st.markdown(jam_art.section_head_html(sec, chs, _sec_i), unsafe_allow_html=True)
+                        render_creative_progression_block(st, session_state, {sec: chs})
+                _render_open_practice_backing_row(
+                    st,
+                    on_open_backing=on_open_backing,
+                    on_open_practice=on_open_practice,
+                    workflow="jam",
+                )
 
 
 def _render_open_practice_backing_row(
