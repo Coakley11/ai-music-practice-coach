@@ -469,9 +469,8 @@ def cycle_shape_projection(
 
     The one place the cycle derives the shape chart key and capo fret: the
     playbar capo line, the cycle Lead Sheet and the in-app sheet all read it, so
-    a key advance moves the capo fret everywhere at once. The sheet keeps the
-    sounding concert chords as its cells and shows the fixed shape as hints,
-    the same layout as the non-cycling capo sheet.
+    a key advance moves the capo fret everywhere at once. The sheet's cells are
+    the fixed shapes, the same layout as the non-cycling capo sheet.
     """
     if cycle_chart_mode(session) != "shape":
         return None
@@ -701,10 +700,8 @@ def display_projection_bundle(
         project_cycle_display_key(session, sounding, owner=owner) if sounding else ""
     )
     mode = cycle_chart_mode(session)
-    # Shape mode reads concert chords with the fixed shape as hints (see
-    # cycle_shape_projection), so Current/Next stay concert like the sheet
-    # cells. readingKey still names the shape chart key for the playbar.
-    label_reading = sounding if mode == "shape" else reading
+    # Current/Next read what the sheet's cells show: the written key, or the fixed guitar shapes.
+    label_reading = reading
     semis = 0
     try:
         if sounding and label_reading and sounding != label_reading:

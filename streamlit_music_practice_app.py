@@ -6788,8 +6788,10 @@ def live_follow_along_component_html(
     function _localTransposeChord(ch, steps) {{
       const m = String(ch || '').match(/^([A-G][#b]?)(.*)/);
       if (!m) return ch;
-      const root = m[1]; const rest = m[2];
-      const names = (_localReadingKey && /b/.test(_localReadingKey)) ? _FLAT : _SHARP;
+      const root = m[1];
+      const rest = m[2].replace(/\/([A-G][#b]?)$/, (_s, b) => '/' + _localTransposeChord(b, steps));
+      const names = (_localReadingKey && (/^.b/.test(_localReadingKey) || /^(F|Dm|Gm|Cm|Fm)$/.test(_localReadingKey)))
+        ? _FLAT : _SHARP;
       let idx = names.indexOf(root);
       if (idx < 0) {{
         const alt = root.length === 2
@@ -21282,14 +21284,11 @@ elif _studio_page == "practice":
                         )
                         from chord_tone_hints import apply_chord_tone_hints, hints_enabled, hints_level
 
-                        # A capo chart's cells show shapes; the hints name what sounds.
-                        _hints_capo = bool(_capo_ctx.enabled and instrument == "Guitar")
+                        # A capo chart shows shapes only; its hints name the tones of the shape on the page.
                         _chart_html = apply_chord_tone_hints(
                             _chart_html,
                             hints_enabled(st.session_state),
                             level=hints_level(st.session_state),
-                            sounding_steps=int(_capo_ctx.capo_fret) if _hints_capo else 0,
-                            reference_key=(str(_capo_ctx.sounding_key or "") or None) if _hints_capo else None,
                         )
                         st.markdown(_chart_html, unsafe_allow_html=True)
 
@@ -21723,6 +21722,7 @@ elif _studio_page == "practice":
                         _cm_clef = _cm_clef_for(instrument)
                         _cm_display_key = str(
                             (written_key if (_cm_written and _cm_inst_semitones) else "")
+                            or (_capo_ctx.shape_key if _capo_ctx.enabled and instrument == "Guitar" else "")
                             or concert_key or original_key or "C"
                         )
                         _comp_pg = _composition_doc.get("global") if isinstance(
@@ -21779,14 +21779,24 @@ elif _studio_page == "practice":
                                             from composition_preview import generate_preview_wav
                                             from composition_playback_sync import build_playback_bundle
                                             from composition_lyrics_alignment import alignment_syllable_timeline
+                                            from composition_melody_projection import concert_melody_events
+                                            from effective_practice_context import musician_facing_chords
 
+                                            # What sounds is concert pitch: the shown notes and chords may be
+                                            # guitar shapes or an instrument's written key.
                                             _cm_wav = generate_preview_wav(
                                                 _composition_doc,
                                                 scope="section",
                                                 section_id=None,
                                                 include_melody=True,
-                                                melody_override=_cm_render_events,
-                                                chord_override=_cm_chords or None,
+                                                melody_override=concert_melody_events(
+                                                    _cm_events, original_key=_cm_orig_key, practice_key=_cm_practice_key
+                                                ),
+                                                chord_override=musician_facing_chords(
+                                                    _cm_chords,
+                                                    concert_key=str(_practice_chart_key or _cm_practice_key),
+                                                    chart_key=_cm_practice_key,
+                                                ) or None,
                                                 loops=1,
                                                 count_in_bars=0,
                                             )
@@ -27482,8 +27492,12 @@ elif _studio_page == "backing":
             st.session_state["_kc_follow_timeline"] = _follow_timeline
         else:
             st.session_state.pop("_kc_follow_timeline", None)
-            if _sheet_written_from and isinstance(_follow_timeline, list):
-                # Current / Next read the grid's written key, not the concert take.
+            # Current / Next read the grid: its written key or its guitar shapes, not the concert take.
+            _grid_from, _grid_to = _sheet_written_from, chart_display_key
+            if _capo_ctx.enabled and instrument == "Guitar":
+                _grid_from = str(_audio_signature_key or _capo_ctx.sounding_key or "").strip()
+                _grid_to = str(_capo_ctx.shape_key or "").strip()
+            if _grid_from and _grid_to and isinstance(_follow_timeline, list):
                 try:
                     from backing_key_cycle import (
                         FOLLOW_TIMELINE_SPACE_DISPLAY as _WR_TL_SPACE,
@@ -27495,8 +27509,8 @@ elif _studio_page == "backing":
                             **ev,
                             "chord": _wr_project(
                                 str(ev.get("chord") or ""),
-                                from_key=_sheet_written_from,
-                                to_key=chart_display_key,
+                                from_key=_grid_from,
+                                to_key=_grid_to,
                             ),
                             "chordSpace": _WR_TL_SPACE,
                         }
@@ -27911,7 +27925,14 @@ elif _studio_page == "backing":
                         else (song_data or {}).get("section_order") or list(_pmb_sections.keys())
                     ),
                     # A jam's melody is composed in concert pitch; Backing shows it in the chart's key.
-                    key_center=_pmb_jam.concert_key if _pmb_jam is not None else _pmb_target_key,
+                    # In Shape Mode a song's chords here are concert too.
+                    key_center=(
+                        _pmb_jam.concert_key
+                        if _pmb_jam is not None
+                        else str(_capo_ctx.sounding_key)
+                        if _capo_ctx.enabled and instrument == "Guitar"
+                        else _pmb_target_key
+                    ),
                     level=(_pmb_jam.level or level) if _pmb_jam is not None else level,
                     tempo_bpm=float(st.session_state.get("backing_track_bpm") or bpm or 100),
                     style=str(st.session_state.get("backing_groove_style") or ""),
@@ -28019,8 +28040,10 @@ elif _studio_page == "backing":
                 written=_bk_written,
             )[2]
             _bk_clef = _bk_clef_for(instrument)
+            _bk_shape = bool(_capo_ctx.enabled and instrument == "Guitar")
             _bk_display_key = str(
                 (written_key if (_bk_written and _bk_inst_semitones) else "")
+                or (_capo_ctx.shape_key if _bk_shape else "")
                 or concert_key or original_key or "C"
             )
             _bk_comp_pg = (_bk_comp_doc or {}).get("global") if isinstance(
@@ -28044,7 +28067,8 @@ elif _studio_page == "backing":
                 st.caption(_bk_notice)
 
             for _bk_sec_name, _bk_render_events in _bk_projected.items():
-                _bk_sec_chords = (chart_sections or {}).get(_bk_sec_name, [])
+                # (The open Lead Sheet may hold the concert chords in chart_sections and draw the shapes itself.)
+                _bk_sec_chords = ((_capo_ctx.shape_sections if _bk_shape else chart_sections) or {}).get(_bk_sec_name, [])
                 # Lyrics sit under the notes only for a singer. Instrumentalists read the
                 # melody alone; the stored lyrics and alignment are never touched.
                 _bk_voice = str(instrument or "").strip() == "Voice"

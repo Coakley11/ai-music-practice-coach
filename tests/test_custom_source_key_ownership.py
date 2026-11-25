@@ -163,7 +163,7 @@ class TestInstallingAnotherCustomDropsTheSbiKeyCache(unittest.TestCase):
 
 
 class TestGuitarShapeLeadSheetContract(unittest.TestCase):
-    """The sheet gets the sounding key and concert cells; shapes are hints."""
+    """The sheet names the sounding key and shows only the shapes the guitarist plays."""
 
     def _chart(self) -> str:
         return render_backing_chord_chart(
@@ -184,12 +184,13 @@ class TestGuitarShapeLeadSheetContract(unittest.TestCase):
         self.assertIn("Charts in D minor · capo 3", html)
         self.assertIn("working in F minor", html)
 
-    def test_cells_are_concert_with_shape_hints(self) -> None:
+    def test_cells_are_the_shapes_and_nothing_else(self) -> None:
+        import re
+
         html = self._chart()
-        self.assertIn("Fm6", html)
-        self.assertIn("Db7", html)
-        self.assertIn("Dm6 shape", html)
-        self.assertIn("Bb7 shape", html)
+        cells = re.findall(r"<div class='chord-symbol'>(.*?)</div>", html)
+        self.assertEqual(cells, ["Dm6", "%", "Bb7", "A7"])
+        self.assertNotIn("chord-shape-hint", html.split("</style>")[-1])
 
 
 if __name__ == "__main__":

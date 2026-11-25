@@ -5258,6 +5258,21 @@ def creative_progression_display(
     }
 
 
+def guitar_shape_sections(
+    session: dict[str, Any], sections: dict[str, list[str]], *, concert_key: str = ""
+) -> dict[str, list[str]]:
+    """The sections as a guitarist in Shape Mode plays them; unchanged outside Shape Mode. Display only."""
+    if _chart_display_label(session) != "Guitar shape chart":
+        return sections
+    try:
+        from backing_context import sections_dict_for_chart_display
+
+        concert = str(concert_key or creative_entry_concert_key(session) or session.get("concert_key") or "C")
+        return sections_dict_for_chart_display(session, sections, concert_key=concert) or sections
+    except Exception:
+        return sections
+
+
 def render_creative_progression_block(
     st: Any,
     session: dict[str, Any],
@@ -5284,7 +5299,8 @@ def render_creative_progression_block(
         f"<strong>{html.escape(display['concert_key'])}</strong></p>",
         unsafe_allow_html=True,
     )
-    if display["concert_line"]:
+    # Guitar Shape Mode shows the playable shapes only (the concert key is named above).
+    if display["concert_line"] and display.get("chart_label") != "Guitar shape chart":
         st.markdown(
             f'<p class="ui-creative-progression-preview"><strong>Concert Practice Key Progression:</strong> '
             f"{html.escape(display['concert_line'])}</p>",
