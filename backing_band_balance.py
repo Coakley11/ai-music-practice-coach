@@ -26,6 +26,9 @@ import numpy as np
 from scipy import signal
 
 _ON = {"1", "true", "yes", "on"}
+# The mix key of the recorded Samba section: real shakers and jingles need far less taming than the drum kit's
+# shaker-on-the-hi-hat that Samba's own shelf was set for.
+SAMBA_ENSEMBLE = "Samba (recorded section)"
 
 # Drums + percussion against the musical layers, in LU, at Medium intensity.
 TARGET_LU = {
@@ -33,7 +36,8 @@ TARGET_LU = {
     "Ballad": -14.0,
     "Jazz swing": -10.5,
     "Latin jazz": -10.5,
-    "Samba": -9.5,
+    "Samba": -10.5,  # never louder than the balanced Samba of 85d59815 (-10.4 LU)
+    SAMBA_ENSEMBLE: -10.5,  # the recorded Samba section (MUSIC_SAMBA_ENSEMBLE): no louder either
     "Pop groove": -12.5,
     "Rock groove": -11.5,
     "Funk groove": -11.0,
@@ -48,6 +52,7 @@ SHELF_HZ = 5500.0
 SHELF_DB = {
     "Bossa nova": -3.5, "Ballad": -3.0, "Jazz swing": -3.5, "Latin jazz": -2.5, "Samba": -5.0,
     "Pop groove": -2.0, "Rock groove": -1.5, "Funk groove": -1.5, "Blues groove": -2.5,
+    SAMBA_ENSEMBLE: -2.5,
 }
 DEFAULT_SHELF_DB = -2.0
 

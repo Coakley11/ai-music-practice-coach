@@ -34,6 +34,7 @@ import backing_groove_profiles as _groove_profiles
 import backing_latin_grooves as _lg
 import backing_latin_percussion as _lp
 import backing_band_balance as _bb
+import backing_samba_ensemble as _se
 import backing_bass_voice as _bv
 import backing_keys_voice as _kv
 import backing_pianist as _pn
@@ -2231,7 +2232,7 @@ def drum_renderer_tag() -> str:
     """Part of a saved backing's identity, so audio from another drum sound is never replayed as this one."""
     tag = "+drums2-" + _drum_kit._samples.pack_token() if _drum_kit.drum_kit_enabled() else ""
     # the recorded Latin percussionist ("" unless MUSIC_LATIN_GROOVES is on); the drum balance (MUSIC_BAND_BALANCE)
-    return tag + _lp.renderer_tag() + _bb.renderer_tag()
+    return tag + _lp.renderer_tag() + _se.renderer_tag() + _bb.renderer_tag()  # + the Samba ensemble (MUSIC_SAMBA_ENSEMBLE)
 
 
 def _with_drum_kit(render):
@@ -2526,7 +2527,15 @@ def synthesize_chords_to_numpy(
             bar_patterns.update(latin_bar.grid)
         # The recorded Latin percussionist (MUSIC_LATIN_GROOVES): its parts replace the kit's stand-ins.
         perc_hits = None
-        if pulses_per_bar == 4 and _lp.plays(style):
+        samba_strokes = None
+        if pulses_per_bar == 4 and style == _lg.SAMBA and _se.enabled():
+            # MUSIC_SAMBA_ENSEMBLE: a recorded Samba section; its surdos, ganza and tamborim replace the kit's kick,
+            # shaker hat and rim, so the drum kit lays out under the bateria.
+            samba_strokes = _se.bar_strokes(idx, intensity=(plan.intensity if plan is not None else "Medium"))
+            bar_patterns = dict(bar_patterns)
+            for part in ("kick_beats", "hat_beats", "cross_stick"):
+                bar_patterns[part] = []
+        elif pulses_per_bar == 4 and _lp.plays(style):
             perc_hits = _lp.bar_hits(style, idx, intensity=(plan.intensity if plan is not None else "Medium"))
             replaced = _lp.replaced_kit_parts(style)
             if replaced:
@@ -3198,6 +3207,15 @@ def synthesize_chords_to_numpy(
                     tone=0.45,
                 )
 
+        if samba_strokes and not bar_drums_silent and not bar_bridge_breakdown:
+            _se.play_bar(
+                drum_bus if drum_bus is not None else audio,
+                sr,
+                idx,
+                samba_strokes,
+                lambda b, _bs=bar_start: _groove_time(_bs, b, pulse, style, swing=swing_amt, pocket=pocket_offset),
+                intensity=intensity * _lp.style_gain(style),
+            )
         if perc_hits and not bar_drums_silent and not bar_bridge_breakdown:
             _lp.play_bar(
                 drum_bus if drum_bus is not None else audio,
@@ -3548,8 +3566,9 @@ def synthesize_chords_to_numpy(
         for _bus in (guitar_bus, strings_bus, horns_bus):
             if _bus is not None:
                 _music = _music + _bus
+        _mix_key = _bb.SAMBA_ENSEMBLE if (style == _lg.SAMBA and _se.enabled() and pulses_per_bar == 4) else str(style)
         _placed, _balance_stats = _bb.place_drums(
-            drum_bus, _music, sr, style=str(style), intensity=(plan.intensity if plan is not None else "Medium"),
+            drum_bus, _music, sr, style=_mix_key, intensity=(plan.intensity if plan is not None else "Medium"),
         )
         audio += _placed
     LAST_MIX_STATS.clear()
