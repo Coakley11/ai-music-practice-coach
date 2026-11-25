@@ -124,3 +124,50 @@ def test_percussion_changes_the_take_and_its_identity(monkeypatch):
     assert "+perc-" in tag_on and "+perc-" not in ba.drum_renderer_tag()
     n = min(len(with_perc), len(without))
     assert not np.allclose(with_perc[:n], without[:n])
+
+
+# --- Phrasing with the song (Latin jazz congas) ------------------------------------------------------------
+
+
+def _phrased(n, bars=8, seed=7, intensity="Medium"):
+    return lp.bar_hits(lg.LATIN_JAZZ, n, intensity=intensity, bar_in_section=n % bars, section_bars=bars, seed=seed)
+
+
+def test_without_section_information_the_bar_is_the_plain_pattern():
+    assert lp.bar_hits(lg.LATIN_JAZZ, 3) == lp.bar_hits(lg.LATIN_JAZZ, 3, seed=99)
+
+
+def test_the_clave_never_changes_for_a_fill_or_a_variation():
+    for n in range(32):
+        claves = [h.beat for h in _phrased(n) if h.voice == "clave"]
+        assert claves == list(lg.SON_CLAVE_2_3[n % 2]), n
+
+
+def test_a_section_ends_with_a_fill_and_the_next_starts_on_the_tumba():
+    end = _phrased(7)
+    opens = [(h.beat, h.voice) for h in end if h.voice in ("conga_open", "tumba_open")]
+    assert (2.0, "conga_open") in opens and (3.25, "tumba_open") in opens and (3.5, "tumba_open") in opens
+    assert not any(h.voice == "conga_muted" and h.beat > 1.0 for h in end)  # the fill replaces the heel-toe
+    start = _phrased(8)
+    assert any(h.beat == 0.0 and h.voice == "tumba_open" for h in start)
+    assert not any(h.beat == 0.0 and h.voice == "tumba_open" for h in _phrased(0))  # not on the take's first beat
+
+
+def test_the_tumbao_varies_like_a_player_not_a_loop():
+    def shape(n, **kw):
+        return tuple((h.beat, h.voice, h.velocity > 0.6) for h in _phrased(n, **kw) if h.voice != "clave")  # where the accents fall
+
+    inner = [n for n in range(64) if n % 8 not in (0, 7)]
+    assert len({shape(n) for n in inner}) >= 3
+    assert shape(5) == shape(5)  # the same take plays the same way
+    assert [shape(n) for n in inner] != [shape(n, seed=8) for n in inner]  # another take differently
+    varied = {k: sum(any(h.beat == 1.5 and h.voice == "tumba_open" for h in _phrased(n, intensity=k)) for n in inner)
+              for k in ("Light", "Heavy")}
+    assert varied["Light"] < varied["Heavy"]
+
+
+def test_velocities_move_a_little_but_keep_the_slap_and_open_tones_strong():
+    for n in range(1, 7):
+        for h in _phrased(n):
+            if h.voice in ("conga_open", "tumba_open") and h.beat in (3.0, 3.5):
+                assert h.velocity > 0.7

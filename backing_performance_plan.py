@@ -334,6 +334,12 @@ def resolve_performance_plan(
         if "keys" not in roles:
             roles.insert(0, "keys")
             fallbacks.append("keys instead of guitar (no guitar renderer for this style / switch off)")
+    if _latin_percussion_plays(style):
+        # MUSIC_LATIN_GROOVES: the recorded percussionist plays this groove, whatever the band: it is named as
+        # playing, never as missing.
+        if "percussion" in missing:
+            missing.remove("percussion")
+        roles.append("percussion")
 
     perf = {r: RolePerformance(plays=r in roles) for r in ("keys", "bass", "drums", "guitar")}
     for table, key in ((_MOOD, mood_n), (_INTENSITY, inten_n), (_LEVEL, level_n)):
@@ -341,7 +347,7 @@ def resolve_performance_plan(
             perf[role] = _merge(perf[role], change)
     return PerformancePlan(
         style=str(style), mood=mood_n, intensity=inten_n, level=level_n, ensemble=ens_n,
-        roles=tuple(r for r in ("keys", "guitar", "horns", "bass", "drums") if r in roles),
+        roles=tuple(r for r in ("keys", "guitar", "horns", "bass", "drums", "percussion") if r in roles),
         keys=perf["keys"], bass=perf["bass"], drums=perf["drums"], guitar=perf["guitar"],
         unavailable=tuple(missing), fallbacks=tuple(fallbacks), horns=horns,
     )
@@ -366,6 +372,16 @@ def ensemble_playable(name: str) -> bool:
     if len(spec.horns) < 2:
         return True
     return _horns_playable(spec.horns)
+
+
+def _latin_percussion_plays(style: str) -> bool:
+    """The recorded Latin percussionist plays ``style`` (backing_latin_percussion: switch on, pack present)."""
+    try:
+        import backing_latin_percussion as _lp
+
+        return bool(_lp.plays(str(style)))
+    except ImportError:
+        return False
 
 
 # Rollback switch for the jam wiring (slice 2). Generated jams use their plan unless this is set to
@@ -403,7 +419,8 @@ def performance_plan_for_backing_context(ctx: Any, *, style: str) -> Performance
     )
 
 
-_ROLE_NAMES = {"keys": "piano", "guitar": "guitar", "bass": "bass", "drums": "drums", "horns": "tenor sax"}
+_ROLE_NAMES = {"keys": "piano", "guitar": "guitar", "bass": "bass", "drums": "drums", "horns": "tenor sax",
+               "percussion": "Latin percussion"}
 _HORN_NAMES = {"tenor": "tenor sax", "trumpet": "trumpet", "trombone": "trombone"}
 
 

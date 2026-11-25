@@ -2540,7 +2540,12 @@ def synthesize_chords_to_numpy(
             for part in ("kick_beats", "hat_beats", "cross_stick"):
                 bar_patterns[part] = []
         elif pulses_per_bar == 4 and _lp.plays(style):
-            perc_hits = _lp.bar_hits(style, idx, intensity=(plan.intensity if plan is not None else "Medium"))
+            perc_hits = _lp.bar_hits(
+                style, idx, intensity=(plan.intensity if plan is not None else "Medium"),
+                bar_in_section=int(event.get("bar_in_section", -1)) if isinstance(event, dict) else None,
+                section_bars=int(event.get("section_bars", 0) or 0) if isinstance(event, dict) else 0,
+                seed=int(_kit_song_seed or 0),
+            )
             replaced = _lp.replaced_kit_parts(style)
             if replaced:
                 bar_patterns = dict(bar_patterns)
