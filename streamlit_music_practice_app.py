@@ -21565,6 +21565,7 @@ elif _studio_page == "practice":
                                 practice_melody_full_song_abc,
                                 practice_melody_section_abc,
                             )
+                            from practice_melody_library import melody_clef as _pm_clef
                             from practice_melody_session import resolve_practice_melody
                             from songs.music_source import resolve_active_song_identity
 
@@ -21674,7 +21675,7 @@ elif _studio_page == "practice":
                                     _pm_section = _pm_melody.section_by_id(_active_section)
                                     if _pm_section is not None:
                                         render_abc(
-                                            practice_melody_section_abc(_pm_melody, _pm_section)
+                                            practice_melody_section_abc(_pm_melody, _pm_section, clef=_pm_clef(str(instrument or "")))
                                         )
                                     else:
                                         st.caption(
@@ -21682,7 +21683,7 @@ elif _studio_page == "practice":
                                             f"**{_active_section_display}** yet."
                                         )
                                 else:
-                                    render_abc(practice_melody_full_song_abc(_pm_melody))
+                                    render_abc(practice_melody_full_song_abc(_pm_melody, clef=_pm_clef(str(instrument or ""))))
 
                 with st.expander(
                     feature_label("practice_melody_uploaded", "My Uploaded Melodies"),
@@ -27801,6 +27802,7 @@ elif _studio_page == "backing":
     # transposes the melody in place; it never regenerates it.
     try:
         from practice_melody_backing import consume_pending_practice_melody_handoff
+        from practice_melody_library import melody_clef as _pmb_clef
         from practice_melody_notation import practice_melody_sections_abc
         from songs.music_source import resolve_active_song_identity
 
@@ -27830,7 +27832,7 @@ elif _studio_page == "backing":
             current_key_center=_pmb_target_key,
         )
     except Exception:
-        _pmb_melody = None
+        _pmb_melody, _pmb_jam, _pmb_song_identity, _pmb_target_key = None, None, "", str(chart_key or "")
     if _pmb_melody is not None:
         # The Backing BPM the musician chose (the same key Practice reads): re-timed, never regenerated.
         try:
@@ -27839,6 +27841,62 @@ elif _studio_page == "backing":
             _pmb_melody = retime_practice_melody(_pmb_melody, bpm=st.session_state.get("backing_track_bpm"))
         except Exception:
             pass
+
+    # What is shown comes from the song's / jam's own melodies (practice_melody_library): the one chosen, for the
+    # groove, level and focus selected now, in the key that sounds, for this instrument. A groove or focus change
+    # selects its own melody; a key, instrument or tempo change only re-projects the same one.
+    _pmb_recipe, _pmb_chords, _pmb_order, _pmb_chords_key, _pmb_choose = "", {}, [], "", None
+    try:
+        import practice_melody_library as _pml
+        from composition_hum_transcription import parse_meter as _pmb_parse_meter
+        from practice_melody_session import instrument_register_args as _pmb_register_args
+        from songs.playback_defaults import normalize_groove_label as _pmb_groove
+
+        if _pmb_jam is not None:
+            _pmb_chords, _pmb_chords_key = _pmb_jam.sections, _pmb_jam.concert_key
+            _pmb_order, _pmb_title = list(_pmb_chords), _pmb_jam.title
+            _pmb_level = _pmb_jam.level or level
+        else:
+            # In Guitar Shape Mode the song's chords here are the concert ones.
+            _pmb_chords = sections if isinstance(sections, dict) else {}
+            _pmb_chords_key = str(
+                (_capo_ctx.sounding_key if _capo_ctx.enabled and instrument == "Guitar" else chart_key) or "C"
+            )
+            _pmb_order = list((song_data or {}).get("section_order") or _pmb_chords)
+            _pmb_title, _pmb_level = song, level
+        _pmb_style = str(resolved_groove or "")
+        if _pmb_jam is not None and _pmb_jam.style and _pmb_groove(_pmb_jam.style) == _pmb_groove(_pmb_style):
+            _pmb_style = _pmb_jam.style  # the jam's own style name (Neo Soul, Modal Vamp ...), not only its groove
+        _pmb_meter = _pmb_parse_meter(str(backing_time_signature or "4/4"))
+        _pmb_recipe = _pml.recipe_for(_pmb_level, _pmb_style, focus, _pmb_meter)
+        _pmb_reg = _pmb_register_args(st.session_state, str(instrument or ""))
+
+        def _pmb_choose(**_kw):
+            return _pml.resolve(
+                st.session_state,
+                identity=_pmb_song_identity,
+                title=_pmb_title,
+                sections=_pmb_chords,
+                section_order=_pmb_order,
+                sections_key=_pmb_chords_key,
+                key_center=_pmb_target_key,
+                level=_pmb_level,
+                tempo_bpm=float(st.session_state.get("backing_track_bpm") or bpm or 100),
+                style=_pmb_style,
+                meter=_pmb_meter,
+                focus=focus,
+                instrument=str(_pmb_reg.get("instrument") or instrument or ""),
+                written_offset=int(_pmb_reg.get("written_offset") or 0),
+                **_kw,
+            )
+
+        if _bk_melody_mode == _BK_MODE_PRACTICE and (
+            _pmb_melody is not None or _pml.shown_on_backing(st.session_state, _pmb_song_identity)
+        ):
+            _pmb_melody = _pmb_choose() or _pmb_melody
+            _pml.show_on_backing(st.session_state, _pmb_song_identity)
+    except Exception:
+        _pmb_choose = None
 
     if _bk_melody_mode == _BK_MODE_PRACTICE and _pmb_melody is not None:
         from melody_panel_visibility import PRACTICE as _PMB_PANEL, melody_expander as _pmb_expander
@@ -27865,13 +27923,27 @@ elif _studio_page == "backing":
                 else "Full song"
             )
             st.caption(
-                f"Song **{song}** · section **{_pmb_scope_label}** · "
+                f"{'Jam' if _pmb_jam is not None else 'Song'} **{_pmb_melody.song_title or song}** · "
+                f"section **{_pmb_scope_label}** · "
                 f"level **{level_label(_pmb_melody.level)}** · "
                 f"key **{_pmb_melody.key_center}** · "
                 f"{_pmb_melody.tempo_bpm:g} BPM · "
                 f"alternative #{_pmb_melody.alt_index + 1} — composed for this "
                 "song's harmony/form, not the original recorded melody."
             )
+            if _pmb_choose is not None:
+                from practice_melody_panel import render_melody_controls
+
+                render_melody_controls(
+                    st,
+                    identity=_pmb_song_identity,
+                    recipe=_pmb_recipe,
+                    melody=_pmb_melody,
+                    sections=_pmb_chords,
+                    section_order=_pmb_order,
+                    sections_key=_pmb_chords_key,
+                    choose=_pmb_choose,
+                )
             # Measure highlighting (Slice F2): join against Backing's own
             # follow_timeline -- the same playback truth driving Backing's
             # chord-chart follow-along -- never a second clock. Silently
@@ -27893,7 +27965,7 @@ elif _studio_page == "backing":
             except Exception:
                 _pmb_measure_sync = None
             render_abc(
-                practice_melody_sections_abc(_pmb_melody, _pmb_display_sections),
+                practice_melody_sections_abc(_pmb_melody, _pmb_display_sections, clef=_pmb_clef(str(instrument or ""))),
                 measure_sync=_pmb_measure_sync,
             )
     elif _bk_melody_mode == _BK_MODE_PRACTICE:
@@ -27901,54 +27973,22 @@ elif _studio_page == "backing":
         # generator and level the Practice page uses (the melody then also shows on Practice). It never changes
         # the song, key, instrument or backing settings, and never starts or stops playback.
         if st.button(
-            f"{FEATURE_ICONS['backing']} Show a Practice Melody for this song",
+            f"{FEATURE_ICONS['backing']} Show a Practice Melody for this {'jam' if _pmb_jam is not None else 'song'}",
             key="backing_practice_melody_create",
         ):
             _pmb_created = None
             try:
-                from composition_hum_transcription import parse_meter as _pmb_parse_meter
-                from practice_melody_backing import begin_practice_melody_backing_handoff
-                from practice_melody_session import resolve_practice_melody
-
-                _pmb_sections = sections if isinstance(sections, dict) else {}
-                if _pmb_jam is not None:
-                    _pmb_sections = _pmb_jam.sections
-                _pmb_created = resolve_practice_melody(
-                    st.session_state,
-                    song_identity=_pmb_song_identity,
-                    song_id_for_generation=_pmb_song_identity,
-                    song_title=_pmb_jam.title if _pmb_jam is not None else song,
-                    sections=_pmb_sections,
-                    section_order=(
-                        list(_pmb_sections.keys())
-                        if _pmb_jam is not None
-                        else (song_data or {}).get("section_order") or list(_pmb_sections.keys())
-                    ),
-                    # A jam's melody is composed in concert pitch; Backing shows it in the chart's key.
-                    # In Shape Mode a song's chords here are concert too.
-                    key_center=(
-                        _pmb_jam.concert_key
-                        if _pmb_jam is not None
-                        else str(_capo_ctx.sounding_key)
-                        if _capo_ctx.enabled and instrument == "Guitar"
-                        else _pmb_target_key
-                    ),
-                    level=(_pmb_jam.level or level) if _pmb_jam is not None else level,
-                    tempo_bpm=float(st.session_state.get("backing_track_bpm") or bpm or 100),
-                    style=str(st.session_state.get("backing_groove_style") or ""),
-                    meter=_pmb_parse_meter(str(backing_time_signature or "4/4")),
-                    focus=focus,
-                    instrument=str(instrument or ""),
-                )
+                _pmb_created = _pmb_choose() if _pmb_choose is not None else None
                 if _pmb_created is not None:
-                    begin_practice_melody_backing_handoff(
-                        st.session_state, melody=_pmb_created, song_identity=_pmb_song_identity
-                    )
+                    from melody_panel_visibility import PRACTICE as _PMB_PANEL, show as _pmb_show
+
+                    _pml.show_on_backing(st.session_state, _pmb_song_identity)
+                    _pmb_show(st.session_state, _PMB_PANEL, _pmb_song_identity)
             except Exception:
                 _pmb_created = None
             if _pmb_created is not None:
                 st.rerun()
-            st.info("This song has no structured chord/section data yet, so a Practice Melody can't be made for it.")
+            st.info("There is no structured chord/section data here yet, so a Practice Melody can't be made for it.")
     elif _bk_melody_mode == _BK_MODE_UPLOADED:
         try:
             from backing_melody_modes import render_uploaded_references

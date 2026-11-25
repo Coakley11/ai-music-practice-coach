@@ -127,6 +127,9 @@ def test_slurs_never_cross_a_rest_or_a_bar():
                         opened = e
                     elif opened is not None and not e.slur:
                         assert not e.is_rest and e.measure == opened.measure
+                    if opened is not None and e is not opened:
+                        assert e.midi != last  # two equal notes under a slur would read as a tie
+                    last = e.midi
                     if e.slur == "end":
                         assert opened is not None and e.measure == opened.measure
                         opened = None

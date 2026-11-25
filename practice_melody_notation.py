@@ -74,6 +74,7 @@ def practice_melody_section_abc(
     section: MelodySection,
     *,
     title: str | None = None,
+    clef: str = "treble",
 ) -> str:
     """ABC text for a single section of a Practice Melody."""
     abc = build_abc_from_melody_events(
@@ -83,6 +84,7 @@ def practice_melody_section_abc(
         bpm=int(round(melody.tempo_bpm)),
         title=title or f"{melody.song_title} - {section.section_id}",
         chords=list(section.chords),
+        clef=clef,
     )
     return _wrap_abc_music_line(abc)
 
@@ -92,6 +94,7 @@ def practice_melody_sections_abc(
     sections: list[MelodySection],
     *,
     title: str | None = None,
+    clef: str = "treble",
 ) -> str:
     """ABC text spanning an arbitrary, ordered subset of a Practice
     Melody's sections -- the Section-Focus-scoped counterpart to
@@ -111,10 +114,11 @@ def practice_melody_sections_abc(
         bpm=int(round(melody.tempo_bpm)),
         title=title or f"{melody.song_title} - {section_label}" if sections != list(melody.sections) else (title or melody.song_title),
         chords=chords,
+        clef=clef,
     )
     return _wrap_abc_music_line(abc)
 
 
-def practice_melody_full_song_abc(melody: PracticeMelody, *, title: str | None = None) -> str:
+def practice_melody_full_song_abc(melody: PracticeMelody, *, title: str | None = None, clef: str = "treble") -> str:
     """ABC text spanning every section of a Practice Melody, in order."""
-    return practice_melody_sections_abc(melody, list(melody.sections), title=title)
+    return practice_melody_sections_abc(melody, list(melody.sections), title=title, clef=clef)

@@ -486,9 +486,16 @@ def mark_events(events: list[MelodyEvent], *, level: str, style: str, focus: str
             groups.append([i])
 
     def slur(idx: list[int]) -> None:
-        if len(idx) >= 2:
-            out[idx[0]] = replace(out[idx[0]], slur="start")
-            out[idx[-1]] = replace(out[idx[-1]], slur="end")
+        # Two notes of one pitch under a slur read as a tie: the slur ends before the repeat.
+        run: list[int] = []
+        for i in idx + [-1]:
+            if i >= 0 and (not run or out[run[-1]].midi != out[i].midi):
+                run.append(i)
+                continue
+            if len(run) >= 2:
+                out[run[0]] = replace(out[run[0]], slur="start")
+                out[run[-1]] = replace(out[run[-1]], slur="end")
+            run = [i]
 
     def art(i: int, name: str) -> None:
         out[i] = replace(out[i], articulation=name)
