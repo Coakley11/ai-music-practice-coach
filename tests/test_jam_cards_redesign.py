@@ -292,7 +292,7 @@ class HelperTests(unittest.TestCase):
     def test_lineup_html_names_members_not_yet_in_the_backing(self) -> None:
         out = jam_art.lineup_html("Latin quartet")
         self.assertIn("Piano", out)
-        self.assertIn("Not in the backing yet: Congas / timbales", out)
+        self.assertIn("Not in the backing yet: Latin percussion", out)
         self.assertNotIn("Not in the backing yet", jam_art.lineup_html("Jazz trio"))
         self.assertIn("Kazoo choir", jam_art.lineup_html("Kazoo choir"))
 

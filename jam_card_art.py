@@ -59,7 +59,7 @@ _ROLE_NAMES_BY_ENSEMBLE: dict[str, dict[str, str]] = {
     "Jazz quartet": {"keys": "Piano", "bass": "Upright bass", "horns": "Sax / trumpet"},
     "Jazz quintet": {"keys": "Piano", "bass": "Upright bass", "horns": "Trumpet & tenor sax"},
     "Rock trio": {"guitar": "Electric guitar"},
-    "Latin quartet": {"keys": "Piano", "percussion": "Congas / timbales"},
+    "Latin quartet": {"keys": "Piano", "percussion": "Latin percussion"},
 }
 
 
