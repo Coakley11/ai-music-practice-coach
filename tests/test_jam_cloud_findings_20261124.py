@@ -578,3 +578,44 @@ class NeverKeyedStyleJamShowsItsKeyTests(unittest.TestCase):
     def test_the_seed_runs_before_the_control_mounts(self):
         src = (ROOT / "improvisation_intelligence_ui.py").read_text(encoding="utf-8")
         self.assertLess(src.index("seed_style_concert_widget_before_mount(session_state)"), src.index('key="improv_style_key"'))
+
+
+class SongReconcilerLeavesTheJamsKeyTests(unittest.TestCase):
+    """Browser trace 2026-11-25: the catalog song reconciler wrote the Composition song's D into the Style Jam's
+    own Practice Key (creative::entry_style_jam), before Generate and again right after Generate sealed G."""
+
+    def _session(self, jam_key):
+        return {
+            "active_catalog_pick_key": "creative::entry_style_jam",
+            # As in the browser: a leftover catalog song (the seed's California Dreamin', C#m) while the Composition
+            # song's D is live, so the song reconciler takes the live D over the jam's stored key.
+            "selected_song": {"title": "California Dreamin'", "key": "C#m"},
+            "display_key": "D",
+            "concert_key": "D",
+            "practice_key_by_source": {"composition::abc": "D", **({"creative::entry_style_jam": jam_key} if jam_key else {})},
+            "studio_page": "creative",
+        }
+
+    def test_a_sealed_jam_key_survives_the_song_reconciler(self) -> None:
+        from music_workflow_song_practice import reconcile_catalog_practice_key_owner
+
+        s = self._session("G")
+        self.assertEqual(reconcile_catalog_practice_key_owner(s, source="test"), "G")
+        self.assertEqual(s["practice_key_by_source"]["creative::entry_style_jam"], "G")
+        self.assertEqual(s["practice_key_by_source"]["composition::abc"], "D")  # the song's own key untouched
+
+    def test_an_unkeyed_jam_is_not_given_the_songs_key(self) -> None:
+        from music_workflow_song_practice import reconcile_catalog_practice_key_owner
+
+        s = self._session("")
+        reconcile_catalog_practice_key_owner(s, source="test")
+        self.assertNotIn("creative::entry_style_jam", s["practice_key_by_source"])
+
+    def test_catalog_songs_still_reconcile(self) -> None:
+        from music_workflow_song_practice import reconcile_catalog_practice_key_owner
+
+        s = self._session("G")
+        s["active_catalog_pick_key"] = "catalog::Jazz tune"
+        s["display_key"] = "F"
+        s["concert_key"] = "F"
+        self.assertEqual(reconcile_catalog_practice_key_owner(s, source="test"), "F")  # the live user choice wins

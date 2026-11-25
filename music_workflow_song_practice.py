@@ -693,6 +693,16 @@ def reconcile_catalog_practice_key_owner(session: dict[str, Any], *, source: str
         except ImportError:
             pass
         return str(session.get("display_key") or session.get("concert_key") or "").strip()
+    if str(pick).startswith("creative::"):
+        # A Style Jam / Jam Session pick is not a catalog song: its key is the jam's own (sealed when it was
+        # generated). Reading it is fine; writing the song's key into it made a jam generated in G play in the
+        # Composition song's D (browser trace 2026-11-25: written before Generate and again right after the seal).
+        try:
+            from songs.practice_key_state import get_practice_concert_key
+
+            return str(get_practice_concert_key(session, pick) or "").strip()
+        except ImportError:
+            return ""
     sel = session.get("selected_song") if isinstance(session.get("selected_song"), dict) else {}
     original = str((sel or {}).get("key") or "").strip()
     # A Custom / Composition SBI lane on screen is a preview with its own key.
