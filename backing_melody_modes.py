@@ -36,6 +36,8 @@ MODE_PRACTICE = "practice"
 MODE_UPLOADED = "uploaded"
 MODES = (MODE_PRACTICE, MODE_UPLOADED)
 MODE_LABELS = {MODE_PRACTICE: "Practice Melody", MODE_UPLOADED: "My Uploaded Melodies"}
+#: Each mode's icon in ``music_feature_icons.FEATURE_ICONS``; only the button text shows it.
+MODE_ICON_CONCEPTS = {MODE_PRACTICE: "backing_mode_practice_melody", MODE_UPLOADED: "backing_mode_uploaded_melodies"}
 #: Set by a hand-off from elsewhere (Practice -> Practice with Backing); applied before the widget exists.
 PENDING_MODE_KEY = "_pending_backing_melody_mode"
 
@@ -50,6 +52,8 @@ __all__ = [
     "MODES",
     "MODE_KEY",
     "MODE_LABELS",
+    "MODE_ICON_CONCEPTS",
+    "mode_button_label",
     "MODE_PRACTICE",
     "MODE_UPLOADED",
     "PENDING_MODE_KEY",
@@ -192,6 +196,16 @@ def original_melody_sections(
 
 # ---- drawing (Backing page) ----------------------------------------------------------------------------------------
 
+def mode_button_label(mode: str) -> str:
+    """A mode's button text: its icon, then the unchanged label."""
+    text = MODE_LABELS.get(mode, mode)
+    try:
+        from music_feature_icons import feature_label
+    except ImportError:
+        return text
+    return feature_label(MODE_ICON_CONCEPTS.get(mode, ""), text)
+
+
 def render_melody_mode_selector(st: Any, session: Any) -> str:
     """The Practice Melody / My Uploaded Melodies choice; returns the active mode."""
     apply_pending_melody_mode(session)
@@ -200,11 +214,11 @@ def render_melody_mode_selector(st: Any, session: Any) -> str:
 
         picked = render_segmented_selector(
             st, session, label="Melody", options=list(MODES), key=MODE_KEY,
-            format_func=lambda m: MODE_LABELS.get(m, m),
+            format_func=mode_button_label,
         )
     except ImportError:
         picked = st.radio("Melody", list(MODES), key=MODE_KEY, horizontal=True,
-                          format_func=lambda m: MODE_LABELS.get(m, m), label_visibility="collapsed")
+                          format_func=mode_button_label, label_visibility="collapsed")
     return picked if picked in MODES else MODE_PRACTICE
 
 
