@@ -33,6 +33,7 @@ import backing_drum_kit as _drum_kit
 import backing_groove_profiles as _groove_profiles
 import backing_latin_grooves as _lg
 import backing_latin_percussion as _lp
+import backing_band_balance as _bb
 import backing_bass_voice as _bv
 import backing_keys_voice as _kv
 import backing_pianist as _pn
@@ -2229,7 +2230,8 @@ def _style_patterns(style, profile: dict | None = None, *, time_signature: str =
 def drum_renderer_tag() -> str:
     """Part of a saved backing's identity, so audio from another drum sound is never replayed as this one."""
     tag = "+drums2-" + _drum_kit._samples.pack_token() if _drum_kit.drum_kit_enabled() else ""
-    return tag + _lp.renderer_tag()  # the recorded Latin percussionist ("" unless MUSIC_LATIN_GROOVES is on)
+    # the recorded Latin percussionist ("" unless MUSIC_LATIN_GROOVES is on); the drum balance (MUSIC_BAND_BALANCE)
+    return tag + _lp.renderer_tag() + _bb.renderer_tag()
 
 
 def _with_drum_kit(render):
@@ -2338,6 +2340,8 @@ def synthesize_chords_to_numpy(
     chord_list = event_cycle * max(1, int(loops))
     audio = np.zeros(int(sr * bar * len(chord_list)) + sr)
     keys_bus = np.zeros_like(audio)
+    # MUSIC_BAND_BALANCE: the recorded kit and the percussionist play into their own bus, placed at the mix.
+    drum_bus = np.zeros_like(audio) if _bb.enabled() else None
     guitar_part = (
         _rg.start_part(
             len(audio), sr,
@@ -2383,6 +2387,7 @@ def synthesize_chords_to_numpy(
     _kit_song_seed = 0
     if _style_kit is not None:
         _style_kit.style = str(style)  # the kit tunes to the style actually played
+        _style_kit.redirect = (audio, drum_bus) if drum_bus is not None else None
         if plan is not None:
             _style_kit.touch = float(plan.drums.velocity)
             _style_kit.fill_rate = float(plan.drums.fills)
@@ -3195,7 +3200,7 @@ def synthesize_chords_to_numpy(
 
         if perc_hits and not bar_drums_silent and not bar_bridge_breakdown:
             _lp.play_bar(
-                audio,
+                drum_bus if drum_bus is not None else audio,
                 sr,
                 perc_hits,
                 lambda b, _bs=bar_start, _i=idx: _humanize_time(
@@ -3500,7 +3505,8 @@ def synthesize_chords_to_numpy(
     # Keys bus level per style, relative to the rhythm section (bass + drums):
     # the old per-style comp multipliers were tuned for a sustained organ and
     # left the piano at 0.05x the rhythm in Jazz and 0.2x in Pop / Bossa.
-    _rhythm_rms = float(np.sqrt(np.mean(audio ** 2)))
+    # The band is levelled against the rhythm section as it has always been (bass + drums at today's level).
+    _rhythm_rms = float(np.sqrt(np.mean((audio if drum_bus is None else audio + drum_bus) ** 2)))
     _keys_rms = float(np.sqrt(np.mean(keys_bus ** 2)))
     if _rhythm_rms > 1e-6 and _keys_rms > 1e-6:
         _target = _KEYS_BALANCE.get(style, 0.55) * float(song_profile.get("keys_level", 1.0))
@@ -3534,6 +3540,18 @@ def synthesize_chords_to_numpy(
     if plan is not None and not plan.plays("keys"):
         keys_bus[:] = 0.0  # a band without keys (a Rock trio): the comping lays out entirely
     horns_bus = _horn_background(plan, chord_list, bar, pulse, pulses_per_bar, sr, len(audio), _rhythm_rms)
+    _balance_stats = None
+    if drum_bus is not None:
+        # The drums take their place under the music (backing_band_balance): softer cymbals, rounded attacks, a
+        # per-style perceived level against piano, bass, guitar, strings and horns.
+        _music = audio + keys_bus
+        for _bus in (guitar_bus, strings_bus, horns_bus):
+            if _bus is not None:
+                _music = _music + _bus
+        _placed, _balance_stats = _bb.place_drums(
+            drum_bus, _music, sr, style=str(style), intensity=(plan.intensity if plan is not None else "Medium"),
+        )
+        audio += _placed
     LAST_MIX_STATS.clear()
     LAST_MIX_STATS.update(
         rhythm_rms=float(np.sqrt(np.mean(audio ** 2))),
@@ -3543,6 +3561,8 @@ def synthesize_chords_to_numpy(
     )
     if horns_bus is not None:
         LAST_MIX_STATS["horns_rms"] = float(np.sqrt(np.mean(horns_bus ** 2)))
+    if _balance_stats:
+        LAST_MIX_STATS.update({f"balance_{k}": v for k, v in _balance_stats.items() if v is not None})
     want = {"rhythm", "keys", "strings", "guitar", "horns"} if layers is None else set(layers)
     if "rhythm" not in want:
         audio[:] = 0.0

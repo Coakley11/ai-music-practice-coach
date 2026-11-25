@@ -175,8 +175,12 @@ class DrumKit:
         # often the drummer fills. 1.0 = the style's own drummer, exactly as before.
         self.touch = 1.0
         self.fill_rate = 1.0
+        # MUSIC_BAND_BALANCE: (song buffer, drum bus) -- hits meant for the song buffer go to the drum bus instead.
+        self.redirect = None
 
     def _place(self, audio: np.ndarray, start_sec: float, sample: np.ndarray, gain: float) -> None:
+        if self.redirect is not None and audio is self.redirect[0]:
+            audio = self.redirect[1]
         start = int(start_sec * self.sr)
         if start >= len(audio) or gain <= 0:
             return
