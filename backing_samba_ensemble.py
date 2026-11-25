@@ -65,6 +65,7 @@ LEVEL = {
 MUTE_TAU_SEC = 0.07  # a hand on the surdo's head: the ring dies this fast after the stroke
 ROOM_WET = 0.16  # the room's level against the dry stroke
 ROOM_RT60 = 0.42
+ROOM_HIGHPASS_HZ = 150.0
 
 
 def enabled() -> bool:
@@ -130,53 +131,96 @@ def _hash01(*parts) -> float:
 
 # --- The parts (one 4/4 bar = two 2/4 samba bars; sixteenth steps 0..15) -------------------------------------
 _TELECO_TECO = (0, 2, 5, 7, 9, 11, 14)
+# The tamborim's second figure (a common samba variation), chosen for some four-bar phrases.
+_TAMBORIM_VARIATION = (0, 3, 6, 8, 10, 12, 14)
 _AGOGO = (
     ((0, 5, 8, 13), (2, 7, 10, 14)),  # high, low
     ((0, 3, 8, 11), (2, 6, 10, 14)),
+    ((0, 5, 8, 12), (2, 6, 10, 15)),
 )
 
 
-def bar_strokes(bar_number: int, *, intensity: str = "Medium") -> list[Stroke]:
+def bar_strokes(
+    bar_number: int,
+    *,
+    intensity: str = "Medium",
+    bar_in_section: int | None = None,
+    section_bars: int = 0,
+    seed: int = 0,
+) -> list[Stroke]:
+    """One bar of the section. With ``bar_in_section`` / ``section_bars`` the players phrase with the song: the
+    primeira marks a new section, the section's last bar is a call into the next (surdo sixteenths, the tamborim's
+    call, pandeiro pushing, the agogo laying out for it), the tamborim and agogo choose their figures per four-bar
+    phrase, and small deterministic variations (seeded by the song) keep repeated bars from being copies."""
     light, heavy = intensity == "Light", intensity == "Heavy"
-    phrase_end = int(bar_number) % 4 == 3
+    pos = (bar_in_section if bar_in_section is not None else int(bar_number)) % 4
+    phrase_end = pos == 3
+    section_end = bool(section_bars) and bar_in_section is not None and bar_in_section == section_bars - 1
+    section_start = bar_in_section == 0 and int(bar_number) > 0
+    phrase = (int(bar_number) - pos) // 4
+    rnd = lambda tag: _hash01("var", seed, int(bar_number), tag)  # noqa: E731
     s: list[Stroke] = []
     for half in (0.0, 2.0):
         # Surdos: primeira (low) open on the "2", muted touch on the "1"; segunda (high) open "1", muted "2".
         s.append(Stroke(half + 1.0, "surdo_low", 0.92))
-        s.append(Stroke(half, "surdo_low", 0.34, muted=True))
+        if section_start and half == 0.0:
+            s.append(Stroke(half, "surdo_low", 0.72))  # the primeira marks the new section
+        else:
+            s.append(Stroke(half, "surdo_low", 0.34, muted=True))
         s.append(Stroke(half, "surdo_high", 0.46))  # the segunda answers; the primeira's "2" leads
         if not light:
             s.append(Stroke(half + 1.0, "surdo_high", 0.30, muted=True))
-        if phrase_end and half == 2.0:
+            if rnd(("dobra", half)) < 0.22:
+                s.append(Stroke(half + 0.5, "surdo_high", 0.26, muted=True))  # a light syncopation, now and then
+        if (phrase_end or section_end) and half == 2.0:
             s.append(Stroke(half + 0.75, "surdo_low", 0.55))  # the pickup into the next phrase's "2"
         if heavy:
             s.append(Stroke(half + 0.5, "surdo_high", 0.42, muted=True))  # cortador syncopations
             s.append(Stroke(half + 1.75, "surdo_high", 0.48))
+    if section_end and not light:
+        # The call into the next section: the surdos in sixteenths on the last beat, growing.
+        s += [Stroke(3.25, "surdo_high", 0.5), Stroke(3.5, "surdo_low", 0.7), Stroke(3.75, "surdo_high", 0.68)]
+    open_three = rnd("pandeiro_open3") < 0.3
+    displaced = rnd("pandeiro_accent") < 0.2
     for beat in range(4):
         for k in range(4):
             b = beat + k * 0.25
+            push = section_end and beat == 3 and not light
             if k == 0:
-                if beat % 2 == 1:
+                if beat % 2 == 1 or (beat == 2 and open_three):
                     s.append(Stroke(b, "pandeiro_skin_open", 0.62))  # the open bass tone on the samba "2"
                 else:
                     s.append(Stroke(b, "pandeiro_skin_muted", 0.55))
                 s.append(Stroke(b, "pandeiro_jingle", 0.34))
             elif k == 3:
-                s.append(Stroke(b, "pandeiro_jingle", 0.78))
+                s.append(Stroke(b, "pandeiro_jingle", 0.62 if (displaced and beat == 2) else 0.78))
             elif not light:
-                s.append(Stroke(b, "pandeiro_jingle", 0.30 if k == 1 else 0.18))  # fingertip, heel ghost
+                if displaced and beat == 2 and k == 2:
+                    s.append(Stroke(b, "pandeiro_jingle", 0.6))  # the accent moved a sixteenth earlier
+                else:
+                    s.append(Stroke(b, "pandeiro_jingle", (0.48 if push else 0.30) if k == 1 else (0.5 if push else 0.18)))
             if not light or k % 2 == 0:
-                s.append(Stroke(b, "ganza_up" if k % 2 else "ganza_down", 0.88 if k == 3 else (0.5 if k == 0 else 0.36)))
+                arch = 0.92 + 0.1 * np.sin(np.pi * (pos + beat / 4 + 0.5) / 4)  # the ganza breathes over the phrase
+                v = 0.88 if k == 3 else (0.5 if k == 0 else 0.36)
+                s.append(Stroke(b, "ganza_up" if k % 2 else "ganza_down", float(min(1.0, v * arch * (1.12 if push else 1.0)))))
     if heavy:
         s += [Stroke(b + 0.5, "pandeiro_shake", 0.4) for b in (1.0, 3.0)]
     if not light:
-        for i, step in enumerate(_TELECO_TECO):
+        figure = _TAMBORIM_VARIATION if _hash01("tamborim_phrase", seed, phrase) < 0.3 else _TELECO_TECO
+        call = section_end or (heavy and phrase_end)
+        for i, step in enumerate(figure):
+            if call and step >= 12:
+                continue
             s.append(Stroke(step * 0.25, "tamborim", 0.66 if i in (0, 4) else 0.48))
-        if heavy and phrase_end:
-            s += [Stroke(3.0 + k * 0.25, "tamborim", 0.42 + 0.1 * k) for k in range(4) if 3.0 + k * 0.25 not in [x * 0.25 for x in _TELECO_TECO]]
-        high, low = _AGOGO[int(bar_number) % 2]
-        s += [Stroke(st * 0.25, "agogo_high", 0.7) for st in high]
-        s += [Stroke(st * 0.25, "agogo_low", 0.62) for st in low]
+        if call:
+            s += [Stroke(3.0 + k * 0.25, "tamborim", 0.5 + 0.1 * k) for k in range(4)]  # the call, growing
+        high, low = _AGOGO[(int(bar_number) + int(_hash01("agogo_phrase", seed, phrase) * 3)) % len(_AGOGO)]
+        for st in high:
+            if not (section_end and st >= 12):  # the bells lay out for the call
+                s.append(Stroke(st * 0.25, "agogo_high", 0.7))
+        for st in low:
+            if not (section_end and st >= 12):
+                s.append(Stroke(st * 0.25, "agogo_low", 0.62))
     return sorted(s, key=lambda x: (x.beat, x.voice))
 
 
@@ -252,6 +296,9 @@ def _stroke_audio(voice: str, layer_file: str, sr: int, muted: bool, pack: str =
         x = x * np.where(t < hold, 1.0, np.exp(-(t - hold) / MUTE_TAU_SEC)).astype(np.float32)
         x = x[: int(min(len(x), (hold + 6 * MUTE_TAU_SEC) * sr))]
     wet = signal.fftconvolve(x, _room_ir(sr))[: len(x) + int(ROOM_RT60 * sr)]
+    # The room's low end is what makes a percussion section muddy: its reflections are high-passed at 150 Hz, so the
+    # surdos keep their own body and only the room's air is added.
+    wet = signal.sosfilt(signal.butter(4, ROOM_HIGHPASS_HZ, "highpass", fs=sr, output="sos"), wet)
     out = np.zeros(len(wet), dtype=np.float32)
     out[: len(x)] += x
     out += ROOM_WET * wet.astype(np.float32)

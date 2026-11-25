@@ -65,7 +65,7 @@ def test_pandeiro_ganza_tamborim_agogo():
     accents = sorted(x.beat for x in jingle if x.velocity > 0.7)
     assert accents == [0.75, 1.75, 2.75, 3.75]
     assert len([x for x in s if x.voice.startswith("ganza")]) == 16
-    assert sorted(_voices(s, "tamborim")) == [st * 0.25 for st in se._TELECO_TECO]
+    assert sorted(_voices(s, "tamborim")) in ([st * 0.25 for st in se._TELECO_TECO], [st * 0.25 for st in se._TAMBORIM_VARIATION])
     assert _voices(se.bar_strokes(0), "agogo") != _voices(se.bar_strokes(1), "agogo")  # two-bar bell phrase
     light = se.bar_strokes(0, intensity="Light")
     assert not _voices(light, "tamborim") and not _voices(light, "agogo")
@@ -258,3 +258,40 @@ def test_no_recording_repeats_back_to_back_over_a_song(monkeypatch, samba_on, au
 def test_thin_layers_borrow_their_neighbours():
     assert se.take_pool([["a"], ["b"], ["c"]], 1) == ["b", "a", "c"]
     assert se.take_pool([["a", "b", "c"], ["d"]], 0) == ["a", "b", "c"]
+
+
+
+def test_the_section_phrases_with_the_song():
+    mid = se.bar_strokes(9, bar_in_section=1, section_bars=8, seed=7)
+    last = se.bar_strokes(15, bar_in_section=7, section_bars=8, seed=7)
+    first = se.bar_strokes(16, bar_in_section=0, section_bars=8, seed=7)
+    # the call into the next section: surdo sixteenths on the last beat, the tamborim's call, the bells lay out for it
+    assert {3.25, 3.5, 3.75} <= set(_voices(last, "surdo")) and not {3.25, 3.5, 3.75} <= set(_voices(mid, "surdo"))
+    assert [b for b in _voices(last, "tamborim") if b >= 3.0] == [3.0, 3.25, 3.5, 3.75]
+    assert not [b for b in _voices(last, "agogo") if b >= 3.0]
+    # the primeira marks the new section with an open stroke on "1"
+    assert any(x.voice == "surdo_low" and x.beat == 0.0 and not x.muted for x in first)
+    assert not any(x.voice == "surdo_low" and x.beat == 0.0 and not x.muted for x in mid)
+    assert not any(b >= 3.25 for b in _voices(se.bar_strokes(15, intensity="Light", bar_in_section=7, section_bars=8), "surdo_high"))
+
+
+def test_different_songs_vary_differently_and_bars_are_not_copies():
+    a = [tuple((x.beat, x.voice, round(x.velocity, 2)) for x in se.bar_strokes(b, bar_in_section=b % 8, section_bars=8, seed=1)) for b in range(16)]
+    b = [tuple((x.beat, x.voice, round(x.velocity, 2)) for x in se.bar_strokes(b, bar_in_section=b % 8, section_bars=8, seed=2)) for b in range(16)]
+    assert a != b  # the variations follow the song
+    assert len(set(a)) >= 6  # sixteen bars are not one bar repeated
+
+
+def test_the_room_adds_air_not_low_end_mud():
+    manifest = json.loads((se.PACK / "manifest.json").read_text(encoding="utf-8"))
+    from scipy import signal
+
+    x = se._stroke_audio("surdo_low", manifest["surdo_low"][2][0], 44100, False)
+    def low_share(y):
+        Y = np.abs(np.fft.rfft(y)) ** 2
+        f = np.fft.rfftfreq(len(y), 1 / 44100)
+        return Y[f < 100].sum() / Y.sum()
+
+    n_dry = len(x) - int(se.ROOM_RT60 * 44100)
+    tail = x[n_dry + 2000:]  # only the room is left here
+    assert low_share(tail) < 0.25 * low_share(x[:n_dry])  # the room keeps the drum's body out of its reflections

@@ -2531,7 +2531,11 @@ def synthesize_chords_to_numpy(
         if pulses_per_bar == 4 and style == _lg.SAMBA and _se.enabled():
             # MUSIC_SAMBA_ENSEMBLE: a recorded Samba section; its surdos, ganza and tamborim replace the kit's kick,
             # shaker hat and rim, so the drum kit lays out under the bateria.
-            samba_strokes = _se.bar_strokes(idx, intensity=(plan.intensity if plan is not None else "Medium"))
+            samba_strokes = _se.bar_strokes(
+                idx, intensity=(plan.intensity if plan is not None else "Medium"),
+                bar_in_section=int(event.get("bar_in_section", idx) or 0), section_bars=int(event.get("section_bars", 0) or 0),
+                seed=_kit_song_seed,
+            )
             bar_patterns = dict(bar_patterns)
             for part in ("kick_beats", "hat_beats", "cross_stick"):
                 bar_patterns[part] = []
