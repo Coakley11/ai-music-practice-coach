@@ -31,6 +31,7 @@ from music_theory import NOTE_TO_MIDI, is_no_chord_token, normalize_root, split_
 import backing_arrangement_profiles as _arr_profiles
 import backing_drum_kit as _drum_kit
 import backing_groove_profiles as _groove_profiles
+import backing_latin_grooves as _lg
 import backing_bass_voice as _bv
 import backing_keys_voice as _kv
 import backing_pianist as _pn
@@ -643,6 +644,14 @@ def _style_drum_character(style: str) -> dict[str, Any]:
             suppress_snare=True,
             suppress_hats=True,
         )
+    elif style == _lg.SAMBA:
+        # Surdo-like kick (soft, round), shaker on the closed hat, partido alto on the rim.
+        base.update(kick_punch=0.6, snare_crack=0.4, kick_vol_mul=0.62, hat_vol_mul=0.75, hat_tone=0.05,
+                    cross_stick_vol_mul=1.9, suppress_snare=True)
+    elif style == _lg.LATIN_JAZZ:
+        # Cascara on the closed hat (the timbale shell), clave on the cross-stick, a light tumbao kick.
+        base.update(kick_punch=0.55, snare_crack=0.4, kick_vol_mul=0.6, hat_vol_mul=1.05, hat_tone=0.1,
+                    cross_stick_vol_mul=2.2, suppress_snare=True)
     elif style == "Blues groove":
         base.update(
             kick_punch=0.95,
@@ -669,6 +678,10 @@ def _style_arrangement_character(style: str) -> dict[str, float]:
         base.update(bass_vol_mul=1.25, comp_vol_mul=0.50, bass_dur_mul=0.82)
     elif style == "Bossa nova":
         base.update(bass_vol_mul=1.1, comp_vol_mul=0.78, bass_dur_mul=0.62)
+    elif style == _lg.SAMBA:
+        base.update(bass_vol_mul=1.15, comp_vol_mul=0.80, bass_dur_mul=0.5)
+    elif style == _lg.LATIN_JAZZ:
+        base.update(bass_vol_mul=1.15, comp_vol_mul=0.82, bass_dur_mul=0.8)
     elif style == "Funk groove":
         base.update(bass_vol_mul=1.2, comp_vol_mul=1.55, bass_dur_mul=0.22)
     elif style == "Blues groove":
@@ -1082,6 +1095,81 @@ def _bossa_bass_bar(chord, next_chord, pulses_per_bar, state, rng, *, density=1.
         until = hits[j + 1][0] if j + 1 < len(hits) else float(pulses_per_bar)
         until = min([until] + [r for r in rests if r > beat])
         notes.append((beat, until - beat, int(midi), accent))
+    return notes
+
+
+def _latin_chord(chord, beat):
+    """The chord sounding at ``beat`` of a 4/4 bar (None on N.C.)."""
+    c = _sub_chord_at_beat(chord, beat, beats_per_bar=4)
+    return None if not c or is_no_chord_token(c) else c
+
+
+def _fifth_below(root_midi: int, fifth_pc: int) -> int:
+    """The chord's fifth under its root (a surdo / tumbao low fifth), or above when that is out of range."""
+    below = root_midi - ((root_midi - fifth_pc) % 12 or 12)
+    return below if below >= BOSSA_BASS_LOW else below + 12
+
+
+def _samba_bass_bar(chord, next_chord, state, rng, *, bar_index=0, density=1.0):
+    """One bar of samba bass, surdo-style, as ``(beat, beats, midi, accent)`` notes.
+
+    The 4/4 bar is two 2/4 samba bars. Each half: a short root on its "1", an optional pickup on the "a"
+    and the long, accented low fifth on its "2" -- the surdo's open stroke. A half takes the chord
+    sounding at its start, so a two-chord bar changes on beat 3.
+    """
+    notes = []
+    p_pick = min(0.95, 0.45 + 0.5 * density)
+    for h in (0.0, 2.0):
+        c = _latin_chord(chord, h)
+        if c is None:
+            continue
+        root_pc, alt_pc = _bossa_bass_pcs(c)
+        root = _bossa_bass_pitch(root_pc, state.get("prev"))
+        low5 = _fifth_below(root, alt_pc) if alt_pc != root_pc else root
+        notes.append((h, 0.7, root, 0.8))
+        if rng.random() < p_pick:
+            notes.append((h + 0.75, 0.22, low5, 0.5))
+        notes.append((h + 1.0, 0.92, low5, 1.0))
+        state["prev"] = root
+    return notes
+
+
+def _tumbao_bass_bar(chord, next_chord, state, rng, *, bar_index=0, density=1.0):
+    """One bar of Afro-Cuban tumbao bass as ``(beat, beats, midi, accent)`` notes.
+
+    The "and" of 2 anticipates beat 3 (the fifth of the chord there, or the root when the chord changes
+    on 3); beat 4 anticipates the next bar's root and is tied over the bar line, so beat 1 is left open.
+    A bar whose downbeat no tie covers (the first bar, after N.C. or a stop) plays its root on 1.
+    """
+    notes = []
+    head = _latin_chord(chord, 0.0)
+    if head is not None:
+        head_pc = _bossa_bass_pcs(head)[0]
+        covered = state.get("tie_bar") == bar_index and state.get("tie_pc") == head_pc
+        if not covered:
+            root = _bossa_bass_pitch(head_pc, state.get("prev"))
+            notes.append((0.0, 1.4, root, 0.9))
+            state["prev"] = root
+    state["tie_bar"] = state["tie_pc"] = None
+    mid = _latin_chord(chord, 2.0)
+    if mid is not None:
+        mid_root_pc, mid_alt_pc = _bossa_bass_pcs(mid)
+        changes = head is None or _bossa_bass_pcs(head)[0] != mid_root_pc
+        if changes:
+            pitch = _bossa_bass_pitch(mid_root_pc, state.get("prev"))
+        else:
+            prev = state.get("prev") if state.get("prev") is not None else _bossa_bass_pitch(mid_root_pc, None)
+            pitch = _fifth_below(prev, mid_alt_pc) if mid_alt_pc != mid_root_pc else prev
+        notes.append((1.5, 1.5, pitch, 0.85))
+        state["prev"] = pitch
+    nxt = _bossa_next_head(next_chord)
+    if nxt is not None:
+        nxt_pc = _bossa_bass_pcs(nxt)[0]
+        pitch = _bossa_bass_pitch(nxt_pc, state.get("prev"))
+        notes.append((3.0, 1.9, pitch, 1.0))  # rings through the next downbeat
+        state.update(prev=pitch, tie_bar=bar_index + 1, tie_pc=nxt_pc)
+    elif mid is not None:
+        notes[-1] = (1.5, 2.4, notes[-1][2], notes[-1][3])  # nothing to anticipate: hold to the end
     return notes
 
 
@@ -2000,6 +2088,9 @@ def _style_patterns(style, profile: dict | None = None, *, time_signature: str =
     except ImportError:
         pass
 
+    if style in _lg.LATIN_STYLES:
+        return _fit(dict(_lg.bar(style, 0).grid))
+
     if style == "Ballad":
         return _fit({
             "bass_beats": [0, 2],
@@ -2309,8 +2400,8 @@ def synthesize_chords_to_numpy(
                 song_profile[_gk] = _gv
     groove_seed = song_groove_seed(song_title, song_artist) if song_title else 0
     swing_amt = float(song_profile.get("swing", 0.0))
-    if style == "Bossa nova":
-        # Bossa nova is straight 8ths: song tweaks and feel text must not swing it.
+    if style == "Bossa nova" or style in _lg.LATIN_STYLES:
+        # Bossa nova, Samba and Latin jazz are straight: song tweaks and feel text must not swing them.
         swing_amt = 0.0
     humanize = float(song_profile.get("humanize_ms", 0.012))
     kick_mul = float(song_profile.get("kick_push", 1.0))
@@ -2322,6 +2413,18 @@ def synthesize_chords_to_numpy(
     arr_char = _style_arrangement_character(style)
     bass_density = float(song_profile.get("bass_density", 1.0)) * float(song_profile.get("density_mul", 1.0))
     bossa_bass_state: dict[str, Any] = {"prev": None, "planned": None}
+    latin_bass_state: dict[str, Any] = {"prev": None, "tie_bar": None, "tie_pc": None}
+    # Latin jazz plays a montuno where the harmony suits one (and the jam is not Light); else sparse comping.
+    latin_montuno = bool(
+        style == _lg.LATIN_JAZZ and pulses_per_bar == 4
+        and (plan is None or plan.intensity != "Light")
+        and _lg.montuno_fits(
+            [[sub.chord for sub in _sub_parse_subdivisions(str(e.get("chord") or ""), beats_per_bar=4)
+              if sub.chord and not is_no_chord_token(sub.chord)]
+             for e in event_cycle if not is_no_chord_token(str(e.get("chord") or ""))],
+            lambda c: split_chord(_chord_head(c))[1],
+        )
+    )
     jazz_bass_state: dict[str, Any] = {"prev": None, "planned": None, "head": None}
     upright = style == "Jazz swing" and bool(_bv.upright_mode()) and (plan is None or plan.plays("bass"))
     upright_takes: dict = {}
@@ -2411,6 +2514,11 @@ def synthesize_chords_to_numpy(
         # The section's texture (``None`` for unlabelled / unknown sections: the groove
         # exactly as before). It narrows the loudness spread between sections and
         # reshapes the bar's grid; the bass, comp and drum blocks below read it.
+        latin_bar = None
+        if style in _lg.LATIN_STYLES and pulses_per_bar == 4:
+            latin_bar = _lg.bar(style, idx, intensity=(plan.intensity if plan is not None else "Medium"))
+            bar_patterns = dict(bar_patterns)
+            bar_patterns.update(latin_bar.grid)
         section_tex = _sa.bar_texture(style, section_plan[idx])
         if plan is not None:
             section_tex = plan.texture(section_tex, role)  # the jam's groove intensity, around the form
@@ -2595,6 +2703,34 @@ def synthesize_chords_to_numpy(
                     _humanize_volume(bass_vol * accent, idx * 41 + n + loop_seed),
                     "bass",
                 )
+        elif style in _lg.LATIN_STYLES and pulses_per_bar == 4 and not bar_is_no_chord:
+            _latin_bar_fn = _samba_bass_bar if style == _lg.SAMBA else _tumbao_bass_bar
+            latin_notes = _latin_bar_fn(
+                chord,
+                next_chord,
+                latin_bass_state,
+                np.random.default_rng(idx * 7919 + groove_seed * 131 + loop_seed),
+                bar_index=idx,
+                density=bass_density * (0.85 if role == "verse" else 1.0)
+                * (section_tex.bass_density if section_tex is not None else 1.0),
+            )
+            bass_vol = 0.11 * intensity * arr_char["bass_vol_mul"]
+            for n, (b, beats, bass_pitch, accent) in enumerate(latin_notes):
+                t_hit = _humanize_time(
+                    _groove_time(bar_start, b, pulse, style, swing=swing_amt, pocket=pocket_offset),
+                    seed=idx * 41 + n + groove_seed + loop_seed,
+                    amount=humanize * 0.5,
+                    beat_len=pulse,
+                )
+                _add_tone(
+                    audio,
+                    sr,
+                    t_hit,
+                    max(0.05, beats * pulse - min(0.03, 0.08 * pulse)),
+                    bass_pitch,
+                    _humanize_volume(bass_vol * accent, idx * 41 + n + loop_seed),
+                    "bass_upright",
+                )
         elif style == "Bossa nova" and not bar_is_no_chord:
             bossa_notes = _bossa_bass_bar(
                 chord,
@@ -2719,7 +2855,21 @@ def synthesize_chords_to_numpy(
         else:
             # A "sustain" texture holds one chord per chord of the bar instead of the comp rhythm.
             comp_mode = section_tex.comp if section_tex is not None else "groove"
-            if pianist is not None and not bar_is_no_chord:
+            _montuno_here = (
+                latin_montuno and pianist is not None and not bar_is_no_chord and comp_mode != "sustain"
+                and role not in ("intro", "outro")
+            )
+            if _montuno_here:
+                _played = pianist.montuno_bar(
+                    _sounding_segments(chord, pulses_per_bar), _bossa_next_head(next_chord), side=idx % 2,
+                )
+                pianist.perform(
+                    keys_bus, sr, _played,
+                    lambda b: _groove_time(bar_start, b, pulse, style, swing=swing_amt, pocket=pocket_offset),
+                    pulse,
+                    gain=0.06 * float(np.clip(intensity, 0.4, 1.3)),
+                )
+            elif pianist is not None and not bar_is_no_chord:
                 _played = pianist.bar(
                     _sounding_segments(chord, pulses_per_bar),
                     _bossa_next_head(next_chord),
@@ -2849,6 +2999,12 @@ def synthesize_chords_to_numpy(
                 elif style == "Bossa nova":
                     comp_vol *= 0.72
                     dur *= 1.28
+                elif style == _lg.SAMBA:
+                    comp_vol *= 0.70
+                    dur = min(dur, pulse * 0.30)  # partido alto: short, percussive chords
+                elif style == _lg.LATIN_JAZZ:
+                    comp_vol *= 0.74
+                    dur = min(dur, pulse * 0.45)
                 elif style == "Blues groove":
                     dur *= 1.38
                     comp_vol *= 1.18
@@ -2948,6 +3104,8 @@ def synthesize_chords_to_numpy(
                     hat_vol *= 1.28
                 if groove is not None:
                     hat_vol *= groove.hat_accent(b)
+                if latin_bar is not None:
+                    hat_vol *= latin_bar.hat_accent(b)
                 is_open_hat = any(abs(b - oa) < 0.06 for oa in bar_open_ands)
                 hat_t = _humanize_time(
                     _groove_time(bar_start, b, pulse, style, swing=swing_amt, pocket=pocket_offset),
@@ -3056,7 +3214,8 @@ def synthesize_chords_to_numpy(
                         beat_len=pulse,
                     ),
                     _humanize_volume(
-                        0.095 * intensity * kick_mul * kick_vol_mul * drum_char["kick_vol_mul"],
+                        0.095 * intensity * kick_mul * kick_vol_mul * drum_char["kick_vol_mul"]
+                        * (latin_bar.kick_accent(b) if latin_bar is not None else 1.0),
                         idx * 83 + loop_seed,
                     ),
                     punch=drum_char["kick_punch"],
@@ -3083,6 +3242,7 @@ def synthesize_chords_to_numpy(
                 and walk_notes is None
                 and tex_bass not in ("roots", "half")  # held roots / two-feel: no walk-up
                 and style not in ("Ballad", "Bossa nova")  # Bossa writes its own "and" of 4
+                and style not in _lg.LATIN_STYLES  # so do Samba (the "a" pickups) and the tumbao
             ):
                 cur_root = bass_note(sounding_chord)
                 # ``next_chord`` may itself be a hit/tacet/subdivided
@@ -3243,7 +3403,7 @@ def synthesize_chords_to_numpy(
             # bass attack just because a section ends.
             # Bossa's and Funk's own bar lines already lead into the next section.
             if (not bar_is_no_chord and not is_no_chord_token(tail_chord) and style != "Bossa nova"
-                    and funk_notes is None and walk_notes is None and tex_bass not in ("roots", "half")):
+                    and style not in _lg.LATIN_STYLES and funk_notes is None and walk_notes is None and tex_bass not in ("roots", "half")):
                 approach = _bass_motion_pitch(tail_chord, tail_next, style, len(bass_hits) - 1, len(bass_hits))
                 _add_tone(audio, sr, bar_start + tail * pulse, pulse * 0.25, approach, 0.075 * intensity, "bass")
             _add_noise_hit(
@@ -3259,6 +3419,7 @@ def synthesize_chords_to_numpy(
                 and next_event
                 and _section_role(next_event.get("section")) == "chorus"
                 and style != "Bossa nova"
+                and style not in _lg.LATIN_STYLES
                 and funk_notes is None
                 and walk_notes is None
                 and tex_bass not in ("roots", "half")
@@ -3282,7 +3443,8 @@ def synthesize_chords_to_numpy(
                     if sub.push and beat_cursor > 0:
                         push_b = max(0.0, beat_cursor - 0.5)
                         # Bossa's and Funk's bar lines already play the pushed chord.
-                        if style != "Bossa nova" and funk_notes is None and walk_notes is None and tex_bass not in ("roots", "half"):
+                        if (style != "Bossa nova" and style not in _lg.LATIN_STYLES and funk_notes is None
+                                and walk_notes is None and tex_bass not in ("roots", "half")):
                             push_pitch = _bass_motion_pitch(
                                 sub.chord, None, style, 0, 1
                             )

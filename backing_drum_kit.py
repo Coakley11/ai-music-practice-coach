@@ -51,6 +51,8 @@ _STYLE_TRIM: dict[str, dict[str, float]] = {
     "Funk groove": {"kick": 1.55, "snare": 1.4},
     "Jazz swing": {"kick": 0.55, "snare": 0.8, "tom": 0.7, "pedal": 0.85, "ride": 0.62, "bell": 0.62},
     "Bossa nova": {"kick": 0.85},
+    "Samba": {"kick": 0.9, "closed": 1.6, "rim": 0.9},
+    "Latin jazz": {"kick": 0.8, "closed": 1.8, "rim": 1.0},
     "Ballad": {"kick": 0.85, "snare": 0.85, "crash": 0.8},
 }
 _HAT_VOICES = frozenset({"closed", "half", "three", "open", "pedal"})
@@ -63,6 +65,8 @@ _TUNING: dict[str, dict[str, float]] = {
     "Funk groove": {"kick_hz": 50.0, "kick_sweep": 80.0, "kick_decay": 12.0, "snare_hz": 215.0, "snare_decay": 30.0, "wires": 0.8, "hat_lo": 7000.0},
     "Jazz swing": {"kick_hz": 58.0, "kick_sweep": 40.0, "kick_decay": 10.0, "snare_hz": 240.0, "snare_decay": 26.0, "wires": 0.45, "hat_lo": 6000.0},
     "Bossa nova": {"kick_hz": 56.0, "kick_sweep": 36.0, "kick_decay": 11.0, "snare_hz": 240.0, "snare_decay": 30.0, "wires": 0.35, "hat_lo": 7000.0},
+    "Samba": {"kick_hz": 46.0, "kick_sweep": 30.0, "kick_decay": 7.0, "snare_hz": 230.0, "snare_decay": 30.0, "wires": 0.3, "hat_lo": 8000.0},
+    "Latin jazz": {"kick_hz": 54.0, "kick_sweep": 34.0, "kick_decay": 10.0, "snare_hz": 250.0, "snare_decay": 28.0, "wires": 0.3, "hat_lo": 7000.0},
     "Ballad": {"kick_hz": 48.0, "kick_sweep": 54.0, "kick_decay": 8.0, "snare_hz": 190.0, "snare_decay": 20.0, "wires": 0.55, "hat_lo": 6000.0},
 }
 
