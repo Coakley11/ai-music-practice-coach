@@ -448,7 +448,12 @@ class StyleJamShowsOnlyItsOwnJamTests(unittest.TestCase):
     def test_the_renderer_checks_ownership_before_the_heading(self):
         src = (ROOT / "improvisation_intelligence_ui.py").read_text(encoding="utf-8")
         guard = src.index("if gen and not is_style_jam_section_map(gen):")
-        heading = src.index('f"Generated **{_style_label}** in **{_key_label}** · "')
+        # The heading is the jam cards' result head (jam_card_art.result_head_html) since the cards redesign; before
+        # it, a "Generated **style** in **key**" markdown line. Either way it is drawn only after the ownership check.
+        marks = ('f"Generated **{_style_label}** in **{_key_label}** · "', "jam_art.result_head_html(")
+        found = [src.index(m) for m in marks if m in src]
+        self.assertTrue(found)  # the jam's heading is drawn by one of the two
+        heading = min(found)
         self.assertLess(guard, heading)
 
 
