@@ -1,0 +1,1215 @@
+{
+ "sr": 44100,
+ "source": "Tenor trombone (a 1950s Olds Super), VSCO 2 Community Edition (Versilian Studios), CC0",
+ "range": [
+  41,
+  67
+ ],
+ "zones": [
+  {
+   "key": 41,
+   "layers": [
+    {
+     "velocity": 0.45,
+     "takes": [
+      {
+       "file": "sus_41_v3.flac",
+       "cents": -0.2,
+       "gain": 0.1726,
+       "onset_sec": 0.004,
+       "seconds": 2.504,
+       "source_file": "Trombone_Sustain_F1_v3_1.wav"
+      }
+     ]
+    },
+    {
+     "velocity": 0.8,
+     "takes": [
+      {
+       "file": "sus_41_v4.flac",
+       "cents": -0.5,
+       "gain": 0.5222,
+       "onset_sec": 0.004,
+       "seconds": 2.504,
+       "source_file": "Trombone_Sustain_F1_v4_1.wav"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "key": 43,
+   "layers": [
+    {
+     "velocity": 0.45,
+     "takes": [
+      {
+       "file": "sus_43_v3.flac",
+       "cents": -0.2,
+       "gain": 0.1398,
+       "onset_sec": 0.004,
+       "seconds": 2.504,
+       "source_file": "Trombone_Sustain_G1_v3_1.wav"
+      }
+     ]
+    },
+    {
+     "velocity": 0.8,
+     "takes": [
+      {
+       "file": "sus_43_v4.flac",
+       "cents": 0.3,
+       "gain": 0.3244,
+       "onset_sec": 0.004,
+       "seconds": 2.504,
+       "source_file": "Trombone_Sustain_G1_v4_1.wav"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "key": 45,
+   "layers": [
+    {
+     "velocity": 0.45,
+     "takes": [
+      {
+       "file": "sus_45_v3.flac",
+       "cents": 0.7,
+       "gain": 0.1181,
+       "onset_sec": 0.004,
+       "seconds": 2.504,
+       "source_file": "Trombone_Sustain_A1_v3_1.wav"
+      }
+     ]
+    },
+    {
+     "velocity": 0.8,
+     "takes": [
+      {
+       "file": "sus_45_v4.flac",
+       "cents": -0.0,
+       "gain": 0.3603,
+       "onset_sec": 0.004,
+       "seconds": 2.504,
+       "source_file": "Trombone_Sustain_A1_v4_1.wav"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "key": 46,
+   "layers": [
+    {
+     "velocity": 0.45,
+     "takes": [
+      {
+       "file": "sus_46_v3.flac",
+       "cents": -0.7,
+       "gain": 0.1312,
+       "onset_sec": 0.004,
+       "seconds": 2.504,
+       "source_file": "Trombone_Sustain_A#1_v3_1.wav"
+      }
+     ]
+    },
+    {
+     "velocity": 0.8,
+     "takes": [
+      {
+       "file": "sus_46_v4.flac",
+       "cents": 0.0,
+       "gain": 0.4085,
+       "onset_sec": 0.004,
+       "seconds": 2.504,
+       "source_file": "Trombone_Sustain_A#1_v4_1.wav"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "key": 48,
+   "layers": [
+    {
+     "velocity": 0.45,
+     "takes": [
+      {
+       "file": "sus_48_v3.flac",
+       "cents": -0.1,
+       "gain": 0.1455,
+       "onset_sec": 0.004,
+       "seconds": 2.504,
+       "source_file": "Trombone_Sustain_C2_v3_1.wav"
+      }
+     ]
+    },
+    {
+     "velocity": 0.8,
+     "takes": [
+      {
+       "file": "sus_48_v4.flac",
+       "cents": 0.4,
+       "gain": 0.3731,
+       "onset_sec": 0.004,
+       "seconds": 2.504,
+       "source_file": "Trombone_Sustain_C2_v4_1.wav"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "key": 50,
+   "layers": [
+    {
+     "velocity": 0.45,
+     "takes": [
+      {
+       "file": "sus_50_v3.flac",
+       "cents": 0.1,
+       "gain": 0.1037,
+       "onset_sec": 0.004,
+       "seconds": 2.504,
+       "source_file": "Trombone_Sustain_D2_v3_1.wav"
+      }
+     ]
+    },
+    {
+     "velocity": 0.8,
+     "takes": [
+      {
+       "file": "sus_50_v4.flac",
+       "cents": -0.0,
+       "gain": 0.4737,
+       "onset_sec": 0.004,
+       "seconds": 2.504,
+       "source_file": "Trombone_Sustain_D2_v4_1.wav"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "key": 51,
+   "layers": [
+    {
+     "velocity": 0.45,
+     "takes": [
+      {
+       "file": "sus_51_v3.flac",
+       "cents": -0.1,
+       "gain": 0.1036,
+       "onset_sec": 0.004,
+       "seconds": 2.504,
+       "source_file": "Trombone_Sustain_D#2_v3_1.wav"
+      }
+     ]
+    },
+    {
+     "velocity": 0.8,
+     "takes": [
+      {
+       "file": "sus_51_v4.flac",
+       "cents": 0.0,
+       "gain": 0.3644,
+       "onset_sec": 0.004,
+       "seconds": 2.504,
+       "source_file": "Trombone_Sustain_D#2_v4_1.wav"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "key": 53,
+   "layers": [
+    {
+     "velocity": 0.45,
+     "takes": [
+      {
+       "file": "sus_53_v3.flac",
+       "cents": -0.3,
+       "gain": 0.1009,
+       "onset_sec": 0.004,
+       "seconds": 2.504,
+       "source_file": "Trombone_Sustain_F2_v3_1.wav"
+      }
+     ]
+    },
+    {
+     "velocity": 0.8,
+     "takes": [
+      {
+       "file": "sus_53_v4.flac",
+       "cents": 0.1,
+       "gain": 0.2963,
+       "onset_sec": 0.004,
+       "seconds": 2.504,
+       "source_file": "Trombone_Sustain_F2_v4_1.wav"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "key": 55,
+   "layers": [
+    {
+     "velocity": 0.45,
+     "takes": [
+      {
+       "file": "sus_55_v3.flac",
+       "cents": -0.3,
+       "gain": 0.0903,
+       "onset_sec": 0.004,
+       "seconds": 2.504,
+       "source_file": "Trombone_Sustain_G2_v3_1.wav"
+      }
+     ]
+    },
+    {
+     "velocity": 0.8,
+     "takes": [
+      {
+       "file": "sus_55_v4.flac",
+       "cents": -0.1,
+       "gain": 0.302,
+       "onset_sec": 0.004,
+       "seconds": 2.504,
+       "source_file": "Trombone_Sustain_G2_v4_1.wav"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "key": 57,
+   "layers": [
+    {
+     "velocity": 0.45,
+     "takes": [
+      {
+       "file": "sus_57_v3.flac",
+       "cents": -0.3,
+       "gain": 0.084,
+       "onset_sec": 0.004,
+       "seconds": 2.504,
+       "source_file": "Trombone_Sustain_A2_v3_1.wav"
+      }
+     ]
+    },
+    {
+     "velocity": 0.8,
+     "takes": [
+      {
+       "file": "sus_57_v4.flac",
+       "cents": -0.4,
+       "gain": 0.2649,
+       "onset_sec": 0.004,
+       "seconds": 2.504,
+       "source_file": "Trombone_Sustain_A2_v4_1.wav"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "key": 58,
+   "layers": [
+    {
+     "velocity": 0.45,
+     "takes": [
+      {
+       "file": "sus_58_v3.flac",
+       "cents": 0.3,
+       "gain": 0.0861,
+       "onset_sec": 0.004,
+       "seconds": 2.504,
+       "source_file": "Trombone_Sustain_A#2_v3_1.wav"
+      }
+     ]
+    },
+    {
+     "velocity": 0.8,
+     "takes": [
+      {
+       "file": "sus_58_v4.flac",
+       "cents": 0.1,
+       "gain": 0.2497,
+       "onset_sec": 0.004,
+       "seconds": 2.504,
+       "source_file": "Trombone_Sustain_A#2_v4_1.wav"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "key": 60,
+   "layers": [
+    {
+     "velocity": 0.45,
+     "takes": [
+      {
+       "file": "sus_60_v3.flac",
+       "cents": -0.3,
+       "gain": 0.0796,
+       "onset_sec": 0.004,
+       "seconds": 2.504,
+       "source_file": "Trombone_Sustain_C3_v3_1.wav"
+      }
+     ]
+    },
+    {
+     "velocity": 0.8,
+     "takes": [
+      {
+       "file": "sus_60_v4.flac",
+       "cents": 0.0,
+       "gain": 0.2398,
+       "onset_sec": 0.004,
+       "seconds": 2.504,
+       "source_file": "Trombone_Sustain_C3_v4_1.wav"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "key": 62,
+   "layers": [
+    {
+     "velocity": 0.45,
+     "takes": [
+      {
+       "file": "sus_62_v3.flac",
+       "cents": 0.1,
+       "gain": 0.0846,
+       "onset_sec": 0.004,
+       "seconds": 2.504,
+       "source_file": "Trombone_Sustain_D3_v3_1.wav"
+      }
+     ]
+    },
+    {
+     "velocity": 0.8,
+     "takes": [
+      {
+       "file": "sus_62_v4.flac",
+       "cents": 0.0,
+       "gain": 0.2133,
+       "onset_sec": 0.004,
+       "seconds": 2.504,
+       "source_file": "Trombone_Sustain_D3_v4_1.wav"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "key": 63,
+   "layers": [
+    {
+     "velocity": 0.45,
+     "takes": [
+      {
+       "file": "sus_63_v3.flac",
+       "cents": -0.0,
+       "gain": 0.0709,
+       "onset_sec": 0.004,
+       "seconds": 2.504,
+       "source_file": "Trombone_Sustain_D#3_v3_1.wav"
+      }
+     ]
+    },
+    {
+     "velocity": 0.8,
+     "takes": [
+      {
+       "file": "sus_63_v4.flac",
+       "cents": 0.0,
+       "gain": 0.1907,
+       "onset_sec": 0.004,
+       "seconds": 2.504,
+       "source_file": "Trombone_Sustain_D#3_v4_1.wav"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "key": 65,
+   "layers": [
+    {
+     "velocity": 0.45,
+     "takes": [
+      {
+       "file": "sus_65_v3.flac",
+       "cents": -0.3,
+       "gain": 0.0654,
+       "onset_sec": 0.004,
+       "seconds": 2.504,
+       "source_file": "Trombone_Sustain_F3_v3_1.wav"
+      }
+     ]
+    },
+    {
+     "velocity": 0.8,
+     "takes": [
+      {
+       "file": "sus_65_v4.flac",
+       "cents": -0.1,
+       "gain": 0.1699,
+       "onset_sec": 0.004,
+       "seconds": 2.504,
+       "source_file": "Trombone_Sustain_F3_v4_1.wav"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "key": 67,
+   "layers": [
+    {
+     "velocity": 0.45,
+     "takes": [
+      {
+       "file": "sus_67_v2.flac",
+       "cents": -0.3,
+       "gain": 0.0705,
+       "onset_sec": 0.004,
+       "seconds": 2.504,
+       "source_file": "Trombone_Sustain_G3_v2_1.wav"
+      }
+     ]
+    },
+    {
+     "velocity": 0.8,
+     "takes": [
+      {
+       "file": "sus_67_v5.flac",
+       "cents": -0.1,
+       "gain": 0.283,
+       "onset_sec": 0.004,
+       "seconds": 2.504,
+       "source_file": "Trombone_Sustain_G3_v5_1.wav"
+      }
+     ]
+    }
+   ]
+  }
+ ],
+ "articulations": {
+  "staccato": [
+   {
+    "key": 41,
+    "layers": [
+     {
+      "velocity": 0.45,
+      "takes": [
+       {
+        "file": "stac_41_v2.flac",
+        "cents": 1.3,
+        "gain": 0.2821,
+        "onset_sec": 0.004,
+        "seconds": 0.761,
+        "source_file": "Trombone_Short_F1_v2_1.wav"
+       },
+       {
+        "file": "stac_41_v2_r2.flac",
+        "cents": 2.9,
+        "gain": 0.2938,
+        "onset_sec": 0.004,
+        "seconds": 0.87,
+        "source_file": "Trombone_Short_F1_v2_2.wav"
+       }
+      ]
+     },
+     {
+      "velocity": 0.8,
+      "takes": [
+       {
+        "file": "stac_41_v3.flac",
+        "cents": 5.6,
+        "gain": 1.4227,
+        "onset_sec": 0.004,
+        "seconds": 0.391,
+        "source_file": "Trombone_Short_F1_v3_1.wav"
+       },
+       {
+        "file": "stac_41_v3_r2.flac",
+        "cents": 11.5,
+        "gain": 1.5581,
+        "onset_sec": 0.004,
+        "seconds": 0.417,
+        "source_file": "Trombone_Short_F1_v3_2.wav"
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "key": 43,
+    "layers": [
+     {
+      "velocity": 0.45,
+      "takes": [
+       {
+        "file": "stac_43_v2.flac",
+        "cents": 3.3,
+        "gain": 0.2838,
+        "onset_sec": 0.004,
+        "seconds": 0.743,
+        "source_file": "Trombone_Short_G1_v2_1.wav"
+       },
+       {
+        "file": "stac_43_v2_r2.flac",
+        "cents": 1.7,
+        "gain": 0.2633,
+        "onset_sec": 0.004,
+        "seconds": 0.711,
+        "source_file": "Trombone_Short_G1_v2_2.wav"
+       }
+      ]
+     },
+     {
+      "velocity": 0.8,
+      "takes": [
+       {
+        "file": "stac_43_v3.flac",
+        "cents": 5.0,
+        "gain": 1.2268,
+        "onset_sec": 0.004,
+        "seconds": 0.386,
+        "source_file": "Trombone_Short_G1_v3_1.wav"
+       },
+       {
+        "file": "stac_43_v3_r2.flac",
+        "cents": 1.2,
+        "gain": 1.2296,
+        "onset_sec": 0.004,
+        "seconds": 0.366,
+        "source_file": "Trombone_Short_G1_v3_2.wav"
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "key": 45,
+    "layers": [
+     {
+      "velocity": 0.45,
+      "takes": [
+       {
+        "file": "stac_45_v2.flac",
+        "cents": 1.9,
+        "gain": 0.3424,
+        "onset_sec": 0.004,
+        "seconds": 0.605,
+        "source_file": "Trombone_Short_A1_v2_1.wav"
+       },
+       {
+        "file": "stac_45_v2_r2.flac",
+        "cents": 2.2,
+        "gain": 0.3131,
+        "onset_sec": 0.004,
+        "seconds": 0.639,
+        "source_file": "Trombone_Short_A1_v2_2.wav"
+       }
+      ]
+     },
+     {
+      "velocity": 0.8,
+      "takes": [
+       {
+        "file": "stac_45_v3.flac",
+        "cents": 7.1,
+        "gain": 0.9662,
+        "onset_sec": 0.004,
+        "seconds": 0.402,
+        "source_file": "Trombone_Short_A1_v3_1.wav"
+       },
+       {
+        "file": "stac_45_v3_r2.flac",
+        "cents": 5.1,
+        "gain": 0.9011,
+        "onset_sec": 0.004,
+        "seconds": 0.42,
+        "source_file": "Trombone_Short_A1_v3_2.wav"
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "key": 46,
+    "layers": [
+     {
+      "velocity": 0.45,
+      "takes": [
+       {
+        "file": "stac_46_v2.flac",
+        "cents": -1.7,
+        "gain": 0.2533,
+        "onset_sec": 0.004,
+        "seconds": 0.344,
+        "source_file": "Trombone_Short_A#1_v2_1.wav"
+       },
+       {
+        "file": "stac_46_v2_r2.flac",
+        "cents": 0.7,
+        "gain": 0.3105,
+        "onset_sec": 0.004,
+        "seconds": 0.676,
+        "source_file": "Trombone_Short_A#1_v2_2.wav"
+       }
+      ]
+     },
+     {
+      "velocity": 0.8,
+      "takes": [
+       {
+        "file": "stac_46_v3.flac",
+        "cents": -14.7,
+        "gain": 1.3793,
+        "onset_sec": 0.004,
+        "seconds": 0.337,
+        "source_file": "Trombone_Short_A#1_v3_1.wav"
+       },
+       {
+        "file": "stac_46_v3_r2.flac",
+        "cents": -0.4,
+        "gain": 0.858,
+        "onset_sec": 0.004,
+        "seconds": 0.296,
+        "source_file": "Trombone_Short_A#1_v3_2.wav"
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "key": 48,
+    "layers": [
+     {
+      "velocity": 0.45,
+      "takes": [
+       {
+        "file": "stac_48_v2.flac",
+        "cents": -0.6,
+        "gain": 0.247,
+        "onset_sec": 0.004,
+        "seconds": 0.459,
+        "source_file": "Trombone_Short_C2_v2_1.wav"
+       },
+       {
+        "file": "stac_48_v2_r2.flac",
+        "cents": -6.0,
+        "gain": 0.2628,
+        "onset_sec": 0.004,
+        "seconds": 0.469,
+        "source_file": "Trombone_Short_C2_v2_2.wav"
+       }
+      ]
+     },
+     {
+      "velocity": 0.8,
+      "takes": [
+       {
+        "file": "stac_48_v3.flac",
+        "cents": 2.9,
+        "gain": 0.878,
+        "onset_sec": 0.004,
+        "seconds": 0.275,
+        "source_file": "Trombone_Short_C2_v3_1.wav"
+       },
+       {
+        "file": "stac_48_v3_r2.flac",
+        "cents": -5.7,
+        "gain": 0.9545,
+        "onset_sec": 0.004,
+        "seconds": 0.4,
+        "source_file": "Trombone_Short_C2_v3_2.wav"
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "key": 50,
+    "layers": [
+     {
+      "velocity": 0.45,
+      "takes": [
+       {
+        "file": "stac_50_v2.flac",
+        "cents": 3.1,
+        "gain": 0.2649,
+        "onset_sec": 0.004,
+        "seconds": 0.664,
+        "source_file": "Trombone_Short_D2_v2_1.wav"
+       },
+       {
+        "file": "stac_50_v2_r2.flac",
+        "cents": 2.2,
+        "gain": 0.2589,
+        "onset_sec": 0.004,
+        "seconds": 0.845,
+        "source_file": "Trombone_Short_D2_v2_2.wav"
+       }
+      ]
+     },
+     {
+      "velocity": 0.8,
+      "takes": [
+       {
+        "file": "stac_50_v3.flac",
+        "cents": 4.5,
+        "gain": 0.8897,
+        "onset_sec": 0.004,
+        "seconds": 0.34,
+        "source_file": "Trombone_Short_D2_v3_1.wav"
+       },
+       {
+        "file": "stac_50_v3_r2.flac",
+        "cents": 1.0,
+        "gain": 0.8463,
+        "onset_sec": 0.004,
+        "seconds": 0.338,
+        "source_file": "Trombone_Short_D2_v3_2.wav"
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "key": 51,
+    "layers": [
+     {
+      "velocity": 0.45,
+      "takes": [
+       {
+        "file": "stac_51_v2.flac",
+        "cents": 0.9,
+        "gain": 0.2184,
+        "onset_sec": 0.004,
+        "seconds": 0.581,
+        "source_file": "Trombone_Short_D#2_v2_1.wav"
+       },
+       {
+        "file": "stac_51_v2_r2.flac",
+        "cents": 2.5,
+        "gain": 0.2265,
+        "onset_sec": 0.004,
+        "seconds": 0.704,
+        "source_file": "Trombone_Short_D#2_v2_2.wav"
+       }
+      ]
+     },
+     {
+      "velocity": 0.8,
+      "takes": [
+       {
+        "file": "stac_51_v3.flac",
+        "cents": -0.2,
+        "gain": 0.7353,
+        "onset_sec": 0.004,
+        "seconds": 0.349,
+        "source_file": "Trombone_Short_D#2_v3_1.wav"
+       },
+       {
+        "file": "stac_51_v3_r2.flac",
+        "cents": -5.8,
+        "gain": 0.7519,
+        "onset_sec": 0.004,
+        "seconds": 0.347,
+        "source_file": "Trombone_Short_D#2_v3_2.wav"
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "key": 53,
+    "layers": [
+     {
+      "velocity": 0.45,
+      "takes": [
+       {
+        "file": "stac_53_v2.flac",
+        "cents": 0.2,
+        "gain": 0.2063,
+        "onset_sec": 0.004,
+        "seconds": 0.789,
+        "source_file": "Trombone_Short_F2_v2_1.wav"
+       },
+       {
+        "file": "stac_53_v2_r2.flac",
+        "cents": 0.3,
+        "gain": 0.202,
+        "onset_sec": 0.004,
+        "seconds": 0.688,
+        "source_file": "Trombone_Short_F2_v2_2.wav"
+       }
+      ]
+     },
+     {
+      "velocity": 0.8,
+      "takes": [
+       {
+        "file": "stac_53_v3.flac",
+        "cents": 0.7,
+        "gain": 0.6088,
+        "onset_sec": 0.004,
+        "seconds": 0.413,
+        "source_file": "Trombone_Short_F2_v3_1.wav"
+       },
+       {
+        "file": "stac_53_v3_r2.flac",
+        "cents": -3.9,
+        "gain": 0.6862,
+        "onset_sec": 0.004,
+        "seconds": 0.353,
+        "source_file": "Trombone_Short_F2_v3_2.wav"
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "key": 55,
+    "layers": [
+     {
+      "velocity": 0.45,
+      "takes": [
+       {
+        "file": "stac_55_v2.flac",
+        "cents": 0.6,
+        "gain": 0.2198,
+        "onset_sec": 0.004,
+        "seconds": 0.692,
+        "source_file": "Trombone_Short_G2_v2_1.wav"
+       },
+       {
+        "file": "stac_55_v2_r2.flac",
+        "cents": 0.6,
+        "gain": 0.2117,
+        "onset_sec": 0.004,
+        "seconds": 0.741,
+        "source_file": "Trombone_Short_G2_v2_2.wav"
+       }
+      ]
+     },
+     {
+      "velocity": 0.8,
+      "takes": [
+       {
+        "file": "stac_55_v3.flac",
+        "cents": -1.2,
+        "gain": 0.6949,
+        "onset_sec": 0.004,
+        "seconds": 0.378,
+        "source_file": "Trombone_Short_G2_v3_1.wav"
+       },
+       {
+        "file": "stac_55_v3_r2.flac",
+        "cents": 2.5,
+        "gain": 0.7196,
+        "onset_sec": 0.004,
+        "seconds": 0.38,
+        "source_file": "Trombone_Short_G2_v3_2.wav"
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "key": 57,
+    "layers": [
+     {
+      "velocity": 0.45,
+      "takes": [
+       {
+        "file": "stac_57_v2.flac",
+        "cents": -0.4,
+        "gain": 0.1911,
+        "onset_sec": 0.004,
+        "seconds": 0.884,
+        "source_file": "Trombone_Short_A2_v2_1.wav"
+       },
+       {
+        "file": "stac_57_v2_r2.flac",
+        "cents": 1.1,
+        "gain": 0.1931,
+        "onset_sec": 0.004,
+        "seconds": 0.663,
+        "source_file": "Trombone_Short_A2_v2_2.wav"
+       }
+      ]
+     },
+     {
+      "velocity": 0.8,
+      "takes": [
+       {
+        "file": "stac_57_v3.flac",
+        "cents": -0.7,
+        "gain": 0.619,
+        "onset_sec": 0.004,
+        "seconds": 0.436,
+        "source_file": "Trombone_Short_A2_v3_1.wav"
+       },
+       {
+        "file": "stac_57_v3_r2.flac",
+        "cents": 0.1,
+        "gain": 0.6534,
+        "onset_sec": 0.004,
+        "seconds": 0.483,
+        "source_file": "Trombone_Short_A2_v3_2.wav"
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "key": 58,
+    "layers": [
+     {
+      "velocity": 0.45,
+      "takes": [
+       {
+        "file": "stac_58_v2.flac",
+        "cents": -0.9,
+        "gain": 0.1833,
+        "onset_sec": 0.004,
+        "seconds": 0.781,
+        "source_file": "Trombone_Short_A#2_v2_1.wav"
+       },
+       {
+        "file": "stac_58_v2_r2.flac",
+        "cents": -0.5,
+        "gain": 0.1934,
+        "onset_sec": 0.004,
+        "seconds": 0.706,
+        "source_file": "Trombone_Short_A#2_v2_2.wav"
+       }
+      ]
+     },
+     {
+      "velocity": 0.8,
+      "takes": [
+       {
+        "file": "stac_58_v3.flac",
+        "cents": -0.3,
+        "gain": 0.5314,
+        "onset_sec": 0.004,
+        "seconds": 0.341,
+        "source_file": "Trombone_Short_A#2_v3_1.wav"
+       },
+       {
+        "file": "stac_58_v3_r2.flac",
+        "cents": 1.2,
+        "gain": 0.6031,
+        "onset_sec": 0.004,
+        "seconds": 0.409,
+        "source_file": "Trombone_Short_A#2_v3_2.wav"
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "key": 60,
+    "layers": [
+     {
+      "velocity": 0.45,
+      "takes": [
+       {
+        "file": "stac_60_v2.flac",
+        "cents": -1.3,
+        "gain": 0.198,
+        "onset_sec": 0.0004,
+        "seconds": 0.68,
+        "source_file": "Trombone_Short_C3_v2_1.wav"
+       },
+       {
+        "file": "stac_60_v2_r2.flac",
+        "cents": 0.2,
+        "gain": 0.1659,
+        "onset_sec": 0.004,
+        "seconds": 0.674,
+        "source_file": "Trombone_Short_C3_v2_2.wav"
+       }
+      ]
+     },
+     {
+      "velocity": 0.8,
+      "takes": [
+       {
+        "file": "stac_60_v3.flac",
+        "cents": -1.3,
+        "gain": 0.5827,
+        "onset_sec": 0.004,
+        "seconds": 0.544,
+        "source_file": "Trombone_Short_C3_v3_1.wav"
+       },
+       {
+        "file": "stac_60_v3_r2.flac",
+        "cents": 0.5,
+        "gain": 0.5875,
+        "onset_sec": 0.004,
+        "seconds": 0.388,
+        "source_file": "Trombone_Short_C3_v3_2.wav"
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "key": 62,
+    "layers": [
+     {
+      "velocity": 0.45,
+      "takes": [
+       {
+        "file": "stac_62_v2.flac",
+        "cents": -0.3,
+        "gain": 0.1539,
+        "onset_sec": 0.004,
+        "seconds": 0.727,
+        "source_file": "Trombone_Short_D3_v2_1.wav"
+       },
+       {
+        "file": "stac_62_v2_r2.flac",
+        "cents": -0.8,
+        "gain": 0.1527,
+        "onset_sec": 0.004,
+        "seconds": 0.898,
+        "source_file": "Trombone_Short_D3_v2_2.wav"
+       }
+      ]
+     },
+     {
+      "velocity": 0.8,
+      "takes": [
+       {
+        "file": "stac_62_v3.flac",
+        "cents": -1.2,
+        "gain": 0.6116,
+        "onset_sec": 0.004,
+        "seconds": 0.45,
+        "source_file": "Trombone_Short_D3_v3_1.wav"
+       },
+       {
+        "file": "stac_62_v3_r2.flac",
+        "cents": -0.6,
+        "gain": 0.5827,
+        "onset_sec": 0.004,
+        "seconds": 0.482,
+        "source_file": "Trombone_Short_D3_v3_2.wav"
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "key": 63,
+    "layers": [
+     {
+      "velocity": 0.45,
+      "takes": [
+       {
+        "file": "stac_63_v2.flac",
+        "cents": -4.2,
+        "gain": 0.1537,
+        "onset_sec": 0.004,
+        "seconds": 1.115,
+        "source_file": "Trombone_Short_D#3_v2_1.wav"
+       },
+       {
+        "file": "stac_63_v2_r2.flac",
+        "cents": -3.3,
+        "gain": 0.1619,
+        "onset_sec": 0.004,
+        "seconds": 0.738,
+        "source_file": "Trombone_Short_D#3_v2_2.wav"
+       }
+      ]
+     },
+     {
+      "velocity": 0.8,
+      "takes": [
+       {
+        "file": "stac_63_v3.flac",
+        "cents": -1.7,
+        "gain": 0.5174,
+        "onset_sec": 0.004,
+        "seconds": 0.422,
+        "source_file": "Trombone_Short_D#3_v3_1.wav"
+       },
+       {
+        "file": "stac_63_v3_r2.flac",
+        "cents": -1.4,
+        "gain": 0.4597,
+        "onset_sec": 0.004,
+        "seconds": 0.482,
+        "source_file": "Trombone_Short_D#3_v3_2.wav"
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "key": 65,
+    "layers": [
+     {
+      "velocity": 0.45,
+      "takes": [
+       {
+        "file": "stac_65_v2.flac",
+        "cents": 0.2,
+        "gain": 0.1249,
+        "onset_sec": 0.004,
+        "seconds": 0.765,
+        "source_file": "Trombone_Short_F3_v2_1.wav"
+       },
+       {
+        "file": "stac_65_v2_r2.flac",
+        "cents": 0.2,
+        "gain": 0.1273,
+        "onset_sec": 0.004,
+        "seconds": 0.597,
+        "source_file": "Trombone_Short_F3_v2_2.wav"
+       }
+      ]
+     },
+     {
+      "velocity": 0.8,
+      "takes": [
+       {
+        "file": "stac_65_v3.flac",
+        "cents": 1.2,
+        "gain": 0.4463,
+        "onset_sec": 0.004,
+        "seconds": 0.375,
+        "source_file": "Trombone_Short_F3_v3_1.wav"
+       },
+       {
+        "file": "stac_65_v3_r2.flac",
+        "cents": 0.6,
+        "gain": 0.4611,
+        "onset_sec": 0.004,
+        "seconds": 0.424,
+        "source_file": "Trombone_Short_F3_v3_2.wav"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ }
+}
