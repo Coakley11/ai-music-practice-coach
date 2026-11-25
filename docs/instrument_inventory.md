@@ -57,6 +57,39 @@ exists for the same purpose but is not part of any signature yet.
 * **Not verified**: the instrument's make, the mouthpiece and the microphones (VCSL does not say);
   sound quality in a full mix has not been judged by ear - the demos were measured, not listened to.
 
+## Trombone and trumpet (new, not in any ensemble)
+
+Added later on the same branch. Both packs are CC0 from VS Chamber Orchestra 2: Community Edition
+(`sgossner/VSCO-2-CE` @ `440300901dfe9275fd84e0b7763af1f8443ae62e`), built by `tools/prepare_vsco_brass_pack.py`
+with the tenor's processing (one channel, 4 ms pre-roll, 3 ms fade-in, sustains 2.5 s, staccato cut below -60 dB,
+16-bit mono FLAC, no resampling or pitch shifting) and played by `backing_horns.py` with `instrument="trombone"` /
+`"trumpet"`, only when `MUSIC_HORNS` is on. Nothing calls them yet: no ensemble, no UI.
+
+| | Trombone | Trumpet |
+|---|---|---|
+| Folder | `assets/instruments/trombone` | `assets/instruments/trumpet` |
+| Source | `Brass/OldTrombone`: a 1950s Olds Super tenor trombone ("unreleased sample set done as a test for VSCO 2", per its `Notes.txt`); player not named | `Brass/Trumpet` (`Sum_SHTrumpet_*`); make and player not named; an orchestral player |
+| Files / size | 92 FLAC, 3.9 MB | 86 FLAC, 5.1 MB |
+| Sustain | 16 zones F2-G4 (MIDI 41-67), whole tones or semitones apart; layers `v3` (soft) and `v4` (loud) of 5 (`v2` / `v5` stand in at G4) | 10 zones F3-C6 (MIDI 53-84), 3-4 semitones apart; both layers (`v1`, `v3`), straight (no vibrato) |
+| Staccato | `Short`: 15 zones F2-F4, layers `v2`, `v3` of 3, 2 round robins | 11 zones F3-C6, all 3 layers, 2 round robins |
+| Left out | `v1`, `v2`, `v5` sustain layers, `Buzz`, `Fall`, `Vibrato`, the other round robins | `susvib`, straight- and harmon-mute sustains |
+| Pitch | every file within 15 cents (corrected on playback), octave checked by YIN | within 23 cents, octave checked |
+| Background register | C3-D4 (48-62) | C4-F5 (60-77) |
+
+* **Velocity layers**: a softer layer is kept within 8 dB of its articulation's loudest (recorded gaps are 15-22 dB),
+  so a change of dynamic changes tone more than level. `Horn.level` then sets each articulation so the default
+  pads and hits are as loud as the tenor's.
+* **Loops**: sustains held past 2.5 s loop from where the waveform matches the join (the trombone sustains are
+  phase-locked), with a crossfade scaled for that match; worst level dip over 6 s held notes in the background
+  registers: -4.5 dB (trombone), -3.5 dB (trumpet).
+* **Two horns**: `backing_horns.section_voicing` / `render_section_background` - the top horn on a guide tone, the
+  lower one a third, sixth or tenth under it, the least-moving pairs over the progression, neither on the root or
+  the bass note.
+* **License**: GitHub `CC0-1.0` for the repository, the `LICENSE` file is CC0 1.0 Universal (copied unchanged). The
+  repository's `Readme.txt` also *asks* that the samples are not sold directly and that Versilian Studios / Sam Gossner
+  be credited where applicable - a request, not a licence term; each pack's README carries the credit.
+* **Not verified**: how either sounds in a full mix or to a jazz ear - the demos were measured, not listened to.
+
 ## Roadmap gaps and candidate sources
 
 The ensembles (`backing_performance_plan.ENSEMBLES`) report what they miss in `EnsembleSpec.missing`:
@@ -76,8 +109,8 @@ official page; do not use those until it is.
 | Alto sax | `sfzinstruments/karoryfer.weresax` | **CC0, verified** (GitHub `CC0-1.0`; LICENSE is CC0 1.0) | an alto saxophone, two mic positions; vibrato is synthesized by its SFZ (CC controls), so a sampler of our own would play it plain. Samples not inspected. |
 | Baritone sax | `sfzinstruments/karoryfer.bear-sax` | **CC0, verified** (GitHub `CC0-1.0`; readme "Royalty-free for all commercial and non-commercial use") | a 1926 Conn baritone: sustain, marcato, staccato, subtone, growl. Samples not inspected. |
 | Soprano / alto / tenor / baritone sax | `sfzinstruments/MTG.SoloSax` | **Unverified**: the SFZ repo is CC-BY-4.0, but its samples come from MTG packs on freesound.org whose per-sample licenses were not checked | trimmed, looped mono 48 kHz FLAC of all four saxes |
-| Trumpet | `sgossner/VSCO-2-CE` `Brass/Trumpet` (Versilian, same family as VCSL) | **CC0, verified** (GitHub `CC0-1.0`; LICENSE is CC0 1.0) | `sus` (20 files), `stac` (66), `susvib`, straight-mute and harmon-mute sustains. An orchestral player, not a jazz one; untested for jazz backgrounds. |
-| Trombone | `sgossner/VSCO-2-CE` `Brass/Tenor Trombone` (+ `OldTrombone`: buzz, fall, short, sustain, vibrato) | **CC0, verified** | `sus` (31), `stac`, `vib` |
+| Trumpet | `sgossner/VSCO-2-CE` `Brass/Trumpet` (Versilian, same family as VCSL) | **CC0, verified** (GitHub `CC0-1.0`; LICENSE is CC0 1.0) | `sus` (20 files), `stac` (66), `susvib`, straight-mute and harmon-mute sustains. An orchestral player, not a jazz one; untested for jazz backgrounds. **Packed** (`assets/instruments/trumpet`, see above). |
+| Trombone | `sgossner/VSCO-2-CE` `Brass/Tenor Trombone` (+ `OldTrombone`: buzz, fall, short, sustain, vibrato) | **CC0, verified** | `sus` (31), `stac`, `vib`; `OldTrombone` is better sampled (16 sustain zones, 5 layers) and is the one **packed** (`assets/instruments/trombone`) |
 | Tuba (as bass) | `sgossner/VSCO-2-CE` `Brass/Tuba` | **CC0, verified** | `sus` (23), `stac` (64 incl. round robins) |
 | Tuba (as bass) | `sfzinstruments/karoryfer.war-tuba` | **CC0, verified** (GitHub `CC0-1.0`; readme royalty-free) | staccatissimo, staccato, sustain; one tuba (its duo/trio are transposed copies) |
 | Acoustic steel guitar | `sfzinstruments/OvationGuitar` | **Unverified** (no license file detected; a GigaSampler conversion) | Ovation guitar |
@@ -98,6 +131,6 @@ official page; do not use those until it is.
 2. **Latin percussion from VCSL** (CC0, verified, small): congas, bongos, cowbell, claves, guiro,
    shaker - fills the Latin quartet's `missing` and suits Bossa nova / Samba / Latin jazz. Timbales
    still need a source.
-3. **Trumpet and trombone from VSCO 2 CE** (CC0, verified) for a two- or three-horn section, reusing
-   `backing_horns`' voice leading; listen first, as the player is orchestral.
+3. **Trumpet and trombone from VSCO 2 CE** (CC0, verified): packed and playable (see above); next is an ear
+   check of the demos, then offering a two-horn section in an ensemble behind `MUSIC_HORNS`.
 4. Recorded electric bass (Growlybass), then an archtop guitar for Neo-soul.

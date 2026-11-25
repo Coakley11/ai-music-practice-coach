@@ -3561,7 +3561,8 @@ def synthesize_chords_to_numpy(
             guitar_bus = guitar_bus * float(np.clip(_ROCK_GUITAR_BALANCE * _rhythm_rms / _guitar_rms, 0.05, 20.0))
     if plan is not None and not plan.plays("keys"):
         keys_bus[:] = 0.0  # a band without keys (a Rock trio): the comping lays out entirely
-    horns_bus = _horn_background(plan, chord_list, bar, pulse, pulses_per_bar, sr, len(audio), _rhythm_rms)
+    horns_bus = _horn_background(plan, chord_list, bar, pulse, pulses_per_bar, sr, len(audio), _rhythm_rms,
+                                 style=style, swing=swing_amt, seed=_kit_song_seed)
     _balance_stats = None
     if drum_bus is not None:
         # The drums take their place under the music (backing_band_balance): softer cymbals, rounded attacks, a
@@ -3584,6 +3585,7 @@ def synthesize_chords_to_numpy(
     )
     if horns_bus is not None:
         LAST_MIX_STATS["horns_rms"] = float(np.sqrt(np.mean(horns_bus ** 2)))
+        LAST_MIX_STATS.update(LAST_MIX_STATS_PENDING)
     if _balance_stats:
         LAST_MIX_STATS.update({f"balance_{k}": v for k, v in _balance_stats.items() if v is not None})
     want = {"rhythm", "keys", "strings", "guitar", "horns"} if layers is None else set(layers)
@@ -3611,20 +3613,84 @@ def synthesize_chords_to_numpy(
 
 # The horn section sits under the rhythm section and the piano: a background, never the lead.
 HORNS_BALANCE = 0.42
+# Two horns, levelled on the part where they play (their rests do not count): the same place as the
+# quartet's tenor pad, whose line never rests.
+TWO_HORNS_BALANCE = 0.42
+# The trumpet over the tenor: the lead a little forward of the lower horn (K-weighted, measured on the
+# quintet's pads and figures; see tests/test_jazz_quintet.py).
+TWO_HORN_TRIM = {"trumpet": 1.0, "tenor": 0.9, "trombone": 0.9}
 
 
-def _horn_background(plan, chord_list, bar, pulse, pulses_per_bar, sr, n, rhythm_rms):
-    """The tenor sax's guide-tone background for a plan that plays horns (``MUSIC_HORNS``), else None.
+def _sounding_rms(x: np.ndarray, sr: int) -> float:
+    """RMS of the 50 ms frames where ``x`` plays (within 40 dB of its loudest frame): rests do not count."""
+    hop = max(1, int(0.05 * sr))
+    m = len(x) // hop
+    if m == 0:
+        return 0.0
+    fr = np.sqrt(np.mean(np.asarray(x[: m * hop], dtype=np.float64).reshape(m, hop) ** 2, axis=1))
+    top = float(fr.max())
+    if top <= 1e-9:
+        return 0.0
+    on = fr > top * 0.01
+    return float(np.sqrt(np.mean(fr[on] ** 2)))
 
-    Built from the take's own bars (each bar starts at ``idx * bar``, its chords from ``_sounding_segments``),
-    so the line follows the form, repeats and pushes exactly as the band does.
+
+def _two_horn_background(plan, chord_list, bar, pulses_per_bar, pulse, sr, n, rhythm_rms, *, style, swing, seed):
+    """The quintet's two horns (``plan.horns``, top first) arranged phrase by phrase (backing_horn_arranger)."""
+    import backing_horn_arranger as _arr
+    import backing_horns as _bh
+
+    top, bottom = plan.horns[0], plan.horns[1]
+    if not (_bh.available(top) and _bh.available(bottom)):
+        return None
+    bars = []
+    for idx, event in enumerate(chord_list):
+        segs = tuple((str(ch), float(s0), float(e0)) for s0, e0, ch in _sounding_segments(str(event.get("chord") or ""), pulses_per_bar)
+                     if ch and e0 > s0)
+        bars.append(_arr.ArrBar(index=idx, start_sec=idx * bar, beat_sec=pulse, chords=segs, beats=float(pulses_per_bar),
+                                bar_in_section=int(event.get("bar_in_section", -1)) if "bar_in_section" in event else -1,
+                                section_bars=int(event.get("section_bars", 0) or 0)))
+    # Where the band puts its off-beat 8th: straight for bossa, the drums' own swing otherwise.
+    swing_at = 0.5 if style == "Bossa nova" else min(0.7, 0.5 + float(swing or 0.0) + (0.12 if style == "Jazz swing" else 0.0))
+    arr = _arr.arrange(bars, top=top, bottom=bottom, intensity=plan.intensity, mood=plan.mood, level=plan.level,
+                       swing=swing_at, seed=int(seed or 0) or zlib.crc32(repr([e.get("chord") for e in chord_list]).encode("utf-8", "replace")))
+    bus = np.zeros(n, dtype=np.float64)
+    for name in (top, bottom):
+        line = _bh.render_line(arr.notes[name], sr, gain=1.0, seconds=n / sr, seed=f"quintet-{name}", instrument=name)
+        if line is None:
+            continue
+        r = _sounding_rms(line, sr)
+        if r > 1e-9:
+            bus[: min(n, len(line))] += line[:n] * (TWO_HORN_TRIM.get(name, 1.0) / r)
+    horns_rms = _sounding_rms(bus, sr)
+    if rhythm_rms > 1e-6 and horns_rms > 1e-9:
+        bus *= float(np.clip(TWO_HORNS_BALANCE * rhythm_rms / horns_rms, 0.0, 50.0))
+    LAST_MIX_STATS_PENDING["horn_textures"] = list(arr.phrases)
+    return bus
+
+
+# Filled by the horn writer during a render and copied into LAST_MIX_STATS (which is cleared after it runs).
+LAST_MIX_STATS_PENDING: dict = {}
+
+
+def _horn_background(plan, chord_list, bar, pulse, pulses_per_bar, sr, n, rhythm_rms, *, style="", swing=0.0, seed=0):
+    """The horn background for a plan that plays horns (``MUSIC_HORNS``), else None.
+
+    One horn (the Jazz quartet's tenor): a guide-tone pad. Two horns (the Jazz quintet's trumpet and
+    tenor): :func:`_two_horn_background`. Built from the take's own bars (each bar starts at
+    ``idx * bar``, its chords from ``_sounding_segments``), so the parts follow the form, repeats and
+    pushes exactly as the band does.
     """
+    LAST_MIX_STATS_PENDING.clear()
     if plan is None or not plan.plays("horns"):
         return None
     import backing_horns as _bh
 
     if not _bh.enabled():
         return None
+    if len(getattr(plan, "horns", ()) or ()) > 1:
+        return _two_horn_background(plan, chord_list, bar, pulses_per_bar, pulse, sr, n, rhythm_rms,
+                                    style=style, swing=swing, seed=seed)
     spans = []
     for idx, event in enumerate(chord_list):
         for s0, e0, ch in _sounding_segments(str(event.get("chord") or ""), pulses_per_bar):
