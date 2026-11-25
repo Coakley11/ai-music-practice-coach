@@ -36,6 +36,15 @@ from functools import lru_cache
 import numpy as np
 
 PACK = pathlib.Path(__file__).resolve().parent / "assets" / "instruments" / "brazilian_percussion"
+# MUSIC_SAMBA_AUTHENTIC: recordings of the real instruments (Freesound, CC0 / CC BY; credits in the pack's CREDITS.md and
+# ATTRIBUTION.json) replace the stand-ins: surdos, the pandeiro's skin and jingles, the tamborim. The agogo and ganza are
+# already the real instruments; the pandeiro shake keeps the tambourine (no authentic recording of it was found).
+AUTHENTIC_PACK = pathlib.Path(__file__).resolve().parent / "assets" / "instruments" / "samba_authentic"
+AUTHENTIC_VOICES = {
+    "surdo_low": "surdo_low_open", "surdo_high": "surdo_high_open",
+    "pandeiro_skin_muted": "pandeiro_bass", "pandeiro_skin_open": "pandeiro_bass", "pandeiro_jingle": "pandeiro_jingle",
+    "tamborim": "tamborim_muted",
+}
 _ON = {"1", "true", "yes", "on"}
 
 # Microtiming, in beats (quarter notes): position of the sixteenth inside the beat -> offset.
@@ -71,12 +80,22 @@ def enabled() -> bool:
     return (PACK / "manifest.json").is_file()
 
 
+def authentic() -> bool:
+    """MUSIC_SAMBA_AUTHENTIC (with the section on): the real surdo / pandeiro / tamborim recordings."""
+    return enabled() and str(os.environ.get("MUSIC_SAMBA_AUTHENTIC") or "").strip().lower() in _ON and (
+        AUTHENTIC_PACK / "manifest.json"
+    ).is_file()
+
+
 def renderer_tag() -> str:
     if not enabled():
         return ""
     import hashlib
 
-    return "+samba1-" + hashlib.sha1((PACK / "manifest.json").read_bytes()).hexdigest()[:8]
+    tag = "+samba1-" + hashlib.sha1((PACK / "manifest.json").read_bytes()).hexdigest()[:8]
+    if authentic():
+        tag += "-auth-" + hashlib.sha1((AUTHENTIC_PACK / "manifest.json").read_bytes()).hexdigest()[:8]
+    return tag
 
 
 @dataclass(frozen=True)
@@ -182,11 +201,11 @@ def _room_ir(sr: int) -> np.ndarray:
 
 
 @lru_cache(maxsize=256)
-def _stroke_audio(voice: str, layer_file: str, sr: int, muted: bool) -> np.ndarray:
+def _stroke_audio(voice: str, layer_file: str, sr: int, muted: bool, pack: str = "") -> np.ndarray:
     import soundfile as sf
     from scipy import signal
 
-    x, file_sr = sf.read(str(PACK / layer_file), dtype="float32", always_2d=False)
+    x, file_sr = sf.read(str((pathlib.Path(pack) if pack else PACK) / layer_file), dtype="float32", always_2d=False)
     if file_sr != sr:  # sample-rate conversion only (the pack is 44.1 kHz): never a pitch change
         n = int(round(len(x) * sr / file_sr))
         x = np.interp(np.linspace(0, len(x) - 1, n), np.arange(len(x)), x).astype(np.float32)
@@ -204,26 +223,41 @@ def _stroke_audio(voice: str, layer_file: str, sr: int, muted: bool) -> np.ndarr
     return out
 
 
-def _manifest() -> dict:
+@lru_cache(maxsize=4)
+def _read_manifest(folder: str) -> dict:
     import json
 
-    return json.loads((PACK / "manifest.json").read_text(encoding="utf-8"))
+    return json.loads((pathlib.Path(folder) / "manifest.json").read_text(encoding="utf-8"))
+
+
+def _manifest() -> dict:
+    return _read_manifest(str(PACK))
+
+
+def _source(voice: str) -> tuple[str, list]:
+    """(pack folder, layers) for a voice: the authentic recording when MUSIC_SAMBA_AUTHENTIC has one."""
+    if authentic() and voice in AUTHENTIC_VOICES:
+        layers = _read_manifest(str(AUTHENTIC_PACK)).get(AUTHENTIC_VOICES[voice])
+        if layers:
+            return str(AUTHENTIC_PACK), layers
+    return "", _manifest().get(voice) or []
 
 
 def play_bar(audio: np.ndarray, sr: int, bar_number: int, strokes: list[Stroke], beat_to_sec, *, intensity: float = 1.0) -> None:
     """Add the bar's strokes to ``audio``. ``beat_to_sec(beat)`` maps a (fractional) beat of this bar to seconds."""
-    manifest = _manifest()
-    seen: dict[str, int] = {}
+    seen: dict[tuple, int] = {}
     for st in strokes:
-        layers = manifest.get(st.voice)
+        pack, layers = _source(st.voice)
         if not layers:
             continue
         vel = performed_velocity(st, bar_number)
-        layer = layers[int(round(vel * (len(layers) - 1)))]
-        n = seen.get(st.voice, 0)
-        seen[st.voice] = n + 1
+        li = int(round(vel * (len(layers) - 1)))
+        layer = layers[li]
+        key = (pack, AUTHENTIC_VOICES.get(st.voice, st.voice) if pack else st.voice, li)  # voices sharing recordings rotate together
+        n = seen.get(key, 0)
+        seen[key] = n + 1
         take = layer[(n + bar_number * 3) % len(layer)]  # rotate the takes: never the same one twice running
-        x = _stroke_audio(st.voice, take, int(sr), bool(st.muted))
+        x = _stroke_audio(st.voice, take, int(sr), bool(st.muted), pack)
         start = int(float(beat_to_sec(performed_beat(st, bar_number))) * sr)
         if start < 0 or start >= len(audio):
             continue

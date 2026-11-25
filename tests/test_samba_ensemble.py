@@ -91,7 +91,7 @@ def test_takes_rotate_and_nothing_is_pitch_shifted(monkeypatch):
 
     manifest = json.loads((se.PACK / "manifest.json").read_text(encoding="utf-8"))
     used = []
-    monkeypatch.setattr(se, "_stroke_audio", lambda voice, take, sr, muted: (used.append((voice, take)), np.zeros(10, np.float32))[1])
+    monkeypatch.setattr(se, "_stroke_audio", lambda voice, take, sr, muted, pack="": (used.append((voice, take)), np.zeros(10, np.float32))[1])
     se.play_bar(np.zeros(44100 * 3), 44100, 0, [se.Stroke(b * 0.25, "ganza_down", 0.5) for b in range(0, 16, 2)], lambda b: b * 0.5)
     takes = [t for v, t in used]
     assert all(a != b for a, b in zip(takes, takes[1:]))  # never the same take twice in a row
@@ -157,3 +157,48 @@ def test_no_louder_than_the_balanced_samba_at_any_intensity(monkeypatch, samba_o
     ba.synthesize_chords_to_numpy(CHORDS, bpm=104, loops=1, style="Samba",
                                   performance=bpp.resolve_performance_plan(style="Samba", intensity=intensity))
     assert ba.LAST_MIX_STATS["balance_drums_lu_after"] <= balanced_lu + 0.05
+
+
+
+# --- MUSIC_SAMBA_AUTHENTIC: real surdo / pandeiro / tamborim recordings (Freesound, CC0 / CC BY) ---------------------
+
+def test_authentic_is_off_unless_asked(monkeypatch, samba_on):
+    monkeypatch.delenv("MUSIC_SAMBA_AUTHENTIC", raising=False)
+    assert not se.authentic() and "-auth-" not in se.renderer_tag()
+    assert se._source("surdo_low")[0] == ""
+
+
+def test_authentic_voices_use_the_real_recordings(monkeypatch, samba_on):
+    monkeypatch.setenv("MUSIC_SAMBA_AUTHENTIC", "1")
+    assert se.authentic() and "-auth-" in se.renderer_tag()
+    for voice, real in se.AUTHENTIC_VOICES.items():
+        pack, layers = se._source(voice)
+        assert pack == str(se.AUTHENTIC_PACK) and layers and all(f.startswith(real) for L in layers for f in L)
+    for voice in ("agogo_high", "ganza_down", "pandeiro_shake"):
+        assert se._source(voice)[0] == ""  # already the real instruments / no authentic recording
+
+
+def test_every_authentic_file_is_credited_and_commercially_licensed():
+    attribution = json.loads((se.AUTHENTIC_PACK / "ATTRIBUTION.json").read_text(encoding="utf-8"))
+    manifest = json.loads((se.AUTHENTIC_PACK / "manifest.json").read_text(encoding="utf-8"))
+    files = {f for layers in manifest.values() for L in layers for f in L}
+    credited = {r["file"] for r in attribution}
+    assert files == credited
+    on_disk = {p.name for p in se.AUTHENTIC_PACK.glob("*.flac")}
+    assert files == on_disk
+    for r in attribution:
+        assert r["license"] in ("CC0 1.0", "CC BY 3.0", "CC BY 4.0"), r
+        assert "nc" not in r["license_url"].lower(), r  # never a non-commercial license
+        assert r["author"] and r["source"].startswith("https://freesound.org/") and r["modifications"]
+    credits = (se.AUTHENTIC_PACK / "CREDITS.md").read_text(encoding="utf-8")
+    for r in attribution:
+        if r["license"].startswith("CC BY"):
+            assert r["author"] in credits and r["source"] in credits
+
+
+def test_authentic_take_is_its_own(monkeypatch, samba_on):
+    a, _ = ba.synthesize_chords_to_numpy(CHORDS, bpm=104, loops=1, style="Samba")
+    monkeypatch.setenv("MUSIC_SAMBA_AUTHENTIC", "1")
+    b, _ = ba.synthesize_chords_to_numpy(CHORDS, bpm=104, loops=1, style="Samba")
+    n = min(len(a), len(b))
+    assert not np.allclose(a[:n], b[:n])
