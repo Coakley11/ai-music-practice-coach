@@ -104,17 +104,63 @@ _AGOGO_HIGH = (0, 5, 8, 13)
 _AGOGO_LOW = (2, 7, 10, 14)
 
 
-def bar_hits(style: str, bar_number: int, *, intensity: str = "Medium") -> list[PercHit]:
-    """What the percussionist plays in bar ``bar_number`` (0-based from the start of the form)."""
+# A conga player's section-end fill on beats 2-4: open tones walking down from the conga to the tumba,
+# a slap pickup on the last 8th. The clave never stops for it.
+_CONGA_FILL = (
+    (1.0, "conga_muted", 0.92), (2.0, "conga_open", 0.78), (2.5, "conga_open", 0.7), (3.0, "tumba_open", 0.84),
+    (3.25, "tumba_open", 0.62), (3.5, "tumba_open", 0.9),
+)
+PHRASING_VERSION = 1
+
+
+def _rand(seed: int, bar_number: int, salt: str) -> float:
+    import zlib
+
+    return (zlib.crc32(f"{seed}:{bar_number}:{salt}".encode()) & 0xFFFFFF) / float(0x1000000)
+
+
+def bar_hits(
+    style: str,
+    bar_number: int,
+    *,
+    intensity: str = "Medium",
+    bar_in_section: int | None = None,
+    section_bars: int = 0,
+    seed: int = 0,
+) -> list[PercHit]:
+    """What the percussionist plays in bar ``bar_number`` (0-based from the start of the form).
+
+    Given the bar's place in its section (``bar_in_section`` of ``section_bars``, as the engine knows it), the
+    Latin jazz conga player phrases with the song: an open tumba on the first beat of a new section, a fill into
+    the next one, and now and then the tumbao's common variations (an extra open tumba on the "and" of 2, the
+    slap moved to the "and" of 1, a ghosted heel), seeded per take so a bar does not repeat like a loop.
+    Without it the bar is the plain teaching pattern.
+    """
     light = str(intensity) == "Light"
     heavy = str(intensity) == "Heavy"
     hits: list[PercHit] = []
     if style == _lg.LATIN_JAZZ:
         side = int(bar_number) % 2
         hits += [PercHit(b, "clave", 0.82) for b in _lg.SON_CLAVE_2_3[side]]
-        for b, voice, vel in _TUMBAO:
+        phrased = bar_in_section is not None and bar_in_section >= 0
+        start = phrased and bar_in_section == 0 and bar_number > 0
+        ends = phrased and section_bars > 1 and bar_in_section == section_bars - 1
+        pattern = list(_TUMBAO)
+        if phrased:
+            rate = 0.15 if light else 0.35 if not heavy else 0.45
+            if _rand(seed, bar_number, "tumba&2") < rate:
+                pattern.append((1.5, "tumba_open", 0.62))  # the tumbao's extra bass tone
+            if _rand(seed, bar_number, "slap&1") < rate * 0.5:
+                pattern = [(0.5, "conga_muted", 0.85) if b == 0.5 else (b, v, (0.5 if b == 1.0 else x)) for b, v, x in pattern]
+            if start:
+                pattern = [(0.0, "tumba_open", 0.8) if b == 0.0 else (b, v, x) for b, v, x in pattern]
+            if ends and (not light or _rand(seed, bar_number, "fill") < 0.5):
+                pattern = [(b, v, x) for b, v, x in pattern if b < 1.0] + list(_CONGA_FILL)
+        for b, voice, vel in pattern:
             if light and voice == "conga_muted" and vel < 0.5:
                 continue  # Light: the slap and the open tones only
+            if phrased:
+                vel = max(0.08, min(1.0, vel + (_rand(seed, bar_number, f"v{b}{voice}") - 0.5) * 0.1))
             hits.append(PercHit(b, voice, vel))
         if heavy:
             hits += [PercHit(float(b), "cowbell", 0.85) for b in range(4)]
@@ -183,4 +229,4 @@ def renderer_tag() -> str:
         return ""
     import hashlib
 
-    return "+perc-" + hashlib.sha1((PACK / "manifest.json").read_bytes()).hexdigest()[:8]
+    return f"+perc-p{PHRASING_VERSION}" + hashlib.sha1((PACK / "manifest.json").read_bytes()).hexdigest()[:8]
