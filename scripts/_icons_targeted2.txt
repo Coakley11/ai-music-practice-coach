@@ -1,0 +1,9 @@
+tests/test_issue77b_discard_persistence.py
+tests/test_mc4_span_backing_sync.py
+tests/test_media_multitrack_catalog.py
+tests/test_multitrack_project_load_trace.py
+tests/test_multitrack_switch_prompt_ui.py
+tests/test_multitrack_work_state.py
+tests/test_multitrack_workspace_editability.py
+tests/test_tone_take_save_flow.py
+tests/test_upload_analysis_history_ui.py

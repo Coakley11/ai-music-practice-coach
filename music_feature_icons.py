@@ -201,6 +201,52 @@ ACTION_ICONS: dict[str, str] = {
     # into the map so the setlist and the player cannot drift apart.
     "next": "\u23ed",
     "previous": "\u23ee",
+    # Issue 66: the verbs the Songs editors need. Each one follows a glyph this app had
+    # already settled on, or fills a gap the map genuinely did not cover.
+    #
+    # Mark a chart or lyric as the musician's own preferred version. ✅ is already what the
+    # app shows for this: st.toast("User verified version saved.", icon="✅") and
+    # "✅ Saved as user verified - your preferred lyrics, cues, and chart.". It stays
+    # distinct from "accept" (✔️), which answers a suggestion, and from "save" (💾), so
+    # "Save corrected chart" and "Save as user verified" remain tellable apart.
+    "verify": "✅",
+    # Go back to the published original, discarding my saved version. Deliberately NOT
+    # "reset" (↩️): those are two different actions sitting side by side in the chart
+    # editor - "Reset draft" throws away unsaved typing, while "Revert to catalog"
+    # removes the override that was already saved - and one glyph for both would say they
+    # were the same. Not 🗑️ either: deleting a section and returning to the catalog's
+    # chart are not the same gesture.
+    "revert": "⏪",
+    # Copy something that already exists. FEATURE_ICONS["action_copy"] is the same 📋 the
+    # Custom Progression page's "📋 Copy section" / "📋 Copy range" and the composer's
+    # "📋 Copy progression text" already show.
+    "duplicate": FEATURE_ICONS["action_copy"],
+    # Take one away - a bar, a row - as the quieter counterpart of "add" (➕). Separate
+    # from "delete" (🗑️) on purpose: removing the last bar of a section is not deleting
+    # the section, and the pair reads as a pair.
+    "remove": "➖",
+    # Bring a file's contents in. FEATURE_ICONS["action_import"] is the established 📥,
+    # and it follows "upload" (⬆️) rather than replacing it: the file is uploaded, then
+    # imported.
+    "import": FEATURE_ICONS["action_import"],
+    # Put a panel away without discarding anything. The thin cross is the glyph the
+    # Composition preview's "✕ Close preview" already shows; it is kept apart from
+    # "cancel" (❌), which abandons an edit, because closing the Songs editor keeps it.
+    "close": "✕",
+    # Creative Lab motif workflow (user 2026-11-20). One verb per musical action, shared by the
+    # Missions, single-chord Motif and Span Motif rows so the same act looks the same in all three.
+    # These replace the arrow glyphs that used to be typed into the labels ("Sequence Up ↑",
+    # "Reverse Order ⇄"), a second, competing convention. Each glyph is the one the user chose;
+    # several also appear elsewhere with a related meaning (⬆️/⬇️ Upload/Download, 🔄 Key Cycling,
+    # 🥁 Meter, ✅ Save as user verified, 🎼 Songs, 🎸 Guitar) on other pages.
+    "sequence_up": "⬆️",
+    "sequence_down": "⬇️",
+    "reverse": "🔄",
+    "rhythm": "🥁",
+    "build": "🧩",
+    "apply_settings": "✅",
+    "sheet_music": "🎼",
+    "guitar_tab": "🎸",
 }
 
 

@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+from music_feature_icons import page_feature_label
+
+from music_feature_icons import action_label
+
 import html
 import logging
 import re
@@ -2629,7 +2633,7 @@ def _tab_motif(
         g0, g1, g2, g3 = st.columns(4)
         with g0:
             if st.button(
-                f"Generate motif for {gen_chord}",
+                action_label("generate", f"Generate motif for {gen_chord}"),
                 type="primary",
                 key="improv_gen_motif_chord",
                 use_container_width=True,
@@ -2644,7 +2648,7 @@ def _tab_motif(
                 )
                 st.rerun()
         with g1:
-            if st.button("New motif", key="improv_motif_new", use_container_width=True):
+            if st.button(action_label("idea", "New motif"), key="improv_motif_new", use_container_width=True):
                 motif = generate_musical_phrase(
                     gen_chord,
                     key_center=motif_key,
@@ -2660,7 +2664,7 @@ def _tab_motif(
                 _persist_motif_artifact(session_state, interaction="motif_new")
                 st.rerun()
         with g2:
-            if st.button("Harder motif", key="improv_motif_harder", use_container_width=True):
+            if st.button(action_label("harder", "Harder motif"), key="improv_motif_harder", use_container_width=True):
                 motif = generate_musical_phrase(
                     gen_chord,
                     key_center=motif_key,
@@ -2676,7 +2680,7 @@ def _tab_motif(
                 _persist_motif_artifact(session_state, interaction="motif_harder")
                 st.rerun()
         with g3:
-            if st.button("Easier motif", key="improv_motif_easier", use_container_width=True):
+            if st.button(action_label("easier", "Easier motif"), key="improv_motif_easier", use_container_width=True):
                 motif = generate_musical_phrase(
                     gen_chord,
                     key_center=motif_key,
@@ -2727,10 +2731,10 @@ def _tab_motif(
     with st.container(key="improv_motif_transforms"):
         t1, t2, t3, t4 = st.columns(4)
         transforms = [
-            (t1, "sequence_up", "Sequence Up ↑", "improv_xform_up"),
-            (t2, "sequence_down", "Sequence Down ↓", "improv_xform_down"),
-            (t3, "invert", "Reverse Order ⇄", "improv_xform_invert"),
-            (t4, "rhythmic", "Change Rhythm", "improv_xform_rhythm"),
+            (t1, "sequence_up", action_label("sequence_up", "Sequence Up"), "improv_xform_up"),
+            (t2, "sequence_down", action_label("sequence_down", "Sequence Down"), "improv_xform_down"),
+            (t3, "invert", action_label("reverse", "Reverse Order"), "improv_xform_invert"),
+            (t4, "rhythmic", action_label("rhythm", "Change Rhythm"), "improv_xform_rhythm"),
         ]
         for col, op, label, key in transforms:
             with col:
@@ -2898,7 +2902,7 @@ def _tab_motif(
     with st.container(key="improv_motif_pattern_actions"):
         pb1, pb2, pb3 = st.columns(3)
         with pb1:
-            if st.button("Build Motif Pattern", type="primary", key="improv_build_motif_pattern", use_container_width=True):
+            if st.button(action_label("build", "Build Motif Pattern"), type="primary", key="improv_build_motif_pattern", use_container_width=True):
                 session_state["improv_motif"] = build_phrase_pattern(
                     motif,
                     key_center=motif_key,
@@ -2922,7 +2926,7 @@ def _tab_motif(
                 st.rerun()
         with pb2:
             if st.button(
-                "Apply Pattern Type / Direction",
+                action_label("apply_settings", "Apply Pattern Type / Direction"),
                 key="improv_rebuild_motif_pattern",
                 use_container_width=True,
             ):
@@ -2956,7 +2960,7 @@ def _tab_motif(
                 motif.get("notes") or motif.get("cells")
             )
             if live_has_motif and st.button(
-                "Change Rhythm",
+                action_label("rhythm", "Change Rhythm"),
                 key="improv_pattern_change_rhythm",
                 type="primary",
                 use_container_width=True,
@@ -2978,7 +2982,7 @@ def _tab_motif(
         n1, n2 = st.columns(2)
         with n1:
             if st.button(
-                "Generate Sheet Music",
+                action_label("sheet_music", "Generate Sheet Music"),
                 key="improv_motif_sheet",
                 type="primary",
                 use_container_width=True,
@@ -2995,7 +2999,7 @@ def _tab_motif(
                 st.rerun()
         with n2:
             if instrument == "Guitar" and st.button(
-                "Generate Guitar TAB",
+                action_label("guitar_tab", "Generate Guitar TAB"),
                 key="improv_motif_tab_btn",
                 use_container_width=True,
             ):
@@ -3366,15 +3370,17 @@ def _render_span_motif_panel(
 
     with st.container(key="improv_span_motif_actions"):
         c0, c1, c2, c3 = st.columns(4)
+        # The icon verb is its own column, as in the span Mission row: "New span idea" is an
+        # idea (💡) although its variant is "normal", so the verb cannot be read off the variant.
         actions = (
-            (c0, "Generate span motif", "improv_span_gen", "normal", 0, "primary"),
-            (c1, "New span idea", "improv_span_new", "normal", 1, "secondary"),
-            (c2, "Easier", "improv_span_easier", "easier", 0, "secondary"),
-            (c3, "Harder", "improv_span_harder", "harder", 0, "secondary"),
+            (c0, "Generate span motif", "improv_span_gen", "normal", 0, "primary", "generate"),
+            (c1, "New span idea", "improv_span_new", "normal", 1, "secondary", "idea"),
+            (c2, "Easier", "improv_span_easier", "easier", 0, "secondary", "easier"),
+            (c3, "Harder", "improv_span_harder", "harder", 0, "secondary", "harder"),
         )
-        for col, label, key, variant, bump, kind in actions:
+        for col, label, key, variant, bump, kind, verb in actions:
             with col:
-                if st.button(label, key=key, type=kind, use_container_width=True):
+                if st.button(action_label(verb, label), key=key, type=kind, use_container_width=True):
                     nonce = int(state.get("nonce") or 0) + bump
                     motif = _seed(variant, nonce)
                     state.update({"nonce": nonce, "seed": motif, "current": motif})
@@ -3398,17 +3404,21 @@ def _render_span_motif_panel(
                 key="improv_span_build_length",
             )
         with d1:
-            if st.button("Build span exercise", key="improv_span_build", type="primary", use_container_width=True):
+            if st.button(action_label("build", "Build span exercise"), key="improv_span_build", type="primary", use_container_width=True):
                 current = build_span_exercise(span, seed_motif, length=build_length, instrument=instrument)
                 state["current"] = current
                 session_state[SPAN_MOTIF_STATE_KEY] = state
         with d2:
-            if st.button("Change Rhythm", key="improv_span_rhythm", use_container_width=True):
+            if st.button(action_label("rhythm", "Change Rhythm"), key="improv_span_rhythm", use_container_width=True):
                 current = cycle_span_rhythm(current)
                 state["current"] = current
                 session_state[SPAN_MOTIF_STATE_KEY] = state
         t0, t1, t2 = st.columns(3)
-        for col, label, key in ((t0, "Sequence Up ↑", "improv_span_seq_up"), (t1, "Sequence Down ↓", "improv_span_seq_down"), (t2, "Reverse Order ⇄", "improv_span_invert")):
+        for col, label, key in (
+            (t0, action_label("sequence_up", "Sequence Up"), "improv_span_seq_up"),
+            (t1, action_label("sequence_down", "Sequence Down"), "improv_span_seq_down"),
+            (t2, action_label("reverse", "Reverse Order"), "improv_span_invert"),
+        ):
             with col:
                 st.button(label, key=key, disabled=True, use_container_width=True)
         st.caption(
@@ -3416,7 +3426,7 @@ def _render_span_motif_panel(
             "off the later chords, so they are off in multi-chord scope for now."
         )
         if current.get("span_length") != "seed":
-            if st.button("Back to seed motif", key="improv_span_back_to_seed"):
+            if st.button(action_label("reset", "Back to seed motif"), key="improv_span_back_to_seed"):
                 current = seed_motif
                 state["current"] = seed_motif
                 session_state[SPAN_MOTIF_STATE_KEY] = state
@@ -5924,7 +5934,7 @@ def _tab_missions(
             # Prefer button return over on_click — Playwright clicks the return-True
             # path; on_click alone often misses (same as chord tiles).
             if st.button(
-                "Generate example",
+                action_label("generate", "Generate example"),
                 key="improv_mission_gen",
                 type="primary",
                 use_container_width=True,
@@ -5933,21 +5943,21 @@ def _tab_missions(
                 _on_mission_gen_normal()
         with g2:
             if st.button(
-                "Easier example",
+                action_label("easier", "Easier example"),
                 key="improv_mission_easier",
                 use_container_width=True,
             ):
                 _on_mission_gen_easier()
         with g3:
             if st.button(
-                "Harder example",
+                action_label("harder", "Harder example"),
                 key="improv_mission_harder",
                 use_container_width=True,
             ):
                 _on_mission_gen_harder()
         with g4:
             if st.button(
-                "New idea",
+                action_label("idea", "New idea"),
                 key="improv_mission_new",
                 use_container_width=True,
             ):
@@ -6198,26 +6208,26 @@ def _tab_missions(
         with st.container(key="improv_mission_transforms"):
             t1, t2, t3, t4 = st.columns(4)
             with t1:
-                if st.button("Sequence Up ↑", key="improv_mission_seq_up", use_container_width=True):
+                if st.button(action_label("sequence_up", "Sequence Up"), key="improv_mission_seq_up", use_container_width=True):
                     apply_mission_motif_transform(
                         session_state, improv_ctx, "sequence_up", bpm=bpm, key_center=practice_key
                     )
                     transform_clicked = True
             with t2:
-                if st.button("Sequence Down ↓", key="improv_mission_seq_down", use_container_width=True):
+                if st.button(action_label("sequence_down", "Sequence Down"), key="improv_mission_seq_down", use_container_width=True):
                     apply_mission_motif_transform(
                         session_state, improv_ctx, "sequence_down", bpm=bpm, key_center=practice_key
                     )
                     transform_clicked = True
             with t3:
-                if st.button("Reverse Order ⇄", key="improv_mission_invert", use_container_width=True):
+                if st.button(action_label("reverse", "Reverse Order"), key="improv_mission_invert", use_container_width=True):
                     apply_mission_motif_transform(
                         session_state, improv_ctx, "invert", bpm=bpm, key_center=practice_key
                     )
                     transform_clicked = True
             with t4:
                 if st.button(
-                    "Change Rhythm",
+                    action_label("rhythm", "Change Rhythm"),
                     key="improv_mission_change_rhythm",
                     use_container_width=True,
                     on_click=_on_change_rhythm,
@@ -6706,7 +6716,7 @@ def _tab_metrics_ai(
 
     if on_open_analysis:
         if st.button(
-            "Open Upload Analysis",
+            page_feature_label("analysis", "Open Upload Analysis"),
             key="improv_to_analysis",
             type="primary",
             use_container_width=True,

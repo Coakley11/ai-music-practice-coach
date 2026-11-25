@@ -8,8 +8,15 @@ from typing import Any
 
 import streamlit.components.v1 as components
 
-from music_feature_icons import FEATURE_ICONS
+from music_feature_icons import FEATURE_ICONS, action_label
 from songs.meter import meter_timing, metronome_accents
+
+
+# Start / Stop wear the app's transport glyphs (▶️ play, ⏹️ stop - the same map Backing and
+# Karaoke use), so the metronome's actions read as buttons. Both metronomes (Tone/Tuner and the
+# Notation tab) render this one widget.
+_START_LABEL = action_label("play", "Start")
+_STOP_LABEL = action_label("stop", "Stop")
 
 
 def build_metronome_widget_html(
@@ -69,8 +76,8 @@ def build_metronome_widget_html(
         <label>Time signature<br>
           <select id="metro-sig">{sig_select_html}</select>
         </label>
-        <button id="metro-start" style="padding:6px 12px;">Start</button>
-        <button id="metro-stop" style="padding:6px 12px;">Stop</button>
+        <button id="metro-start" aria-label="Start metronome" style="padding:6px 12px;">{_START_LABEL}</button>
+        <button id="metro-stop" aria-label="Stop metronome" style="padding:6px 12px;">{_STOP_LABEL}</button>
       </div>
       <div style="margin-top:{"8" if compact else "12"}px;">
         <div style="font-size:{"13" if compact else "14"}px;">Beat: <strong id="metro-beat">-</strong> / <span id="metro-beats-per-measure">{timing.pulses_per_bar}</span> | Measure: <strong id="metro-measure">0</strong></div>

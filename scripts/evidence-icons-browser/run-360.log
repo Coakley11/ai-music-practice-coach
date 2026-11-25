@@ -1,0 +1,25 @@
+worktree : /c/tmp/ai-music-icons-all
+script   : scripts/_probe_icons_browser.py
+port     : 8681
+cleared  : ignored app state under /c/tmp/ai-music-icons-all/data (tracked fixtures kept)
+server pid: 260189
+picked Say dropdown=True landed=True sidebar_song='SONG\n\nSONG\nSay — John Mayer\n\n🎼 Songs\n\nSay · Pop\n\n📜 Song Original Key: Bb\n\n🗝️ Practice / Co'
+  PASS  [360px] Missions: improv_mission_gen shows 🪄 before its label  [🪄 Generate example]
+  PASS  [360px] Missions: improv_mission_gen label not clipped and on screen  [l=32 r=176 vw=360]
+  PASS  [360px] Missions: improv_mission_easier shows 🌱 before its label  [🌱 Easier example]
+  PASS  [360px] Missions: improv_mission_easier label not clipped and on screen  [l=184 r=328 vw=360]
+  PASS  [360px] Missions: improv_mission_harder shows 🧠 before its label  [🧠 Harder example]
+  PASS  [360px] Missions: improv_mission_harder label not clipped and on screen  [l=32 r=176 vw=360]
+  PASS  [360px] Missions: improv_mission_new shows 💡 before its label  [💡 New idea]
+  PASS  [360px] Missions: improv_mission_new label not clipped and on screen  [l=184 r=328 vw=360]
+  PASS  [360px] Phrase: improv_gen_motif_chord shows 🪄 before its label  [🪄 Generate motif for Bb]
+  PASS  [360px] Phrase: improv_gen_motif_chord label not clipped and on screen  [l=32 r=176 vw=360]
+  PASS  [360px] Phrase: improv_motif_new shows 💡 before its label  [💡 New motif]
+  PASS  [360px] Phrase: improv_motif_new label not clipped and on screen  [l=184 r=328 vw=360]
+  PASS  [360px] Phrase: improv_motif_harder shows 🧠 before its label  [🧠 Harder motif]
+  PASS  [360px] Phrase: improv_motif_harder label not clipped and on screen  [l=32 r=176 vw=360]
+  PASS  [360px] Phrase: improv_motif_easier shows 🌱 before its label  [🌱 Easier motif]
+  PASS  [360px] Phrase: improv_motif_easier label not clipped and on screen  [l=184 r=328 vw=360]
+
+16/16 gates passed at 360px
+stopping the server (pid 260189)
