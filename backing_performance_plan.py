@@ -71,6 +71,10 @@ class EnsembleSpec:
 
 
 # The Jam Session Generator's ensembles (improvisation_intelligence_ui: "Ensemble" selectbox).
+# The fallback named in PerformancePlan.fallbacks when an ensemble's guitar cannot be played (kept for compatibility:
+# the band is never reduced to a duo; the line-ups say the piano is standing in).
+KEYS_FOR_GUITAR = "keys instead of guitar (no guitar renderer for this style / switch off)"
+
 ENSEMBLES: dict[str, EnsembleSpec] = {
     "Jazz trio": EnsembleSpec(("keys", "bass", "drums"), note="piano, upright bass, drums"),
     "Jazz quartet": EnsembleSpec(
@@ -333,7 +337,7 @@ def resolve_performance_plan(
         missing.append("guitar")
         if "keys" not in roles:
             roles.insert(0, "keys")
-            fallbacks.append("keys instead of guitar (no guitar renderer for this style / switch off)")
+            fallbacks.append(KEYS_FOR_GUITAR)
     if _latin_percussion_plays(style):
         # MUSIC_LATIN_GROOVES: the recorded percussionist plays this groove, whatever the band: it is named as
         # playing, never as missing.
@@ -433,6 +437,13 @@ def role_names(plan: PerformancePlan) -> list[str]:
         else:
             out.append(_ROLE_NAMES.get(r, r))
     return out
+
+
+def keys_stand_in_for_guitar(plan: PerformancePlan | None) -> bool:
+    """True when the ensemble calls for a guitar the engine cannot play here (the recorded guitar is switched off,
+    or the groove has no guitar renderer) and the piano plays the guitar's part instead (:data:`KEYS_FOR_GUITAR`).
+    The band then is not the one chosen, and every line-up says so."""
+    return plan is not None and KEYS_FOR_GUITAR in tuple(getattr(plan, "fallbacks", ()) or ())
 _MISSING_NAMES = {"horns": "horns", "percussion": "Latin percussion", "guitar": "guitar"}
 
 
@@ -447,6 +458,11 @@ def band_summary(plan: PerformancePlan | None) -> str:
     playing = ", ".join(role_names(plan))
     text = playing[:1].upper() + playing[1:]
     missing = [_MISSING_NAMES.get(m, m) for m in plan.unavailable]
+    if keys_stand_in_for_guitar(plan):
+        # A Rock trio without its recorded guitar: the piano plays the guitar's part. Say so, never imply a piano trio.
+        text = text.replace("Piano", "Piano (playing the guitar's part)", 1)
+        missing = [m for m in missing if m != "guitar"]
+        text += " · recorded guitar not available"
     if missing:
         text += " · " + " & ".join(missing) + " not available yet"
     return text

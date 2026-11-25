@@ -76,6 +76,10 @@ def artwork_svg(name: str) -> str:
     return re.sub(r"\s*\n\s*", " ", text).strip()
 
 
+# A Rock trio without its recorded guitar: the piano plays the guitar's part (backing_performance_plan.KEYS_FOR_GUITAR).
+STAND_IN_PIANO = "Piano (for the guitar)"
+
+
 def ensemble_lineup(ensemble: str, style: str = "") -> tuple[tuple[tuple[str, str], ...], tuple[tuple[str, str], ...]]:
     """(playing, not_yet): the ensemble's real roster from the Backing engine, as (icon, name) pairs.
 
@@ -94,17 +98,23 @@ def ensemble_lineup(ensemble: str, style: str = "") -> tuple[tuple[tuple[str, st
     roles, missing = tuple(spec.roles), tuple(spec.missing)
     # The horns by instrument: the plan's (what the engine plays), else the ensemble's written ones.
     horns = tuple(getattr(spec, "horns", ()) or ())
+    stand_in: dict[str, str] = {}
     if str(style or "").strip():
         try:
             from songs.playback_defaults import normalize_groove_label
 
             plan = resolve_performance_plan(style=normalize_groove_label(str(style)), ensemble=name)
             roles, missing = tuple(plan.roles), tuple(plan.unavailable)
+            from backing_performance_plan import keys_stand_in_for_guitar
+
+            if keys_stand_in_for_guitar(plan):
+                # The piano plays the guitar's part (the recorded guitar is not available): named as such.
+                stand_in = {"keys": STAND_IN_PIANO}
             if "horns" in roles:
                 horns = tuple(getattr(plan, "horns", ()) or ())
         except Exception:
             pass
-    overrides = _ROLE_NAMES_BY_ENSEMBLE.get(name, {})
+    overrides = {**_ROLE_NAMES_BY_ENSEMBLE.get(name, {}), **stand_in}
 
     def _pairs(roles: Iterable[str]) -> tuple[tuple[str, str], ...]:
         out = []
@@ -240,9 +250,14 @@ def lineup_html(ensemble: str, style: str = "") -> str:
         return f'<div class="jc-lineup"><p class="jc-lineup-h">Your band</p><p class="jc-lineup-name">{_E(ensemble)}</p></div>'
     members = "".join(f'<span class="jc-member"><i>{_E(i)}</i>{_E(n)}</span>' for i, n in playing)
     later_html = ""
+    stand_in = any(n == STAND_IN_PIANO for _, n in playing)
+    if stand_in:
+        later = tuple(x for x in later if "uitar" not in x[1])
+        later_html = ('<p class="jc-lineup-later">The recorded guitar is not available here, so the piano plays the '
+                      "guitar's part.</p>")
     if later:
         names = ", ".join(n for _, n in later)
-        later_html = f'<p class="jc-lineup-later">Not in the backing yet: {_E(names)}</p>'
+        later_html += f'<p class="jc-lineup-later">Not in the backing yet: {_E(names)}</p>'
     return (
         f'<div class="jc-lineup"><p class="jc-lineup-h">Your band · {_E(ensemble)}</p>'
         f'<div class="jc-members">{members}</div>{later_html}</div>'
