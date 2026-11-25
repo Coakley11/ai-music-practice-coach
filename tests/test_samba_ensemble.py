@@ -145,3 +145,15 @@ def test_never_louder_than_the_balanced_samba(monkeypatch, samba_on):
 
     ba.synthesize_chords_to_numpy(CHORDS, bpm=104, loops=1, style="Samba", performance=bpp.resolve_performance_plan(style="Samba"))
     assert ba.LAST_MIX_STATS["balance_drums_lu_after"] <= bb.TARGET_LU[bb.SAMBA_ENSEMBLE] + 0.05 <= -10.4
+
+
+@pytest.mark.parametrize("intensity, balanced_lu", [("Light", -14.02), ("Medium", -10.5), ("Heavy", -10.07)])
+def test_no_louder_than_the_balanced_samba_at_any_intensity(monkeypatch, samba_on, intensity, balanced_lu):
+    """Measured on the balanced Samba of 85d59815 (recorded band, same chords, 104 BPM)."""
+    for k, v in (("MUSIC_BAND_BALANCE", "1"), ("MUSIC_PIANO_V2", "recorded"), ("MUSIC_UPRIGHT_BASS", "recorded")):
+        monkeypatch.setenv(k, v)
+    import backing_performance_plan as bpp
+
+    ba.synthesize_chords_to_numpy(CHORDS, bpm=104, loops=1, style="Samba",
+                                  performance=bpp.resolve_performance_plan(style="Samba", intensity=intensity))
+    assert ba.LAST_MIX_STATS["balance_drums_lu_after"] <= balanced_lu + 0.05

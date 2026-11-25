@@ -45,6 +45,9 @@ TARGET_LU = {
 }
 DEFAULT_TARGET_LU = -12.0
 INTENSITY_LU = {"Light": -1.0, "Medium": 0.0, "Heavy": 0.75}
+# The recorded Samba section keeps its surdos at Light, so Light is set gentler to stay no louder than the balanced
+# Samba at each intensity (-14.0 / -10.5 / -10.1 LU).
+INTENSITY_LU_BY_STYLE = {SAMBA_ENSEMBLE: {"Light": -3.5, "Medium": 0.0, "Heavy": 0.25}}
 MAX_CUT_DB = 9.0  # never more than this: the drums stay a band member
 
 # High shelf on the drum bus (dB at and above SHELF_HZ).
@@ -130,7 +133,7 @@ def place_drums(drum_bus: np.ndarray, music: np.ndarray, sr: int, *, style: str,
     if l_music <= -90:
         return x, stats
     before = _lufs(x, sr) - l_music
-    target = TARGET_LU.get(style, DEFAULT_TARGET_LU) + INTENSITY_LU.get(str(intensity), 0.0)
+    target = TARGET_LU.get(style, DEFAULT_TARGET_LU) + INTENSITY_LU_BY_STYLE.get(style, INTENSITY_LU).get(str(intensity), 0.0)
     cut_db = float(np.clip(target - before, -MAX_CUT_DB, 0.0))
     x = x * 10 ** (cut_db / 20.0)
     stats.update(drums_lu_before=round(before, 2), drums_lu_after=round(before + cut_db, 2), drum_gain_db=round(cut_db, 2))
