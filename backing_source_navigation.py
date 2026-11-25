@@ -4478,8 +4478,9 @@ def _style_jam_sections_for_restore(session: dict[str, Any], ctx: Any) -> dict[s
     current = session.get("improv_generated_sections")
     if isinstance(current, dict) and current:
         return {}
-    label = str(getattr(ctx, "style", "") or "Style Jam").strip() or "Style Jam"
-    return {label: [str(c) for c in (getattr(ctx, "progression", None) or [])]}
+    style = str(getattr(ctx, "style", "") or "Style Jam").strip() or "Style Jam"
+    # Named as Style Jam's generator names its sections ("<part> (<style>)").
+    return {f"A ({style})": [str(c) for c in (getattr(ctx, "progression", None) or [])]}
 
 
 def resolve_entry_jam_entry_mode(
@@ -5015,7 +5016,10 @@ def restore_session_widgets_from_backing_context(
             pass
         return str(candidate or "").strip()
 
-    if ctx.source in {"custom_progression", "regular_song"}:
+    # Song sources (Catalog, Custom, Composition) return to their own pages, not Creative: they never become a
+    # Creative tool. A Composition song's context restored on reload used to turn the Creative session into a
+    # Style Jam holding the song's chords ("Jazz tune · Dmaj7–G7–C7–G7" as Style Jam's jam).
+    if ctx.source in {"custom_progression", "regular_song", "composition_song"}:
         concert = str(
             ctx.concert_key or ctx.display_key or ctx.key or session.get("display_key") or ""
         ).strip()

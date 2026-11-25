@@ -43,6 +43,21 @@ JAM_ENSEMBLES: tuple[str, ...] = (
     "Latin quartet",
     "Lo-fi duo",
 )
+# Offered only while its horns have working audio (MUSIC_HORNS and both packs): never a name without a sound.
+_HORN_ENSEMBLES: tuple[tuple[str, str], ...] = (("Jazz quintet", "Jazz quartet"),)  # (ensemble, listed after)
+
+
+def jam_ensembles() -> tuple[str, ...]:
+    """The Generator's Ensemble choices today: :data:`JAM_ENSEMBLES` plus the horn ensembles that can play."""
+    out = list(JAM_ENSEMBLES)
+    try:
+        from backing_performance_plan import ensemble_playable
+    except ImportError:
+        return tuple(out)
+    for name, after in _HORN_ENSEMBLES:
+        if ensemble_playable(name) and name not in out:
+            out.insert(out.index(after) + 1 if after in out else len(out), name)
+    return tuple(out)
 
 # Each jam's own control keys, by setting.
 CONTROL_KEYS: dict[str, dict[str, str]] = {
@@ -179,7 +194,7 @@ def _control_options() -> dict[str, tuple[str, ...]]:
         "mood": tuple(MOOD_OPTIONS),
         "intensity": tuple(GROOVE_INTENSITY),
         "level": tuple(DIFFICULTY_LEVELS),
-        "ensemble": JAM_ENSEMBLES,
+        "ensemble": jam_ensembles(),
     }
 
 
@@ -256,6 +271,7 @@ __all__ = [
     "ENTRY_MODE_FOR_OWNER",
     "GENERATOR",
     "JAM_ENSEMBLES",
+    "jam_ensembles",
     "JAM_OWNERS",
     "MOUNTED_LAST_RUN_KEY",
     "MOUNTED_THIS_RUN_KEY",

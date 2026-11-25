@@ -756,7 +756,11 @@ def is_composition_source(session_state: dict[str, Any]) -> bool:
 def prepare_composition_backing_handoff(
     session_state: dict[str, Any],
     doc: dict[str, Any],
+    *,
+    apply_to_session: bool = True,
 ) -> None:
+    """``apply_to_session=False`` (reload): the song's context is set, but its tempo / groove are not queued
+    onto Backing -- the saved Backing session, restored next, keeps its own."""
     try:
         from backing_context import (
             apply_backing_context_to_session,
@@ -766,7 +770,8 @@ def prepare_composition_backing_handoff(
 
         ctx = build_composition_song_context(session_state, doc=doc)
         set_backing_context(session_state, ctx)
-        apply_backing_context_to_session(session_state, ctx)
+        if apply_to_session:
+            apply_backing_context_to_session(session_state, ctx)
     except ImportError:
         pass
 
@@ -777,11 +782,16 @@ def commit_composition_active_song(
     *,
     invalidate_backing: Callable[[Any], None] | None = None,
     reset_practice_to_original: bool = False,
+    restoring_saved_session: bool = False,
 ) -> dict[str, Any]:
     """Promote a saved Composition document to the global active song.
 
     ``reset_practice_to_original``: True on explicit source/song switch — clears
     saved Practice Key and uses the Composition document original key.
+
+    ``restoring_saved_session``: a reload re-establishes the same active song. Its identity and Practice Key
+    are applied as before, but Backing is not reset to the song's defaults (a generated jam open in Backing
+    keeps its Feel, tempo and progression; the song's own Backing keeps its tempo).
     """
     from songs.music_source import (
         note_active_source_change,
@@ -972,6 +982,7 @@ def commit_composition_active_song(
             song_data=composition_as_chart_active(prepared),
             invalidate_backing=_invalidate,
             force_reset=True,
+            keep_restored_backing=restoring_saved_session,
         )
         note_active_source_change(st, invalidate_backing=_invalidate)
     except Exception as exc:
@@ -981,7 +992,7 @@ def commit_composition_active_song(
         session[ACTIVE_CATALOG_PICK_KEY] = pick_key
         session[SELECTED_SONG_STATE_KEY] = selected
 
-    prepare_composition_backing_handoff(session, prepared)
+    prepare_composition_backing_handoff(session, prepared, apply_to_session=not restoring_saved_session)
 
     try:
         from active_song_state import write_canonical_active_song_state
@@ -1067,6 +1078,9 @@ def activate_composition_by_pick_key(
         doc,
         invalidate_backing=invalidate_backing,
         reset_practice_to_original=reset,
+        # The same song coming back on a reload keeps the restored Backing. A restore that changes the song
+        # mid-session (another device chose a different one) is a real song change and still resets it.
+        restoring_saved_session=bool(restore) and not (prior and prior != target),
     )
     return True
 

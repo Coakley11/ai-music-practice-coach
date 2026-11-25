@@ -67,14 +67,26 @@ class EnsembleSpec:
     roles: tuple[str, ...]  # members that play, in renderable roles
     missing: tuple[str, ...] = ()  # members the engine cannot render yet (reported, never faked)
     note: str = ""
+    horns: tuple[str, ...] = ()  # the recorded horns (backing_horns.HORNS) its "horns" member plays, top first
 
 
 # The Jam Session Generator's ensembles (improvisation_intelligence_ui: "Ensemble" selectbox).
+# The fallback named in PerformancePlan.fallbacks when an ensemble's guitar cannot be played (kept for compatibility:
+# the band is never reduced to a duo; the line-ups say the piano is standing in).
+KEYS_FOR_GUITAR = "keys instead of guitar (no guitar renderer for this style / switch off)"
+
 ENSEMBLES: dict[str, EnsembleSpec] = {
     "Jazz trio": EnsembleSpec(("keys", "bass", "drums"), note="piano, upright bass, drums"),
     "Jazz quartet": EnsembleSpec(
         ("keys", "bass", "drums"), ("horns",),
-        note="piano, upright bass, drums; the horn (sax / trumpet) needs recorded horn samples first",
+        note="piano, upright bass, drums; the horn is the recorded tenor sax (MUSIC_HORNS)",
+        horns=("tenor",),
+    ),
+    # Offered only while both horns have working audio (jam_control_ownership.jam_ensembles).
+    "Jazz quintet": EnsembleSpec(
+        ("keys", "bass", "drums"), ("horns",),
+        note="trumpet and tenor sax over piano, upright bass and drums (MUSIC_HORNS); backing_horn_arranger",
+        horns=("trumpet", "tenor"),
     ),
     "Neo-soul band": EnsembleSpec(
         ("keys", "bass", "drums"), ("guitar",),
@@ -203,15 +215,23 @@ class PerformancePlan:
     guitar: RolePerformance = field(default_factory=RolePerformance)
     unavailable: tuple[str, ...] = ()
     fallbacks: tuple[str, ...] = ()
+    horns: tuple[str, ...] = ()  # the recorded horns playing the "horns" role, top first (empty: no horns)
 
     def plays(self, role: str) -> bool:
         return role in self.roles
 
     def tag(self) -> str:
         """Part of the take's identity: a different plan is a different take, never a replayed one."""
+        # Two horns are a written arrangement (backing_horn_arranger): its version is part of the take. One
+        # horn (the quartet's tenor) keeps the tag it always had.
+        horns = ""
+        if self.plays("horns") and len(self.horns) > 1:
+            from backing_horn_arranger import arranger_tag
+
+            horns = arranger_tag(self.horns[0], self.horns[1])
         return (
             f"+perf{PLAN_VERSION}-{self.mood[:3]}{self.intensity[:1]}{self.level[:1]}"
-            f"-{'.'.join(r[0] for r in self.roles)}"
+            f"-{'.'.join(r[0] for r in self.roles)}{horns}"
         )
 
     def texture(self, base, role: str):
@@ -263,7 +283,7 @@ class PerformancePlan:
         return {
             "style": self.style, "mood": self.mood, "intensity": self.intensity, "level": self.level,
             "ensemble": self.ensemble, "roles": list(self.roles), "unavailable": list(self.unavailable),
-            "fallbacks": list(self.fallbacks),
+            "fallbacks": list(self.fallbacks), "horns": list(self.horns),
             "keys": self.keys.__dict__, "bass": self.bass.__dict__, "drums": self.drums.__dict__,
         }
 
@@ -297,10 +317,16 @@ def resolve_performance_plan(
             guitar_available = False
 
     fallbacks: list[str] = []
+    horns: tuple[str, ...] = ()
     if ens_n:
         spec = ENSEMBLES[ens_n]
         roles = list(spec.roles)
         missing = list(spec.missing)
+        if "horns" in missing and _horns_playable(spec.horns or ("tenor",)):
+            # MUSIC_HORNS: the recorded horns play the part; never claimed without every one of them.
+            missing.remove("horns")
+            roles.append("horns")
+            horns = tuple(spec.horns or ("tenor",))
     else:
         roles = ["keys", "bass", "drums"]
         missing = []
@@ -311,7 +337,13 @@ def resolve_performance_plan(
         missing.append("guitar")
         if "keys" not in roles:
             roles.insert(0, "keys")
-            fallbacks.append("keys instead of guitar (no guitar renderer for this style / switch off)")
+            fallbacks.append(KEYS_FOR_GUITAR)
+    if _latin_percussion_plays(style):
+        # MUSIC_LATIN_GROOVES: the recorded percussionist plays this groove, whatever the band: it is named as
+        # playing, never as missing.
+        if "percussion" in missing:
+            missing.remove("percussion")
+        roles.append("percussion")
 
     perf = {r: RolePerformance(plays=r in roles) for r in ("keys", "bass", "drums", "guitar")}
     for table, key in ((_MOOD, mood_n), (_INTENSITY, inten_n), (_LEVEL, level_n)):
@@ -319,10 +351,41 @@ def resolve_performance_plan(
             perf[role] = _merge(perf[role], change)
     return PerformancePlan(
         style=str(style), mood=mood_n, intensity=inten_n, level=level_n, ensemble=ens_n,
-        roles=tuple(r for r in ("keys", "guitar", "bass", "drums") if r in roles),
+        roles=tuple(r for r in ("keys", "guitar", "horns", "bass", "drums", "percussion") if r in roles),
         keys=perf["keys"], bass=perf["bass"], drums=perf["drums"], guitar=perf["guitar"],
-        unavailable=tuple(missing), fallbacks=tuple(fallbacks),
+        unavailable=tuple(missing), fallbacks=tuple(fallbacks), horns=horns,
     )
+
+
+def _horns_playable(names: tuple[str, ...] = ("tenor",)) -> bool:
+    """The horn part has working audio: ``MUSIC_HORNS`` is on and every named horn's pack is present."""
+    try:
+        import backing_horns as _bh
+
+        return bool(_bh.enabled()) and all(_bh.available(n) for n in names)
+    except (ImportError, ValueError):
+        return False
+
+
+def ensemble_playable(name: str) -> bool:
+    """Whether a horn ensemble's horns can all be heard. Other ensembles are always offered (their missing
+    members are named as unavailable); a two-horn ensemble exists only for its horns, so without them it is not."""
+    spec = ENSEMBLES.get(str(name or ""))
+    if spec is None:
+        return False
+    if len(spec.horns) < 2:
+        return True
+    return _horns_playable(spec.horns)
+
+
+def _latin_percussion_plays(style: str) -> bool:
+    """The recorded Latin percussionist plays ``style`` (backing_latin_percussion: switch on, pack present)."""
+    try:
+        import backing_latin_percussion as _lp
+
+        return bool(_lp.plays(str(style)))
+    except ImportError:
+        return False
 
 
 # Rollback switch for the jam wiring (slice 2). Generated jams use their plan unless this is set to
@@ -360,7 +423,27 @@ def performance_plan_for_backing_context(ctx: Any, *, style: str) -> Performance
     )
 
 
-_ROLE_NAMES = {"keys": "piano", "guitar": "guitar", "bass": "bass", "drums": "drums"}
+_ROLE_NAMES = {"keys": "piano", "guitar": "guitar", "bass": "bass", "drums": "drums", "horns": "tenor sax",
+               "percussion": "Latin percussion"}
+_HORN_NAMES = {"tenor": "tenor sax", "trumpet": "trumpet", "trombone": "trombone"}
+
+
+def role_names(plan: PerformancePlan) -> list[str]:
+    """The players the engine renders for ``plan``, by instrument ("trumpet", "tenor sax", "piano", ...)."""
+    out: list[str] = []
+    for r in plan.roles:
+        if r == "horns" and plan.horns:
+            out.extend(_HORN_NAMES.get(h, h) for h in plan.horns)
+        else:
+            out.append(_ROLE_NAMES.get(r, r))
+    return out
+
+
+def keys_stand_in_for_guitar(plan: PerformancePlan | None) -> bool:
+    """True when the ensemble calls for a guitar the engine cannot play here (the recorded guitar is switched off,
+    or the groove has no guitar renderer) and the piano plays the guitar's part instead (:data:`KEYS_FOR_GUITAR`).
+    The band then is not the one chosen, and every line-up says so."""
+    return plan is not None and KEYS_FOR_GUITAR in tuple(getattr(plan, "fallbacks", ()) or ())
 _MISSING_NAMES = {"horns": "horns", "percussion": "Latin percussion", "guitar": "guitar"}
 
 
@@ -372,9 +455,14 @@ def band_summary(plan: PerformancePlan | None) -> str:
     """
     if plan is None:
         return ""
-    playing = ", ".join(_ROLE_NAMES.get(r, r) for r in plan.roles)
+    playing = ", ".join(role_names(plan))
     text = playing[:1].upper() + playing[1:]
     missing = [_MISSING_NAMES.get(m, m) for m in plan.unavailable]
+    if keys_stand_in_for_guitar(plan):
+        # A Rock trio without its recorded guitar: the piano plays the guitar's part. Say so, never imply a piano trio.
+        text = text.replace("Piano", "Piano (playing the guitar's part)", 1)
+        missing = [m for m in missing if m != "guitar"]
+        text += " · recorded guitar not available"
     if missing:
         text += " · " + " & ".join(missing) + " not available yet"
     return text

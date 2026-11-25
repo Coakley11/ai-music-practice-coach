@@ -135,6 +135,13 @@ def resolve_backing_musical_profile_from_context(
     )
 
 
+# A song's own Backing (a catalog song, a Composition, a Custom song) has no Mood / Groove intensity / feel control of
+# its own: the Creative controls in the session (Style Jam's improv_mood, the Generator's improv_jam_mood, ...) belong to
+# those jams. Read for a song, the song's take changed with whichever jam was set last - and after a reload, when the
+# session restored another jam's controls, the same song rendered a different take.
+SONG_SOURCES = frozenset({"regular_song", "composition_song", "custom_progression"})
+
+
 def resolve_backing_musical_profile_from_session(
     session: Mapping[str, Any],
     *,
@@ -159,6 +166,7 @@ def resolve_backing_musical_profile_from_session(
 
         ctx = get_backing_context(session)
         if ctx is not None:
+            own_song = str(getattr(ctx, "source", "") or "") in SONG_SOURCES
             return resolve_backing_musical_profile_from_context(
                 ctx,
                 style=style,
@@ -167,9 +175,9 @@ def resolve_backing_musical_profile_from_session(
                 level=level,
                 time_signature=time_signature,
                 progression=progression,
-                session_mood=mood,
-                session_intensity=intensity,
-                session_feel=feel,
+                session_mood="" if own_song else mood,
+                session_intensity="" if own_song else intensity,
+                session_feel="" if own_song else feel,
             )
     except ImportError:
         pass

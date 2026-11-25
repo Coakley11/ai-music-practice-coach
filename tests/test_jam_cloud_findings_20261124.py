@@ -295,7 +295,7 @@ class StyleJamOwnProgressionTests(unittest.TestCase):
         ctx = SimpleNamespace(progression=["Dmaj7", "G7", "C7", "G7"], progression_label="Jazz tune · Dmaj7–G7–C7–G7",
                               style="Bossa Nova", sealed_jam_snapshot=None)
         got = _style_jam_sections_for_restore({}, ctx)
-        self.assertEqual(list(got), ["Bossa Nova"])
+        self.assertEqual(list(got), ["A (Bossa Nova)"])
 
 
 class StaleSavedCreativeCopyTests(unittest.TestCase):
@@ -349,5 +349,291 @@ class SongPracticeKeyUntouchedTests(unittest.TestCase):
         self.assertEqual(s["practice_key_by_source"].get("creative::jam_session_generator"), "Eb")
 
 
+class CompositionSongContextNeverStyleJamTests(unittest.TestCase):
+    """Android retest 2026-11-24: a reload while a Composition song ("Jazz tune", D) is the active song restores
+    its own Backing context. That restore turned the Creative session into a Style Jam holding the song's chords
+    ("Jazz tune · Dmaj7–G7–C7–G7" under the green "Generated Bossa Nova in D" heading)."""
+
+    def _jazz_tune_ctx(self):
+        from backing_context import BackingContext
+
+        return BackingContext(
+            source="composition_song", source_label="Composition song", active_song_id="composition::jazz",
+            bpm=120, groove="Swing", song_title="Jazz tune", key="D", display_key="D", concert_key="D",
+            style="Jazz", progression=["Dmaj7", "G7", "C7", "G7"], progression_label="Jazz tune · Dmaj7–G7–C7–G7",
+        )
+
+    def _restore(self, prior):
+        from backing_source_navigation import restore_session_widgets_from_backing_context
+        from creative_session_state import get_creative_session, set_creative_session
+
+        s = {"studio_page": "creative", "instrument": "Piano", "improv_entry_mode": "Style Jam Mode",
+             "improv_style": "Bossa Nova", "improv_style_key": "D"}
+        set_creative_session(s, prior)
+        restore_session_widgets_from_backing_context(s, self._jazz_tune_ctx(), widget_safe=False)
+        return s, get_creative_session(s)
+
+    def test_style_jam_never_gets_the_songs_chords(self):
+        from creative_session_state import CreativeSession
+
+        s, sess = self._restore(CreativeSession(
+            session_id="b", tool_type="entry_style_jam", entry_mode="Style Jam Mode", style="Bossa Nova",
+            concert_key="D", display_key="D", mood="Dreamy", bpm=112))
+        self.assertFalse(s.get("improv_generated_sections"), s.get("improv_generated_sections"))
+        self.assertEqual(s.get("improv_style"), "Bossa Nova")
+        self.assertEqual((sess.tool_type, sess.style, dict(sess.sections or {})), ("entry_style_jam", "Bossa Nova", {}))
+
+    def test_song_based_session_is_not_turned_into_a_style_jam(self):
+        from creative_session_state import CreativeSession
+
+        s, sess = self._restore(CreativeSession(
+            session_id="a", tool_type="song_based_improvisation", entry_mode="Song-Based Improvisation",
+            concert_key="D", display_key="D", sections={"Verse": ["Dmaj7", "G7"]}))
+        self.assertEqual(sess.tool_type, "song_based_improvisation")
+        self.assertFalse(s.get("improv_generated_sections"), s.get("improv_generated_sections"))
+
+    def test_the_songs_practice_key_still_follows_its_context(self):
+        from creative_session_state import CreativeSession
+
+        s, _ = self._restore(CreativeSession(session_id="c", tool_type="entry_style_jam", entry_mode="Style Jam Mode",
+                                             style="Bossa Nova", concert_key="D", display_key="D"))
+        self.assertEqual(s.get("display_key"), "D")
+
+
+class StyleJamShowsOnlyItsOwnJamTests(unittest.TestCase):
+    """Under the green "Generated <style> in <key>" heading Style Jam shows only sections its generator made.
+    Chords another source left in its slot (saved by 1f2df7a0 as "Jazz tune · Dmaj7–G7–C7–G7", by 3587e435 as
+    "Jazz") are left as stored but never shown, or opened in Backing, as Style Jam's generated jam."""
+
+    def test_every_generated_style_jam_is_recognised(self):
+        from improvisation_intelligence import STYLE_JAM_STYLES, generate_style_progression, is_style_jam_section_map
+
+        for style in STYLE_JAM_STYLES:
+            for key in ("C", "D", "Eb", "F#", "C#m", "Am"):
+                for seed in (1, 2, 3):
+                    for mood in ("Mellow", "Dark"):
+                        sec = generate_style_progression(style=style, key_center=key, mood=mood, seed=seed)
+                        self.assertTrue(is_style_jam_section_map(sec), (style, key, mood, sec))
+
+    def test_jams_of_every_difficulty_and_after_a_key_change_are_still_recognised(self):
+        """Ownership is the generator's section naming "<part> (<style>)", the only writer of Style Jam's slot since
+        Style Jam was added (cb5c03cf); every other write (key change, record / Backing restore) keeps the names.
+        So a real jam is never rejected because its style, difficulty, key or arrangement differs."""
+        from creative_key_sync import retranspose_generated_sections
+        from improvisation_intelligence import (
+            DIFFICULTY_LEVELS,
+            STYLE_JAM_STYLES,
+            generate_style_progression,
+            is_style_jam_section_map,
+        )
+
+        for style in STYLE_JAM_STYLES:
+            for difficulty in DIFFICULTY_LEVELS:
+                sec = generate_style_progression(style=style, key_center="C", difficulty=difficulty, mood="Bright")
+                self.assertTrue(is_style_jam_section_map(sec), (style, difficulty, sec))
+                for to_key in ("Db", "E", "F#", "Bb", "Am", "C#m"):
+                    moved = retranspose_generated_sections(sec, from_key="C", to_key=to_key)
+                    self.assertTrue(is_style_jam_section_map(moved), (style, difficulty, to_key, moved))
+        # A style whose own name has parentheses, and a longer arrangement, are still the jam's own.
+        self.assertTrue(is_style_jam_section_map({"A (Funk (Modern))": ["E9"], "B (Funk (Modern))": ["A9"]}))
+        self.assertTrue(is_style_jam_section_map({f"{p} (Bossa Nova)": ["Dmaj7"] for p in ("A", "B", "A'", "C", "Coda")}))
+
+    def test_another_sources_chords_are_not_style_jams(self):
+        from improvisation_intelligence import is_style_jam_section_map
+
+        for leaked in ({"Jazz tune · Dmaj7–G7–C7–G7": ["Dmaj7", "G7", "C7", "G7"]},
+                       {"Jazz": ["Dmaj7", "G7", "C7", "G7"]}, {"Verse": ["C", "G"]}, {}, None):
+            self.assertFalse(is_style_jam_section_map(leaked), leaked)
+
+    def test_the_renderer_checks_ownership_before_the_heading(self):
+        src = (ROOT / "improvisation_intelligence_ui.py").read_text(encoding="utf-8")
+        guard = src.index("if gen and not is_style_jam_section_map(gen):")
+        # The heading is the jam cards' result head (jam_card_art.result_head_html) since the cards redesign; before
+        # it, a "Generated **style** in **key**" markdown line. Either way it is drawn only after the ownership check.
+        marks = ('f"Generated **{_style_label}** in **{_key_label}** · "', "jam_art.result_head_html(")
+        found = [src.index(m) for m in marks if m in src]
+        self.assertTrue(found)  # the jam's heading is drawn by one of the two
+        heading = min(found)
+        self.assertLess(guard, heading)
+
+
+class SavedLeakNeverReplacesStyleJamTests(unittest.TestCase):
+    """A workspace saved by 1f2df7a0 keeps the leak in two saved copies: the Creative copy's Style Jam sections and
+    a Creative session holding Jazz tune's chords, style, tempo (120) and feel. After the user generates a Style Jam,
+    a reload must not bring either back."""
+
+    LEAK = {"Jazz tune · Dmaj7–G7–C7–G7": ["Dmaj7", "G7", "C7", "G7"]}
+    OWN = {"A (Bossa Nova)": ["Em7", "A7", "Dmaj7", "Dmaj7"], "B (Bossa Nova)": ["Em7", "A7", "F#m7", "B7"]}
+
+    def test_saved_copy_of_another_sources_chords_never_replaces_a_generated_style_jam(self):
+        from creative_context_snapshot_persistence import _jam_record_owns_context_key
+
+        s = {"improv_generated_sections": dict(self.OWN)}
+        self.assertTrue(_jam_record_owns_context_key(s, "improv_generated_sections", dict(self.LEAK)))
+
+    def test_leaked_style_jam_session_never_reaches_style_jams_controls(self):
+        from creative_session_state import CreativeSession, apply_creative_session_to_session
+
+        s = {"improv_style": "Bossa Nova", "improv_style_bpm": 112, "improv_groove": "Light",
+             "improv_generated_sections": dict(self.OWN), "improv_style_key": "D"}
+        leaked = CreativeSession(session_id="x", tool_type="entry_style_jam", entry_mode="Style Jam Mode",
+                                 style="Jazz", concert_key="D", display_key="D", bpm=120, groove_intensity="Medium",
+                                 sections=dict(self.LEAK))
+        apply_creative_session_to_session(s, leaked, widget_safe=False)
+        self.assertEqual((s["improv_style"], s["improv_style_bpm"], s["improv_groove"]), ("Bossa Nova", 112, "Light"))
+        self.assertEqual(s["improv_generated_sections"], self.OWN)
+
+    def test_leaked_saved_copy_never_restores_the_songs_tempo_and_feel(self):
+        from creative_context_snapshot_persistence import project_context_from_canonical
+
+        live_meta = {"style": "Bossa Nova", "bpm": 112, "groove": "Light", "groove_intensity": "Light",
+                     "entry_mode": "Style Jam Mode"}
+        s = {"improv_style_meta": dict(live_meta), "improv_generated_sections": dict(self.OWN),
+             "creative_workspace_state": {
+                 "improv_generated_sections": dict(self.LEAK),
+                 "improv_style_meta": {"style": "Jazz", "bpm": 120, "groove": "Medium", "groove_intensity": "Medium",
+                                       "entry_mode": "Style Jam Mode"},
+                 "creative_session": {"tool_type": "entry_style_jam", "style": "Jazz", "bpm": 120,
+                                      "sections": dict(self.LEAK)}}}
+        project_context_from_canonical(s, overwrite=True)
+        self.assertEqual(s["improv_style_meta"], live_meta)
+        self.assertEqual(s["improv_generated_sections"], self.OWN)
+        self.assertNotIn("creative_session", s)
+
+    def test_a_style_jams_own_saved_copy_still_projects(self):
+        from creative_context_snapshot_persistence import leaked_style_jam_copy_key
+
+        s = {"creative_workspace_state": {"improv_generated_sections": dict(self.OWN)}}
+        for key in ("improv_generated_sections", "improv_style_meta"):
+            self.assertFalse(leaked_style_jam_copy_key(s, key, {}))
+
+    def test_leak_saved_by_3587e435_never_reaches_style_jams_controls(self):
+        from creative_session_state import CreativeSession, apply_creative_session_to_session
+
+        s = {"improv_style": "Bossa Nova", "improv_style_bpm": 112, "improv_groove": "Light",
+             "improv_generated_sections": dict(self.OWN)}
+        leaked = CreativeSession(session_id="z", tool_type="entry_style_jam", entry_mode="Style Jam Mode", style="Jazz",
+                                 concert_key="D", display_key="D", bpm=120, groove_intensity="Medium",
+                                 sections={"Jazz": ["Dmaj7", "G7", "C7", "G7"]})
+        apply_creative_session_to_session(s, leaked, widget_safe=False)
+        self.assertEqual((s["improv_style"], s["improv_style_bpm"], s["improv_groove"]), ("Bossa Nova", 112, "Light"))
+        self.assertEqual(s["improv_generated_sections"], self.OWN)
+
+    def test_other_sections_in_a_style_jam_session_are_not_written_as_style_jams(self):
+        from creative_session_state import CreativeSession, apply_creative_session_to_session
+
+        s = {"improv_generated_sections": dict(self.OWN)}
+        sess = CreativeSession(session_id="w", tool_type="entry_style_jam", entry_mode="Style Jam Mode",
+                               style="Bossa Nova", concert_key="F", display_key="F", bpm=75,
+                               sections={"Bossa": ["Fmaj7", "Bbmaj7"]})
+        apply_creative_session_to_session(s, sess, widget_safe=False)
+        self.assertEqual((s["improv_style"], s["improv_style_bpm"]), ("Bossa Nova", 75))
+        self.assertEqual(s["improv_generated_sections"], self.OWN)
+
+    def test_style_jams_own_session_still_applies(self):
+        from creative_session_state import CreativeSession, apply_creative_session_to_session
+
+        s = {"improv_style": "Pop", "improv_style_bpm": 100}
+        own = CreativeSession(session_id="y", tool_type="entry_style_jam", entry_mode="Style Jam Mode",
+                              style="Bossa Nova", concert_key="D", display_key="D", bpm=112, groove_intensity="Light",
+                              sections=dict(self.OWN))
+        apply_creative_session_to_session(s, own, widget_safe=False)
+        self.assertEqual((s["improv_style"], s["improv_style_bpm"], s["improv_groove"]), ("Bossa Nova", 112, "Light"))
+        self.assertEqual(s["improv_generated_sections"], self.OWN)
+
+
 if __name__ == "__main__":
     unittest.main()
+
+
+class NeverKeyedStyleJamShowsItsKeyTests(unittest.TestCase):
+    """Browser 2026-11-24 (Composition song in D): a never-keyed Style Jam's control showed the start-up G and generated in
+    G, while its progression's Practice-key line and Backing played D. The control now shows the key it will play in."""
+
+    def _fresh(self):
+        return {"improv_entry_mode": "Style Jam Mode", "improv_style_key": "G", "_pending_display_key": "D"}
+
+    def test_a_never_keyed_style_jam_shows_the_key_it_plays_in(self):
+        from backing_practice_key_control import style_jam_authoritative_concert_key
+        from creative_key_sync import seed_style_concert_widget_before_mount
+
+        s = self._fresh()
+        self.assertEqual(style_jam_authoritative_concert_key(s), "D")
+        self.assertEqual(seed_style_concert_widget_before_mount(s), "D")
+        self.assertEqual(s["improv_style_key"], "D")
+        self.assertEqual(style_jam_authoritative_concert_key(s), "D")  # the control and the authority now agree
+
+    def test_a_generated_style_jam_keeps_its_key(self):
+        from creative_key_sync import seed_style_concert_widget_before_mount
+
+        s = dict(self._fresh(), improv_generated_sections={"A (Bossa Nova)": ["Am7", "D7", "Gmaj7"]})
+        self.assertEqual(seed_style_concert_widget_before_mount(s), "G")
+
+    def test_a_key_the_musician_picked_is_never_replaced(self):
+        from creative_key_sync import seed_style_concert_widget_before_mount
+        from sbi_lane_practice_key import _jam_workflow_pick
+        from songs.practice_key_state import set_practice_concert_key
+
+        s = dict(self._fresh(), improv_style_key="F")
+        self.assertEqual(seed_style_concert_widget_before_mount(s), "F")  # not a start-up default
+        s = self._fresh()
+        set_practice_concert_key(s, "G", pick_key=_jam_workflow_pick("style_jam"))  # G chosen on purpose
+        self.assertEqual(seed_style_concert_widget_before_mount(s), "G")
+
+    def test_the_seed_runs_before_the_control_mounts(self):
+        src = (ROOT / "improvisation_intelligence_ui.py").read_text(encoding="utf-8")
+        self.assertLess(src.index("seed_style_concert_widget_before_mount(session_state)"), src.index('key="improv_style_key"'))
+
+
+class SongReconcilerLeavesTheJamsKeyTests(unittest.TestCase):
+    """Browser trace 2026-11-25: the catalog song reconciler wrote the Composition song's D into the Style Jam's
+    own Practice Key (creative::entry_style_jam), before Generate and again right after Generate sealed G."""
+
+    def _session(self, jam_key):
+        return {
+            "active_catalog_pick_key": "creative::entry_style_jam",
+            # As in the browser: a leftover catalog song (the seed's California Dreamin', C#m) while the Composition
+            # song's D is live, so the song reconciler takes the live D over the jam's stored key.
+            "selected_song": {"title": "California Dreamin'", "key": "C#m"},
+            "display_key": "D",
+            "concert_key": "D",
+            "practice_key_by_source": {"composition::abc": "D", **({"creative::entry_style_jam": jam_key} if jam_key else {})},
+            "studio_page": "creative",
+        }
+
+    def test_a_sealed_jam_key_survives_the_song_reconciler(self) -> None:
+        from music_workflow_song_practice import reconcile_catalog_practice_key_owner
+
+        s = self._session("G")
+        self.assertEqual(reconcile_catalog_practice_key_owner(s, source="test"), "G")
+        self.assertEqual(s["practice_key_by_source"]["creative::entry_style_jam"], "G")
+        self.assertEqual(s["practice_key_by_source"]["composition::abc"], "D")  # the song's own key untouched
+
+    def test_an_unkeyed_jam_is_not_given_the_songs_key(self) -> None:
+        from music_workflow_song_practice import reconcile_catalog_practice_key_owner
+
+        s = self._session("")
+        reconcile_catalog_practice_key_owner(s, source="test")
+        self.assertNotIn("creative::entry_style_jam", s["practice_key_by_source"])
+
+    def test_the_songs_own_write_is_not_redirected_into_the_jam(self) -> None:
+        """Browser trace kl4 (1c750929): the reconciler ran for the Composition song's own pick, but with Style Jam on
+        screen the jam owns the practice settings, so set_practice_concert_key redirected the song's D into
+        creative::entry_style_jam 0.2 s after Generate sealed G."""
+        from music_workflow_song_practice import reconcile_catalog_practice_key_owner
+
+        s = self._session("G")
+        s.update(active_catalog_pick_key="composition::abc", improv_intelligence_tab="Entry & Jam",
+                 improv_entry_mode="Style Jam Mode")
+        reconcile_catalog_practice_key_owner(s, source="test")
+        self.assertEqual(s["practice_key_by_source"]["creative::entry_style_jam"], "G")
+        self.assertEqual(s["practice_key_by_source"]["composition::abc"], "D")
+
+    def test_catalog_songs_still_reconcile(self) -> None:
+        from music_workflow_song_practice import reconcile_catalog_practice_key_owner
+
+        s = self._session("G")
+        s["active_catalog_pick_key"] = "catalog::Jazz tune"
+        s["display_key"] = "F"
+        s["concert_key"] = "F"
+        self.assertEqual(reconcile_catalog_practice_key_owner(s, source="test"), "F")  # the live user choice wins

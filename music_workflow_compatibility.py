@@ -248,6 +248,17 @@ def build_workflow_blob_from_legacy(session: dict[str, Any], owner: str) -> Work
             except (TypeError, ValueError):
                 pass
             blob.meter = str(session.get("improv_style_meter") or "4/4")
+        elif isinstance(meta, dict) and not meta_mode and session.get("improv_style_bpm"):
+            # A meta no mode stamped (the Mission / Song-Based song-default sync writes one while Backing plays the
+            # song) is not Style Jam's either: a Style Jam generated at 112 was rebuilt at the song's 100 / Auto
+            # after "back to the song" + reload. Style Jam's own controls win; the meta only fills what is missing.
+            blob.groove = str(session.get("improv_groove") or meta.get("groove") or "").strip()
+            blob.mood = str(session.get("improv_mood") or meta.get("mood") or "").strip()
+            try:
+                blob.tempo_bpm = int(session.get("improv_style_bpm") or 0)
+            except (TypeError, ValueError):
+                pass
+            blob.meter = str(session.get("improv_style_meter") or meta.get("meter") or "4/4")
         elif isinstance(meta, dict):
             blob.groove = str(meta.get("groove") or "")
             blob.mood = str(meta.get("mood") or "")

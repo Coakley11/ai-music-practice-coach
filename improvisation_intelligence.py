@@ -29,6 +29,14 @@ STYLE_JAM_STYLES: tuple[str, ...] = (
     "Lo-fi",
     "Latin",
 )
+try:
+    from backing_latin_grooves import enabled as _latin_grooves_on
+
+    if _latin_grooves_on():
+        # Backing Engine 2.0 slice 3 (MUSIC_LATIN_GROOVES): Samba is its own groove, not a Bossa nova label.
+        STYLE_JAM_STYLES = STYLE_JAM_STYLES + ("Samba",)
+except ImportError:
+    pass
 
 MOOD_OPTIONS: tuple[str, ...] = ("Bright", "Mellow", "Dark", "Energetic", "Dreamy", "Gritty")
 DIFFICULTY_LEVELS: tuple[str, ...] = ("Beginner", "Intermediate", "Advanced")
@@ -75,6 +83,12 @@ STYLE_PROGRESSIONS: dict[str, list[tuple[str, list[str]]]] = {
     "Latin": [
         ("A", ["Am", "Dm", "G7", "C"]),
         ("B", ["F", "Fm", "C", "G"]),
+    ],
+    # Samba: I - VI7 - ii - V turnarounds and a subdominant minor colour (only offered with MUSIC_LATIN_GROOVES).
+    "Samba": [
+        ("A", ["C6", "A7", "Dm7", "G7"]),
+        ("B", ["Fmaj7", "Fm6", "Em7", "A7"]),
+        ("A'", ["Dm7", "G7", "C6", "C6"]),
     ],
 }
 
@@ -330,6 +344,7 @@ MINOR_STYLE_PROGRESSIONS: dict[str, list[tuple[str, list[str]]]] = {
     "Modal Vamp": [("Vamp", ["Am7", "Am7", "Am7", "Am7"])],
     "Lo-fi": [("Loop", ["Am7", "Fmaj7", "Cmaj7", "G7"])],
     "Latin": [("A", ["Am", "Dm", "G7", "C"]), ("B", ["F", "Fm", "C", "G"])],
+    "Samba": [("A", ["Am7", "E7", "Am7", "A7"]), ("B", ["Dm7", "Am7", "Bm7b5", "E7"]), ("A'", ["Am7", "E7", "Am7", "Am7"])],
 }
 
 
@@ -373,6 +388,21 @@ def generate_style_progression(
         first_key = next(iter(sections))
         sections[first_key] = sections[first_key] + sections[first_key][-2:]
     return sections
+
+
+def is_style_jam_section_map(sections: Any) -> bool:
+    """True when every section is named the way ``generate_style_progression`` names Style Jam's: "<part> (<style>)".
+
+    Sections another source left in Style Jam's slot (a song's Backing label such as "Jazz tune · Dmaj7–G7–C7–G7",
+    or its style "Jazz") are not Style Jam's generated jam.
+    """
+    if not isinstance(sections, dict) or not sections:
+        return False
+    for name in sections:
+        n = str(name or "").strip()
+        if not (n.endswith(")") and n.find(" (") > 0):
+            return False
+    return True
 
 
 def _key_steps_to_center(key_center: str) -> int:

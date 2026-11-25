@@ -2324,7 +2324,12 @@ def build_mission_context(session: dict[str, Any]) -> BackingContext:
         except ImportError:
             pass
     mission_id = str(session.get("improv_active_mission") or session.get("improv_mission_pick") or "").strip()
-    style_meta = session.get("improv_style_meta") if isinstance(session.get("improv_style_meta"), dict) else {}
+    try:
+        from mission_song_backing_style import mission_style_meta
+
+        style_meta = mission_style_meta(session)
+    except ImportError:
+        style_meta = session.get("improv_style_meta") if isinstance(session.get("improv_style_meta"), dict) else {}
 
     chords_flat = session.get("improv_mission_chord_options")
     idx = int(session.get("ii_selected_chord_index") or session.get("II_SELECTED_CHORD_INDEX") or 0)
