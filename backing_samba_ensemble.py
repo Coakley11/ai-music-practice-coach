@@ -147,11 +147,21 @@ def bar_strokes(
     bar_in_section: int | None = None,
     section_bars: int = 0,
     seed: int = 0,
+    texture: str = "",
+    call: str = "",
 ) -> list[Stroke]:
     """One bar of the section. With ``bar_in_section`` / ``section_bars`` the players phrase with the song: the
     primeira marks a new section, the section's last bar is a call into the next (surdo sixteenths, the tamborim's
     call, pandeiro pushing, the agogo laying out for it), the tamborim and agogo choose their figures per four-bar
-    phrase, and small deterministic variations (seeded by the song) keep repeated bars from being copies."""
+    phrase, and small deterministic variations (seeded by the song) keep repeated bars from being copies.
+
+    ``texture`` / ``call`` (the arrangement plan's, MUSIC_ARRANGEMENT_PLAN) choose the players per section instead:
+    "light" (surdos, pandeiro, ganza), "tamborim" (+ the teleco-teco), "bells" (the agogo carries behind a soloist, the
+    drums drop back), "full" (everyone, the high surdo cutting, the pandeiro shaking); and the section's last bar is
+    "small" (the tamborim alone calls the new section), "big" (the surdos and tamborim call a new chorus of the form)
+    or "ending" (the closing figure together, then silence). Empty: everything exactly as written above."""
+    if texture or call:
+        return _planned_strokes(bar_number, texture=texture or "tamborim", call=call, bar_in_section=bar_in_section, seed=seed)
     light, heavy = intensity == "Light", intensity == "Heavy"
     pos = (bar_in_section if bar_in_section is not None else int(bar_number)) % 4
     phrase_end = pos == 3
@@ -221,6 +231,94 @@ def bar_strokes(
         for st in low:
             if not (section_end and st >= 12):
                 s.append(Stroke(st * 0.25, "agogo_low", 0.62))
+    return sorted(s, key=lambda x: (x.beat, x.voice))
+
+
+# The closing figure (convencao) the whole section plays together on the last bar: three strokes, then the last one held.
+ENDING_FIGURE = (0.0, 0.75, 1.5)
+ENDING_LAST = 2.0
+
+
+def _planned_strokes(bar_number: int, *, texture: str, call: str, bar_in_section, seed: int) -> list[Stroke]:
+    """One bar of the section as the arrangement plan voices it (see :func:`bar_strokes`)."""
+    if call == "ending":
+        s = []
+        for i, b in enumerate(ENDING_FIGURE):
+            v = 0.62 + 0.06 * i
+            s += [Stroke(b, "surdo_high", v), Stroke(b, "tamborim", v + 0.08), Stroke(b, "pandeiro_skin_muted", v - 0.05),
+                  Stroke(b, "pandeiro_jingle", v - 0.1), Stroke(b, "agogo_low", v - 0.1)]
+        s += [Stroke(ENDING_LAST, "surdo_low", 0.95), Stroke(ENDING_LAST, "surdo_high", 0.8), Stroke(ENDING_LAST, "tamborim", 0.85),
+              Stroke(ENDING_LAST, "pandeiro_skin_open", 0.75), Stroke(ENDING_LAST, "pandeiro_jingle", 0.6),
+              Stroke(ENDING_LAST, "agogo_high", 0.7)]
+        return sorted(s, key=lambda x: (x.beat, x.voice))
+    tam = texture in ("tamborim", "full")
+    bells = texture in ("bells", "full")
+    full = texture == "full"
+    soft = 0.86 if texture == "bells" else 1.0  # behind a soloist the drums drop back
+    pos = (bar_in_section if bar_in_section is not None else int(bar_number)) % 4
+    phrase_end = pos == 3
+    section_start = bar_in_section == 0 and int(bar_number) > 0
+    phrase = (int(bar_number) - pos) // 4
+    big, small = call == "big", call == "small"
+    rnd = lambda tag: _hash01("var", seed, int(bar_number), tag)  # noqa: E731
+    s: list[Stroke] = []
+    for half in (0.0, 2.0):
+        # Surdos: the primeira's open "2" leads; the segunda answers on the "1".
+        s.append(Stroke(half + 1.0, "surdo_low", 0.92 * soft))
+        marks = section_start and half == 0.0
+        s.append(Stroke(half, "surdo_low", 0.72 if marks else 0.34 * soft, muted=not marks))
+        s.append(Stroke(half, "surdo_high", 0.46 * soft))
+        if texture != "bells":
+            s.append(Stroke(half + 1.0, "surdo_high", 0.30, muted=True))
+        if full:
+            s.append(Stroke(half + 0.5, "surdo_high", 0.42, muted=True))  # the cortador's syncopations
+            s.append(Stroke(half + 1.75, "surdo_high", 0.48))
+        elif texture != "bells" and rnd(("dobra", half)) < 0.22:
+            s.append(Stroke(half + 0.5, "surdo_high", 0.26, muted=True))
+        if (phrase_end or big) and half == 2.0 and not small:
+            s.append(Stroke(half + 0.75, "surdo_low", 0.55))  # the pickup into the next phrase's "2"
+    if big:
+        s += [Stroke(3.25, "surdo_high", 0.5), Stroke(3.5, "surdo_low", 0.7), Stroke(3.75, "surdo_high", 0.68)]
+    open_three = rnd("pandeiro_open3") < 0.3
+    for beat in range(4):
+        for k in range(4):
+            b = beat + k * 0.25
+            push = big and beat == 3
+            if k == 0:
+                opened = beat % 2 == 1 or (beat == 2 and open_three)
+                s.append(Stroke(b, "pandeiro_skin_open" if opened else "pandeiro_skin_muted", (0.62 if opened else 0.55) * soft))
+                s.append(Stroke(b, "pandeiro_jingle", 0.34 * soft))
+            elif k == 3:
+                s.append(Stroke(b, "pandeiro_jingle", 0.78 * soft))
+            elif texture != "bells" or k == 2:
+                s.append(Stroke(b, "pandeiro_jingle", ((0.48 if push else 0.30) if k == 1 else (0.5 if push else 0.18)) * soft))
+            if texture != "light" or k % 2 == 1:
+                arch = 0.92 + 0.1 * np.sin(np.pi * (pos + beat / 4 + 0.5) / 4)
+                v = 0.88 if k == 3 else (0.5 if k == 0 else 0.36)
+                s.append(Stroke(b, "ganza_up" if k % 2 else "ganza_down",
+                                float(min(1.0, v * arch * soft * (0.8 if texture == "light" else 1.0)))))
+    if full:
+        s += [Stroke(b + 0.5, "pandeiro_shake", 0.4) for b in (1.0, 3.0)]
+    if tam:
+        figure = _TAMBORIM_VARIATION if _hash01("tamborim_phrase", seed, phrase) < (0.45 if full else 0.25) else _TELECO_TECO
+        calling = big or small or (full and phrase_end)
+        for i, step in enumerate(figure):
+            if calling and step >= 12:
+                continue
+            s.append(Stroke(step * 0.25, "tamborim", 0.66 if i in (0, 4) else 0.48))
+        if calling:
+            s += [Stroke(3.0 + k * 0.25, "tamborim", 0.5 + 0.1 * k) for k in range(4)]  # the call, growing
+    elif small or big:
+        s += [Stroke(3.0 + k * 0.25, "tamborim", 0.46 + 0.08 * k) for k in range(4)]  # the tamborim calls the new section
+    if bells:
+        high, low = _AGOGO[(int(bar_number) + int(_hash01("agogo_phrase", seed, phrase) * 3)) % len(_AGOGO)]
+        lead = 1.0 if texture == "bells" else 0.9  # behind a soloist the bells carry the line
+        for st in high:
+            if not ((big or small) and st >= 12):
+                s.append(Stroke(st * 0.25, "agogo_high", 0.7 * lead))
+        for st in low:
+            if not ((big or small) and st >= 12):
+                s.append(Stroke(st * 0.25, "agogo_low", 0.62 * lead))
     return sorted(s, key=lambda x: (x.beat, x.voice))
 
 

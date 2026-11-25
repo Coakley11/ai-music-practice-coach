@@ -16,6 +16,13 @@ module writes that, phrase by phrase (four bars, or the song's own sections):
 * ``riff``      - a short figure harmonised for both horns, played, left, then played again on the new
                   chord: the classic background riff.
 * ``hits``      - short harmonised shots, ending on a held chord.
+* ``soli``      - (arrangement plan) a written line for both horns in harmony: a two-bar statement, a
+                  two-bar answer that turns its contour over, and a held close.
+* ``response``  - (arrangement plan) behind a soloist: one horn, softly, a short answer in the space at the
+                  end of the soloist's four-bar phrase; the other rests.
+
+With the arrangement plan, a phrase that brings the horns back after they have laid out (the out head after
+the solos) is led in: both horns play a short harmonised pickup into its first chord instead of shots.
 
 The phrase's texture comes from the intensity (Light rests and pads, Heavy riffs and shots), the mood
 (a mellow band holds and answers, a driving one riffs) and the level (a beginner gets more room). No
@@ -37,7 +44,7 @@ from typing import Sequence
 import backing_horns as bh
 
 ARRANGER_VERSION = 1
-TEXTURES = ("rest", "solo_pad", "staggered", "pad", "call", "riff", "hits", "feature")
+TEXTURES = ("rest", "solo_pad", "staggered", "pad", "call", "riff", "hits", "feature", "soli", "response")
 PHRASE_BARS = 4
 
 # Relative weights of each texture per intensity: Light leaves the most room, Heavy riffs and shoots.
@@ -52,7 +59,23 @@ _RELAXED_MOODS = frozenset({"Mellow", "Relaxed", "Dreamy", "Dark"})
 _DRIVING_MOODS = frozenset({"Energetic", "Gritty", "Bright"})
 _BASE_VELOCITY = {"Light": 0.45, "Medium": 0.6, "Heavy": 0.75}
 # Dynamics by texture (added to the base velocity): one horn alone is softer, shots are harder.
-_TEXTURE_DYNAMIC = {"solo_pad": -0.06, "staggered": -0.02, "pad": 0.0, "call": 0.03, "riff": 0.05, "hits": 0.1}
+_TEXTURE_DYNAMIC = {"solo_pad": -0.06, "staggered": -0.02, "pad": 0.0, "call": 0.03, "riff": 0.05, "hits": 0.1,
+                    "soli": 0.02, "response": -0.1}
+# With the plan, the longest run of playing phrases before the horns leave a phrase to the band.
+_PLAN_MAX_RUN = 3
+# Two-bar soli lines: (first bar cell, second bar cell); the second bar ends on a held note.
+SOLI_CELLS: tuple[tuple[tuple, tuple], ...] = (
+    (((0.5, 0.5), (1.0, 0.5), (1.5, 0.5), (2.0, 1.0), (3.0, 0.5), (3.5, 0.5)), ((0.0, 1.0), (1.5, 0.5), (2.0, 2.0))),
+    (((0.0, 0.75), (1.0, 0.5), (1.5, 1.0), (2.5, 0.5), (3.0, 1.0)), ((0.5, 0.5), (1.0, 0.5), (1.5, 2.5))),
+    (((1.0, 0.5), (1.5, 0.5), (2.0, 0.5), (2.5, 1.5)), ((0.0, 0.5), (0.5, 0.5), (1.0, 1.0), (2.0, 2.0))),
+)
+# A soft answer at the end of the soloist's phrase: (onset, length) in the phrase's last bar.
+RESPONSE_CELLS: tuple[tuple[tuple[float, float], ...], ...] = (
+    ((2.5, 0.5), (3.0, 1.0)),
+    ((2.0, 0.5), (2.5, 0.5), (3.0, 1.0)),
+    ((1.5, 0.5), (2.0, 0.5), (2.5, 1.5)),
+)
+LEAD_IN_CELL = ((2.5, 0.5), (3.0, 0.5), (3.5, 0.5))  # the pickup into a re-entry
 
 # Figure rhythms within one bar: (onset beat, length in beats), 0-based beats of a 4/4 bar.
 FIGURE_CELLS: tuple[tuple[tuple[float, float], ...], ...] = (
@@ -182,6 +205,8 @@ def choose_textures(
                 if r <= 0:
                     tex = k
                     break
+            if run >= _PLAN_MAX_RUN and "rest" in (planned or {}) and tex != "rest":
+                tex = "rest"  # even a busy section leaves the horns' phrase out now and then
             run = 0 if tex == "rest" else run + 1
             out.append(tex)
             continue
@@ -423,8 +448,10 @@ def arrange(
     swing: float = 0.5,
     seed: int = 0,
     phrase_weights: dict | None = None,
+    phrase_dynamics: dict | None = None,
 ) -> Arrangement:
-    """The two horns' notes for the take, phrase by phrase (see the module doc)."""
+    """The two horns' notes for the take, phrase by phrase (see the module doc). ``phrase_dynamics`` (the
+    arrangement plan's): bar index -> velocity offset for the phrase starting there (soft under a soloist)."""
     hi_h, lo_h = bh.horn(top), bh.horn(bottom)
     bars = [b for b in bars if b.chords]
     if not bars:
@@ -444,6 +471,8 @@ def arrange(
         ph.texture = tex
         next_tex = textures[pi + 1] if pi + 1 < len(textures) else ""
         v = w.base_velocity + _TEXTURE_DYNAMIC.get(tex, 0.0) + (0.03 if ph.first_of_section and tex != "rest" else 0.0)
+        if phrase_dynamics:
+            v += float(phrase_dynamics.get(ph.bars[0].index, 0.0))
         pb = ph.bars
         if tex == "solo_pad":
             who = "bottom" if n_solo % 2 == 0 else "top"  # the tenor first, then the trumpet
@@ -494,6 +523,25 @@ def arrange(
             if len(pb) >= 3:
                 w.held(other, pb[2:], v - 0.08, swell_first=3.0)
             ph.detail.update(lead=lead)
+        elif tex == "soli":
+            first, second = SOLI_CELLS[rng.randrange(len(SOLI_CELLS))]
+            contour = rng.choice(("up", "arch", "down"))
+            turned = {"up": "down", "down": "up", "arch": "valley"}[contour]
+            w.harmonised_cell(pb[0], first, v, contour, _next_chord(pb, 0, bars))
+            if len(pb) >= 2:
+                w.harmonised_cell(pb[1], second, v - 0.02, contour, _next_chord(pb, 1, bars))
+            if len(pb) >= 3:
+                w.harmonised_cell(pb[2], first, v + 0.02, turned, _next_chord(pb, 2, bars))  # the answer, turned over
+            if len(pb) >= 4 and not ph.leads_into_section:
+                w.held("bottom", pb[3:], v - 0.06, swell_first=2.0)
+                w.held("top", pb[3:], v - 0.03, swell_first=2.0)
+            ph.detail.update(contour=contour)
+        elif tex == "response":
+            who = "top" if n_solo % 2 == 0 else "bottom"
+            n_solo += 1
+            cell = RESPONSE_CELLS[rng.randrange(len(RESPONSE_CELLS))]
+            w.figure(who, pb[-1], cell, v, rng.choice(("down", "arch")), _next_chord(pb, len(pb) - 1, bars))
+            ph.detail.update(who=who)
         elif tex == "hits":
             pattern = HIT_PATTERNS[rng.randrange(len(HIT_PATTERNS))]
             for i, bar in enumerate(pb):
@@ -503,6 +551,20 @@ def arrange(
                     w.shots(bar, pattern, v)
         # With a plan, a resting section stays at rest unless the horns come in on the next one.
         setup = phrase_weights is None or tex != "rest" or next_tex in ("riff", "hits", "pad")
+        quiet = tex in ("rest", "solo_pad", "response")
+        returning = any(t != "rest" for t in textures[:pi])  # a re-entry: the horns have played before and laid out
+        if (phrase_weights is not None and ph.leads_into_section and quiet and returning
+                and next_tex in ("soli", "riff", "pad", "call")):
+            # Back in after laying out: a harmonised pickup into the next section's first chord, not shots.
+            last_bar = pb[-1]
+            cut = last_bar.start_sec + 2.25 * last_bar.beat_sec
+            for who in ("top", "bottom"):
+                w.notes[who] = _clip_before(w.notes[who], cut)
+            nxt_first = next((b for b in bars if b.index == last_bar.index + 1), None)
+            w.harmonised_cell(last_bar, LEAD_IN_CELL, v + 0.04 if tex == "rest" else v, "up",
+                              nxt_first.chords[0][0] if nxt_first is not None and nxt_first.chords else "")
+            ph.detail.update(lead_in=True)
+            continue
         if ph.leads_into_section and tex not in ("hits",) and setup:
             # Set the next section up: two shots on the "and" of 3 and of 4 of the phrase's last bar.
             last_bar = pb[-1]

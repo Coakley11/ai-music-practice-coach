@@ -1114,7 +1114,7 @@ def _fifth_below(root_midi: int, fifth_pc: int) -> int:
     return below if below >= BOSSA_BASS_LOW else below + 12
 
 
-def _samba_bass_bar(chord, next_chord, state, rng, *, bar_index=0, density=1.0):
+def _samba_bass_bar(chord, next_chord, state, rng, *, bar_index=0, density=1.0, figure=""):
     """One bar of samba bass, surdo-style, as ``(beat, beats, midi, accent)`` notes.
 
     The 4/4 bar is two 2/4 samba bars. Each half: a short root on its "1", an optional pickup on the "a"
@@ -1131,9 +1131,23 @@ def _samba_bass_bar(chord, next_chord, state, rng, *, bar_index=0, density=1.0):
         root = _bossa_bass_pitch(root_pc, state.get("prev"))
         low5 = _fifth_below(root, alt_pc) if alt_pc != root_pc else root
         notes.append((h, 0.7, root, 0.8))
-        if rng.random() < p_pick:
+        # The arrangement plan's figure: "two" = root and low fifth only (under a light bateria); "busy" = the pickup
+        # every time and a chromatic approach into the next half's root (with the full bateria).
+        pick = rng.random() < p_pick
+        if figure == "two":
+            pick = False
+        elif figure == "busy":
+            pick = True
+        if pick:
             notes.append((h + 0.75, 0.22, low5, 0.5))
-        notes.append((h + 1.0, 0.92, low5, 1.0))
+        if figure == "busy":
+            notes.append((h + 1.0, 0.68, low5, 1.0))
+            nxt = _latin_chord(chord, h + 2.0) if h == 0.0 else (_bossa_next_head(next_chord) if next_chord else None)
+            if nxt is not None:
+                tgt = _bossa_bass_pitch(_bossa_bass_pcs(nxt)[0], root)
+                notes.append((h + 1.75, 0.22, tgt - 1 if tgt - 1 != low5 else tgt + 1, 0.6))
+        else:
+            notes.append((h + 1.0, 0.92, low5, 1.0))
         state["prev"] = root
     return notes
 
@@ -1916,6 +1930,11 @@ _KEYS_BALANCE: dict[str, float] = {
 
 # Rock guitar level (RMS) relative to the rhythm section, and what is left of the piano.
 _ROCK_GUITAR_BALANCE = float(os.environ.get("MUSIC_GTR_BALANCE") or 0.55)
+# The arrangement plan's Rock orchestration (backing_arrangement_plan.kit_part): the ride and the floor tom where the
+# right hand leaves the hi-hat, against the hat stroke they replace.
+_ROCK_RIDE_GAIN = 2.2
+_ROCK_FLOOR_GAIN = 0.55
+_ROCK_WASH_GAIN = 0.45  # a half-open hat on every stroke rings longer than a closed one: it plays softer
 _ROCK_KEYS_BEHIND_GUITAR = float(os.environ.get("MUSIC_GTR_KEYS_BEHIND") or 0.9)
 # The guitar's slot in the band: out of the bass's range, less low-mid mud, a dip where the piano's core
 # sits, presence and air so the band does not turn dark (the cab rolls the top off). Tunable for listening.
@@ -2547,6 +2566,9 @@ def synthesize_chords_to_numpy(
                 idx, intensity=(_arr_bar.perc_intensity if _arr_bar is not None else plan.intensity if plan is not None else "Medium"),
                 bar_in_section=int(event.get("bar_in_section", idx) or 0), section_bars=int(event.get("section_bars", 0) or 0),
                 seed=_kit_song_seed,
+                # The arrangement plan's players for this section and its call into the next ("" = as written).
+                texture=(_arr_bar.perc_texture if _arr_bar is not None else ""),
+                call=(_arr_bar.perc_call if _arr_bar is not None else ""),
             )
             bar_patterns = dict(bar_patterns)
             for part in ("kick_beats", "hat_beats", "cross_stick"):
@@ -2574,6 +2596,14 @@ def synthesize_chords_to_numpy(
                 spread_scale=_bv.SECTION_SPREAD if upright_bus is not None else 1.0,
             ) * fade_mul
             bar_patterns = _sa.apply_to_grid(bar_patterns, section_tex, pulses_per_bar)
+        # The plan's Rock orchestration (MUSIC_ARRANGEMENT_PLAN): the section's kick / snare / cymbal / bass rhythm, what
+        # the right hand plays and the band's dynamic for the section. None for other styles and with the plan off.
+        _kit_part = _ap.kit_part(arr_plan, idx) if (arr_plan is not None and pulses_per_bar == 4) else None
+        if _kit_part is not None:
+            intensity *= _kit_part.level
+            if _kit_part.grid:
+                bar_patterns = dict(bar_patterns)
+                bar_patterns.update({k: list(v) for k, v in _kit_part.grid})
         loop_pass = idx // cycle_len
         loop_seed = loop_pass * 9173 + groove_seed * 31
         # For subdivided bars, ``chord`` is e.g. ``"Fmaj7|Am7|C/D"`` (equal
@@ -2752,6 +2782,7 @@ def synthesize_chords_to_numpy(
                 )
         elif style in _lg.LATIN_STYLES and pulses_per_bar == 4 and not bar_is_no_chord:
             _latin_bar_fn = _samba_bass_bar if style == _lg.SAMBA else _tumbao_bass_bar
+            _latin_kw = {"figure": _ap.samba_bass_figure(arr_plan, idx)} if (style == _lg.SAMBA and arr_plan is not None) else {}
             latin_notes = _latin_bar_fn(
                 chord,
                 next_chord,
@@ -2760,6 +2791,7 @@ def synthesize_chords_to_numpy(
                 bar_index=idx,
                 density=bass_density * (0.85 if role == "verse" else 1.0)
                 * (section_tex.bass_density if section_tex is not None else 1.0),
+                **_latin_kw,
             )
             bass_vol = 0.11 * intensity * arr_char["bass_vol_mul"]
             for n, (b, beats, bass_pitch, accent) in enumerate(latin_notes):
@@ -3160,6 +3192,19 @@ def synthesize_chords_to_numpy(
                     amount=humanize * 0.5,
                     beat_len=pulse,
                 )
+                if _kit_part is not None and _kit_part.cymbal in ("ride", "floor"):
+                    on_beat = abs(float(b) - round(float(b))) < 1e-6
+                    _seed_c = idx * 31 + int(b * 100) + loop_seed
+                    if _kit_part.cymbal == "ride":
+                        _add_ride(audio, sr, hat_t, hat_vol * intensity * _ROCK_RIDE_GAIN * (1.15 if on_beat else 0.85), seed=_seed_c)
+                        continue
+                    _kit_c = _ACTIVE_DRUM_KIT.get()
+                    if _kit_c is not None:
+                        _kit_c.tom(audio, hat_t, 40, 0.060 * intensity * _ROCK_FLOOR_GAIN * (1.0 if on_beat else 0.78), _seed_c)
+                        continue
+                if _kit_part is not None and _kit_part.cymbal == "wash":
+                    is_open_hat = True  # a half-open hat on every stroke, each choked by the next
+                    hat_vol *= _ROCK_WASH_GAIN
                 if drum_char["use_ride"]:
                     # Spang-a-lang: loud downbeats, softer skip beats.
                     is_accent = float(b) == int(float(b))
@@ -3258,6 +3303,8 @@ def synthesize_chords_to_numpy(
 
         if not bar_drums_silent and section_tex is not None and section_tex.crash:
             _add_crash(audio, sr, bar_start, intensity, seed=idx)  # the ending hit
+        elif not bar_drums_silent and _kit_part is not None and _kit_part.crash:
+            _add_crash(audio, sr, bar_start, intensity, seed=idx)  # the last chorus re-crashes each phrase
 
         if not bar_drums_silent:
             kick_beats = bar_patterns["kick_beats"]
@@ -3678,8 +3725,9 @@ def _two_horn_background(plan, chord_list, bar, pulses_per_bar, pulse, sr, n, rh
     if arrangement is not None:
         # The arrangement plan decides what each phrase may be (rests in an intro or a solo, harmony in a chorus).
         weights = {b.index: b.horn_weights for b in arrangement.bars if b.horn_weights}
+        dynamics = {b.index: b.horn_dynamic for b in arrangement.bars if b.horn_weights}
     arr = _arr.arrange(bars, top=top, bottom=bottom, intensity=plan.intensity, mood=plan.mood, level=plan.level,
-                       phrase_weights=weights,
+                       phrase_weights=weights, phrase_dynamics=(dynamics if arrangement is not None else None),
                        swing=swing_at, seed=int(seed or 0) or zlib.crc32(repr([e.get("chord") for e in chord_list]).encode("utf-8", "replace")))
     bus = np.zeros(n, dtype=np.float64)
     for name in (top, bottom):

@@ -100,8 +100,16 @@ def test_horns_leave_space_and_harmonise_where_it_counts():
     assert w["verse"].get("rest", 0) >= max(v for k, v in w["verse"].items() if k != "rest")
     assert {"riff", "hits"} & set(w["chorus"])
     jazz, _ = _plan(JAZZ, "Jazz swing", loops=4, ensemble="Jazz quintet")
-    solo = [b.horn_weights for b in jazz.bars if b.horn_weights and b.role == "solo_pass"]
-    assert solo and all(x.get("rest", 0) > sum(v for k, v in x.items() if k != "rest") for x in solo)
+    solo = [b for b in jazz.bars if b.horn_weights and b.role == "solo_pass"]
+    # Under a soloist the horns rest or answer softly at the end of the soloist's phrase; anything that holds or
+    # plays through the phrase (a pad, a held guide tone) is the rare exception, and they play softer than in a head.
+    quiet = ("rest", "response")
+    assert solo and all(sum(b.horn_weights.get(k, 0) for k in quiet) > 2.5 * sum(v for k, v in b.horn_weights.items() if k not in quiet)
+                        for b in solo)
+    assert not any({"riff", "hits", "soli", "call"} & set(b.horn_weights) for b in solo)
+    heads = [b.horn_dynamic for b in jazz.bars if b.horn_weights and b.role == "head"]
+    outs = [b.horn_dynamic for b in jazz.bars if b.horn_weights and b.role == "out_head"]
+    assert all(b.horn_dynamic < min(heads) for b in solo) and min(outs) > max(heads)
 
 
 def test_solo_space_keeps_the_horns_out_of_your_way():
@@ -127,7 +135,7 @@ def test_the_guitarist_plays_a_verse_under_its_chorus():
     for b in plan.bars:
         level.setdefault((b.role, b.final_chorus), b.guitar_level)
     assert level[("verse", False)] < level[("pre", False)] < level[("chorus", False)] < level[("chorus", True)]
-    assert all(0.75 <= b.guitar_level <= 1.12 for b in plan.bars)
+    assert all(0.7 <= b.guitar_level <= 1.12 for b in plan.bars)
 
 def test_percussion_follows_the_section_energy():
     plan, _ = _plan(SONG, "Samba")

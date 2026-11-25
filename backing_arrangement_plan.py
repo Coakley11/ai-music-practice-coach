@@ -38,7 +38,7 @@ from typing import Any, Sequence
 
 import backing_section_arrangement as sa
 
-PLAN_VERSION = 1
+PLAN_VERSION = 2
 SWITCH = "MUSIC_ARRANGEMENT_PLAN"
 
 HEAD, SOLO_PASS, OUT_HEAD = "head", "solo_pass", "out_head"
@@ -76,6 +76,10 @@ class BarArrangement:
     guitar_level: float = 1.0  # the guitarist's touch here (x the bar's level): lighter in a verse than a chorus
     perc_intensity: str = "Medium"  # the Samba / Latin percussion section's intensity here
     horn_weights: dict = field(default_factory=dict)  # texture -> weight for the horn phrase starting here
+    role_pass: int = 1  # which block of this role so far (Verse 2 -> 2), passes through the form included
+    horn_dynamic: float = 0.0  # added to the horns' velocity for the phrase starting here (soft in a solo)
+    perc_texture: str = ""  # Samba: which players of the bateria play this section ("" = all, as written)
+    perc_call: str = ""  # Samba: at a section's last bar, the call into the next ("small" / "big" / "ending")
 
     @property
     def ends_section(self) -> bool:
@@ -159,19 +163,23 @@ def _energy(role: str, *, role_pass: int, final_chorus: bool, pass_index: int, p
 _HORN_ROLE_WEIGHTS: dict[str, dict[str, float]] = {
     sa.INTRO: {"rest": 1.0},
     sa.VERSE: {"rest": 3.0, "solo_pad": 2.0, "call": 2.0},
-    HEAD: {"rest": 2.0, "solo_pad": 2.0, "staggered": 1.5, "call": 2.0},
+    HEAD: {"rest": 1.5, "soli": 2.5, "solo_pad": 1.5, "staggered": 1.5, "call": 2.0},
     sa.PRE: {"staggered": 3.0, "pad": 2.0},
     sa.CHORUS: {"pad": 2.0, "riff": 3.0, "hits": 1.5, "call": 1.0},
     sa.REFRAIN: {"pad": 2.0, "riff": 2.0, "call": 1.0},
-    OUT_HEAD: {"pad": 2.0, "riff": 2.5, "call": 2.0, "hits": 1.0},
+    OUT_HEAD: {"soli": 2.5, "pad": 1.5, "riff": 2.0, "call": 1.5, "hits": 0.8},
     sa.BRIDGE: {"staggered": 2.0, "pad": 2.0, "solo_pad": 1.5, "rest": 1.0},
-    sa.SOLO: {"rest": 5.0, "solo_pad": 1.0},
-    SOLO_PASS: {"rest": 4.0, "solo_pad": 1.5, "pad": 0.8},
+    sa.SOLO: {"rest": 4.5, "response": 1.5, "solo_pad": 1.0},
+    SOLO_PASS: {"rest": 3.5, "response": 2.5, "solo_pad": 1.5},
     sa.INTERLUDE: {"feature": 3.0, "riff": 2.0, "call": 1.0},
     sa.BREAKDOWN: {"rest": 3.0, "solo_pad": 1.0},
     sa.OUTRO: {"pad": 3.0, "staggered": 1.0},
 }
 _FINAL_CHORUS_HORNS = {"riff": 3.0, "hits": 2.5, "pad": 1.5, "feature": 0.6}
+# How loud the horns play each role (added to their velocity): under a soloist they drop back, the out head
+# comes back stronger than the head.
+_HORN_DYNAMIC = {SOLO_PASS: -0.12, sa.SOLO: -0.12, sa.BREAKDOWN: -0.08, sa.INTRO: -0.05, sa.VERSE: -0.04, HEAD: 0.0,
+                 sa.BRIDGE: -0.02, OUT_HEAD: 0.05, sa.CHORUS: 0.03}
 
 
 def horn_weights(role: str, energy: float, *, final_chorus: bool, presence: str) -> dict[str, float]:
@@ -187,15 +195,20 @@ def horn_weights(role: str, energy: float, *, final_chorus: bool, presence: str)
         # You are playing a horn yourself: the section only frames the song (intros, outros, the big moments).
         keep = role in (sa.OUTRO,) or final_chorus
         w = {"rest": 1.0} if not keep else {k: v for k, v in w.items() if k in ("pad", "hits", "rest")} or {"rest": 1.0}
+    if presence != "normal":
+        w.pop("soli", None)  # a written line for both horns is foreground: only at normal presence
     return {k: float(v) for k, v in w.items() if v > 0}
 
 
 # Rock guitar part per role (backing_rock_guitar.PARTS; "rest" = the guitarist lays out).
-def _guitar_part(role: str, energy: float, seed: int, block: int) -> str:
+def _guitar_part(role: str, energy: float, seed: int, block: int, *, only_chords: bool = False, role_pass: int = 1) -> str:
     if role == sa.INTRO:
-        return "rest" if energy < 0.4 else "arena"
+        # Piano, bass and drums set the song up; in a trio the guitar is the only chord instrument: it strums it in.
+        return "strum" if only_chords else ("arena" if energy >= 0.4 else "rest")
     if role in (sa.VERSE, HEAD):
-        return "chug" if _rand(seed, "gtr-verse") < 0.6 else "stabs"
+        if role_pass <= 1 and role == sa.VERSE:
+            return "chug"  # the first verse sits under the voice: palm-muted eighths
+        return "chug" if _rand(seed, "gtr-verse", role_pass) < 0.4 else "stabs"  # a later verse changes its part
     if role == sa.PRE:
         return "boogie" if _rand(seed, "gtr-pre") < 0.5 else "strum"
     if role in (sa.CHORUS, sa.REFRAIN, OUT_HEAD, sa.INTERLUDE):
@@ -205,7 +218,7 @@ def _guitar_part(role: str, energy: float, seed: int, block: int) -> str:
     if role in (sa.SOLO, SOLO_PASS):
         return "stabs"
     if role in (sa.BREAKDOWN,):
-        return "rest"
+        return "arena" if only_chords else "rest"
     if role == sa.OUTRO:
         return "arena"
     return ""
@@ -228,6 +241,111 @@ def _fill(cur: float, nxt: float | None, *, into_final: bool, ending: bool) -> s
     return "small"
 
 
+# --- Samba: which players of the bateria play each section -------------------------------------------------
+
+SAMBA = "Samba"
+# light: surdos, pandeiro and ganza only | tamborim: + the tamborim's teleco-teco | bells: the agogo carries behind a
+# soloist, the drums drop back | full: the whole bateria, the high surdo cutting, the pandeiro shaking.
+SAMBA_TEXTURES = ("light", "tamborim", "bells", "full")
+
+
+def _samba_texture(style: str, role: str, p: sa.BarPlace, passes: int, *, last_bar: bool, next_role, next_pass) -> tuple[str, str]:
+    if style != SAMBA:
+        return "", ""
+    if role == HEAD:
+        tex = "light" if (p.block == 0 and p.blocks > 1) else "tamborim"  # the A eases in, the tamborim joins for the B
+    elif role in (SOLO_PASS, sa.SOLO, sa.BRIDGE, sa.BREAKDOWN):
+        tex = "bells"
+    elif role in (OUT_HEAD, sa.CHORUS, sa.REFRAIN, sa.OUTRO, sa.INTERLUDE):
+        tex = "full"
+    elif role == sa.INTRO:
+        tex = "light"
+    else:
+        tex = "tamborim"
+    call = ""
+    if last_bar:
+        if next_role is None:
+            call = "ending"  # the last bar: the band's closing figure together, then silence
+        elif next_pass is not None and next_pass != p.loop:
+            call = "big"  # into a new chorus of the form: the surdos and tamborim call it in
+        else:
+            call = "small"  # inside a chorus: the tamborim alone marks the new section
+    return tex, call
+
+
+def samba_bass_figure(plan: "ArrangementPlan | None", idx: int) -> str:
+    """The Samba bassist's figure for bar ``idx``: "two" (root and the low fifth, no pickups) while the bateria is
+    light, "busy" (pickups and approach notes) with the full bateria, "" (as written) otherwise."""
+    b = plan.at(idx) if plan is not None and plan.style == SAMBA else None
+    if b is None:
+        return ""
+    return {"light": "two", "full": "busy"}.get(b.perc_texture, "")
+
+
+# --- Rock: the drummer's and bassist's part per section -----------------------------------------------------
+
+_ROCK_STYLES = frozenset({"Rock groove"})
+_ROCK_DB_PER_ENERGY = 7.0  # the band's dynamics with the song: a verse ~1 dB under neutral, a final chorus ~2.4 dB over
+_E8 = tuple(i * 0.5 for i in range(8))
+_Q = (0.0, 1.0, 2.0, 3.0)
+
+
+@dataclass(frozen=True)
+class KitPart:
+    """One bar of a Rock song's drum and bass part (the plan's orchestration of the groove).
+
+    ``cymbal``: what the right hand plays - "hat" (closed hi-hat, as written), "wash" (a half-open hat, choked by the
+    next stroke), "ride" or "floor" (the floor tom). ``grid``: (grid key, beats) that replace the groove's for this bar
+    (kick, snare, cymbal and bass rhythm). ``crash``: a crash on the downbeat. ``level``: the section's dynamic, x the
+    bar's intensity, for the whole band."""
+
+    cymbal: str = "hat"
+    grid: tuple = ()
+    crash: bool = False
+    level: float = 1.0
+
+
+def kit_part(plan: "ArrangementPlan | None", idx: int) -> KitPart | None:
+    if plan is None or plan.style not in _ROCK_STYLES:
+        return None
+    b = plan.at(idx)
+    if b is None:
+        return None
+    level = float(10 ** (min(3.0, max(-2.0, (b.energy - 0.6) * _ROCK_DB_PER_ENERGY)) / 20.0))
+    role, pos = b.role, b.bar_in_section
+    seed = plan.seed
+    if role in (sa.INTRO, sa.OUTRO, sa.BREAKDOWN, sa.NEUTRAL):
+        return KitPart(level=level)  # the approved intro / outro textures (item 34), at the section's level
+    if role in (sa.VERSE, HEAD):
+        if b.role_pass <= 1:
+            # Verse 1: the kick on 1 and 3; the bass in quarter notes under the vocal, moving to eighths for the
+            # verse's second half.
+            bass = _Q if pos < max(2, b.section_bars // 2) else _E8
+            return KitPart(grid=(("kick_beats", (0.0, 2.0)), ("bass_beats", bass)), level=level)
+        # Verse 2: the kick pushes the "and" of 3 every other bar, the bass moves to eighths.
+        kick = (0.0, 2.0, 2.5) if pos % 2 == 1 else (0.0, 2.0)
+        return KitPart(grid=(("kick_beats", kick), ("bass_beats", _E8)), level=level)
+    if role == sa.PRE:
+        if _rand(seed, "pre-kit") < 0.5:
+            # The floor tom takes the eighths: the build everyone knows.
+            return KitPart(cymbal="floor", grid=(("kick_beats", (0.0, 2.0)), ("bass_beats", _E8)), level=level)
+        # Four on the floor under quarter-note hats.
+        return KitPart(grid=(("kick_beats", _Q), ("hat_beats", _Q), ("bass_beats", _E8)), level=level)
+    if role in (sa.CHORUS, sa.REFRAIN, OUT_HEAD):
+        ride = _rand(seed, "chorus-cymbal") < 0.5
+        cymbal = "wash" if (b.final_chorus or not ride) else "ride"
+        kick = (0.0, 1.5, 2.0, 2.5)
+        crash = b.final_chorus and pos % 4 == 0 and pos > 0  # the last chorus re-crashes each phrase
+        return KitPart(cymbal=cymbal, grid=(("kick_beats", kick), ("bass_beats", _E8)), crash=crash, level=level)
+    if role == sa.BRIDGE:
+        # Half time on the ride: the backbeat on 3, the bass in half notes.
+        return KitPart(cymbal="ride", grid=(("kick_beats", (0.0, 1.5)), ("snare_beats", (2.0,)), ("hat_beats", _Q),
+                                            ("ghost_snare", ()), ("bass_beats", (0.0, 2.0))), level=level)
+    if role in (sa.SOLO, SOLO_PASS, sa.INTERLUDE):
+        return KitPart(cymbal="ride", grid=(("bass_beats", _E8),), level=level)
+    return KitPart(level=level)
+
+
 def build(
     chord_list: Sequence[dict],
     cycle_len: int,
@@ -246,6 +364,8 @@ def build(
     chorus_blocks = [(p.loop, p.block) for p in places if p.role == sa.CHORUS]
     if len(set(chorus_blocks)) >= 2:
         final_chorus_block = max(chorus_blocks)
+    plays = getattr(performance, "plays", None)
+    only_chords = bool(callable(plays) and plays("guitar") and not plays("keys"))
     raw = []
     for idx, (ev, p) in enumerate(zip(chord_list, places)):
         role = _jam_role(style, p.role, p.block, p.blocks, p.loop, passes)
@@ -262,12 +382,20 @@ def build(
         # Small moves: more as the song opens up, fewer in quiet sections.
         move_rate = float(min(1.6, max(0.35, 0.45 + 1.1 * e)))
         # The guitarist digs in with the song: a verse sits under its chorus, the last chorus on top.
-        guitar_level = float(min(1.12, max(0.75, 0.62 + 0.5 * e)))
+        guitar_level = float(min(1.12, max(0.7, 0.45 + 0.7 * e)))
         horn_w = horn_weights(role, e, final_chorus=final, presence=presence) if (p.bar % 4 == 0) else {}
+        horn_dyn = _HORN_DYNAMIC.get(role, 0.0) + (0.06 if final else 0.0)
+        if role == OUT_HEAD and p.bars > 1:
+            horn_dyn += 0.04 * p.bar / (p.bars - 1)  # the out head grows to the end
+        perc_tex, perc_call = _samba_texture(style, role, p, passes, last_bar=last_bar,
+                                             next_role=(nxt[3] if nxt else None), next_pass=(nxt[2].loop if nxt else None))
         bars.append(BarArrangement(
             index=idx, role=role, chart_role=p.role, block=p.block, pass_index=p.loop, passes=passes,
             bar_in_section=p.bar, section_bars=p.bars, energy=e, final_chorus=final, fill=fill, move_rate=move_rate,
-            guitar_part=_guitar_part(role, e, seed, p.block), guitar_level=guitar_level, perc_intensity=_perc_intensity(e), horn_weights=horn_w,
+            guitar_part=_guitar_part(role, e, seed, p.block, only_chords=only_chords, role_pass=p.role_pass + p.loop * p.role_blocks), guitar_level=guitar_level,
+            perc_intensity=_perc_intensity(e), horn_weights=horn_w,
+            role_pass=p.role_pass + p.loop * p.role_blocks, horn_dynamic=float(horn_dyn),
+            perc_texture=perc_tex, perc_call=perc_call,
         ))
     return ArrangementPlan(str(style), tuple(bars), int(seed), presence)
 
@@ -294,6 +422,14 @@ def bar_texture(plan: ArrangementPlan, idx: int, place: sa.BarPlace) -> sa.Secti
         if b.final_chorus and fam == "strong" and not last_bar:
             return replace(base, open_hat_and4=base.open_hat_and4 or b.bar_in_section % 2 == 1, comp_extra_voice=True)
         return base
+    if plan.style == SAMBA and b.perc_texture:
+        # The piano follows the bateria: held chords while it eases in, a fuller voicing with the whole section.
+        if b.perc_texture == "light":
+            return T(b.role, comp="sustain", intensity=0.97)
+        if b.perc_texture == "full":
+            return T(b.role, comp="full", comp_extra_voice=True, pad=True, intensity=1.02)
+        if b.perc_texture == "bells":
+            return T(b.role, comp="sparse", intensity=0.98)
     if b.role == HEAD:
         if b.pass_index == 0 and b.block == 0 and b.bar_in_section < 2 and b.passes > 1:
             return T(b.role, comp="sparse", ghosts=False, bass="half" if plan.style == "Jazz swing" else "groove",
