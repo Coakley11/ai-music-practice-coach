@@ -1,0 +1,102 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 300" preserveAspectRatio="xMaxYMid slice" role="img" aria-label="A light-blue stage with a keyboard, upright bass, drum kit and saxophone">
+  <!-- Style Jam card artwork: hand-drawn for this app. A daylight rehearsal stage, the band on the right. -->
+  <defs>
+    <linearGradient id="sj-sky" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f0f9ff"/>
+      <stop offset="0.55" stop-color="#bae6fd"/>
+      <stop offset="1" stop-color="#7dd3fc"/>
+    </linearGradient>
+    <linearGradient id="sj-floor" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#38bdf8" stop-opacity="0.55"/>
+      <stop offset="1" stop-color="#0284c7" stop-opacity="0.75"/>
+    </linearGradient>
+    <linearGradient id="sj-brass" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#fde68a"/>
+      <stop offset="1" stop-color="#d97706"/>
+    </linearGradient>
+    <radialGradient id="sj-glow" cx="0.72" cy="0.35" r="0.6">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.85"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="960" height="300" fill="url(#sj-sky)"/>
+  <rect width="960" height="300" fill="url(#sj-glow)"/>
+  <!-- bokeh -->
+  <g fill="#ffffff">
+    <circle cx="120" cy="60" r="34" opacity="0.35"/>
+    <circle cx="300" cy="34" r="18" opacity="0.4"/>
+    <circle cx="470" cy="78" r="26" opacity="0.28"/>
+    <circle cx="610" cy="40" r="14" opacity="0.5"/>
+    <circle cx="900" cy="56" r="30" opacity="0.32"/>
+  </g>
+  <!-- a flowing staff with notes, across the whole card -->
+  <g fill="none" stroke="#0369a1" stroke-opacity="0.22" stroke-width="2">
+    <path d="M0 118 C160 88 320 148 480 118 S800 88 960 118"/>
+    <path d="M0 130 C160 100 320 160 480 130 S800 100 960 130"/>
+    <path d="M0 142 C160 112 320 172 480 142 S800 112 960 142"/>
+    <path d="M0 154 C160 124 320 184 480 154 S800 124 960 154"/>
+    <path d="M0 166 C160 136 320 196 480 166 S800 136 960 166"/>
+  </g>
+  <g fill="#0369a1" fill-opacity="0.45" stroke="#0369a1" stroke-opacity="0.45" stroke-width="3">
+    <ellipse cx="420" cy="128" rx="9" ry="6.5" transform="rotate(-20 420 128)" stroke="none"/>
+    <line x1="428" y1="126" x2="428" y2="88"/>
+    <ellipse cx="458" cy="116" rx="9" ry="6.5" transform="rotate(-20 458 116)" stroke="none"/>
+    <line x1="466" y1="114" x2="466" y2="80"/>
+    <line x1="428" y1="88" x2="466" y2="80" stroke-width="6"/>
+    <ellipse cx="540" cy="104" rx="9" ry="6.5" transform="rotate(-20 540 104)" stroke="none"/>
+    <line x1="548" y1="102" x2="548" y2="64"/>
+    <path d="M548 64 q14 8 8 24" fill="none"/>
+  </g>
+  <!-- stage floor -->
+  <ellipse cx="740" cy="300" rx="330" ry="62" fill="url(#sj-floor)"/>
+  <ellipse cx="740" cy="292" rx="300" ry="44" fill="#e0f2fe" opacity="0.35"/>
+  <!-- keyboard on a stand -->
+  <g transform="translate(462 196)">
+    <line x1="16" y1="38" x2="4" y2="86" stroke="#0c4a6e" stroke-width="6" stroke-linecap="round"/>
+    <line x1="134" y1="38" x2="146" y2="86" stroke="#0c4a6e" stroke-width="6" stroke-linecap="round"/>
+    <rect x="0" y="12" width="150" height="30" rx="5" fill="#0c4a6e"/>
+    <rect x="6" y="20" width="138" height="18" rx="2" fill="#ffffff"/>
+    <g fill="#0c4a6e">
+      <rect x="15" y="20" width="6" height="11"/><rect x="29" y="20" width="6" height="11"/>
+      <rect x="50" y="20" width="6" height="11"/><rect x="64" y="20" width="6" height="11"/><rect x="78" y="20" width="6" height="11"/>
+      <rect x="99" y="20" width="6" height="11"/><rect x="113" y="20" width="6" height="11"/><rect x="134" y="20" width="6" height="11"/>
+    </g>
+    <g stroke="#7dd3fc" stroke-width="1"><line x1="26" y1="31" x2="26" y2="38"/><line x1="46" y1="20" x2="46" y2="38"/>
+      <line x1="66" y1="31" x2="66" y2="38"/><line x1="94" y1="20" x2="94" y2="38"/><line x1="116" y1="31" x2="116" y2="38"/></g>
+  </g>
+  <!-- drum kit -->
+  <g transform="translate(632 168)">
+    <line x1="-6" y1="40" x2="-6" y2="118" stroke="#0c4a6e" stroke-width="4"/>
+    <ellipse cx="-6" cy="38" rx="34" ry="6" fill="url(#sj-brass)"/>
+    <line x1="132" y1="24" x2="132" y2="118" stroke="#0c4a6e" stroke-width="4"/>
+    <ellipse cx="132" cy="22" rx="40" ry="7" fill="url(#sj-brass)" transform="rotate(-8 132 22)"/>
+    <circle cx="62" cy="88" r="44" fill="#0c4a6e"/>
+    <circle cx="62" cy="88" r="35" fill="#e0f2fe"/>
+    <circle cx="62" cy="88" r="35" fill="none" stroke="#38bdf8" stroke-width="4"/>
+    <text x="62" y="96" text-anchor="middle" font-family="system-ui, sans-serif" font-size="22" font-weight="800" fill="#0369a1">&#9834;</text>
+    <rect x="16" y="46" width="34" height="20" rx="6" fill="#0284c7"/>
+    <rect x="74" y="44" width="34" height="20" rx="6" fill="#0284c7"/>
+    <ellipse cx="33" cy="46" rx="17" ry="4" fill="#bae6fd"/>
+    <ellipse cx="91" cy="44" rx="17" ry="4" fill="#bae6fd"/>
+    <rect x="114" y="82" width="38" height="36" rx="6" fill="#0369a1"/>
+    <ellipse cx="133" cy="82" rx="19" ry="5" fill="#bae6fd"/>
+  </g>
+  <!-- upright bass -->
+  <g transform="translate(892 70)">
+    <path d="M22 0 q8 -4 12 4 q-2 8 -8 8" fill="none" stroke="#7c2d12" stroke-width="5" stroke-linecap="round"/>
+    <rect x="22" y="8" width="8" height="110" rx="3" fill="#431407"/>
+    <path d="M26 112 c-34 0 -44 22 -34 44 c6 12 -8 20 -6 36 c4 26 26 38 40 38 c14 0 36 -12 40 -38 c2 -16 -12 -24 -6 -36 c10 -22 0 -44 -34 -44 z" fill="#b45309"/>
+    <path d="M26 112 c-34 0 -44 22 -34 44 c6 12 -8 20 -6 36 c4 26 26 38 40 38" fill="none" stroke="#7c2d12" stroke-width="3"/>
+    <path d="M12 160 q4 6 0 12 M40 160 q-4 6 0 12" fill="none" stroke="#431407" stroke-width="3"/>
+    <rect x="18" y="196" width="16" height="6" rx="2" fill="#431407"/>
+    <g stroke="#fef3c7" stroke-width="1.2"><line x1="24" y1="10" x2="23" y2="198"/><line x1="28" y1="10" x2="29" y2="198"/></g>
+    <line x1="26" y1="228" x2="26" y2="240" stroke="#0c4a6e" stroke-width="3"/>
+  </g>
+  <!-- saxophone, resting on its stand -->
+  <g transform="translate(806 96)">
+    <path d="M6 0 l14 -6 l4 8 l-10 6 z" fill="#0c4a6e"/>
+    <path d="M18 4 c8 16 6 44 2 70 c-4 26 -2 48 18 56 c18 6 32 -6 34 -22 l-6 -12 c0 14 -10 22 -20 18 c-12 -6 -10 -24 -6 -42 c4 -22 6 -50 -6 -70 z" fill="url(#sj-brass)" stroke="#b45309" stroke-width="2"/>
+    <ellipse cx="68" cy="94" rx="11" ry="6" fill="#92400e" transform="rotate(-30 68 94)"/>
+    <g fill="#fef3c7"><circle cx="24" cy="40" r="3"/><circle cx="23" cy="54" r="3"/><circle cx="22" cy="68" r="3"/><circle cx="24" cy="96" r="3"/></g>
+  </g>
+</svg>
