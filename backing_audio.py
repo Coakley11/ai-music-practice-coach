@@ -30,6 +30,7 @@ from music_theory import NOTE_TO_MIDI, is_no_chord_token, normalize_root, split_
 
 import backing_arrangement_profiles as _arr_profiles
 import backing_drum_kit as _drum_kit
+import backing_arrangement_plan as _ap
 import backing_groove_profiles as _groove_profiles
 import backing_latin_grooves as _lg
 import backing_latin_percussion as _lp
@@ -2232,7 +2233,9 @@ def drum_renderer_tag() -> str:
     """Part of a saved backing's identity, so audio from another drum sound is never replayed as this one."""
     tag = "+drums2-" + _drum_kit._samples.pack_token() if _drum_kit.drum_kit_enabled() else ""
     # the recorded Latin percussionist ("" unless MUSIC_LATIN_GROOVES is on); the drum balance (MUSIC_BAND_BALANCE)
-    return tag + _lp.renderer_tag() + _se.renderer_tag() + _bb.renderer_tag()  # + the Samba ensemble (MUSIC_SAMBA_ENSEMBLE)
+    # + the arrangement plan (MUSIC_ARRANGEMENT_PLAN): a planned take is never replayed as an unplanned one
+    return (tag + _lp.renderer_tag() + _se.renderer_tag() + _bb.renderer_tag()  # + the Samba ensemble (MUSIC_SAMBA_ENSEMBLE)
+            + (f"+arrplan{_ap.PLAN_VERSION}" if _ap.enabled() else ""))
 
 
 def _with_drum_kit(render):
@@ -2444,6 +2447,12 @@ def synthesize_chords_to_numpy(
     arr_ctx = _build_arrangement_context(chord_list)
     # Section-aware textures: what each bar plays given its place in the song's form.
     section_plan = _sa.build_plan(chord_list, cycle_len)
+    # Backing Engine 2.0 (MUSIC_ARRANGEMENT_PLAN): one plan the whole band follows (backing_arrangement_plan).
+    arr_plan = None
+    if _ap.enabled() and chord_list:
+        _arr_seed = int(_kit_song_seed or 0) or zlib.crc32(
+            repr((song_title, song_artist, style, [e.get("chord") for e in chord_list[:cycle_len]])).encode("utf-8", "replace"))
+        arr_plan = _ap.build(chord_list, cycle_len, style=style, performance=plan, seed=_arr_seed)
     total_song_bars = len(chord_list)
 
     for idx, event in enumerate(chord_list):
@@ -2532,7 +2541,7 @@ def synthesize_chords_to_numpy(
             # MUSIC_SAMBA_ENSEMBLE: a recorded Samba section; its surdos, ganza and tamborim replace the kit's kick,
             # shaker hat and rim, so the drum kit lays out under the bateria.
             samba_strokes = _se.bar_strokes(
-                idx, intensity=(plan.intensity if plan is not None else "Medium"),
+                idx, intensity=(_arr_bar.perc_intensity if _arr_bar is not None else plan.intensity if plan is not None else "Medium"),
                 bar_in_section=int(event.get("bar_in_section", idx) or 0), section_bars=int(event.get("section_bars", 0) or 0),
                 seed=_kit_song_seed,
             )
@@ -2541,7 +2550,7 @@ def synthesize_chords_to_numpy(
                 bar_patterns[part] = []
         elif pulses_per_bar == 4 and _lp.plays(style):
             perc_hits = _lp.bar_hits(
-                style, idx, intensity=(plan.intensity if plan is not None else "Medium"),
+                style, idx, intensity=(_arr_bar.perc_intensity if _arr_bar is not None else plan.intensity if plan is not None else "Medium"),
                 bar_in_section=int(event.get("bar_in_section", -1)) if isinstance(event, dict) else None,
                 section_bars=int(event.get("section_bars", 0) or 0) if isinstance(event, dict) else 0,
                 seed=int(_kit_song_seed or 0),
@@ -2551,7 +2560,9 @@ def synthesize_chords_to_numpy(
                 bar_patterns = dict(bar_patterns)
                 for part in replaced:
                     bar_patterns[part] = []
-        section_tex = _sa.bar_texture(style, section_plan[idx])
+        _arr_bar = arr_plan.at(idx) if arr_plan is not None else None
+        section_tex = (_ap.bar_texture(arr_plan, idx, section_plan[idx]) if arr_plan is not None
+                       else _sa.bar_texture(style, section_plan[idx]))
         if plan is not None:
             section_tex = plan.texture(section_tex, role)  # the jam's groove intensity, around the form
         tex_bass = section_tex.bass if section_tex is not None else "groove"
@@ -2606,6 +2617,7 @@ def synthesize_chords_to_numpy(
                 guitar_part, sounding_chord if bar_is_hit else chord, _bossa_next_head(next_chord), role, section_tex,
                 int(event.get("bar_in_section", 0) or 0), bar_is_hit, section_edge, bar_start, pulse, bar, intensity,
                 idx + 1009 * loop_seed, segments=_sounding_segments(chord, pulses_per_bar), chord_notes=chord_notes_for_guitar,
+                section_part=(_arr_bar.guitar_part if _arr_bar is not None else ""),
             )
 
         def _pulse_chord(b_pos: float) -> str:
@@ -3371,6 +3383,8 @@ def synthesize_chords_to_numpy(
                         song_seed=_kit_song_seed,
                         bar_index=idx,
                         fill_rate=float(plan.drums.fills) if plan is not None else 1.0,
+                        fill=(_arr_bar.fill if _arr_bar is not None else ""),
+                        move_rate=(_arr_bar.move_rate if _arr_bar is not None else 1.0),
                     )
                 ),
                 lambda _b: _groove_time(bar_start, _b, pulse, style, swing=swing_amt, pocket=pocket_offset),
@@ -3567,7 +3581,7 @@ def synthesize_chords_to_numpy(
     if plan is not None and not plan.plays("keys"):
         keys_bus[:] = 0.0  # a band without keys (a Rock trio): the comping lays out entirely
     horns_bus = _horn_background(plan, chord_list, bar, pulse, pulses_per_bar, sr, len(audio), _rhythm_rms,
-                                 style=style, swing=swing_amt, seed=_kit_song_seed)
+                                 style=style, swing=swing_amt, seed=_kit_song_seed, arrangement=arr_plan)
     _balance_stats = None
     if drum_bus is not None:
         # The drums take their place under the music (backing_band_balance): softer cymbals, rounded attacks, a
@@ -3640,7 +3654,7 @@ def _sounding_rms(x: np.ndarray, sr: int) -> float:
     return float(np.sqrt(np.mean(fr[on] ** 2)))
 
 
-def _two_horn_background(plan, chord_list, bar, pulses_per_bar, pulse, sr, n, rhythm_rms, *, style, swing, seed):
+def _two_horn_background(plan, chord_list, bar, pulses_per_bar, pulse, sr, n, rhythm_rms, *, style, swing, seed, arrangement=None):
     """The quintet's two horns (``plan.horns``, top first) arranged phrase by phrase (backing_horn_arranger)."""
     import backing_horn_arranger as _arr
     import backing_horns as _bh
@@ -3657,7 +3671,12 @@ def _two_horn_background(plan, chord_list, bar, pulses_per_bar, pulse, sr, n, rh
                                 section_bars=int(event.get("section_bars", 0) or 0)))
     # Where the band puts its off-beat 8th: straight for bossa, the drums' own swing otherwise.
     swing_at = 0.5 if style == "Bossa nova" else min(0.7, 0.5 + float(swing or 0.0) + (0.12 if style == "Jazz swing" else 0.0))
+    weights = None
+    if arrangement is not None:
+        # The arrangement plan decides what each phrase may be (rests in an intro or a solo, harmony in a chorus).
+        weights = {b.index: b.horn_weights for b in arrangement.bars if b.horn_weights}
     arr = _arr.arrange(bars, top=top, bottom=bottom, intensity=plan.intensity, mood=plan.mood, level=plan.level,
+                       phrase_weights=weights,
                        swing=swing_at, seed=int(seed or 0) or zlib.crc32(repr([e.get("chord") for e in chord_list]).encode("utf-8", "replace")))
     bus = np.zeros(n, dtype=np.float64)
     for name in (top, bottom):
@@ -3678,7 +3697,7 @@ def _two_horn_background(plan, chord_list, bar, pulses_per_bar, pulse, sr, n, rh
 LAST_MIX_STATS_PENDING: dict = {}
 
 
-def _horn_background(plan, chord_list, bar, pulse, pulses_per_bar, sr, n, rhythm_rms, *, style="", swing=0.0, seed=0):
+def _horn_background(plan, chord_list, bar, pulse, pulses_per_bar, sr, n, rhythm_rms, *, style="", swing=0.0, seed=0, arrangement=None):
     """The horn background for a plan that plays horns (``MUSIC_HORNS``), else None.
 
     One horn (the Jazz quartet's tenor): a guide-tone pad. Two horns (the Jazz quintet's trumpet and
@@ -3695,7 +3714,7 @@ def _horn_background(plan, chord_list, bar, pulse, pulses_per_bar, sr, n, rhythm
         return None
     if len(getattr(plan, "horns", ()) or ()) > 1:
         return _two_horn_background(plan, chord_list, bar, pulses_per_bar, pulse, sr, n, rhythm_rms,
-                                    style=style, swing=swing, seed=seed)
+                                    style=style, swing=swing, seed=seed, arrangement=arrangement)
     spans = []
     for idx, event in enumerate(chord_list):
         for s0, e0, ch in _sounding_segments(str(event.get("chord") or ""), pulses_per_bar):

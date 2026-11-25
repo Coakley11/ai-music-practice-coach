@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import os
 import zlib
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import lru_cache
 from typing import Any
 
@@ -299,6 +299,8 @@ class BarContext:
     song_seed: int = 0  # the same song plays the same drumming on every render
     bar_index: int = 0  # the bar's place in the whole render, repeats included
     fill_rate: float = 1.0  # Backing Engine 2.0: < 1 a drummer who leaves more space, > 1 one who fills more
+    fill: str = ""  # the arrangement plan's fill for a section end: small / medium / big / ending ("" = the drummer's own)
+    move_rate: float = 1.0  # the plan's scale on small moves inside a phrase (quiet sections fewer, big ones more)
 
 
 @dataclass(frozen=True)
@@ -367,6 +369,8 @@ def _phrase_move(ctx: BarContext) -> list[Hit]:
         chance *= 1.25
     if ctx.fill_rate != 1.0:
         chance = min(0.85, chance * float(ctx.fill_rate))
+    if ctx.move_rate != 1.0:
+        chance = min(0.85, chance * float(ctx.move_rate))
     if bar == 0:
         return []
     if _roll(ctx, 1) >= chance:
@@ -391,6 +395,33 @@ def _phrase_move(ctx: BarContext) -> list[Hit]:
     if style == "Blues groove":
         return _pick(ctx, 6, [[Hit(3.67, "kick", 0.55)], _snare_run([3.67], 0.4), _snare_run([3.33, 3.67], 0.5)])
     return []
+
+
+def _sized_fill(ctx: BarContext) -> list[Hit]:
+    """The plan's fill for a section end: ``small`` a pickup or two, ``medium`` the drummer's own section fill,
+    ``big`` a longer one across the second half of the bar (into a final chorus, a big lift), ``ending`` none
+    (the last bar rings out). Each style keeps its own vocabulary: a jazz drummer never plays a rock tom run."""
+    style, size = ctx.style, ctx.fill
+    if size == "ending":
+        return []
+    if size == "medium" or style not in ("Pop groove", "Rock groove", "Funk groove", "Jazz swing", "Blues groove"):
+        return _section_fill(replace(ctx, next_role=ctx.next_role or "verse"))
+    if size == "small":
+        if style == "Jazz swing":
+            return _pick(ctx, 31, [_snare_run([3.5], 0.36), [Hit(3.5, "kick", 0.3)], _snare_run([2.5, 3.5], 0.36)])
+        return _pick(ctx, 32, [_snare_run([3.75], 0.45), [Hit(3.5, "kick", 0.55)], [Hit(3.5, "open", 0.5)]])
+    # big
+    if style == "Jazz swing":
+        return _pick(ctx, 33, [
+            _snare_run([2.0, 2.5, 3.0, 3.5], 0.52) + [Hit(3.5, "kick", 0.4)],
+            _snare_run([1.5, 2.5], 0.4) + _snare_run([3.0, 3.33, 3.67], 0.55) + [Hit(3.67, "kick", 0.38)],
+        ])
+    if style == "Funk groove":
+        return _pick(ctx, 34, [_snare_run([2.0, 2.25, 2.75, 3.0], 0.6) + _tom_run([3.25, 3.5, 3.75], 0.9),
+                               _snare_run([2.5, 2.75, 3.0, 3.25], 0.65) + _tom_run([3.5, 3.75], 0.9)])
+    return _pick(ctx, 35, [_snare_run([2.0, 2.5], 0.6) + _tom_run([3.0, 3.25, 3.5, 3.75], 0.95),
+                           _tom_run([2.0, 2.5, 3.0, 3.25, 3.5, 3.75], 0.95),
+                           _snare_run([2.0, 2.25, 2.5, 2.75], 0.7) + _tom_run([3.0, 3.5, 3.75], 0.95)])
 
 
 def _style_bed(ctx: BarContext) -> list[Hit]:
@@ -418,7 +449,9 @@ def bar_extras(ctx: BarContext) -> list[Hit]:
     if float(ctx.pulses_per_bar) != 4.0 or ctx.drums in _QUIET_TEXTURES:
         return []
     out = _style_bed(ctx)
-    if ctx.ends_section:
+    if ctx.ends_section and ctx.fill:
+        out += _sized_fill(ctx)  # the arrangement plan sized it from where the song goes next
+    elif ctx.ends_section:
         # A drummer asked for space sometimes lets the section end with the groove alone.
         if ctx.fill_rate >= 1.0 or _roll(ctx, 21) < float(ctx.fill_rate):
             out += _section_fill(ctx)

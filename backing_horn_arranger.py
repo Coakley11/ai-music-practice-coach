@@ -37,7 +37,7 @@ from typing import Sequence
 import backing_horns as bh
 
 ARRANGER_VERSION = 1
-TEXTURES = ("rest", "solo_pad", "staggered", "pad", "call", "riff", "hits")
+TEXTURES = ("rest", "solo_pad", "staggered", "pad", "call", "riff", "hits", "feature")
 PHRASE_BARS = 4
 
 # Relative weights of each texture per intensity: Light leaves the most room, Heavy riffs and shoots.
@@ -140,7 +140,8 @@ def phrases_of(bars: Sequence[ArrBar], phrase_bars: int = PHRASE_BARS) -> list[P
 
 
 def choose_textures(
-    phrases: Sequence[Phrase], *, intensity: str = "Medium", mood: str = "", level: str = "", seed: int = 0
+    phrases: Sequence[Phrase], *, intensity: str = "Medium", mood: str = "", level: str = "", seed: int = 0,
+    phrase_weights: dict | None = None,
 ) -> list[str]:
     """One texture per phrase (see the module doc): weighted by intensity / mood / level, never the same
     twice in a row, a rest after the longest run of playing phrases the intensity allows."""
@@ -166,6 +167,24 @@ def choose_textures(
     out: list[str] = []
     run = 0
     for i, ph in enumerate(phrases):
+        planned = (phrase_weights or {}).get(ph.bars[0].index) if phrase_weights is not None else None
+        if phrase_weights is not None:
+            # The arrangement plan's choices for this phrase: its role decides (an intro rests, a solo leaves
+            # room, a chorus harmonises); the no-repeat rule holds only while it leaves another choice.
+            opts = dict(planned or {"rest": 1.0})
+            if out and len([k for k in opts if k != out[-1]]) >= 1 and out[-1] != "rest":
+                opts.pop(out[-1], None)
+            total = sum(opts.values())
+            r = rng.random() * total
+            tex = list(opts)[-1]
+            for k, w in opts.items():
+                r -= w
+                if r <= 0:
+                    tex = k
+                    break
+            run = 0 if tex == "rest" else run + 1
+            out.append(tex)
+            continue
         if i == 0:
             # The rhythm section sets the tune up; a heavy band brings the horns in at once, softly staggered.
             # A take of one or two phrases (a short vamp the player loops) cannot spend half of it resting.
@@ -403,6 +422,7 @@ def arrange(
     level: str = "",
     swing: float = 0.5,
     seed: int = 0,
+    phrase_weights: dict | None = None,
 ) -> Arrangement:
     """The two horns' notes for the take, phrase by phrase (see the module doc)."""
     hi_h, lo_h = bh.horn(top), bh.horn(bottom)
@@ -417,11 +437,12 @@ def arrange(
     w = _Writer(hi_h, lo_h, swing, _BASE_VELOCITY[inten], rng, voicing)
     w.last = {"top": hi_h.background[2], "bottom": lo_h.background[2]}
     phrases = phrases_of(bars)
-    textures = choose_textures(phrases, intensity=inten, mood=mood, level=level, seed=seed)
+    textures = choose_textures(phrases, intensity=inten, mood=mood, level=level, seed=seed, phrase_weights=phrase_weights)
     callers = ("top", "bottom")
     n_call = n_solo = 0
-    for ph, tex in zip(phrases, textures):
+    for pi, (ph, tex) in enumerate(zip(phrases, textures)):
         ph.texture = tex
+        next_tex = textures[pi + 1] if pi + 1 < len(textures) else ""
         v = w.base_velocity + _TEXTURE_DYNAMIC.get(tex, 0.0) + (0.03 if ph.first_of_section and tex != "rest" else 0.0)
         pb = ph.bars
         if tex == "solo_pad":
@@ -459,6 +480,20 @@ def arrange(
                 w.last["top"] = w.top.background[2] if rng.random() < 0.3 else w.last["top"]
                 w.harmonised_cell(pb[2], cell, v + 0.03, contour, _next_chord(pb, 2, bars))  # the riff again, on its new chord
             ph.detail.update(cell=cell)
+        elif tex == "feature":
+            # A featured passage: one horn plays a short melodic line over three bars (figure, continuation,
+            # answer to itself); the other enters under it with a held chord and both close the phrase.
+            lead = callers[n_call % 2]
+            other = "bottom" if lead == "top" else "top"
+            n_call += 1
+            contour = rng.choice(("up", "arch", "down"))
+            for j, bar in enumerate(pb[:3]):
+                cell = FIGURE_CELLS[(rng.randrange(len(FIGURE_CELLS)) + j) % len(FIGURE_CELLS)]
+                c = contour if j != 1 else {"up": "down", "down": "up", "arch": "valley"}[contour]
+                w.figure(lead, bar, cell, v + 0.04 + 0.02 * j, c, _next_chord(pb, j, bars))
+            if len(pb) >= 3:
+                w.held(other, pb[2:], v - 0.08, swell_first=3.0)
+            ph.detail.update(lead=lead)
         elif tex == "hits":
             pattern = HIT_PATTERNS[rng.randrange(len(HIT_PATTERNS))]
             for i, bar in enumerate(pb):
@@ -466,7 +501,9 @@ def arrange(
                     w.shots(bar, (pattern[0],), v, hold_last=True)
                 elif i % 2 == 0 or rng.random() < 0.5:
                     w.shots(bar, pattern, v)
-        if ph.leads_into_section and tex not in ("hits",):
+        # With a plan, a resting section stays at rest unless the horns come in on the next one.
+        setup = phrase_weights is None or tex != "rest" or next_tex in ("riff", "hits", "pad")
+        if ph.leads_into_section and tex not in ("hits",) and setup:
             # Set the next section up: two shots on the "and" of 3 and of 4 of the phrase's last bar.
             last_bar = pb[-1]
             cut = last_bar.start_sec + 2.25 * last_bar.beat_sec

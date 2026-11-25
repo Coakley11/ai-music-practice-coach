@@ -11,7 +11,7 @@ from __future__ import annotations
 import os
 import pathlib
 import zlib
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from functools import lru_cache
 
 import numpy as np
@@ -450,8 +450,22 @@ def start_part(length: int, sr: int, chords, chord_notes, bpm: float, seed: str)
     return GuitarPart(int(length), int(sr), choose_plan(list(chords), chord_notes, float(bpm), str(seed)))
 
 
-def add_bar(part: GuitarPart, chord, next_chord, role, texture, bar_in_section, is_hit, section_edge, bar_start, pulse, bar_seconds, intensity, bar_index, *, segments, chord_notes) -> None:
-    """One bar, in the tone its section calls for."""
+def add_bar(part: GuitarPart, chord, next_chord, role, texture, bar_in_section, is_hit, section_edge, bar_start, pulse, bar_seconds, intensity, bar_index, *, segments, chord_notes, section_part: str = "") -> None:
+    """One bar, in the tone its section calls for. ``section_part`` (the arrangement plan's) plays this section with
+    another of the guitarist's parts - muted chugs in a verse, a strum in a chorus - or ``"rest"`` lays out."""
+    name = str(section_part or "")
+    if name == "rest" and not is_hit:
+        return
+    if name in _WRITERS and name != part.plan.part:
+        heavy = part.plan.tones == PART_TONES[part.plan.part][1]
+        own = part.plan
+        part.plan = replace(own, part=name, tones=PART_TONES[name][1 if heavy else 0])
+        try:
+            add_bar(part, chord, next_chord, role, texture, bar_in_section, is_hit, section_edge, bar_start, pulse, bar_seconds,
+                    intensity, bar_index, segments=segments, chord_notes=chord_notes)
+        finally:
+            part.plan = own
+        return
     quiet = texture is not None and (texture.drums in ("hats", "minimal") or texture.comp == "sustain")
     tone = section_tone(part.plan, role, quiet)
     chorus = role in CHORUS_ROLES or (texture is not None and texture.comp == "full")
