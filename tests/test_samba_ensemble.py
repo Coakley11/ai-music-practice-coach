@@ -202,3 +202,59 @@ def test_authentic_take_is_its_own(monkeypatch, samba_on):
     b, _ = ba.synthesize_chords_to_numpy(CHORDS, bpm=104, loops=1, style="Samba")
     n = min(len(a), len(b))
     assert not np.allclose(a[:n], b[:n])
+
+
+def test_each_instrument_can_be_adopted_on_its_own(monkeypatch, samba_on):
+    monkeypatch.setenv("MUSIC_SAMBA_AUTHENTIC", "surdo,tamborim")
+    assert se.authentic_families() == {"surdo", "tamborim"}
+    assert se._source("surdo_low")[0] == str(se.AUTHENTIC_PACK)
+    assert se._source("tamborim")[0] == str(se.AUTHENTIC_PACK)
+    assert se._source("pandeiro_jingle")[0] == ""  # the pandeiro keeps its stand-in
+    tag = se.renderer_tag()
+    monkeypatch.setenv("MUSIC_SAMBA_AUTHENTIC", "1")
+    assert se.authentic_families() == set(se.AUTHENTIC_FAMILIES) and se.renderer_tag() != tag
+    monkeypatch.setenv("MUSIC_SAMBA_AUTHENTIC", "cowbell")
+    assert not se.authentic()
+
+
+def test_a_recording_that_stops_while_ringing_fades_naturally():
+    sr = 44100
+    t = np.arange(int(0.5 * sr)) / sr
+    ringing = (np.sin(2 * np.pi * 60 * t) * np.exp(-t / 2.0)).astype(np.float32)  # still loud at its end
+    out = se.natural_end(ringing, sr)
+    assert abs(out[-1]) < 1e-3 and np.allclose(out[: int(0.3 * sr)], ringing[: int(0.3 * sr)])
+    decayed = (np.sin(2 * np.pi * 60 * t) * np.exp(-t / 0.03)).astype(np.float32)  # already silent at its end
+    assert np.array_equal(se.natural_end(decayed, sr), decayed)
+
+
+def test_the_low_surdo_stand_in_no_longer_stops_mid_ring():
+    manifest = json.loads((se.PACK / "manifest.json").read_text(encoding="utf-8"))
+    x = se._stroke_audio("surdo_low", manifest["surdo_low"][2][0], 44100, False)
+    dry_end = x[len(x) - int(se.ROOM_RT60 * 44100) - 200: len(x) - int(se.ROOM_RT60 * 44100)]
+    assert np.max(np.abs(dry_end)) < 0.05 * np.max(np.abs(x))
+
+
+@pytest.mark.parametrize("authentic", ["0", "1"])
+def test_no_recording_repeats_back_to_back_over_a_song(monkeypatch, samba_on, authentic):
+    monkeypatch.setenv("MUSIC_SAMBA_AUTHENTIC", authentic)
+    used = []
+    real = se._stroke_audio
+
+    def spy(voice, take, sr, muted, pack=""):
+        used.append((se.AUTHENTIC_VOICES.get(voice, voice) if pack else voice, take))
+        return real(voice, take, sr, muted, pack)
+
+    monkeypatch.setattr(se, "_stroke_audio", spy)
+    rows = [{"chord": c, "section": "A", "bar_in_section": i % 8, "section_bars": 8} for i, c in enumerate(["D6", "B7", "Em7", "A7"] * 4)]
+    ba.synthesize_chords_to_numpy(rows, bpm=104, loops=1, style="Samba")
+    by = {}
+    for v, t in used:
+        by.setdefault(v, []).append(t)
+    for v, ts in by.items():
+        assert sum(a == b for a, b in zip(ts, ts[1:])) == 0, v
+    assert len(set(by["agogo_high"])) == 3 and len(set(by["agogo_low"])) == 2  # every agogo recording is used
+
+
+def test_thin_layers_borrow_their_neighbours():
+    assert se.take_pool([["a"], ["b"], ["c"]], 1) == ["b", "a", "c"]
+    assert se.take_pool([["a", "b", "c"], ["d"]], 0) == ["a", "b", "c"]
