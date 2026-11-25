@@ -171,9 +171,15 @@ def _existing_blob_for_hash(digest: str, *, st: Any | None = None) -> dict[str, 
         return {}
     from media_persistence import list_song_documents
     from media_state import DOCUMENT_STORAGE_CLOUD, DOCUMENT_STORAGE_LOCAL_ONLY
+    from media_storage import _cloud_storage_enabled
 
+    cloud_on = bool(_cloud_storage_enabled())
     for row in list_song_documents(st=st):
         if str(row.get("sha256") or "") != digest:
+            continue
+        # A copy that never reached the cloud (saved during an outage) must not be reused once the cloud is back:
+        # saving the file again is how the musician gets it uploaded.
+        if cloud_on and not str(row.get("storage_ref") or ""):
             continue
         if str(row.get("storage_status") or "") not in (
             DOCUMENT_STORAGE_CLOUD,
