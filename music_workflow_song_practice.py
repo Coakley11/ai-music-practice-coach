@@ -907,9 +907,12 @@ def reconcile_catalog_practice_key_owner(session: dict[str, Any], *, source: str
         return ""
 
     try:
-        from songs.practice_key_state import set_practice_concert_key
+        from songs.practice_key_state import heal_write_lands_in_creative_jam_store, set_practice_concert_key
 
-        if pick and not _is_jam_key(chosen):
+        # With a Style Jam / Jam Session on screen the jam owns the practice settings, and a write for the song's
+        # own pick is redirected into the jam's store (resolve_settings_pick_for_write): the song's key would
+        # replace the key the jam was generated in. The song's own store needs no heal from here then.
+        if pick and not _is_jam_key(chosen) and not heal_write_lands_in_creative_jam_store(session, pick):
             set_practice_concert_key(session, chosen, pick_key=pick)
     except ImportError:
         pass

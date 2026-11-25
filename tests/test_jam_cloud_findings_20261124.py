@@ -611,6 +611,19 @@ class SongReconcilerLeavesTheJamsKeyTests(unittest.TestCase):
         reconcile_catalog_practice_key_owner(s, source="test")
         self.assertNotIn("creative::entry_style_jam", s["practice_key_by_source"])
 
+    def test_the_songs_own_write_is_not_redirected_into_the_jam(self) -> None:
+        """Browser trace kl4 (1c750929): the reconciler ran for the Composition song's own pick, but with Style Jam on
+        screen the jam owns the practice settings, so set_practice_concert_key redirected the song's D into
+        creative::entry_style_jam 0.2 s after Generate sealed G."""
+        from music_workflow_song_practice import reconcile_catalog_practice_key_owner
+
+        s = self._session("G")
+        s.update(active_catalog_pick_key="composition::abc", improv_intelligence_tab="Entry & Jam",
+                 improv_entry_mode="Style Jam Mode")
+        reconcile_catalog_practice_key_owner(s, source="test")
+        self.assertEqual(s["practice_key_by_source"]["creative::entry_style_jam"], "G")
+        self.assertEqual(s["practice_key_by_source"]["composition::abc"], "D")
+
     def test_catalog_songs_still_reconcile(self) -> None:
         from music_workflow_song_practice import reconcile_catalog_practice_key_owner
 
