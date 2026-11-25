@@ -27778,8 +27778,14 @@ elif _studio_page == "backing":
         from practice_melody_notation import practice_melody_sections_abc
         from songs.music_source import resolve_active_song_identity
 
-        _pmb_song_identity = resolve_active_song_identity(st.session_state)
-        _pmb_target_key = str(chart_key or "").strip()
+        # A jam on Backing is its own melody source: its chords, key and identity, never the active song's.
+        from practice_melody_source import jam_melody_source
+
+        _pmb_jam = jam_melody_source(_creative_backing_ctx, _backing_musical)
+        _pmb_song_identity = (
+            _pmb_jam.identity if _pmb_jam is not None else resolve_active_song_identity(st.session_state)
+        )
+        _pmb_target_key = str((_pmb_jam.display_key if _pmb_jam is not None else chart_key) or "").strip()
         try:
             from backing_key_cycle import is_cycle_active, project_cycle_display_key, temporary_playback_key
 
@@ -27879,15 +27885,22 @@ elif _studio_page == "backing":
                 from practice_melody_session import resolve_practice_melody
 
                 _pmb_sections = sections if isinstance(sections, dict) else {}
+                if _pmb_jam is not None:
+                    _pmb_sections = _pmb_jam.sections
                 _pmb_created = resolve_practice_melody(
                     st.session_state,
                     song_identity=_pmb_song_identity,
                     song_id_for_generation=_pmb_song_identity,
-                    song_title=song,
+                    song_title=_pmb_jam.title if _pmb_jam is not None else song,
                     sections=_pmb_sections,
-                    section_order=(song_data or {}).get("section_order") or list(_pmb_sections.keys()),
-                    key_center=_pmb_target_key,
-                    level=level,
+                    section_order=(
+                        list(_pmb_sections.keys())
+                        if _pmb_jam is not None
+                        else (song_data or {}).get("section_order") or list(_pmb_sections.keys())
+                    ),
+                    # A jam's melody is composed in concert pitch; Backing shows it in the chart's key.
+                    key_center=_pmb_jam.concert_key if _pmb_jam is not None else _pmb_target_key,
+                    level=(_pmb_jam.level or level) if _pmb_jam is not None else level,
                     tempo_bpm=float(st.session_state.get("backing_track_bpm") or bpm or 100),
                     style=str(st.session_state.get("backing_groove_style") or ""),
                     meter=_pmb_parse_meter(str(backing_time_signature or "4/4")),

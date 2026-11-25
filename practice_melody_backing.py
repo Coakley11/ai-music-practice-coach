@@ -46,8 +46,12 @@ PENDING_MELODY_KEY = "pending_backing_practice_melody"
 PENDING_MELODY_SONG_IDENTITY_KEY = "pending_backing_practice_melody_song_identity"
 BACKING_MELODY_KEY = "backing_practice_melody"
 BACKING_MELODY_SONG_IDENTITY_KEY = "backing_practice_melody_song_identity"
+# The melody as it was handed over. Every other key is projected from it, never from a projection: the shortest
+# interval added up over a fourths cycle (+5 each step) carried the notes octaves away.
+BACKING_MELODY_BASE_KEY = "backing_practice_melody_base"
 
 _OWNED_KEYS = (
+    BACKING_MELODY_BASE_KEY,
     PENDING_MELODY_KEY,
     PENDING_MELODY_SONG_IDENTITY_KEY,
     BACKING_MELODY_KEY,
@@ -75,6 +79,14 @@ def clear_backing_practice_melody(session_state: MutableMapping[str, Any]) -> No
     """Drop the active Backing-side melody (used on identity mismatch)."""
     session_state.pop(BACKING_MELODY_KEY, None)
     session_state.pop(BACKING_MELODY_SONG_IDENTITY_KEY, None)
+    session_state.pop(BACKING_MELODY_BASE_KEY, None)
+
+
+def _project(session_state: Mapping[str, Any], melody: PracticeMelody, key_center: str) -> PracticeMelody:
+    base = session_state.get(BACKING_MELODY_BASE_KEY)
+    if not (isinstance(base, PracticeMelody) and base.melody_id == melody.melody_id):
+        base = melody
+    return transpose_practice_melody(base, new_key_center=key_center)
 
 
 def clear_practice_melody_backing_state(session_state: MutableMapping[str, Any]) -> None:
@@ -121,6 +133,7 @@ def consume_pending_practice_melody_handoff(
     if not isinstance(pending, PracticeMelody) or pending_identity != current_song_identity:
         clear_backing_practice_melody(session_state)
         return None
+    session_state[BACKING_MELODY_BASE_KEY] = pending
     target_key = str(current_key_center or "").strip()
     if target_key and pending.key_center != target_key:
         pending = transpose_practice_melody(pending, new_key_center=target_key)
@@ -161,7 +174,7 @@ def resolve_active_backing_practice_melody(
         return None
     target_key = str(current_key_center or "").strip()
     if target_key and melody.key_center != target_key:
-        melody = transpose_practice_melody(melody, new_key_center=target_key)
+        melody = _project(session_state, melody, target_key)
         if mutable is not None:
             mutable[BACKING_MELODY_KEY] = melody
     return melody
