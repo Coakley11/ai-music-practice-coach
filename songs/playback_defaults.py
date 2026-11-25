@@ -37,6 +37,14 @@ GROOVE_STYLE_CHOICES: tuple[str, ...] = (
     "Klezmer groove",
     "Jewish ballad",
 )
+try:
+    from backing_latin_grooves import LATIN_JAZZ as _LATIN_JAZZ, SAMBA as _SAMBA, enabled as _latin_on
+
+    if _latin_on():
+        # Backing Engine 2.0 slice 3 (MUSIC_LATIN_GROOVES): the two new grooves are Backing Feel choices too.
+        GROOVE_STYLE_CHOICES = GROOVE_STYLE_CHOICES + (_SAMBA, _LATIN_JAZZ)
+except ImportError:
+    pass
 
 
 def _heuristic_bpm_for_song_data(song_data: dict[str, Any] | None) -> int:
@@ -1087,6 +1095,14 @@ def normalize_groove_label(
     raw = str(groove or "").strip()
     if raw in GROOVE_STYLE_CHOICES:
         return raw
+    try:
+        from backing_latin_grooves import engine_style_for
+
+        latin = engine_style_for(raw)  # MUSIC_LATIN_GROOVES: Samba / Latin jazz are their own grooves
+        if latin:
+            return latin
+    except ImportError:
+        pass
     low = raw.lower().replace("nova", "nova").replace("groove", "groove")
     if "bossa" in low or "samba" in low:
         return "Bossa nova"

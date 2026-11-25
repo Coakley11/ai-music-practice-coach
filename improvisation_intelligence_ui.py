@@ -2212,7 +2212,7 @@ def _tab_entry_modes(
                 st.caption(f"Key change diagnostic: {_diag.get('failed_predicate')}")
         except ImportError:
             pass
-        from jam_control_ownership import JAM_ENSEMBLES, seed_jam_controls_before_mount
+        from jam_control_ownership import jam_ensembles, seed_jam_controls_before_mount
 
         # Drawn again after another mode: start from the Generator's own record, never a first option.
         seed_jam_controls_before_mount(session_state, "jam_session_generator")
@@ -2243,7 +2243,7 @@ def _tab_entry_modes(
             with _band_pick_col:
                 ensemble = st.selectbox(
                     "Ensemble",
-                    list(JAM_ENSEMBLES),
+                    list(jam_ensembles()),
                     key="improv_ensemble",
                     persist_state="session",
                     # The band is part of the arrangement: a new choice re-seals the jam's Backing.

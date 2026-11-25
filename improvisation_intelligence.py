@@ -29,6 +29,14 @@ STYLE_JAM_STYLES: tuple[str, ...] = (
     "Lo-fi",
     "Latin",
 )
+try:
+    from backing_latin_grooves import enabled as _latin_grooves_on
+
+    if _latin_grooves_on():
+        # Backing Engine 2.0 slice 3 (MUSIC_LATIN_GROOVES): Samba is its own groove, not a Bossa nova label.
+        STYLE_JAM_STYLES = STYLE_JAM_STYLES + ("Samba",)
+except ImportError:
+    pass
 
 MOOD_OPTIONS: tuple[str, ...] = ("Bright", "Mellow", "Dark", "Energetic", "Dreamy", "Gritty")
 DIFFICULTY_LEVELS: tuple[str, ...] = ("Beginner", "Intermediate", "Advanced")
@@ -75,6 +83,12 @@ STYLE_PROGRESSIONS: dict[str, list[tuple[str, list[str]]]] = {
     "Latin": [
         ("A", ["Am", "Dm", "G7", "C"]),
         ("B", ["F", "Fm", "C", "G"]),
+    ],
+    # Samba: I - VI7 - ii - V turnarounds and a subdominant minor colour (only offered with MUSIC_LATIN_GROOVES).
+    "Samba": [
+        ("A", ["C6", "A7", "Dm7", "G7"]),
+        ("B", ["Fmaj7", "Fm6", "Em7", "A7"]),
+        ("A'", ["Dm7", "G7", "C6", "C6"]),
     ],
 }
 
@@ -330,6 +344,7 @@ MINOR_STYLE_PROGRESSIONS: dict[str, list[tuple[str, list[str]]]] = {
     "Modal Vamp": [("Vamp", ["Am7", "Am7", "Am7", "Am7"])],
     "Lo-fi": [("Loop", ["Am7", "Fmaj7", "Cmaj7", "G7"])],
     "Latin": [("A", ["Am", "Dm", "G7", "C"]), ("B", ["F", "Fm", "C", "G"])],
+    "Samba": [("A", ["Am7", "E7", "Am7", "A7"]), ("B", ["Dm7", "Am7", "Bm7b5", "E7"]), ("A'", ["Am7", "E7", "Am7", "Am7"])],
 }
 
 

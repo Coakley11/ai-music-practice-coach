@@ -1,0 +1,808 @@
+{
+ "sr": 44100,
+ "source": "Tenor saxophone (player credited as Brett in the file names), Versilian Community Sample Library, CC0",
+ "range": [
+  44,
+  76
+ ],
+ "zones": [
+  {
+   "key": 44,
+   "layers": [
+    {
+     "velocity": 0.7,
+     "takes": [
+      {
+       "file": "sus_44_v3.flac",
+       "cents": -0.1,
+       "gain": 0.3714,
+       "onset_sec": 0.0009,
+       "seconds": 2.501,
+       "source_file": "BrettTenor_NV_Main_G#1_vl3_rr1.wav"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "key": 46,
+   "layers": [
+    {
+     "velocity": 0.7,
+     "takes": [
+      {
+       "file": "sus_46_v3.flac",
+       "cents": -0.0,
+       "gain": 0.2919,
+       "onset_sec": 0.004,
+       "seconds": 2.504,
+       "source_file": "BrettTenor_NV_Main_A#1_vl3_rr1.wav"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "key": 48,
+   "layers": [
+    {
+     "velocity": 0.7,
+     "takes": [
+      {
+       "file": "sus_48_v3.flac",
+       "cents": -0.0,
+       "gain": 0.4659,
+       "onset_sec": 0.0004,
+       "seconds": 2.5,
+       "source_file": "BrettTenor_NV_Main_C2_vl3_rr1.wav"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "key": 50,
+   "layers": [
+    {
+     "velocity": 0.7,
+     "takes": [
+      {
+       "file": "sus_50_v3.flac",
+       "cents": 0.0,
+       "gain": 0.4345,
+       "onset_sec": 0.0021,
+       "seconds": 2.502,
+       "source_file": "BrettTenor_NV_Main_D2_vl3_rr1.wav"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "key": 52,
+   "layers": [
+    {
+     "velocity": 0.7,
+     "takes": [
+      {
+       "file": "sus_52_v3.flac",
+       "cents": -0.0,
+       "gain": 0.3756,
+       "onset_sec": 0.0009,
+       "seconds": 2.501,
+       "source_file": "BrettTenor_NV_Main_E2_vl3_rr1.wav"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "key": 54,
+   "layers": [
+    {
+     "velocity": 0.7,
+     "takes": [
+      {
+       "file": "sus_54_v3.flac",
+       "cents": -0.1,
+       "gain": 0.381,
+       "onset_sec": 0.0024,
+       "seconds": 2.502,
+       "source_file": "BrettTenor_NV_Main_F#2_vl3_rr1.wav"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "key": 56,
+   "layers": [
+    {
+     "velocity": 0.7,
+     "takes": [
+      {
+       "file": "sus_56_v3.flac",
+       "cents": -0.0,
+       "gain": 0.413,
+       "onset_sec": 0.0013,
+       "seconds": 2.501,
+       "source_file": "BrettTenor_NV_Main_G#2_vl3_rr1.wav"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "key": 58,
+   "layers": [
+    {
+     "velocity": 0.7,
+     "takes": [
+      {
+       "file": "sus_58_v3.flac",
+       "cents": 0.1,
+       "gain": 0.7238,
+       "onset_sec": 0.0031,
+       "seconds": 2.503,
+       "source_file": "BrettTenor_NV_Main_A#2_vl3_rr1.wav"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "key": 60,
+   "layers": [
+    {
+     "velocity": 0.7,
+     "takes": [
+      {
+       "file": "sus_60_v3.flac",
+       "cents": 0.2,
+       "gain": 0.3096,
+       "onset_sec": 0.004,
+       "seconds": 2.504,
+       "source_file": "BrettTenor_NV_Main_C3_vl3_rr1.wav"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "key": 62,
+   "layers": [
+    {
+     "velocity": 0.7,
+     "takes": [
+      {
+       "file": "sus_62_v3.flac",
+       "cents": 0.0,
+       "gain": 0.2724,
+       "onset_sec": 0.0014,
+       "seconds": 2.501,
+       "source_file": "BrettTenor_NV_Main_D3_vl3_rr1.wav"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "key": 64,
+   "layers": [
+    {
+     "velocity": 0.7,
+     "takes": [
+      {
+       "file": "sus_64_v3.flac",
+       "cents": 0.0,
+       "gain": 0.2882,
+       "onset_sec": 0.004,
+       "seconds": 2.504,
+       "source_file": "BrettTenor_NV_Main_E3_vl3_rr1.wav"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "key": 66,
+   "layers": [
+    {
+     "velocity": 0.7,
+     "takes": [
+      {
+       "file": "sus_66_v3.flac",
+       "cents": 0.2,
+       "gain": 0.3269,
+       "onset_sec": 0.004,
+       "seconds": 2.504,
+       "source_file": "BrettTenor_NV_Main_F#3_vl3_rr1.wav"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "key": 68,
+   "layers": [
+    {
+     "velocity": 0.7,
+     "takes": [
+      {
+       "file": "sus_68_v3.flac",
+       "cents": 0.1,
+       "gain": 0.4109,
+       "onset_sec": 0.004,
+       "seconds": 2.504,
+       "source_file": "BrettTenor_NV_Main_G#3_vl3_rr1.wav"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "key": 70,
+   "layers": [
+    {
+     "velocity": 0.7,
+     "takes": [
+      {
+       "file": "sus_70_v3.flac",
+       "cents": 0.0,
+       "gain": 0.3723,
+       "onset_sec": 0.004,
+       "seconds": 2.504,
+       "source_file": "BrettTenor_NV_Main_A#3_vl3_rr1.wav"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "key": 72,
+   "layers": [
+    {
+     "velocity": 0.7,
+     "takes": [
+      {
+       "file": "sus_72_v3.flac",
+       "cents": 0.1,
+       "gain": 0.4371,
+       "onset_sec": 0.0012,
+       "seconds": 2.501,
+       "source_file": "BrettTenor_NV_Main_C4_vl3_rr1.wav"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "key": 74,
+   "layers": [
+    {
+     "velocity": 0.7,
+     "takes": [
+      {
+       "file": "sus_74_v3.flac",
+       "cents": 0.1,
+       "gain": 0.317,
+       "onset_sec": 0.0008,
+       "seconds": 2.501,
+       "source_file": "BrettTenor_NV_Main_D4_vl3_rr1.wav"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "key": 76,
+   "layers": [
+    {
+     "velocity": 0.7,
+     "takes": [
+      {
+       "file": "sus_76_v3.flac",
+       "cents": -0.0,
+       "gain": 0.3541,
+       "onset_sec": 0.0011,
+       "seconds": 2.501,
+       "source_file": "BrettTenor_NV_Main_E4_vl3_rr1.wav"
+      }
+     ]
+    }
+   ]
+  }
+ ],
+ "articulations": {
+  "staccato": [
+   {
+    "key": 44,
+    "layers": [
+     {
+      "velocity": 0.8,
+      "takes": [
+       {
+        "file": "stac_44_v2.flac",
+        "cents": -4.9,
+        "gain": 0.4193,
+        "onset_sec": 0.004,
+        "seconds": 0.672,
+        "source_file": "BrettTenor_Staccato_Main_G#1_vl2_rr1.wav"
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "key": 46,
+    "layers": [
+     {
+      "velocity": 0.8,
+      "takes": [
+       {
+        "file": "stac_46_v2.flac",
+        "cents": 1.4,
+        "gain": 0.3654,
+        "onset_sec": 0.0023,
+        "seconds": 0.497,
+        "source_file": "BrettTenor_Staccato_Main_A#1_vl2_rr5.wav"
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "key": 48,
+    "layers": [
+     {
+      "velocity": 0.8,
+      "takes": [
+       {
+        "file": "stac_48_v2.flac",
+        "cents": 2.5,
+        "gain": 0.3377,
+        "onset_sec": 0.0022,
+        "seconds": 0.537,
+        "source_file": "BrettTenor_Staccato_Main_C2_vl2_rr1.wav"
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "key": 50,
+    "layers": [
+     {
+      "velocity": 0.45,
+      "takes": [
+       {
+        "file": "stac_50_v1.flac",
+        "cents": -3.6,
+        "gain": 0.2093,
+        "onset_sec": 0.0014,
+        "seconds": 0.55,
+        "source_file": "BrettTenor_Staccato_Main_D2_vl1_rr5.wav"
+       }
+      ]
+     },
+     {
+      "velocity": 0.8,
+      "takes": [
+       {
+        "file": "stac_50_v2.flac",
+        "cents": -2.0,
+        "gain": 0.4477,
+        "onset_sec": 0.0023,
+        "seconds": 0.533,
+        "source_file": "BrettTenor_Staccato_Main_D2_vl2_rr4.wav"
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "key": 52,
+    "layers": [
+     {
+      "velocity": 0.45,
+      "takes": [
+       {
+        "file": "stac_52_v1.flac",
+        "cents": -2.5,
+        "gain": 0.1965,
+        "onset_sec": 0.004,
+        "seconds": 0.458,
+        "source_file": "BrettTenor_Staccato_Main_E2_vl1_rr2.wav"
+       }
+      ]
+     },
+     {
+      "velocity": 0.8,
+      "takes": [
+       {
+        "file": "stac_52_v2.flac",
+        "cents": 1.5,
+        "gain": 0.5468,
+        "onset_sec": 0.0012,
+        "seconds": 0.514,
+        "source_file": "BrettTenor_Staccato_Main_E2_vl2_rr1.wav"
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "key": 54,
+    "layers": [
+     {
+      "velocity": 0.45,
+      "takes": [
+       {
+        "file": "stac_54_v1.flac",
+        "cents": 3.0,
+        "gain": 0.2517,
+        "onset_sec": 0.004,
+        "seconds": 0.46,
+        "source_file": "BrettTenor_Staccato_Main_F#2_vl1_rr4.wav"
+       }
+      ]
+     },
+     {
+      "velocity": 0.8,
+      "takes": [
+       {
+        "file": "stac_54_v2.flac",
+        "cents": 3.5,
+        "gain": 0.4739,
+        "onset_sec": 0.0011,
+        "seconds": 0.479,
+        "source_file": "BrettTenor_Staccato_Main_F#2_vl2_rr7.wav"
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "key": 56,
+    "layers": [
+     {
+      "velocity": 0.45,
+      "takes": [
+       {
+        "file": "stac_56_v1.flac",
+        "cents": -0.8,
+        "gain": 0.2469,
+        "onset_sec": 0.004,
+        "seconds": 0.49,
+        "source_file": "BrettTenor_Staccato_Main_G#2_vl1_rr1.wav"
+       }
+      ]
+     },
+     {
+      "velocity": 0.8,
+      "takes": [
+       {
+        "file": "stac_56_v2.flac",
+        "cents": 4.4,
+        "gain": 0.54,
+        "onset_sec": 0.0028,
+        "seconds": 0.516,
+        "source_file": "BrettTenor_Staccato_Main_G#2_vl2_rr1.wav"
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "key": 57,
+    "layers": [
+     {
+      "velocity": 0.45,
+      "takes": [
+       {
+        "file": "stac_57_v1.flac",
+        "cents": 3.0,
+        "gain": 0.2793,
+        "onset_sec": 0.004,
+        "seconds": 0.506,
+        "source_file": "BrettTenor_Staccato_Main_A2_vl1_rr1.wav"
+       }
+      ]
+     },
+     {
+      "velocity": 0.8,
+      "takes": [
+       {
+        "file": "stac_57_v2.flac",
+        "cents": 2.8,
+        "gain": 0.5895,
+        "onset_sec": 0.004,
+        "seconds": 0.512,
+        "source_file": "BrettTenor_Staccato_Main_A2_vl2_rr4.wav"
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "key": 60,
+    "layers": [
+     {
+      "velocity": 0.45,
+      "takes": [
+       {
+        "file": "stac_60_v1.flac",
+        "cents": 1.4,
+        "gain": 0.2417,
+        "onset_sec": 0.004,
+        "seconds": 0.465,
+        "source_file": "BrettTenor_Staccato_Main_C3_vl1_rr4.wav"
+       }
+      ]
+     },
+     {
+      "velocity": 0.8,
+      "takes": [
+       {
+        "file": "stac_60_v2.flac",
+        "cents": -0.9,
+        "gain": 0.3123,
+        "onset_sec": 0.004,
+        "seconds": 0.508,
+        "source_file": "BrettTenor_Staccato_Main_C3_vl2_rr4.wav"
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "key": 62,
+    "layers": [
+     {
+      "velocity": 0.45,
+      "takes": [
+       {
+        "file": "stac_62_v1.flac",
+        "cents": 2.3,
+        "gain": 0.2596,
+        "onset_sec": 0.004,
+        "seconds": 0.597,
+        "source_file": "BrettTenor_Staccato_Main_D3_vl1_rr1.wav"
+       }
+      ]
+     },
+     {
+      "velocity": 0.8,
+      "takes": [
+       {
+        "file": "stac_62_v2.flac",
+        "cents": -3.8,
+        "gain": 0.4698,
+        "onset_sec": 0.004,
+        "seconds": 0.545,
+        "source_file": "BrettTenor_Staccato_Main_D3_vl2_rr5.wav"
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "key": 64,
+    "layers": [
+     {
+      "velocity": 0.45,
+      "takes": [
+       {
+        "file": "stac_64_v1.flac",
+        "cents": -5.9,
+        "gain": 0.1539,
+        "onset_sec": 0.004,
+        "seconds": 0.512,
+        "source_file": "BrettTenor_Staccato_Main_E3_vl1_rr4.wav"
+       }
+      ]
+     },
+     {
+      "velocity": 0.8,
+      "takes": [
+       {
+        "file": "stac_64_v2.flac",
+        "cents": -1.6,
+        "gain": 0.335,
+        "onset_sec": 0.004,
+        "seconds": 0.494,
+        "source_file": "BrettTenor_Staccato_Main_E3_vl2_rr3.wav"
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "key": 66,
+    "layers": [
+     {
+      "velocity": 0.45,
+      "takes": [
+       {
+        "file": "stac_66_v1.flac",
+        "cents": -0.3,
+        "gain": 0.2048,
+        "onset_sec": 0.004,
+        "seconds": 0.549,
+        "source_file": "BrettTenor_Staccato_Main_F#3_vl1_rr3.wav"
+       }
+      ]
+     },
+     {
+      "velocity": 0.8,
+      "takes": [
+       {
+        "file": "stac_66_v2.flac",
+        "cents": 0.9,
+        "gain": 0.2951,
+        "onset_sec": 0.004,
+        "seconds": 0.544,
+        "source_file": "BrettTenor_Staccato_Main_F#3_vl2_rr6.wav"
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "key": 68,
+    "layers": [
+     {
+      "velocity": 0.45,
+      "takes": [
+       {
+        "file": "stac_68_v1.flac",
+        "cents": -0.6,
+        "gain": 0.2453,
+        "onset_sec": 0.004,
+        "seconds": 0.602,
+        "source_file": "BrettTenor_Staccato_Main_G#3_vl1_rr1.wav"
+       }
+      ]
+     },
+     {
+      "velocity": 0.8,
+      "takes": [
+       {
+        "file": "stac_68_v2.flac",
+        "cents": -0.9,
+        "gain": 0.5426,
+        "onset_sec": 0.004,
+        "seconds": 0.519,
+        "source_file": "BrettTenor_Staccato_Main_G#3_vl2_rr1.wav"
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "key": 70,
+    "layers": [
+     {
+      "velocity": 0.45,
+      "takes": [
+       {
+        "file": "stac_70_v1.flac",
+        "cents": 1.8,
+        "gain": 0.187,
+        "onset_sec": 0.0035,
+        "seconds": 0.634,
+        "source_file": "BrettTenor_Staccato_Main_A#3_vl1_rr3.wav"
+       }
+      ]
+     },
+     {
+      "velocity": 0.8,
+      "takes": [
+       {
+        "file": "stac_70_v2.flac",
+        "cents": -2.8,
+        "gain": 0.4744,
+        "onset_sec": 0.004,
+        "seconds": 0.531,
+        "source_file": "BrettTenor_Staccato_Main_A#3_vl2_rr4.wav"
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "key": 72,
+    "layers": [
+     {
+      "velocity": 0.45,
+      "takes": [
+       {
+        "file": "stac_72_v1.flac",
+        "cents": 0.4,
+        "gain": 0.1829,
+        "onset_sec": 0.004,
+        "seconds": 0.568,
+        "source_file": "BrettTenor_Staccato_Main_C4_vl1_rr7.wav"
+       }
+      ]
+     },
+     {
+      "velocity": 0.8,
+      "takes": [
+       {
+        "file": "stac_72_v2.flac",
+        "cents": -0.7,
+        "gain": 0.38,
+        "onset_sec": 0.004,
+        "seconds": 0.511,
+        "source_file": "BrettTenor_Staccato_Main_C4_vl2_rr3.wav"
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "key": 74,
+    "layers": [
+     {
+      "velocity": 0.45,
+      "takes": [
+       {
+        "file": "stac_74_v1.flac",
+        "cents": 8.7,
+        "gain": 0.2029,
+        "onset_sec": 0.0039,
+        "seconds": 0.536,
+        "source_file": "BrettTenor_Staccato_Main_D4_vl1_rr4.wav"
+       }
+      ]
+     },
+     {
+      "velocity": 0.8,
+      "takes": [
+       {
+        "file": "stac_74_v2.flac",
+        "cents": -0.1,
+        "gain": 0.283,
+        "onset_sec": 0.004,
+        "seconds": 0.507,
+        "source_file": "BrettTenor_Staccato_Main_D4_vl2_rr2.wav"
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "key": 76,
+    "layers": [
+     {
+      "velocity": 0.45,
+      "takes": [
+       {
+        "file": "stac_76_v1.flac",
+        "cents": -1.9,
+        "gain": 0.2087,
+        "onset_sec": 0.0023,
+        "seconds": 0.59,
+        "source_file": "BrettTenor_Staccato_Main_E4_vl1_rr1.wav"
+       }
+      ]
+     },
+     {
+      "velocity": 0.8,
+      "takes": [
+       {
+        "file": "stac_76_v2.flac",
+        "cents": 0.6,
+        "gain": 0.3642,
+        "onset_sec": 0.004,
+        "seconds": 0.529,
+        "source_file": "BrettTenor_Staccato_Main_E4_vl2_rr4.wav"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ }
+}
