@@ -210,6 +210,8 @@ def _section_rhythm(
         pool = (easy + simple[:3]) if easy else simple
         if intent == "tone":
             pool = [c for c in pool if _notes_in(c) <= 2] or pool
+    elif level == "Advanced" and intent not in {"tone", "walking"}:
+        pool = sorted(pool, key=lambda c: (-_notes_in(c), c))[: max(2, (len(pool) * 2 + 2) // 3)]
     phrase = 2 if intent == "phrasing" or (level == "Beginner" and tempo and tempo < 84) else 4
     plans: list[dict[str, Any]] = []
     motifs: dict[int, tuple[int, ...]] = {}
@@ -230,7 +232,7 @@ def _section_rhythm(
             if level == "Advanced" and what == "b" and intent not in {"tone", "walking"}:
                 cell = _densify(cell, rng, 0.55)
             elif level == "Advanced" and what == "a" and first_a is not None and intent not in {"tone", "walking"}:
-                cell = _densify(cell, rng, 0.2)
+                cell = _densify(cell, rng, 0.4)
             elif level == "Beginner" and what == "end" and intent != "tone":
                 cell = _cadences(((6, -2), (4, -4)), n, compound)[0] if rng.random() < 0.7 else cell
             index = len(plans)
@@ -321,7 +323,7 @@ def compose_section(
         centre, height = low + 0.45 * span, 0.45 * span
     falls = {p: rng.random() < 0.3 for p in range(len(plans) + 1)}
     gestures: dict[int, list[Any]] = {}
-    approach_p = _APPROACH.get(family, 0.05) * _LEVEL_APPROACH.get(level, 0.5)
+    approach_p = _APPROACH.get(family, 0.02) * _LEVEL_APPROACH.get(level, 0.5)
     if intent == "improvisation" and level != "Beginner":
         approach_p = max(approach_p, 0.3)
     arpeggio_p = {"arpeggios": 0.9, "scales": 0.05, "walking": 0.5, "tone": 0.0}.get(intent, _ARPEGGIO.get(family, 0.3) + _LEVEL_ARPEGGIO.get(level, 0.2))
