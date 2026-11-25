@@ -6789,7 +6789,7 @@ def live_follow_along_component_html(
       const m = String(ch || '').match(/^([A-G][#b]?)(.*)/);
       if (!m) return ch;
       const root = m[1];
-      const rest = m[2].replace(/\/([A-G][#b]?)$/, (_s, b) => '/' + _localTransposeChord(b, steps));
+      const rest = m[2].replace(/[/]([A-G][#b]?)$/, (_s, b) => '/' + _localTransposeChord(b, steps));
       const names = (_localReadingKey && (/^.b/.test(_localReadingKey) || /^(F|Dm|Gm|Cm|Fm)$/.test(_localReadingKey)))
         ? _FLAT : _SHARP;
       let idx = names.indexOf(root);
