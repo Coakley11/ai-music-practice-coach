@@ -2239,7 +2239,10 @@ def _tab_entry_modes(
                     on_change=on_improv_jam_setting_change,
                 )
             with _band_lineup_col:
-                st.markdown(jam_art.lineup_html(str(ensemble or "")), unsafe_allow_html=True)
+                st.markdown(
+                    jam_art.lineup_html(str(ensemble or ""), str(session_state.get("improv_jam_style") or "")),
+                    unsafe_allow_html=True,
+                )
         with _jam_gen_card:
             st.markdown(jam_art.step_html(2, "Musical settings"), unsafe_allow_html=True)
         with _jam_gen_card, st.container(key="improv_jam_gen_controls"):
@@ -2362,7 +2365,10 @@ def _tab_entry_modes(
                     unsafe_allow_html=True,
                 )
                 if str(jam.get("ensemble") or "").strip():
-                    st.markdown(jam_art.lineup_html(str(jam.get("ensemble"))), unsafe_allow_html=True)
+                    st.markdown(
+                        jam_art.lineup_html(str(jam.get("ensemble")), str(jam.get("style") or session_state.get("improv_jam_style") or "")),
+                        unsafe_allow_html=True,
+                    )
                 for _sec_i, (sec, chs) in enumerate(_jam_sections.items()):
                     with st.container(key=f"{jam_art.GENERATOR_SECTION_PREFIX}{_sec_i}"):
                         st.markdown(jam_art.section_head_html(sec, chs, _sec_i), unsafe_allow_html=True)

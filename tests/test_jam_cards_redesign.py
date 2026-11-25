@@ -141,7 +141,7 @@ class GeneratorCardTests(unittest.TestCase):
         self.assertIn("st.container(key=jam_art.GENERATOR_RESULT)", self.src)
         self.assertIn('st.container(key=f"{jam_art.GENERATOR_SECTION_PREFIX}{_sec_i}")', self.src)
         self.assertIn('jam_art.hero_html(\n                    "jam_generator"', self.src)
-        self.assertIn("jam_art.lineup_html(str(ensemble or \"\"))", self.src)
+        self.assertIn("jam_art.lineup_html(str(ensemble or \"\"), str(session_state.get(\"improv_jam_style\") or \"\"))", self.src)
 
     def test_seeding_still_happens_before_any_generator_widget(self) -> None:
         seed = self.src.index('seed_jam_controls_before_mount(session_state, "jam_session_generator")')
@@ -311,3 +311,18 @@ def test_banner_chips_only_name_a_value_the_control_shows():
     html = jca.hero_html("style_jam", kicker="k", title="t", line="l",
                          chips=(("Style", jca.shown_option("Song Default", STYLE_JAM_STYLES)), ("Tempo", "100 BPM")))
     assert "Song Default" not in html and "100 BPM" in html
+
+
+
+def test_lineup_follows_what_the_engine_will_play(monkeypatch):
+    """With the jam's groove the line-up is the performance plan: no guitar shown where none can play."""
+    import jam_card_art as jca
+
+    monkeypatch.delenv("MUSIC_ROCK_GUITAR", raising=False)
+    playing, later = jca.ensemble_lineup("Rock trio", "Bossa Nova")
+    names = [n for _, n in playing]
+    assert "Electric guitar" not in names and "Guitar" not in names
+    assert any("uitar" in n for _, n in later)  # named as not available, never as playing
+    written, _ = jca.ensemble_lineup("Rock trio")
+    assert [n for _, n in written] == ["Electric guitar", "Bass", "Drums"]  # without a groove: the written line-up
+    assert jca.ensemble_lineup("Jazz quartet", "Jazz Swing")[1]  # the horn is still not available on this branch

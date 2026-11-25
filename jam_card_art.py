@@ -69,18 +69,30 @@ def artwork_svg(name: str) -> str:
     return re.sub(r"\s*\n\s*", " ", text).strip()
 
 
-def ensemble_lineup(ensemble: str) -> tuple[tuple[tuple[str, str], ...], tuple[tuple[str, str], ...]]:
+def ensemble_lineup(ensemble: str, style: str = "") -> tuple[tuple[tuple[str, str], ...], tuple[tuple[str, str], ...]]:
     """(playing, not_yet): the ensemble's real roster from the Backing engine, as (icon, name) pairs.
 
-    ``not_yet`` are members the engine cannot render yet (shown as such, never as playing)."""
+    ``not_yet`` are members the engine cannot render yet (shown as such, never as playing). With the jam's groove
+    ``style`` the roster is the performance plan the engine will actually play (a Rock trio's guitar only where a guitar
+    renderer exists for that groove; a horn only when its recorded instrument is switched on); without it, the
+    ensemble's written line-up."""
     name = str(ensemble or "").strip()
     try:
-        from backing_performance_plan import ENSEMBLES
+        from backing_performance_plan import ENSEMBLES, resolve_performance_plan
     except Exception:
         return (), ()
     spec = ENSEMBLES.get(name)
     if spec is None:
         return (), ()
+    roles, missing = tuple(spec.roles), tuple(spec.missing)
+    if str(style or "").strip():
+        try:
+            from songs.playback_defaults import normalize_groove_label
+
+            plan = resolve_performance_plan(style=normalize_groove_label(str(style)), ensemble=name)
+            roles, missing = tuple(plan.roles), tuple(plan.unavailable)
+        except Exception:
+            pass
     overrides = _ROLE_NAMES_BY_ENSEMBLE.get(name, {})
 
     def _pairs(roles: Iterable[str]) -> tuple[tuple[str, str], ...]:
@@ -91,7 +103,7 @@ def ensemble_lineup(ensemble: str) -> tuple[tuple[tuple[str, str], ...], tuple[t
             out.append(("\U0001F3BB" if label == "Upright bass" else icon, label))
         return tuple(out)
 
-    return _pairs(spec.roles), _pairs(spec.missing)
+    return _pairs(roles), _pairs(missing)
 
 
 def arrangement_form(sections: Mapping[str, Iterable[str]] | None) -> list[tuple[str, list[str]]]:
@@ -207,9 +219,9 @@ def step_html(number: int, text: str) -> str:
     return f'<p class="jc-step"><span class="jc-step-n">{int(number)}</span>{_E(text)}</p>'
 
 
-def lineup_html(ensemble: str) -> str:
+def lineup_html(ensemble: str, style: str = "") -> str:
     """The band that will play: who plays now, and members the backing cannot play yet."""
-    playing, later = ensemble_lineup(ensemble)
+    playing, later = ensemble_lineup(ensemble, style)
     if not playing:
         return f'<div class="jc-lineup"><p class="jc-lineup-h">Your band</p><p class="jc-lineup-name">{_E(ensemble)}</p></div>'
     members = "".join(f'<span class="jc-member"><i>{_E(i)}</i>{_E(n)}</span>' for i, n in playing)
