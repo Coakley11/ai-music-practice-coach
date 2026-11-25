@@ -68,7 +68,9 @@ def test_each_uploaded_panel_is_a_keyed_expander_the_controller_recognises():
     assert "st-key-" + bmm.UPLOADED_PANEL_KEY_PREFIX == lpf.UPLOADED_PANEL_CLASS_PREFIX
     assert bmm.uploaded_panel_key("doc 1/x").startswith(bmm.UPLOADED_PANEL_KEY_PREFIX)
     src = (ROOT / "backing_melody_modes.py").read_text(encoding="utf-8")
-    assert "expanded=False, key=uploaded_panel_key(did)" in src                  # every panel starts closed
+    # closed, except the panels an explicit "Open in Backing" on Practice just sent here (Slice 2, 2026-11-25)
+    assert "expanded=did in opened, key=uploaded_panel_key(did)" in src
+    assert bmm.panels_open_from_practice({}, "catalog|shallow") == set()
 
 
 def test_uploaded_melodies_never_follow_or_highlight():

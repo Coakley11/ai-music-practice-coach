@@ -21688,6 +21688,18 @@ elif _studio_page == "practice":
                     # never touches the Practice Key, instrument or backing settings.
                     from song_document_panel import render_song_documents_panel
 
+                    # Which of them Backing shows beside the music. Drawn here, not in the panel: the panel may
+                    # not know about Backing at all.
+                    try:
+                        from backing_melody_modes import render_active_song_reference_choice
+
+                        _open_uploaded_in_backing = render_active_song_reference_choice(st, st.session_state)
+                    except Exception:
+                        _open_uploaded_in_backing = False
+                    if _open_uploaded_in_backing:
+                        navigate_studio_page(st.session_state, "backing")
+                        st.rerun()
+
                     render_song_documents_panel(st, st.session_state)
 
                 with st.expander(
