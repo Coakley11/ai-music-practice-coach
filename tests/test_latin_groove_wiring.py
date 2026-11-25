@@ -53,3 +53,20 @@ def test_switch_on_routes_latin_and_samba_and_keeps_bossa():
     assert list(on["samba"]) == ["A (Samba)", "B (Samba)", "A' (Samba)"]
     assert on["samba"]["A (Samba)"][:4] == ["D6", "B7", "Em7", "A7"]  # the generator may extend the first section
     assert on["samba_minor"]["A (Samba)"][0].startswith("Em")
+
+
+def test_the_band_names_the_percussionist_only_while_it_plays(monkeypatch):
+    """With MUSIC_LATIN_GROOVES the recorded percussion plays Latin jazz / Samba / Bossa: the band says so."""
+    import backing_performance_plan as pp
+
+    monkeypatch.delenv("MUSIC_LATIN_GROOVES", raising=False)
+    off = pp.resolve_performance_plan(style="Latin jazz", ensemble="Latin quartet")
+    assert "percussion" not in off.roles and off.unavailable == ("percussion",)
+    monkeypatch.setenv("MUSIC_LATIN_GROOVES", "1")
+    on = pp.resolve_performance_plan(style="Latin jazz", ensemble="Latin quartet")
+    assert on.roles[-1] == "percussion" and not on.unavailable
+    assert pp.band_summary(on) == "Piano, bass, drums, Latin percussion"
+    swing = pp.resolve_performance_plan(style="Jazz swing", ensemble="Latin quartet")
+    assert "percussion" not in swing.roles and swing.unavailable == ("percussion",)  # no percussionist for swing
+    monkeypatch.setenv("MUSIC_LATIN_PERCUSSION", "0")
+    assert "percussion" not in pp.resolve_performance_plan(style="Latin jazz", ensemble="Latin quartet").roles
