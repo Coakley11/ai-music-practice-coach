@@ -176,6 +176,17 @@ def configure_style_jam_controls(session: dict[str, Any]) -> None:
     session["improv_entry_mode"] = "Style Jam Mode"
     session["improv_style"] = STYLE_JAM_STYLE
     session["improv_style_key"] = "E"
+    # The musician picks E in Style Jam's Concert Key control. In the app that choice is kept as the jam's own
+    # Practice Key on its creative:: pick (on_improv_style_key_change -> the pre-widget key edit; in the browser the
+    # saved state then holds creative::entry_style_jam = the chosen key). Setting the widget value alone is not a
+    # choice the app sees: before 2026-11-25 this harness only kept its E because the song reconciler leaked the
+    # song's Practice Key into Style Jam's store (the Cloud bug fixed in f1c463b2).
+    try:
+        from songs.practice_key_state import set_practice_concert_key
+
+        set_practice_concert_key(session, "E", pick_key="creative::entry_style_jam")
+    except ImportError:
+        pass
     session["improv_mood"] = "Bright"
     session["improv_groove"] = "Light"
     session["improv_style_bpm"] = 120
