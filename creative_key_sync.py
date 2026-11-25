@@ -2206,6 +2206,33 @@ def seed_jam_concert_widget_before_mount(session: dict[str, Any]) -> str:
     return str(session.get("improv_jam_key") or want)
 
 
+def seed_style_concert_widget_before_mount(session: dict[str, Any]) -> str:
+    """A Style Jam nobody has keyed yet shows the key it will play in, before its Concert Key control mounts.
+
+    Browser 2026-11-24 (Composition song in D active): a never-keyed Style Jam's control showed the start-up "G", the
+    heading and the generated chords followed the control (G), while the progression's Practice-key line and Backing
+    followed the Style Jam key authority, which skips that start-up default and resolves the song's D -- the jam was
+    shown in one key and played in another. Only that case is touched: the jam has no key of its own yet
+    (``jam_key_was_chosen``), the control still holds a start-up default (G / Eb / empty) and the authority differs.
+    A key the musician picks, or one a generated jam carries, is never replaced."""
+    live = str(session.get("improv_style_key") or "").strip()
+    try:
+        from backing_practice_key_control import STYLE_JAM_REMOUNT_DEFAULTS, style_jam_authoritative_concert_key
+        from sbi_lane_practice_key import jam_key_was_chosen
+    except ImportError:
+        return live
+    if jam_key_was_chosen(session, "style_jam") or live not in STYLE_JAM_REMOUNT_DEFAULTS:
+        return live
+    want = str(style_jam_authoritative_concert_key(session) or "").strip()
+    if not want or want == live or want in STYLE_JAM_REMOUNT_DEFAULTS:
+        return live
+    try:
+        session["improv_style_key"] = want
+    except Exception:
+        return live
+    return str(session.get("improv_style_key") or want)
+
+
 def flush_pending_creative_major_keys(session: dict[str, Any]) -> None:
     """Apply queued Creative chart-key values before their widgets render.
 

@@ -1,0 +1,71 @@
+{
+ "pandeiro_bass": [
+  [
+   "pandeiro_bass_v1_r1.flac",
+   "pandeiro_bass_v1_r2.flac",
+   "pandeiro_bass_v1_r3.flac",
+   "pandeiro_bass_v1_r4.flac",
+   "pandeiro_bass_v1_r5.flac"
+  ]
+ ],
+ "pandeiro_jingle": [
+  [
+   "pandeiro_jingle_v1_r1.flac",
+   "pandeiro_jingle_v1_r2.flac",
+   "pandeiro_jingle_v1_r3.flac",
+   "pandeiro_jingle_v1_r4.flac"
+  ],
+  [
+   "pandeiro_jingle_v2_r1.flac",
+   "pandeiro_jingle_v2_r2.flac",
+   "pandeiro_jingle_v2_r3.flac",
+   "pandeiro_jingle_v2_r4.flac",
+   "pandeiro_jingle_v2_r5.flac"
+  ],
+  [
+   "pandeiro_jingle_v3_r1.flac",
+   "pandeiro_jingle_v3_r2.flac",
+   "pandeiro_jingle_v3_r3.flac",
+   "pandeiro_jingle_v3_r4.flac",
+   "pandeiro_jingle_v3_r5.flac"
+  ]
+ ],
+ "tamborim_muted": [
+  [
+   "tamborim_muted_v1_r1.flac",
+   "tamborim_muted_v1_r2.flac",
+   "tamborim_muted_v1_r3.flac",
+   "tamborim_muted_v1_r4.flac",
+   "tamborim_muted_v1_r5.flac"
+  ],
+  [
+   "tamborim_muted_v2_r1.flac",
+   "tamborim_muted_v2_r2.flac",
+   "tamborim_muted_v2_r3.flac",
+   "tamborim_muted_v2_r4.flac",
+   "tamborim_muted_v2_r5.flac"
+  ]
+ ],
+ "surdo_high_open": [
+  [
+   "surdo_high_open_v1_r1.flac",
+   "surdo_high_open_v1_r2.flac",
+   "surdo_high_open_v1_r3.flac",
+   "surdo_high_open_v1_r4.flac"
+  ],
+  [
+   "surdo_high_open_v2_r1.flac",
+   "surdo_high_open_v2_r2.flac",
+   "surdo_high_open_v2_r3.flac",
+   "surdo_high_open_v2_r4.flac"
+  ]
+ ],
+ "surdo_low_open": [
+  [
+   "surdo_low_open_v1_r1.flac",
+   "surdo_low_open_v1_r2.flac",
+   "surdo_low_open_v1_r3.flac",
+   "surdo_low_open_v1_r4.flac"
+  ]
+ ]
+}

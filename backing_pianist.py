@@ -39,6 +39,8 @@ REGISTERS = {
     "Ballad": (48, 77, 84),  # a wide, open instrument
     "Jewish ballad": (48, 77, 84),
     "Bossa nova": (52, 72, 76),  # close and understated
+    "Samba": (52, 74, 79),
+    "Latin jazz": (52, 74, 79),
 }
 _DEFAULT_REGISTER = (48, 76, 81)
 # Where the left hand's bass notes may go. The ballad pianist carries the low end himself.
@@ -231,6 +233,23 @@ _BOSSA = (
     ((0.0, 1.4, "S", 0.80), (3.5, 0.4, "N", 0.70)),
 )
 
+# Samba: the partido alto (one 4/4 bar = two 2/4 samba bars), its reversed half, a sparser answer and a
+# teleco-teco-like figure; short, percussive chords.
+_SAMBA = (
+    ((0.25, 0.22, "S", 0.80), (1.0, 0.30, "C", 0.92), (1.5, 0.24, "S", 0.74), (2.0, 0.30, "C", 0.88), (2.5, 0.24, "S", 0.74), (3.25, 0.30, "C", 0.84)),
+    ((0.0, 0.30, "C", 0.90), (0.5, 0.24, "S", 0.74), (1.25, 0.30, "C", 0.84), (2.25, 0.22, "S", 0.78), (3.0, 0.30, "C", 0.90), (3.5, 0.26, "N", 0.80)),
+    ((0.25, 0.24, "S", 0.78), (1.0, 0.40, "C", 0.90), (2.5, 0.30, "C", 0.82), (3.5, 0.30, "N", 0.80)),
+    ((0.0, 0.25, "C", 0.90), (0.75, 0.20, "S", 0.70), (1.5, 0.25, "C", 0.82), (2.25, 0.20, "S", 0.70), (3.0, 0.25, "C", 0.86)),
+)
+# Latin jazz: sparse, syncopated comping that pushes the next chord on the "and" of 4 (the montuno is a
+# separate, harmony-gated part).
+_LATIN_JAZZ = (
+    ((0.0, 0.40, "C", 0.88), (1.5, 0.40, "C", 0.80), (3.5, 0.45, "N", 0.84)),
+    ((1.0, 0.35, "S", 0.74), (2.5, 0.40, "C", 0.82)),
+    ((0.5, 0.30, "S", 0.72), (1.5, 0.35, "C", 0.84), (3.0, 0.35, "S", 0.74), (3.5, 0.40, "N", 0.82)),
+    ((0.0, 1.00, "C", 0.86), (2.5, 0.35, "T", 0.74)),
+)
+
 
 @dataclass(frozen=True)
 class StyleHands:
@@ -257,6 +276,8 @@ HANDS: dict[str, StyleHands] = {
     "Funk groove": StyleHands(_FUNK, "rootless", 65, True, (2, 2, 3, 4), 0.14, 0.05, 0.08, 0.04, 0.66, (0, 1, 3)),
     "Ballad": StyleHands(_BALLAD, "open", 60, True, (4, 2, 3), 0.03, 0.0, 0.26, 0.04, 0.54, (1, 2, 3, 4), True, 0.15),
     "Bossa nova": StyleHands(_BOSSA, "rootless", 62, True, (2, 4, 3), 0.14, 0.05, 0.08, 0.08, 0.50, (0, 1, 2, 3)),
+    "Samba": StyleHands(_SAMBA, "rootless", 63, True, (2, 4, 2), 0.08, 0.02, 0.10, 0.12, 0.58, (2, 3)),
+    "Latin jazz": StyleHands(_LATIN_JAZZ, "rootless", 62, True, (2, 4, 2), 0.12, 0.04, 0.10, 0.18, 0.56, (1, 3)),
 }
 # How a phrase stays alive: (chance of a contrasting bar, of moving one hit by an eighth, of an answering hit).
 _LIFE = {
@@ -271,8 +292,10 @@ _LIFE = {
     "Ballad": (0.24, 0.10, 0.20),
     "Jewish ballad": (0.24, 0.10, 0.20),
     "Bossa nova": (0.14, 0.18, 0.10),
+    "Samba": (0.16, 0.14, 0.12),
+    "Latin jazz": (0.18, 0.22, 0.14),
 }
-_SPARSE_STYLES = frozenset({"Jazz swing", "Funk groove", "Soul", "Soul groove", "Bossa nova"})
+_SPARSE_STYLES = frozenset({"Jazz swing", "Funk groove", "Soul", "Soul groove", "Bossa nova", "Latin jazz"})
 # Broken-chord contours: rising, rocking, falling, wide.
 _CONTOURS = ((0, 1, 2, 3), (0, 2, 1, 3), (0, 3, 2, 1), (0, 2, 3, 1))
 HANDS["Pop"] = HANDS["Pop groove"]
@@ -538,6 +561,53 @@ class Pianist:
         change of harmony from the same chord continuing."""
         self._prev_sounding = self._sounding
         hits = self._bar(segments, next_chord, **kw)
+        last = next((s[2] for s in reversed(list(segments)) if s[2] is not None), None)
+        self._sounding = str(last) if last is not None else None
+        return hits
+
+    # Montuno (Latin jazz): a two-bar figure on the 2-3 clave, octave-doubled chord tones with one inner tone.
+    # Each cell is (beat, which line note: "a" the fifth, "b" the third, "push" the next chord ahead of the bar).
+    MONTUNO_CELLS = (
+        ((0.5, "a"), (1.5, "b"), (2.0, "a"), (3.0, "b"), (3.5, "a")),  # 2 side
+        ((0.0, "a"), (1.0, "b"), (1.5, "a"), (2.5, "b"), (3.5, "push")),  # 3 side
+    )
+
+    def montuno_bar(self, segments, next_chord, *, side: int, velocity: float = 0.78) -> list[Hit]:
+        """One bar of piano montuno. Only call it where ``backing_latin_grooves.montuno_fits`` said the harmony
+        suits one; each note is a tone of the chord sounding at its beat (the push: of the next chord)."""
+        self._prev_sounding = self._sounding
+        chords = [s for s in segments if s[2] is not None]
+        if not chords:
+            return []
+        hits: list[Hit] = []
+        top_prev = self.prev[-1] if self.prev else 72
+        for beat, tag in self.MONTUNO_CELLS[int(side) % 2]:
+            if tag == "push":
+                chord = next_chord
+                if chord is None:
+                    continue
+            else:
+                chord = next((c for s0, e0, c in chords if s0 <= beat < e0), None)
+                if chord is None:
+                    continue
+            h = self._h(chord)
+            pc = (h.third if tag == "b" else h.fifth) if tag != "push" else h.root
+            if pc is None:
+                pc = h.root
+            top = min((m for m in range(66, 80) if m % 12 == pc), key=lambda m: (abs(m - top_prev), m))
+            low = top - 12
+            inner_pcs = [p for p in h.written if p != pc]
+            inner = min(
+                (m for m in range(low + 1, top) if m % 12 in inner_pcs),
+                key=lambda m: (abs(m - (low + 6)), m),
+                default=None,
+            )
+            notes = (low, inner, top) if inner is not None else (low, top)
+            accent = 1.0 if float(beat) == int(beat) else 0.9
+            hits.append(Hit(float(beat), 0.42, notes, velocity * accent, "chord", push=tag == "push"))
+            top_prev = top
+        if hits:
+            self.prev = list(hits[-1].notes)
         last = next((s[2] for s in reversed(list(segments)) if s[2] is not None), None)
         self._sounding = str(last) if last is not None else None
         return hits

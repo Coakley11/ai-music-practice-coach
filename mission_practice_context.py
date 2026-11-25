@@ -252,7 +252,12 @@ def build_mission_practice_context(session: dict[str, Any]) -> MissionPracticeCo
     symbol, section, idx, label = _authoritative_chord_fields(session)
     parsed = parse_mission_chord(symbol, section=section, chord_index=idx, chord_label=label)
 
-    style_meta = session.get("improv_style_meta") if isinstance(session.get("improv_style_meta"), dict) else {}
+    try:
+        from mission_song_backing_style import mission_style_meta
+
+        style_meta = mission_style_meta(session)
+    except ImportError:
+        style_meta = session.get("improv_style_meta") if isinstance(session.get("improv_style_meta"), dict) else {}
     bpm = int(
         mission_tempo_override(session)
         or session.get("backing_track_bpm")
