@@ -344,3 +344,20 @@ def test_the_quartet_still_plays_only_the_tenor(horns_on, monkeypatch):
     plan = pp.resolve_performance_plan(style="Jazz swing", ensemble="Jazz quartet")
     ba.synthesize_chords_to_numpy(chords, bpm=120, loops=1, style="Jazz swing", performance=plan)
     assert seen == ["tenor"]
+
+
+@pytest.mark.parametrize("name", BRASS)
+@pytest.mark.parametrize("part", ["pads", "hits"])
+def test_brass_backgrounds_sound_as_loud_as_the_tenors(horns_on, name, part):
+    """Horn.level: at the default dynamics a brass background is as loud as the tenor's (within 1.5 dB)."""
+
+    def sounding_db(y):
+        w = int(0.05 * SR)
+        env = np.array([np.sqrt(np.mean(y[k : k + w] ** 2)) for k in range(0, len(y) - w, w)])
+        on = env[env > env.max() * 0.1]
+        return 20 * np.log10(np.sqrt(np.mean(on**2)))
+
+    chords = JAZZ["turnaround"]
+    tenor = sounding_db(bh.render_horn_background(chords, 8, 120, part=part, gain=1.0))
+    brass = sounding_db(bh.render_horn_background(chords, 8, 120, part=part, gain=1.0, instrument=name))
+    assert abs(brass - tenor) < 1.5, (brass, tenor)

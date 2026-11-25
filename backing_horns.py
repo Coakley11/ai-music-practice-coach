@@ -81,6 +81,9 @@ class Horn:
     steady_layers: bool = False  # a sustain keeps the layer its velocity names (no per-note nudge)
     aligned_loops: bool = False  # a long sustain's loop starts where its waveform matches the join (see _loop_start)
     label: str = ""
+    # Level per articulation, so this horn's backgrounds at their default dynamics (pads 0.6, hits 0.85) sound as
+    # loud as the tenor's (measured: RMS of the sounding part over four jazz progressions). None: as recorded.
+    level: dict | None = None
 
 
 HORNS: dict[str, Horn] = {
@@ -89,11 +92,11 @@ HORNS: dict[str, Horn] = {
     # Concert F2-G4 recorded; backgrounds C3-D4, the trombone's singing middle, under a tenor or a trumpet.
     "trombone": Horn("trombone", _INSTRUMENTS / "trombone", 41, 67, (48, 62, 55),
                      {"sustain": 0.02, "staccato": 0.003}, {"sustain": 0.14, "staccato": 0.04},
-                     steady_layers=True, aligned_loops=True, label="trombone"),
+                     steady_layers=True, aligned_loops=True, label="trombone", level={"sustain": 2.7, "staccato": 0.9}),
     # Concert F3-C6 recorded; backgrounds C4-F5 (written D4-G5), clear of the screech register.
     "trumpet": Horn("trumpet", _INSTRUMENTS / "trumpet", 53, 84, (60, 77, 68),
                     {"sustain": 0.015, "staccato": 0.002}, {"sustain": 0.10, "staccato": 0.035},
-                    steady_layers=True, aligned_loops=True, label="trumpet"),
+                    steady_layers=True, aligned_loops=True, label="trumpet", level={"sustain": 1.45, "staccato": 3.75}),
 }
 
 
@@ -305,6 +308,8 @@ def _add_note(
     rel_from = min(held_n, n - 2)
     rel_n = n - rel_from
     seg[rel_from:] *= 0.5 + 0.5 * np.cos(np.pi * np.arange(1, rel_n + 1, dtype=np.float32) / rel_n)
+    if h.level is not None:
+        seg *= np.float32(h.level[art])
     bus[start : start + n] += seg * float(take.get("gain", 1.0)) * _velocity_gain(note.velocity, layer_v)
 
 
