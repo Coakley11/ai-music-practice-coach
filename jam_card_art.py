@@ -47,6 +47,12 @@ _ROLE_LABELS: dict[str, tuple[str, str]] = {
     "horns": ("\U0001F3B7", "Horn"),
     "percussion": ("\U0001FA98", "Percussion"),
 }
+# Each recorded horn by name (backing_horns.HORNS): the card names the instruments that play, never "Horn".
+_HORN_LABELS: dict[str, tuple[str, str]] = {
+    "tenor": ("\U0001F3B7", "Tenor sax"),
+    "trumpet": ("\U0001F3BA", "Trumpet"),
+    "trombone": ("\U0001F3BA", "Trombone"),
+}
 # Where an ensemble's own wording is more exact than the role ("Jazz trio": piano, upright bass, drums).
 _ROLE_NAMES_BY_ENSEMBLE: dict[str, dict[str, str]] = {
     "Jazz trio": {"keys": "Piano", "bass": "Upright bass"},
@@ -85,12 +91,16 @@ def ensemble_lineup(ensemble: str, style: str = "") -> tuple[tuple[tuple[str, st
     if spec is None:
         return (), ()
     roles, missing = tuple(spec.roles), tuple(spec.missing)
+    # The horns by instrument: the plan's (what the engine plays), else the ensemble's written ones.
+    horns = tuple(getattr(spec, "horns", ()) or ())
     if str(style or "").strip():
         try:
             from songs.playback_defaults import normalize_groove_label
 
             plan = resolve_performance_plan(style=normalize_groove_label(str(style)), ensemble=name)
             roles, missing = tuple(plan.roles), tuple(plan.unavailable)
+            if "horns" in roles:
+                horns = tuple(getattr(plan, "horns", ()) or ())
         except Exception:
             pass
     overrides = _ROLE_NAMES_BY_ENSEMBLE.get(name, {})
@@ -98,6 +108,9 @@ def ensemble_lineup(ensemble: str, style: str = "") -> tuple[tuple[tuple[str, st
     def _pairs(roles: Iterable[str]) -> tuple[tuple[str, str], ...]:
         out = []
         for role in roles:
+            if role == "horns" and horns:
+                out.extend(_HORN_LABELS.get(h, ("\U0001F3B7", str(h).title())) for h in horns)
+                continue
             icon, label = _ROLE_LABELS.get(role, ("\U0001F3B5", role.title()))
             label = overrides.get(role, label)
             out.append(("\U0001F3BB" if label == "Upright bass" else icon, label))

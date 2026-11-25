@@ -285,7 +285,8 @@ class HelperTests(unittest.TestCase):
             self.assertEqual(len(playing), len(ENSEMBLES[name].roles), name)
             self.assertEqual(len(later), len(ENSEMBLES[name].missing), name)
         self.assertEqual([n for _, n in jam_art.ensemble_lineup("Rock trio")[0]], ["Electric guitar", "Bass", "Drums"])
-        self.assertEqual([n for _, n in jam_art.ensemble_lineup("Jazz quartet")[1]], ["Sax / trumpet"])
+        # Its written horn: the instrument the horns branch records ("Tenor sax"), or the role's wording without it.
+        self.assertIn([n for _, n in jam_art.ensemble_lineup("Jazz quartet")[1]], (["Sax / trumpet"], ["Tenor sax"]))
         self.assertEqual(jam_art.ensemble_lineup("Kazoo choir"), ((), ()))
 
     def test_lineup_html_names_members_not_yet_in_the_backing(self) -> None:
@@ -326,3 +327,25 @@ def test_lineup_follows_what_the_engine_will_play(monkeypatch):
     written, _ = jca.ensemble_lineup("Rock trio")
     assert [n for _, n in written] == ["Electric guitar", "Bass", "Drums"]  # without a groove: the written line-up
     assert jca.ensemble_lineup("Jazz quartet", "Jazz Swing")[1]  # the horn is still not available on this branch
+
+
+def test_lineup_names_each_horn_the_engine_plays(monkeypatch):
+    """A plan that plays horns names them by instrument (trumpet, tenor sax), never one "Horn" for two players."""
+    import types
+
+    import backing_performance_plan as pp
+    import jam_card_art as jca
+
+    spec = types.SimpleNamespace(roles=("keys", "bass", "drums"), missing=("horns",), horns=("trumpet", "tenor"))
+    monkeypatch.setitem(pp.ENSEMBLES, "Test quintet", spec)
+    playing = types.SimpleNamespace(roles=("keys", "horns", "bass", "drums"), unavailable=(), horns=("trumpet", "tenor"))
+    monkeypatch.setattr(pp, "resolve_performance_plan", lambda **k: playing)
+    names = [n for _, n in jca.ensemble_lineup("Test quintet", "Jazz Swing")[0]]
+    assert names == ["Keys", "Trumpet", "Tenor sax", "Bass", "Drums"]
+    html = jca.lineup_html("Test quintet", "Jazz Swing")
+    assert "Trumpet" in html and "Tenor sax" in html and "Not in the backing yet" not in html
+    silent = types.SimpleNamespace(roles=("keys", "bass", "drums"), unavailable=("horns",), horns=())
+    monkeypatch.setattr(pp, "resolve_performance_plan", lambda **k: silent)
+    playing_now, later = jca.ensemble_lineup("Test quintet", "Jazz Swing")
+    assert "Trumpet" not in [n for _, n in playing_now]
+    assert [n for _, n in later] == ["Trumpet", "Tenor sax"]  # named as not available, never as playing
