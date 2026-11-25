@@ -517,7 +517,8 @@
         "gain": 0.2821,
         "onset_sec": 0.004,
         "seconds": 0.761,
-        "source_file": "Trombone_Short_F1_v2_1.wav"
+        "source_file": "Trombone_Short_F1_v2_1.wav",
+        "attack_cents": 2.1
        },
        {
         "file": "stac_41_v2_r2.flac",
@@ -525,7 +526,8 @@
         "gain": 0.2938,
         "onset_sec": 0.004,
         "seconds": 0.87,
-        "source_file": "Trombone_Short_F1_v2_2.wav"
+        "source_file": "Trombone_Short_F1_v2_2.wav",
+        "attack_cents": -6.3
        }
       ]
      },
@@ -538,7 +540,8 @@
         "gain": 1.4227,
         "onset_sec": 0.004,
         "seconds": 0.391,
-        "source_file": "Trombone_Short_F1_v3_1.wav"
+        "source_file": "Trombone_Short_F1_v3_1.wav",
+        "attack_cents": 12.9
        },
        {
         "file": "stac_41_v3_r2.flac",
@@ -546,7 +549,8 @@
         "gain": 1.5581,
         "onset_sec": 0.004,
         "seconds": 0.417,
-        "source_file": "Trombone_Short_F1_v3_2.wav"
+        "source_file": "Trombone_Short_F1_v3_2.wav",
+        "attack_cents": -20.0
        }
       ]
      }
@@ -564,7 +568,8 @@
         "gain": 0.2838,
         "onset_sec": 0.004,
         "seconds": 0.743,
-        "source_file": "Trombone_Short_G1_v2_1.wav"
+        "source_file": "Trombone_Short_G1_v2_1.wav",
+        "attack_cents": -18.7
        },
        {
         "file": "stac_43_v2_r2.flac",
@@ -572,7 +577,8 @@
         "gain": 0.2633,
         "onset_sec": 0.004,
         "seconds": 0.711,
-        "source_file": "Trombone_Short_G1_v2_2.wav"
+        "source_file": "Trombone_Short_G1_v2_2.wav",
+        "attack_cents": -9.2
        }
       ]
      },
@@ -585,7 +591,8 @@
         "gain": 1.2268,
         "onset_sec": 0.004,
         "seconds": 0.386,
-        "source_file": "Trombone_Short_G1_v3_1.wav"
+        "source_file": "Trombone_Short_G1_v3_1.wav",
+        "attack_cents": -6.5
        },
        {
         "file": "stac_43_v3_r2.flac",
@@ -593,7 +600,8 @@
         "gain": 1.2296,
         "onset_sec": 0.004,
         "seconds": 0.366,
-        "source_file": "Trombone_Short_G1_v3_2.wav"
+        "source_file": "Trombone_Short_G1_v3_2.wav",
+        "attack_cents": 19.6
        }
       ]
      }
@@ -611,7 +619,8 @@
         "gain": 0.3424,
         "onset_sec": 0.004,
         "seconds": 0.605,
-        "source_file": "Trombone_Short_A1_v2_1.wav"
+        "source_file": "Trombone_Short_A1_v2_1.wav",
+        "attack_cents": -28.5
        },
        {
         "file": "stac_45_v2_r2.flac",
@@ -619,7 +628,8 @@
         "gain": 0.3131,
         "onset_sec": 0.004,
         "seconds": 0.639,
-        "source_file": "Trombone_Short_A1_v2_2.wav"
+        "source_file": "Trombone_Short_A1_v2_2.wav",
+        "attack_cents": -10.9
        }
       ]
      },
@@ -632,7 +642,8 @@
         "gain": 0.9662,
         "onset_sec": 0.004,
         "seconds": 0.402,
-        "source_file": "Trombone_Short_A1_v3_1.wav"
+        "source_file": "Trombone_Short_A1_v3_1.wav",
+        "attack_cents": -19.5
        },
        {
         "file": "stac_45_v3_r2.flac",
@@ -640,7 +651,8 @@
         "gain": 0.9011,
         "onset_sec": 0.004,
         "seconds": 0.42,
-        "source_file": "Trombone_Short_A1_v3_2.wav"
+        "source_file": "Trombone_Short_A1_v3_2.wav",
+        "attack_cents": 17.0
        }
       ]
      }
@@ -658,7 +670,8 @@
         "gain": 0.2533,
         "onset_sec": 0.004,
         "seconds": 0.344,
-        "source_file": "Trombone_Short_A#1_v2_1.wav"
+        "source_file": "Trombone_Short_A#1_v2_1.wav",
+        "attack_cents": -1.0
        },
        {
         "file": "stac_46_v2_r2.flac",
@@ -666,7 +679,8 @@
         "gain": 0.3105,
         "onset_sec": 0.004,
         "seconds": 0.676,
-        "source_file": "Trombone_Short_A#1_v2_2.wav"
+        "source_file": "Trombone_Short_A#1_v2_2.wav",
+        "attack_cents": -5.9
        }
       ]
      },
@@ -679,7 +693,8 @@
         "gain": 1.3793,
         "onset_sec": 0.004,
         "seconds": 0.337,
-        "source_file": "Trombone_Short_A#1_v3_1.wav"
+        "source_file": "Trombone_Short_A#1_v3_1.wav",
+        "attack_cents": 105.8
        },
        {
         "file": "stac_46_v3_r2.flac",
@@ -687,7 +702,8 @@
         "gain": 0.858,
         "onset_sec": 0.004,
         "seconds": 0.296,
-        "source_file": "Trombone_Short_A#1_v3_2.wav"
+        "source_file": "Trombone_Short_A#1_v3_2.wav",
+        "attack_cents": 0.5
        }
       ]
      }
@@ -705,7 +721,8 @@
         "gain": 0.247,
         "onset_sec": 0.004,
         "seconds": 0.459,
-        "source_file": "Trombone_Short_C2_v2_1.wav"
+        "source_file": "Trombone_Short_C2_v2_1.wav",
+        "attack_cents": -0.1
        },
        {
         "file": "stac_48_v2_r2.flac",
@@ -713,7 +730,8 @@
         "gain": 0.2628,
         "onset_sec": 0.004,
         "seconds": 0.469,
-        "source_file": "Trombone_Short_C2_v2_2.wav"
+        "source_file": "Trombone_Short_C2_v2_2.wav",
+        "attack_cents": 59.0
        }
       ]
      },
@@ -726,7 +744,8 @@
         "gain": 0.878,
         "onset_sec": 0.004,
         "seconds": 0.275,
-        "source_file": "Trombone_Short_C2_v3_1.wav"
+        "source_file": "Trombone_Short_C2_v3_1.wav",
+        "attack_cents": 5.5
        },
        {
         "file": "stac_48_v3_r2.flac",
@@ -734,7 +753,8 @@
         "gain": 0.9545,
         "onset_sec": 0.004,
         "seconds": 0.4,
-        "source_file": "Trombone_Short_C2_v3_2.wav"
+        "source_file": "Trombone_Short_C2_v3_2.wav",
+        "attack_cents": 25.8
        }
       ]
      }
@@ -752,7 +772,8 @@
         "gain": 0.2649,
         "onset_sec": 0.004,
         "seconds": 0.664,
-        "source_file": "Trombone_Short_D2_v2_1.wav"
+        "source_file": "Trombone_Short_D2_v2_1.wav",
+        "attack_cents": -11.6
        },
        {
         "file": "stac_50_v2_r2.flac",
@@ -760,7 +781,8 @@
         "gain": 0.2589,
         "onset_sec": 0.004,
         "seconds": 0.845,
-        "source_file": "Trombone_Short_D2_v2_2.wav"
+        "source_file": "Trombone_Short_D2_v2_2.wav",
+        "attack_cents": -12.3
        }
       ]
      },
@@ -773,7 +795,8 @@
         "gain": 0.8897,
         "onset_sec": 0.004,
         "seconds": 0.34,
-        "source_file": "Trombone_Short_D2_v3_1.wav"
+        "source_file": "Trombone_Short_D2_v3_1.wav",
+        "attack_cents": -5.7
        },
        {
         "file": "stac_50_v3_r2.flac",
@@ -781,7 +804,8 @@
         "gain": 0.8463,
         "onset_sec": 0.004,
         "seconds": 0.338,
-        "source_file": "Trombone_Short_D2_v3_2.wav"
+        "source_file": "Trombone_Short_D2_v3_2.wav",
+        "attack_cents": 6.6
        }
       ]
      }
@@ -799,7 +823,8 @@
         "gain": 0.2184,
         "onset_sec": 0.004,
         "seconds": 0.581,
-        "source_file": "Trombone_Short_D#2_v2_1.wav"
+        "source_file": "Trombone_Short_D#2_v2_1.wav",
+        "attack_cents": -14.2
        },
        {
         "file": "stac_51_v2_r2.flac",
@@ -807,7 +832,8 @@
         "gain": 0.2265,
         "onset_sec": 0.004,
         "seconds": 0.704,
-        "source_file": "Trombone_Short_D#2_v2_2.wav"
+        "source_file": "Trombone_Short_D#2_v2_2.wav",
+        "attack_cents": -10.8
        }
       ]
      },
@@ -820,7 +846,8 @@
         "gain": 0.7353,
         "onset_sec": 0.004,
         "seconds": 0.349,
-        "source_file": "Trombone_Short_D#2_v3_1.wav"
+        "source_file": "Trombone_Short_D#2_v3_1.wav",
+        "attack_cents": 5.2
        },
        {
         "file": "stac_51_v3_r2.flac",
@@ -828,7 +855,8 @@
         "gain": 0.7519,
         "onset_sec": 0.004,
         "seconds": 0.347,
-        "source_file": "Trombone_Short_D#2_v3_2.wav"
+        "source_file": "Trombone_Short_D#2_v3_2.wav",
+        "attack_cents": 16.5
        }
       ]
      }
@@ -846,7 +874,8 @@
         "gain": 0.2063,
         "onset_sec": 0.004,
         "seconds": 0.789,
-        "source_file": "Trombone_Short_F2_v2_1.wav"
+        "source_file": "Trombone_Short_F2_v2_1.wav",
+        "attack_cents": -1.8
        },
        {
         "file": "stac_53_v2_r2.flac",
@@ -854,7 +883,8 @@
         "gain": 0.202,
         "onset_sec": 0.004,
         "seconds": 0.688,
-        "source_file": "Trombone_Short_F2_v2_2.wav"
+        "source_file": "Trombone_Short_F2_v2_2.wav",
+        "attack_cents": -3.7
        }
       ]
      },
@@ -867,7 +897,8 @@
         "gain": 0.6088,
         "onset_sec": 0.004,
         "seconds": 0.413,
-        "source_file": "Trombone_Short_F2_v3_1.wav"
+        "source_file": "Trombone_Short_F2_v3_1.wav",
+        "attack_cents": -0.9
        },
        {
         "file": "stac_53_v3_r2.flac",
@@ -875,7 +906,8 @@
         "gain": 0.6862,
         "onset_sec": 0.004,
         "seconds": 0.353,
-        "source_file": "Trombone_Short_F2_v3_2.wav"
+        "source_file": "Trombone_Short_F2_v3_2.wav",
+        "attack_cents": 10.4
        }
       ]
      }
@@ -893,7 +925,8 @@
         "gain": 0.2198,
         "onset_sec": 0.004,
         "seconds": 0.692,
-        "source_file": "Trombone_Short_G2_v2_1.wav"
+        "source_file": "Trombone_Short_G2_v2_1.wav",
+        "attack_cents": -12.4
        },
        {
         "file": "stac_55_v2_r2.flac",
@@ -901,7 +934,8 @@
         "gain": 0.2117,
         "onset_sec": 0.004,
         "seconds": 0.741,
-        "source_file": "Trombone_Short_G2_v2_2.wav"
+        "source_file": "Trombone_Short_G2_v2_2.wav",
+        "attack_cents": -8.4
        }
       ]
      },
@@ -914,7 +948,8 @@
         "gain": 0.6949,
         "onset_sec": 0.004,
         "seconds": 0.378,
-        "source_file": "Trombone_Short_G2_v3_1.wav"
+        "source_file": "Trombone_Short_G2_v3_1.wav",
+        "attack_cents": 6.4
        },
        {
         "file": "stac_55_v3_r2.flac",
@@ -922,7 +957,8 @@
         "gain": 0.7196,
         "onset_sec": 0.004,
         "seconds": 0.38,
-        "source_file": "Trombone_Short_G2_v3_2.wav"
+        "source_file": "Trombone_Short_G2_v3_2.wav",
+        "attack_cents": -2.5
        }
       ]
      }
@@ -940,7 +976,8 @@
         "gain": 0.1911,
         "onset_sec": 0.004,
         "seconds": 0.884,
-        "source_file": "Trombone_Short_A2_v2_1.wav"
+        "source_file": "Trombone_Short_A2_v2_1.wav",
+        "attack_cents": -10.0
        },
        {
         "file": "stac_57_v2_r2.flac",
@@ -948,7 +985,8 @@
         "gain": 0.1931,
         "onset_sec": 0.004,
         "seconds": 0.663,
-        "source_file": "Trombone_Short_A2_v2_2.wav"
+        "source_file": "Trombone_Short_A2_v2_2.wav",
+        "attack_cents": -5.9
        }
       ]
      },
@@ -961,7 +999,8 @@
         "gain": 0.619,
         "onset_sec": 0.004,
         "seconds": 0.436,
-        "source_file": "Trombone_Short_A2_v3_1.wav"
+        "source_file": "Trombone_Short_A2_v3_1.wav",
+        "attack_cents": 0.8
        },
        {
         "file": "stac_57_v3_r2.flac",
@@ -969,7 +1008,8 @@
         "gain": 0.6534,
         "onset_sec": 0.004,
         "seconds": 0.483,
-        "source_file": "Trombone_Short_A2_v3_2.wav"
+        "source_file": "Trombone_Short_A2_v3_2.wav",
+        "attack_cents": 1.8
        }
       ]
      }
@@ -987,7 +1027,8 @@
         "gain": 0.1833,
         "onset_sec": 0.004,
         "seconds": 0.781,
-        "source_file": "Trombone_Short_A#2_v2_1.wav"
+        "source_file": "Trombone_Short_A#2_v2_1.wav",
+        "attack_cents": -8.0
        },
        {
         "file": "stac_58_v2_r2.flac",
@@ -995,7 +1036,8 @@
         "gain": 0.1934,
         "onset_sec": 0.004,
         "seconds": 0.706,
-        "source_file": "Trombone_Short_A#2_v2_2.wav"
+        "source_file": "Trombone_Short_A#2_v2_2.wav",
+        "attack_cents": -13.0
        }
       ]
      },
@@ -1008,7 +1050,8 @@
         "gain": 0.5314,
         "onset_sec": 0.004,
         "seconds": 0.341,
-        "source_file": "Trombone_Short_A#2_v3_1.wav"
+        "source_file": "Trombone_Short_A#2_v3_1.wav",
+        "attack_cents": 1.6
        },
        {
         "file": "stac_58_v3_r2.flac",
@@ -1016,7 +1059,8 @@
         "gain": 0.6031,
         "onset_sec": 0.004,
         "seconds": 0.409,
-        "source_file": "Trombone_Short_A#2_v3_2.wav"
+        "source_file": "Trombone_Short_A#2_v3_2.wav",
+        "attack_cents": -10.2
        }
       ]
      }
@@ -1034,7 +1078,8 @@
         "gain": 0.198,
         "onset_sec": 0.0004,
         "seconds": 0.68,
-        "source_file": "Trombone_Short_C3_v2_1.wav"
+        "source_file": "Trombone_Short_C3_v2_1.wav",
+        "attack_cents": 344.1
        },
        {
         "file": "stac_60_v2_r2.flac",
@@ -1042,7 +1087,8 @@
         "gain": 0.1659,
         "onset_sec": 0.004,
         "seconds": 0.674,
-        "source_file": "Trombone_Short_C3_v2_2.wav"
+        "source_file": "Trombone_Short_C3_v2_2.wav",
+        "attack_cents": -9.0
        }
       ]
      },
@@ -1055,7 +1101,8 @@
         "gain": 0.5827,
         "onset_sec": 0.004,
         "seconds": 0.544,
-        "source_file": "Trombone_Short_C3_v3_1.wav"
+        "source_file": "Trombone_Short_C3_v3_1.wav",
+        "attack_cents": -1.2
        },
        {
         "file": "stac_60_v3_r2.flac",
@@ -1063,7 +1110,8 @@
         "gain": 0.5875,
         "onset_sec": 0.004,
         "seconds": 0.388,
-        "source_file": "Trombone_Short_C3_v3_2.wav"
+        "source_file": "Trombone_Short_C3_v3_2.wav",
+        "attack_cents": -1.3
        }
       ]
      }
@@ -1081,7 +1129,8 @@
         "gain": 0.1539,
         "onset_sec": 0.004,
         "seconds": 0.727,
-        "source_file": "Trombone_Short_D3_v2_1.wav"
+        "source_file": "Trombone_Short_D3_v2_1.wav",
+        "attack_cents": -3.7
        },
        {
         "file": "stac_62_v2_r2.flac",
@@ -1089,7 +1138,8 @@
         "gain": 0.1527,
         "onset_sec": 0.004,
         "seconds": 0.898,
-        "source_file": "Trombone_Short_D3_v2_2.wav"
+        "source_file": "Trombone_Short_D3_v2_2.wav",
+        "attack_cents": -0.6
        }
       ]
      },
@@ -1102,7 +1152,8 @@
         "gain": 0.6116,
         "onset_sec": 0.004,
         "seconds": 0.45,
-        "source_file": "Trombone_Short_D3_v3_1.wav"
+        "source_file": "Trombone_Short_D3_v3_1.wav",
+        "attack_cents": 0.4
        },
        {
         "file": "stac_62_v3_r2.flac",
@@ -1110,7 +1161,8 @@
         "gain": 0.5827,
         "onset_sec": 0.004,
         "seconds": 0.482,
-        "source_file": "Trombone_Short_D3_v3_2.wav"
+        "source_file": "Trombone_Short_D3_v3_2.wav",
+        "attack_cents": -1.8
        }
       ]
      }
@@ -1128,7 +1180,8 @@
         "gain": 0.1537,
         "onset_sec": 0.004,
         "seconds": 1.115,
-        "source_file": "Trombone_Short_D#3_v2_1.wav"
+        "source_file": "Trombone_Short_D#3_v2_1.wav",
+        "attack_cents": -12.3
        },
        {
         "file": "stac_63_v2_r2.flac",
@@ -1136,7 +1189,8 @@
         "gain": 0.1619,
         "onset_sec": 0.004,
         "seconds": 0.738,
-        "source_file": "Trombone_Short_D#3_v2_2.wav"
+        "source_file": "Trombone_Short_D#3_v2_2.wav",
+        "attack_cents": -26.0
        }
       ]
      },
@@ -1149,7 +1203,8 @@
         "gain": 0.5174,
         "onset_sec": 0.004,
         "seconds": 0.422,
-        "source_file": "Trombone_Short_D#3_v3_1.wav"
+        "source_file": "Trombone_Short_D#3_v3_1.wav",
+        "attack_cents": 10.2
        },
        {
         "file": "stac_63_v3_r2.flac",
@@ -1157,7 +1212,8 @@
         "gain": 0.4597,
         "onset_sec": 0.004,
         "seconds": 0.482,
-        "source_file": "Trombone_Short_D#3_v3_2.wav"
+        "source_file": "Trombone_Short_D#3_v3_2.wav",
+        "attack_cents": 6.7
        }
       ]
      }
@@ -1175,7 +1231,8 @@
         "gain": 0.1249,
         "onset_sec": 0.004,
         "seconds": 0.765,
-        "source_file": "Trombone_Short_F3_v2_1.wav"
+        "source_file": "Trombone_Short_F3_v2_1.wav",
+        "attack_cents": 0.7
        },
        {
         "file": "stac_65_v2_r2.flac",
@@ -1183,7 +1240,8 @@
         "gain": 0.1273,
         "onset_sec": 0.004,
         "seconds": 0.597,
-        "source_file": "Trombone_Short_F3_v2_2.wav"
+        "source_file": "Trombone_Short_F3_v2_2.wav",
+        "attack_cents": -4.1
        }
       ]
      },
@@ -1196,7 +1254,8 @@
         "gain": 0.4463,
         "onset_sec": 0.004,
         "seconds": 0.375,
-        "source_file": "Trombone_Short_F3_v3_1.wav"
+        "source_file": "Trombone_Short_F3_v3_1.wav",
+        "attack_cents": 0.1
        },
        {
         "file": "stac_65_v3_r2.flac",
@@ -1204,7 +1263,8 @@
         "gain": 0.4611,
         "onset_sec": 0.004,
         "seconds": 0.424,
-        "source_file": "Trombone_Short_F3_v3_2.wav"
+        "source_file": "Trombone_Short_F3_v3_2.wav",
+        "attack_cents": 0.3
        }
       ]
      }

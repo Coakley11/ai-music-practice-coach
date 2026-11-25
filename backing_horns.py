@@ -84,6 +84,10 @@ class Horn:
     # Level per articulation, so this horn's backgrounds at their default dynamics (pads 0.6, hits 0.85) sound as
     # loud as the tenor's (measured: RMS of the sounding part over four jazz progressions). None: as recorded.
     level: dict | None = None
+    # A short note avoids takes whose attack strays more than ATTACK_CENTS_MAX from pitch (the manifest's
+    # ``attack_cents``) when its layer has a steadier one: a loud brass shot that scoops sounds out of tune
+    # against the other horn.
+    steady_attacks: bool = False
 
 
 HORNS: dict[str, Horn] = {
@@ -92,11 +96,13 @@ HORNS: dict[str, Horn] = {
     # Concert F2-G4 recorded; backgrounds C3-D4, the trombone's singing middle, under a tenor or a trumpet.
     "trombone": Horn("trombone", _INSTRUMENTS / "trombone", 41, 67, (48, 62, 55),
                      {"sustain": 0.02, "staccato": 0.003}, {"sustain": 0.14, "staccato": 0.04},
-                     steady_layers=True, aligned_loops=True, label="trombone", level={"sustain": 2.7, "staccato": 0.9}),
+                     steady_layers=True, aligned_loops=True, label="trombone", level={"sustain": 2.7, "staccato": 0.9},
+                     steady_attacks=True),
     # Concert F3-C6 recorded; backgrounds C4-F5 (written D4-G5), clear of the screech register.
     "trumpet": Horn("trumpet", _INSTRUMENTS / "trumpet", 53, 84, (60, 77, 68),
                     {"sustain": 0.015, "staccato": 0.002}, {"sustain": 0.10, "staccato": 0.035},
-                    steady_layers=True, aligned_loops=True, label="trumpet", level={"sustain": 1.45, "staccato": 3.75}),
+                    steady_layers=True, aligned_loops=True, label="trumpet", level={"sustain": 1.45, "staccato": 3.75},
+                    steady_attacks=True),
 }
 
 
@@ -133,6 +139,7 @@ class HornNote:
     velocity: float = 0.7
     articulation: str | None = None  # "sustain" / "staccato"; None chooses by length
     voice: int = 0  # which player: each voice is monophonic and breathes on its own
+    swell: float = 0.0  # dB the held note grows (> 0, a crescendo) or dies away (< 0) by its release; 0: steady
 
 
 def clamp_to_range(midi: int, low: int = TENOR_LOW, high: int = TENOR_HIGH) -> int:
@@ -268,6 +275,22 @@ def _velocity_gain(velocity: float, layer_velocity: float) -> float:
     return float(min(1.5, max(0.2, (v / max(0.05, float(layer_velocity))) ** 1.2)))
 
 
+ATTACK_CENTS_MAX = 30.0
+
+
+def _steady_attack_zone(zone: dict) -> dict:
+    """``zone`` with each layer's takes limited to those whose attack stays within :data:`ATTACK_CENTS_MAX`
+    of pitch; a layer with none keeps its steadiest take."""
+    layers = []
+    for la in zone["layers"]:
+        takes = la["takes"]
+        ok = [t for t in takes if abs(float(t.get("attack_cents", 0.0))) <= ATTACK_CENTS_MAX]
+        if not ok:
+            ok = [min(takes, key=lambda t: abs(float(t.get("attack_cents", 0.0))))]
+        layers.append({**la, "takes": ok})
+    return {**zone, "layers": layers}
+
+
 def _take(inst: SampledInstrument, zone: dict, velocity: float, seed: str, avoid: dict, steady: bool) -> dict:
     """The take to play. ``steady``: the layer nearest ``velocity`` exactly, so a held line at one dynamic stays
     in one layer (the brass layers differ in tone); its round robins still alternate."""
@@ -288,6 +311,8 @@ def _add_note(
     if start >= len(bus):
         return
     zone = inst._zone(midi)
+    if art == "staccato" and h.steady_attacks:
+        zone = _steady_attack_zone(zone)
     take = _take(inst, zone, note.velocity, seed, avoid, h.steady_layers and art == "sustain")
     layer_v = next(la["velocity"] for la in zone["layers"] if take in la["takes"])
     x = inst._audio(take["file"])
@@ -306,6 +331,11 @@ def _add_note(
     attack_n = min(n // 2, max(2, int((h.attack_sec[art] if attack_sec is None else attack_sec) * sr)))
     seg[:attack_n] *= 0.5 - 0.5 * np.cos(np.pi * np.arange(attack_n, dtype=np.float32) / attack_n)
     rel_from = min(held_n, n - 2)
+    if note.swell and rel_from > attack_n:
+        # A hairpin over the held part, centred on the note's level: -swell/2 dB to +swell/2 dB (and held there).
+        ramp = np.linspace(-0.5, 0.5, rel_from - attack_n, dtype=np.float32) * np.float32(note.swell)
+        gain_db = np.concatenate([np.full(attack_n, ramp[0], np.float32), ramp, np.full(n - rel_from, ramp[-1], np.float32)])
+        seg *= np.power(np.float32(10.0), gain_db / np.float32(20.0))
     rel_n = n - rel_from
     seg[rel_from:] *= 0.5 + 0.5 * np.cos(np.pi * np.arange(1, rel_n + 1, dtype=np.float32) / rel_n)
     if h.level is not None:

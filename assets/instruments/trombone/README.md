@@ -23,4 +23,9 @@ fade-out, normalised and written as mono 16-bit FLAC. Nothing is resampled or pi
 against its name (VSCO names middle C as C3) and checked for the octave; `cents`, the loudness-evening `gain` (the soft
 layer kept within 8 dB of the loud one) and each take's source file are in `manifest.json`.
 
+Each staccato take also has `attack_cents`: the pitch of its first 20-80 ms against the note, after its own
+`cents` correction. Loud brass staccatos start flat (or, on a few trombone takes, sharp) and settle into tune; a
+shot (`backing_horns`, `steady_attacks`) skips takes more than 30 cents off when its layer has a steadier one.
+Measured 2026-11-25 by autocorrelation; the audio itself is unchanged.
+
 Played by `backing_horns.py` (`instrument="trombone"`), only when `MUSIC_HORNS` is switched on; no ensemble uses it yet.

@@ -331,7 +331,8 @@
         "gain": 0.0713,
         "onset_sec": 0.0005,
         "seconds": 0.868,
-        "source_file": "Sum_SHTrumpet_stac_F2_v1_rr1.wav"
+        "source_file": "Sum_SHTrumpet_stac_F2_v1_rr1.wav",
+        "attack_cents": -7.1
        },
        {
         "file": "stac_53_v1_r2.flac",
@@ -339,7 +340,8 @@
         "gain": 0.066,
         "onset_sec": 0.0009,
         "seconds": 0.874,
-        "source_file": "Sum_SHTrumpet_stac_F2_v1_rr2.wav"
+        "source_file": "Sum_SHTrumpet_stac_F2_v1_rr2.wav",
+        "attack_cents": -40.3
        }
       ]
      },
@@ -352,7 +354,8 @@
         "gain": 0.1076,
         "onset_sec": 0.004,
         "seconds": 1.07,
-        "source_file": "Sum_SHTrumpet_stac_F2_v2_rr1.wav"
+        "source_file": "Sum_SHTrumpet_stac_F2_v2_rr1.wav",
+        "attack_cents": -102.3
        },
        {
         "file": "stac_53_v2_r2.flac",
@@ -360,7 +363,8 @@
         "gain": 0.0898,
         "onset_sec": 0.0027,
         "seconds": 0.975,
-        "source_file": "Sum_SHTrumpet_stac_F2_v2_rr2.wav"
+        "source_file": "Sum_SHTrumpet_stac_F2_v2_rr2.wav",
+        "attack_cents": -60.6
        }
       ]
      },
@@ -373,7 +377,8 @@
         "gain": 0.1388,
         "onset_sec": 0.0,
         "seconds": 1.073,
-        "source_file": "Sum_SHTrumpet_stac_F2_v3_rr1.wav"
+        "source_file": "Sum_SHTrumpet_stac_F2_v3_rr1.wav",
+        "attack_cents": -45.9
        },
        {
         "file": "stac_53_v3_r2.flac",
@@ -381,7 +386,8 @@
         "gain": 0.1576,
         "onset_sec": 0.003,
         "seconds": 0.927,
-        "source_file": "Sum_SHTrumpet_stac_F2_v3_rr2.wav"
+        "source_file": "Sum_SHTrumpet_stac_F2_v3_rr2.wav",
+        "attack_cents": -26.5
        }
       ]
      }
@@ -399,7 +405,8 @@
         "gain": 0.0782,
         "onset_sec": 0.0037,
         "seconds": 0.753,
-        "source_file": "Sum_SHTrumpet_stac_A2_v1_rr1.wav"
+        "source_file": "Sum_SHTrumpet_stac_A2_v1_rr1.wav",
+        "attack_cents": -39.3
        },
        {
         "file": "stac_57_v1_r2.flac",
@@ -407,7 +414,8 @@
         "gain": 0.0639,
         "onset_sec": 0.0003,
         "seconds": 0.835,
-        "source_file": "Sum_SHTrumpet_stac_A2_v1_rr2.wav"
+        "source_file": "Sum_SHTrumpet_stac_A2_v1_rr2.wav",
+        "attack_cents": -11.8
        }
       ]
      },
@@ -420,7 +428,8 @@
         "gain": 0.0951,
         "onset_sec": 0.004,
         "seconds": 0.944,
-        "source_file": "Sum_SHTrumpet_stac_A2_v2_rr1.wav"
+        "source_file": "Sum_SHTrumpet_stac_A2_v2_rr1.wav",
+        "attack_cents": -13.1
        },
        {
         "file": "stac_57_v2_r2.flac",
@@ -428,7 +437,8 @@
         "gain": 0.1149,
         "onset_sec": 0.004,
         "seconds": 0.963,
-        "source_file": "Sum_SHTrumpet_stac_A2_v2_rr2.wav"
+        "source_file": "Sum_SHTrumpet_stac_A2_v2_rr2.wav",
+        "attack_cents": -7.7
        }
       ]
      },
@@ -441,7 +451,8 @@
         "gain": 0.1671,
         "onset_sec": 0.004,
         "seconds": 1.504,
-        "source_file": "Sum_SHTrumpet_stac_A2_v3_rr1.wav"
+        "source_file": "Sum_SHTrumpet_stac_A2_v3_rr1.wav",
+        "attack_cents": -35.5
        },
        {
         "file": "stac_57_v3_r2.flac",
@@ -449,7 +460,8 @@
         "gain": 0.1588,
         "onset_sec": 0.0,
         "seconds": 1.555,
-        "source_file": "Sum_SHTrumpet_stac_A2_v3_rr2.wav"
+        "source_file": "Sum_SHTrumpet_stac_A2_v3_rr2.wav",
+        "attack_cents": -52.2
        }
       ]
      }
@@ -467,7 +479,8 @@
         "gain": 0.0908,
         "onset_sec": 0.004,
         "seconds": 1.026,
-        "source_file": "Sum_SHTrumpet_stac_C3_v1_rr1.wav"
+        "source_file": "Sum_SHTrumpet_stac_C3_v1_rr1.wav",
+        "attack_cents": 9.2
        },
        {
         "file": "stac_60_v1_r2.flac",
@@ -475,7 +488,8 @@
         "gain": 0.0553,
         "onset_sec": 0.001,
         "seconds": 0.942,
-        "source_file": "Sum_SHTrumpet_stac_C3_v1_rr2.wav"
+        "source_file": "Sum_SHTrumpet_stac_C3_v1_rr2.wav",
+        "attack_cents": 10.3
        }
       ]
      },
@@ -488,7 +502,8 @@
         "gain": 0.1192,
         "onset_sec": 0.0031,
         "seconds": 1.14,
-        "source_file": "Sum_SHTrumpet_stac_C3_v2_rr1.wav"
+        "source_file": "Sum_SHTrumpet_stac_C3_v2_rr1.wav",
+        "attack_cents": -41.8
        },
        {
         "file": "stac_60_v2_r2.flac",
@@ -496,7 +511,8 @@
         "gain": 0.1138,
         "onset_sec": 0.004,
         "seconds": 1.162,
-        "source_file": "Sum_SHTrumpet_stac_C3_v2_rr2.wav"
+        "source_file": "Sum_SHTrumpet_stac_C3_v2_rr2.wav",
+        "attack_cents": -17.4
        }
       ]
      },
@@ -509,7 +525,8 @@
         "gain": 0.1731,
         "onset_sec": 0.0037,
         "seconds": 1.218,
-        "source_file": "Sum_SHTrumpet_stac_C3_v3_rr1.wav"
+        "source_file": "Sum_SHTrumpet_stac_C3_v3_rr1.wav",
+        "attack_cents": -77.8
        },
        {
         "file": "stac_60_v3_r2.flac",
@@ -517,7 +534,8 @@
         "gain": 0.1698,
         "onset_sec": 0.004,
         "seconds": 1.315,
-        "source_file": "Sum_SHTrumpet_stac_C3_v3_rr2.wav"
+        "source_file": "Sum_SHTrumpet_stac_C3_v3_rr2.wav",
+        "attack_cents": -19.2
        }
       ]
      }
@@ -535,7 +553,8 @@
         "gain": 0.065,
         "onset_sec": 0.004,
         "seconds": 1.05,
-        "source_file": "Sum_SHTrumpet_stac_D#3_v1_rr1.wav"
+        "source_file": "Sum_SHTrumpet_stac_D#3_v1_rr1.wav",
+        "attack_cents": 14.0
        },
        {
         "file": "stac_63_v1_r2.flac",
@@ -543,7 +562,8 @@
         "gain": 0.0637,
         "onset_sec": 0.004,
         "seconds": 1.064,
-        "source_file": "Sum_SHTrumpet_stac_D#3_v1_rr2.wav"
+        "source_file": "Sum_SHTrumpet_stac_D#3_v1_rr2.wav",
+        "attack_cents": -15.4
        }
       ]
      },
@@ -556,7 +576,8 @@
         "gain": 0.087,
         "onset_sec": 0.0006,
         "seconds": 1.291,
-        "source_file": "Sum_SHTrumpet_stac_D#3_v2_rr1.wav"
+        "source_file": "Sum_SHTrumpet_stac_D#3_v2_rr1.wav",
+        "attack_cents": -20.5
        },
        {
         "file": "stac_63_v2_r2.flac",
@@ -564,7 +585,8 @@
         "gain": 0.0676,
         "onset_sec": 0.004,
         "seconds": 1.258,
-        "source_file": "Sum_SHTrumpet_stac_D#3_v2_rr2.wav"
+        "source_file": "Sum_SHTrumpet_stac_D#3_v2_rr2.wav",
+        "attack_cents": -4.6
        }
       ]
      },
@@ -577,7 +599,8 @@
         "gain": 0.1525,
         "onset_sec": 0.0024,
         "seconds": 1.464,
-        "source_file": "Sum_SHTrumpet_stac_D#3_v3_rr1.wav"
+        "source_file": "Sum_SHTrumpet_stac_D#3_v3_rr1.wav",
+        "attack_cents": -24.2
        },
        {
         "file": "stac_63_v3_r2.flac",
@@ -585,7 +608,8 @@
         "gain": 0.1503,
         "onset_sec": 0.0007,
         "seconds": 1.39,
-        "source_file": "Sum_SHTrumpet_stac_D#3_v3_rr2.wav"
+        "source_file": "Sum_SHTrumpet_stac_D#3_v3_rr2.wav",
+        "attack_cents": -3.0
        }
       ]
      }
@@ -603,7 +627,8 @@
         "gain": 0.0495,
         "onset_sec": 0.0013,
         "seconds": 1.181,
-        "source_file": "Sum_SHTrumpet_stac_F3_v1_rr1.wav"
+        "source_file": "Sum_SHTrumpet_stac_F3_v1_rr1.wav",
+        "attack_cents": 3.6
        },
        {
         "file": "stac_65_v1_r2.flac",
@@ -611,7 +636,8 @@
         "gain": 0.0503,
         "onset_sec": 0.004,
         "seconds": 1.29,
-        "source_file": "Sum_SHTrumpet_stac_F3_v1_rr2.wav"
+        "source_file": "Sum_SHTrumpet_stac_F3_v1_rr2.wav",
+        "attack_cents": 15.3
        }
       ]
      },
@@ -624,7 +650,8 @@
         "gain": 0.0755,
         "onset_sec": 0.0027,
         "seconds": 1.347,
-        "source_file": "Sum_SHTrumpet_stac_F3_v2_rr1.wav"
+        "source_file": "Sum_SHTrumpet_stac_F3_v2_rr1.wav",
+        "attack_cents": 1.6
        },
        {
         "file": "stac_65_v2_r2.flac",
@@ -632,7 +659,8 @@
         "gain": 0.0798,
         "onset_sec": 0.0036,
         "seconds": 1.343,
-        "source_file": "Sum_SHTrumpet_stac_F3_v2_rr2.wav"
+        "source_file": "Sum_SHTrumpet_stac_F3_v2_rr2.wav",
+        "attack_cents": 4.5
        }
       ]
      },
@@ -645,7 +673,8 @@
         "gain": 0.124,
         "onset_sec": 0.004,
         "seconds": 1.421,
-        "source_file": "Sum_SHTrumpet_stac_F3_v3_rr1.wav"
+        "source_file": "Sum_SHTrumpet_stac_F3_v3_rr1.wav",
+        "attack_cents": -7.0
        },
        {
         "file": "stac_65_v3_r2.flac",
@@ -653,7 +682,8 @@
         "gain": 0.0983,
         "onset_sec": 0.0001,
         "seconds": 1.4,
-        "source_file": "Sum_SHTrumpet_stac_F3_v3_rr2.wav"
+        "source_file": "Sum_SHTrumpet_stac_F3_v3_rr2.wav",
+        "attack_cents": 6.1
        }
       ]
      }
@@ -671,7 +701,8 @@
         "gain": 0.0492,
         "onset_sec": 0.0025,
         "seconds": 1.28,
-        "source_file": "Sum_SHTrumpet_stac_G3_v1_rr1.wav"
+        "source_file": "Sum_SHTrumpet_stac_G3_v1_rr1.wav",
+        "attack_cents": 1.9
        },
        {
         "file": "stac_67_v1_r2.flac",
@@ -679,7 +710,8 @@
         "gain": 0.0499,
         "onset_sec": 0.0012,
         "seconds": 1.224,
-        "source_file": "Sum_SHTrumpet_stac_G3_v1_rr2.wav"
+        "source_file": "Sum_SHTrumpet_stac_G3_v1_rr2.wav",
+        "attack_cents": 2.0
        }
       ]
      },
@@ -692,7 +724,8 @@
         "gain": 0.072,
         "onset_sec": 0.004,
         "seconds": 1.185,
-        "source_file": "Sum_SHTrumpet_stac_G3_v2_rr1.wav"
+        "source_file": "Sum_SHTrumpet_stac_G3_v2_rr1.wav",
+        "attack_cents": -8.4
        },
        {
         "file": "stac_67_v2_r2.flac",
@@ -700,7 +733,8 @@
         "gain": 0.0767,
         "onset_sec": 0.004,
         "seconds": 1.145,
-        "source_file": "Sum_SHTrumpet_stac_G3_v2_rr2.wav"
+        "source_file": "Sum_SHTrumpet_stac_G3_v2_rr2.wav",
+        "attack_cents": -17.6
        }
       ]
      },
@@ -713,7 +747,8 @@
         "gain": 0.1271,
         "onset_sec": 0.0027,
         "seconds": 1.286,
-        "source_file": "Sum_SHTrumpet_stac_G3_v3_rr1.wav"
+        "source_file": "Sum_SHTrumpet_stac_G3_v3_rr1.wav",
+        "attack_cents": -22.3
        },
        {
         "file": "stac_67_v3_r2.flac",
@@ -721,7 +756,8 @@
         "gain": 0.1317,
         "onset_sec": 0.0026,
         "seconds": 1.438,
-        "source_file": "Sum_SHTrumpet_stac_G3_v3_rr2.wav"
+        "source_file": "Sum_SHTrumpet_stac_G3_v3_rr2.wav",
+        "attack_cents": -17.9
        }
       ]
      }
@@ -739,7 +775,8 @@
         "gain": 0.0506,
         "onset_sec": 0.0017,
         "seconds": 1.141,
-        "source_file": "Sum_SHTrumpet_stac_A#3_v1_rr1.wav"
+        "source_file": "Sum_SHTrumpet_stac_A#3_v1_rr1.wav",
+        "attack_cents": -2.1
        },
        {
         "file": "stac_70_v1_r2.flac",
@@ -747,7 +784,8 @@
         "gain": 0.0521,
         "onset_sec": 0.004,
         "seconds": 1.13,
-        "source_file": "Sum_SHTrumpet_stac_A#3_v1_rr2.wav"
+        "source_file": "Sum_SHTrumpet_stac_A#3_v1_rr2.wav",
+        "attack_cents": -1.3
        }
       ]
      },
@@ -760,7 +798,8 @@
         "gain": 0.091,
         "onset_sec": 0.004,
         "seconds": 1.233,
-        "source_file": "Sum_SHTrumpet_stac_A#3_v2_rr1.wav"
+        "source_file": "Sum_SHTrumpet_stac_A#3_v2_rr1.wav",
+        "attack_cents": -3.8
        },
        {
         "file": "stac_70_v2_r2.flac",
@@ -768,7 +807,8 @@
         "gain": 0.093,
         "onset_sec": 0.004,
         "seconds": 1.338,
-        "source_file": "Sum_SHTrumpet_stac_A#3_v2_rr2.wav"
+        "source_file": "Sum_SHTrumpet_stac_A#3_v2_rr2.wav",
+        "attack_cents": 1.6
        }
       ]
      },
@@ -781,7 +821,8 @@
         "gain": 0.1225,
         "onset_sec": 0.0025,
         "seconds": 1.533,
-        "source_file": "Sum_SHTrumpet_stac_A#3_v3_rr1.wav"
+        "source_file": "Sum_SHTrumpet_stac_A#3_v3_rr1.wav",
+        "attack_cents": -9.6
        },
        {
         "file": "stac_70_v3_r2.flac",
@@ -789,7 +830,8 @@
         "gain": 0.1362,
         "onset_sec": 0.0027,
         "seconds": 1.493,
-        "source_file": "Sum_SHTrumpet_stac_A#3_v3_rr2.wav"
+        "source_file": "Sum_SHTrumpet_stac_A#3_v3_rr2.wav",
+        "attack_cents": -44.4
        }
       ]
      }
@@ -807,7 +849,8 @@
         "gain": 0.0416,
         "onset_sec": 0.0014,
         "seconds": 1.103,
-        "source_file": "Sum_SHTrumpet_stac_D4_v1_rr1.wav"
+        "source_file": "Sum_SHTrumpet_stac_D4_v1_rr1.wav",
+        "attack_cents": -0.8
        },
        {
         "file": "stac_74_v1_r2.flac",
@@ -815,7 +858,8 @@
         "gain": 0.0458,
         "onset_sec": 0.004,
         "seconds": 1.075,
-        "source_file": "Sum_SHTrumpet_stac_D4_v1_rr2.wav"
+        "source_file": "Sum_SHTrumpet_stac_D4_v1_rr2.wav",
+        "attack_cents": -6.3
        }
       ]
      },
@@ -828,7 +872,8 @@
         "gain": 0.0574,
         "onset_sec": 0.0017,
         "seconds": 1.337,
-        "source_file": "Sum_SHTrumpet_stac_D4_v2_rr1.wav"
+        "source_file": "Sum_SHTrumpet_stac_D4_v2_rr1.wav",
+        "attack_cents": -3.7
        },
        {
         "file": "stac_74_v2_r2.flac",
@@ -836,7 +881,8 @@
         "gain": 0.0655,
         "onset_sec": 0.0017,
         "seconds": 1.167,
-        "source_file": "Sum_SHTrumpet_stac_D4_v2_rr2.wav"
+        "source_file": "Sum_SHTrumpet_stac_D4_v2_rr2.wav",
+        "attack_cents": -5.7
        }
       ]
      },
@@ -849,7 +895,8 @@
         "gain": 0.162,
         "onset_sec": 0.002,
         "seconds": 1.695,
-        "source_file": "Sum_SHTrumpet_stac_D4_v3_rr1.wav"
+        "source_file": "Sum_SHTrumpet_stac_D4_v3_rr1.wav",
+        "attack_cents": -18.6
        },
        {
         "file": "stac_74_v3_r2.flac",
@@ -857,7 +904,8 @@
         "gain": 0.1195,
         "onset_sec": 0.0022,
         "seconds": 1.427,
-        "source_file": "Sum_SHTrumpet_stac_D4_v3_rr2.wav"
+        "source_file": "Sum_SHTrumpet_stac_D4_v3_rr2.wav",
+        "attack_cents": 2.4
        }
       ]
      }
@@ -875,7 +923,8 @@
         "gain": 0.0455,
         "onset_sec": 0.004,
         "seconds": 1.198,
-        "source_file": "Sum_SHTrumpet_stac_F4_v1_rr1.wav"
+        "source_file": "Sum_SHTrumpet_stac_F4_v1_rr1.wav",
+        "attack_cents": -11.0
        },
        {
         "file": "stac_77_v1_r2.flac",
@@ -883,7 +932,8 @@
         "gain": 0.0414,
         "onset_sec": 0.004,
         "seconds": 1.376,
-        "source_file": "Sum_SHTrumpet_stac_F4_v1_rr2.wav"
+        "source_file": "Sum_SHTrumpet_stac_F4_v1_rr2.wav",
+        "attack_cents": -0.1
        }
       ]
      },
@@ -896,7 +946,8 @@
         "gain": 0.0655,
         "onset_sec": 0.004,
         "seconds": 1.381,
-        "source_file": "Sum_SHTrumpet_stac_F4_v2_rr1.wav"
+        "source_file": "Sum_SHTrumpet_stac_F4_v2_rr1.wav",
+        "attack_cents": -18.1
        },
        {
         "file": "stac_77_v2_r2.flac",
@@ -904,7 +955,8 @@
         "gain": 0.067,
         "onset_sec": 0.0029,
         "seconds": 1.361,
-        "source_file": "Sum_SHTrumpet_stac_F4_v2_rr2.wav"
+        "source_file": "Sum_SHTrumpet_stac_F4_v2_rr2.wav",
+        "attack_cents": 10.9
        }
       ]
      },
@@ -917,7 +969,8 @@
         "gain": 0.1124,
         "onset_sec": 0.0029,
         "seconds": 1.519,
-        "source_file": "Sum_SHTrumpet_stac_F4_v3_rr1.wav"
+        "source_file": "Sum_SHTrumpet_stac_F4_v3_rr1.wav",
+        "attack_cents": -22.8
        },
        {
         "file": "stac_77_v3_r2.flac",
@@ -925,7 +978,8 @@
         "gain": 0.1122,
         "onset_sec": 0.0017,
         "seconds": 1.512,
-        "source_file": "Sum_SHTrumpet_stac_F4_v3_rr2.wav"
+        "source_file": "Sum_SHTrumpet_stac_F4_v3_rr2.wav",
+        "attack_cents": -27.3
        }
       ]
      }
@@ -943,7 +997,8 @@
         "gain": 0.0414,
         "onset_sec": 0.0019,
         "seconds": 1.481,
-        "source_file": "Sum_SHTrumpet_stac_A4_v1_rr1.wav"
+        "source_file": "Sum_SHTrumpet_stac_A4_v1_rr1.wav",
+        "attack_cents": 8.7
        },
        {
         "file": "stac_81_v1_r2.flac",
@@ -951,7 +1006,8 @@
         "gain": 0.0383,
         "onset_sec": 0.0036,
         "seconds": 1.222,
-        "source_file": "Sum_SHTrumpet_stac_A4_v1_rr2.wav"
+        "source_file": "Sum_SHTrumpet_stac_A4_v1_rr2.wav",
+        "attack_cents": -2.7
        }
       ]
      },
@@ -964,7 +1020,8 @@
         "gain": 0.0502,
         "onset_sec": 0.004,
         "seconds": 1.201,
-        "source_file": "Sum_SHTrumpet_stac_A4_v2_rr1.wav"
+        "source_file": "Sum_SHTrumpet_stac_A4_v2_rr1.wav",
+        "attack_cents": 1.6
        },
        {
         "file": "stac_81_v2_r2.flac",
@@ -972,7 +1029,8 @@
         "gain": 0.0671,
         "onset_sec": 0.004,
         "seconds": 1.216,
-        "source_file": "Sum_SHTrumpet_stac_A4_v2_rr2.wav"
+        "source_file": "Sum_SHTrumpet_stac_A4_v2_rr2.wav",
+        "attack_cents": 0.9
        }
       ]
      },
@@ -985,7 +1043,8 @@
         "gain": 0.1313,
         "onset_sec": 0.0021,
         "seconds": 1.306,
-        "source_file": "Sum_SHTrumpet_stac_A4_v3_rr1.wav"
+        "source_file": "Sum_SHTrumpet_stac_A4_v3_rr1.wav",
+        "attack_cents": -19.0
        },
        {
         "file": "stac_81_v3_r2.flac",
@@ -993,7 +1052,8 @@
         "gain": 0.1475,
         "onset_sec": 0.0036,
         "seconds": 1.447,
-        "source_file": "Sum_SHTrumpet_stac_A4_v3_rr2.wav"
+        "source_file": "Sum_SHTrumpet_stac_A4_v3_rr2.wav",
+        "attack_cents": -10.3
        }
       ]
      }
@@ -1011,7 +1071,8 @@
         "gain": 0.0308,
         "onset_sec": 0.004,
         "seconds": 1.647,
-        "source_file": "Sum_SHTrumpet_stac_C5_v1_rr1.wav"
+        "source_file": "Sum_SHTrumpet_stac_C5_v1_rr1.wav",
+        "attack_cents": -1.0
        },
        {
         "file": "stac_84_v1_r2.flac",
@@ -1019,7 +1080,8 @@
         "gain": 0.0461,
         "onset_sec": 0.004,
         "seconds": 1.354,
-        "source_file": "Sum_SHTrumpet_stac_C5_v1_rr2.wav"
+        "source_file": "Sum_SHTrumpet_stac_C5_v1_rr2.wav",
+        "attack_cents": -3.4
        }
       ]
      },
@@ -1032,7 +1094,8 @@
         "gain": 0.0906,
         "onset_sec": 0.003,
         "seconds": 0.888,
-        "source_file": "Sum_SHTrumpet_stac_C5_v2_rr1.wav"
+        "source_file": "Sum_SHTrumpet_stac_C5_v2_rr1.wav",
+        "attack_cents": -7.3
        },
        {
         "file": "stac_84_v2_r2.flac",
@@ -1040,7 +1103,8 @@
         "gain": 0.0831,
         "onset_sec": 0.0026,
         "seconds": 1.479,
-        "source_file": "Sum_SHTrumpet_stac_C5_v2_rr2.wav"
+        "source_file": "Sum_SHTrumpet_stac_C5_v2_rr2.wav",
+        "attack_cents": -5.6
        }
       ]
      },
@@ -1053,7 +1117,8 @@
         "gain": 0.1609,
         "onset_sec": 0.0031,
         "seconds": 0.974,
-        "source_file": "Sum_SHTrumpet_stac_C5_v3_rr1.wav"
+        "source_file": "Sum_SHTrumpet_stac_C5_v3_rr1.wav",
+        "attack_cents": -6.5
        },
        {
         "file": "stac_84_v3_r2.flac",
@@ -1061,7 +1126,8 @@
         "gain": 0.1123,
         "onset_sec": 0.0023,
         "seconds": 1.454,
-        "source_file": "Sum_SHTrumpet_stac_C5_v3_rr2.wav"
+        "source_file": "Sum_SHTrumpet_stac_C5_v3_rr2.wav",
+        "attack_cents": -5.3
        }
       ]
      }
