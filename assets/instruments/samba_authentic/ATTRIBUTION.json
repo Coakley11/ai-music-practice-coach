@@ -8,7 +8,8 @@
   "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
   "source_start_s": 1.0651,
   "source_end_s": 1.6651,
-  "modifications": "Freesound HQ preview (MP3) decoded, summed to mono, resampled to 44.1 kHz, cut to one stroke (3 ms pre-roll), 10 ms fade-out, 16-bit FLAC. No pitch, EQ, compression or level change."
+  "modifications": "Freesound HQ preview (MP3) decoded, summed to mono, resampled to 44.1 kHz, cut to one stroke (3 ms pre-roll), 10 ms fade-out, 16-bit FLAC. No pitch, EQ, compression or level change.",
+  "end_level_db": -30.7
  },
  {
   "file": "pandeiro_bass_v1_r2.flac",
@@ -17,9 +18,10 @@
   "source": "https://freesound.org/people/MeanRaccoon/sounds/844751/",
   "license": "CC0 1.0",
   "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
-  "source_start_s": 19.3015,
-  "source_end_s": 19.9015,
-  "modifications": "Freesound HQ preview (MP3) decoded, summed to mono, resampled to 44.1 kHz, cut to one stroke (3 ms pre-roll), 10 ms fade-out, 16-bit FLAC. No pitch, EQ, compression or level change."
+  "source_start_s": 11.9437,
+  "source_end_s": 12.5437,
+  "modifications": "Freesound HQ preview (MP3) decoded, summed to mono, resampled to 44.1 kHz, cut to one stroke (3 ms pre-roll), 10 ms fade-out, 16-bit FLAC. No pitch, EQ, compression or level change.",
+  "end_level_db": -32.6
  },
  {
   "file": "pandeiro_bass_v1_r3.flac",
@@ -28,9 +30,10 @@
   "source": "https://freesound.org/people/MeanRaccoon/sounds/844751/",
   "license": "CC0 1.0",
   "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
-  "source_start_s": 55.6465,
-  "source_end_s": 56.2465,
-  "modifications": "Freesound HQ preview (MP3) decoded, summed to mono, resampled to 44.1 kHz, cut to one stroke (3 ms pre-roll), 10 ms fade-out, 16-bit FLAC. No pitch, EQ, compression or level change."
+  "source_start_s": 32.1973,
+  "source_end_s": 32.7973,
+  "modifications": "Freesound HQ preview (MP3) decoded, summed to mono, resampled to 44.1 kHz, cut to one stroke (3 ms pre-roll), 60 ms fade-out (the ring was cut by the next stroke in the recording), 16-bit FLAC. No pitch, EQ, compression or level change.",
+  "end_level_db": -26.7
  },
  {
   "file": "pandeiro_bass_v1_r4.flac",
@@ -39,53 +42,22 @@
   "source": "https://freesound.org/people/MeanRaccoon/sounds/844751/",
   "license": "CC0 1.0",
   "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
-  "source_start_s": 157.4747,
-  "source_end_s": 157.733,
-  "modifications": "Freesound HQ preview (MP3) decoded, summed to mono, resampled to 44.1 kHz, cut to one stroke (3 ms pre-roll), 10 ms fade-out, 16-bit FLAC. No pitch, EQ, compression or level change."
+  "source_start_s": 55.6465,
+  "source_end_s": 56.2465,
+  "modifications": "Freesound HQ preview (MP3) decoded, summed to mono, resampled to 44.1 kHz, cut to one stroke (3 ms pre-roll), 10 ms fade-out, 16-bit FLAC. No pitch, EQ, compression or level change.",
+  "end_level_db": -38.4
  },
  {
-  "file": "pandeiro_bass_v2_r1.flac",
+  "file": "pandeiro_bass_v1_r5.flac",
   "author": "MeanRaccoon",
   "title": "pandeiro A collection",
   "source": "https://freesound.org/people/MeanRaccoon/sounds/844751/",
   "license": "CC0 1.0",
   "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
-  "source_start_s": 6.4492,
-  "source_end_s": 6.5856,
-  "modifications": "Freesound HQ preview (MP3) decoded, summed to mono, resampled to 44.1 kHz, cut to one stroke (3 ms pre-roll), 10 ms fade-out, 16-bit FLAC. No pitch, EQ, compression or level change."
- },
- {
-  "file": "pandeiro_bass_v2_r2.flac",
-  "author": "MeanRaccoon",
-  "title": "pandeiro A collection",
-  "source": "https://freesound.org/people/MeanRaccoon/sounds/844751/",
-  "license": "CC0 1.0",
-  "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
-  "source_start_s": 65.0448,
-  "source_end_s": 65.1899,
-  "modifications": "Freesound HQ preview (MP3) decoded, summed to mono, resampled to 44.1 kHz, cut to one stroke (3 ms pre-roll), 10 ms fade-out, 16-bit FLAC. No pitch, EQ, compression or level change."
- },
- {
-  "file": "pandeiro_bass_v2_r3.flac",
-  "author": "MeanRaccoon",
-  "title": "pandeiro A collection",
-  "source": "https://freesound.org/people/MeanRaccoon/sounds/844751/",
-  "license": "CC0 1.0",
-  "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
-  "source_start_s": 69.6888,
-  "source_end_s": 69.8223,
-  "modifications": "Freesound HQ preview (MP3) decoded, summed to mono, resampled to 44.1 kHz, cut to one stroke (3 ms pre-roll), 10 ms fade-out, 16-bit FLAC. No pitch, EQ, compression or level change."
- },
- {
-  "file": "pandeiro_bass_v3_r1.flac",
-  "author": "Paulo_Gonçalves",
-  "title": "pandeiro_low.wav",
-  "source": "https://freesound.org/people/Paulo_Gon%C3%A7alves/sounds/182567/",
-  "license": "CC BY 4.0",
-  "license_url": "https://creativecommons.org/licenses/by/4.0/",
-  "source_start_s": 0.0,
-  "source_end_s": 0.2295,
-  "modifications": "Freesound HQ preview (MP3) decoded, summed to mono, resampled to 44.1 kHz, cut to one stroke (3 ms pre-roll), 10 ms fade-out, 16-bit FLAC. No pitch, EQ, compression or level change."
+  "source_start_s": 106.7885,
+  "source_end_s": 107.3885,
+  "modifications": "Freesound HQ preview (MP3) decoded, summed to mono, resampled to 44.1 kHz, cut to one stroke (3 ms pre-roll), 60 ms fade-out (the ring was cut by the next stroke in the recording), 16-bit FLAC. No pitch, EQ, compression or level change.",
+  "end_level_db": -21.9
  },
  {
   "file": "pandeiro_jingle_v1_r1.flac",
@@ -94,9 +66,10 @@
   "source": "https://freesound.org/people/MeanRaccoon/sounds/844751/",
   "license": "CC0 1.0",
   "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
-  "source_start_s": 117.0198,
-  "source_end_s": 117.101,
-  "modifications": "Freesound HQ preview (MP3) decoded, summed to mono, resampled to 44.1 kHz, cut to one stroke (3 ms pre-roll), 10 ms fade-out, 16-bit FLAC. No pitch, EQ, compression or level change."
+  "source_start_s": 139.6911,
+  "source_end_s": 139.8305,
+  "modifications": "Freesound HQ preview (MP3) decoded, summed to mono, resampled to 44.1 kHz, cut to one stroke (3 ms pre-roll), 60 ms fade-out (the ring was cut by the next stroke in the recording), 16-bit FLAC. No pitch, EQ, compression or level change.",
+  "end_level_db": -18.7
  },
  {
   "file": "pandeiro_jingle_v1_r2.flac",
@@ -105,9 +78,10 @@
   "source": "https://freesound.org/people/MeanRaccoon/sounds/844751/",
   "license": "CC0 1.0",
   "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
-  "source_start_s": 170.9017,
-  "source_end_s": 170.9858,
-  "modifications": "Freesound HQ preview (MP3) decoded, summed to mono, resampled to 44.1 kHz, cut to one stroke (3 ms pre-roll), 10 ms fade-out, 16-bit FLAC. No pitch, EQ, compression or level change."
+  "source_start_s": 181.6873,
+  "source_end_s": 181.7976,
+  "modifications": "Freesound HQ preview (MP3) decoded, summed to mono, resampled to 44.1 kHz, cut to one stroke (3 ms pre-roll), 60 ms fade-out (the ring was cut by the next stroke in the recording), 16-bit FLAC. No pitch, EQ, compression or level change.",
+  "end_level_db": -15.9
  },
  {
   "file": "pandeiro_jingle_v1_r3.flac",
@@ -116,9 +90,10 @@
   "source": "https://freesound.org/people/MeanRaccoon/sounds/844751/",
   "license": "CC0 1.0",
   "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
-  "source_start_s": 182.8599,
-  "source_end_s": 182.9818,
-  "modifications": "Freesound HQ preview (MP3) decoded, summed to mono, resampled to 44.1 kHz, cut to one stroke (3 ms pre-roll), 10 ms fade-out, 16-bit FLAC. No pitch, EQ, compression or level change."
+  "source_start_s": 183.7452,
+  "source_end_s": 183.8642,
+  "modifications": "Freesound HQ preview (MP3) decoded, summed to mono, resampled to 44.1 kHz, cut to one stroke (3 ms pre-roll), 60 ms fade-out (the ring was cut by the next stroke in the recording), 16-bit FLAC. No pitch, EQ, compression or level change.",
+  "end_level_db": -14.0
  },
  {
   "file": "pandeiro_jingle_v1_r4.flac",
@@ -129,7 +104,8 @@
   "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
   "source_start_s": 190.0988,
   "source_end_s": 190.2003,
-  "modifications": "Freesound HQ preview (MP3) decoded, summed to mono, resampled to 44.1 kHz, cut to one stroke (3 ms pre-roll), 10 ms fade-out, 16-bit FLAC. No pitch, EQ, compression or level change."
+  "modifications": "Freesound HQ preview (MP3) decoded, summed to mono, resampled to 44.1 kHz, cut to one stroke (3 ms pre-roll), 60 ms fade-out (the ring was cut by the next stroke in the recording), 16-bit FLAC. No pitch, EQ, compression or level change.",
+  "end_level_db": -20.9
  },
  {
   "file": "pandeiro_jingle_v2_r1.flac",
@@ -140,7 +116,8 @@
   "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
   "source_start_s": 124.7839,
   "source_end_s": 124.9,
-  "modifications": "Freesound HQ preview (MP3) decoded, summed to mono, resampled to 44.1 kHz, cut to one stroke (3 ms pre-roll), 10 ms fade-out, 16-bit FLAC. No pitch, EQ, compression or level change."
+  "modifications": "Freesound HQ preview (MP3) decoded, summed to mono, resampled to 44.1 kHz, cut to one stroke (3 ms pre-roll), 60 ms fade-out (the ring was cut by the next stroke in the recording), 16-bit FLAC. No pitch, EQ, compression or level change.",
+  "end_level_db": -15.9
  },
  {
   "file": "pandeiro_jingle_v2_r2.flac",
@@ -149,9 +126,10 @@
   "source": "https://freesound.org/people/MeanRaccoon/sounds/844751/",
   "license": "CC0 1.0",
   "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
-  "source_start_s": 166.8062,
-  "source_end_s": 166.8933,
-  "modifications": "Freesound HQ preview (MP3) decoded, summed to mono, resampled to 44.1 kHz, cut to one stroke (3 ms pre-roll), 10 ms fade-out, 16-bit FLAC. No pitch, EQ, compression or level change."
+  "source_start_s": 164.223,
+  "source_end_s": 164.313,
+  "modifications": "Freesound HQ preview (MP3) decoded, summed to mono, resampled to 44.1 kHz, cut to one stroke (3 ms pre-roll), 60 ms fade-out (the ring was cut by the next stroke in the recording), 16-bit FLAC. No pitch, EQ, compression or level change.",
+  "end_level_db": -13.1
  },
  {
   "file": "pandeiro_jingle_v2_r3.flac",
@@ -160,9 +138,10 @@
   "source": "https://freesound.org/people/MeanRaccoon/sounds/844751/",
   "license": "CC0 1.0",
   "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
-  "source_start_s": 177.9025,
-  "source_end_s": 177.9837,
-  "modifications": "Freesound HQ preview (MP3) decoded, summed to mono, resampled to 44.1 kHz, cut to one stroke (3 ms pre-roll), 10 ms fade-out, 16-bit FLAC. No pitch, EQ, compression or level change."
+  "source_start_s": 174.701,
+  "source_end_s": 174.8113,
+  "modifications": "Freesound HQ preview (MP3) decoded, summed to mono, resampled to 44.1 kHz, cut to one stroke (3 ms pre-roll), 60 ms fade-out (the ring was cut by the next stroke in the recording), 16-bit FLAC. No pitch, EQ, compression or level change.",
+  "end_level_db": -12.2
  },
  {
   "file": "pandeiro_jingle_v2_r4.flac",
@@ -171,9 +150,22 @@
   "source": "https://freesound.org/people/MeanRaccoon/sounds/844751/",
   "license": "CC0 1.0",
   "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
-  "source_start_s": 190.9927,
-  "source_end_s": 191.0827,
-  "modifications": "Freesound HQ preview (MP3) decoded, summed to mono, resampled to 44.1 kHz, cut to one stroke (3 ms pre-roll), 10 ms fade-out, 16-bit FLAC. No pitch, EQ, compression or level change."
+  "source_start_s": 178.155,
+  "source_end_s": 178.2798,
+  "modifications": "Freesound HQ preview (MP3) decoded, summed to mono, resampled to 44.1 kHz, cut to one stroke (3 ms pre-roll), 60 ms fade-out (the ring was cut by the next stroke in the recording), 16-bit FLAC. No pitch, EQ, compression or level change.",
+  "end_level_db": -17.4
+ },
+ {
+  "file": "pandeiro_jingle_v2_r5.flac",
+  "author": "MeanRaccoon",
+  "title": "pandeiro A collection",
+  "source": "https://freesound.org/people/MeanRaccoon/sounds/844751/",
+  "license": "CC0 1.0",
+  "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+  "source_start_s": 191.0827,
+  "source_end_s": 191.1553,
+  "modifications": "Freesound HQ preview (MP3) decoded, summed to mono, resampled to 44.1 kHz, cut to one stroke (3 ms pre-roll), 60 ms fade-out (the ring was cut by the next stroke in the recording), 16-bit FLAC. No pitch, EQ, compression or level change.",
+  "end_level_db": -12.1
  },
  {
   "file": "pandeiro_jingle_v3_r1.flac",
@@ -182,9 +174,10 @@
   "source": "https://freesound.org/people/MeanRaccoon/sounds/844751/",
   "license": "CC0 1.0",
   "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
-  "source_start_s": 60.1773,
-  "source_end_s": 60.2702,
-  "modifications": "Freesound HQ preview (MP3) decoded, summed to mono, resampled to 44.1 kHz, cut to one stroke (3 ms pre-roll), 10 ms fade-out, 16-bit FLAC. No pitch, EQ, compression or level change."
+  "source_start_s": 82.7732,
+  "source_end_s": 82.8661,
+  "modifications": "Freesound HQ preview (MP3) decoded, summed to mono, resampled to 44.1 kHz, cut to one stroke (3 ms pre-roll), 60 ms fade-out (the ring was cut by the next stroke in the recording), 16-bit FLAC. No pitch, EQ, compression or level change.",
+  "end_level_db": -15.7
  },
  {
   "file": "pandeiro_jingle_v3_r2.flac",
@@ -195,7 +188,8 @@
   "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
   "source_start_s": 148.2999,
   "source_end_s": 148.3986,
-  "modifications": "Freesound HQ preview (MP3) decoded, summed to mono, resampled to 44.1 kHz, cut to one stroke (3 ms pre-roll), 10 ms fade-out, 16-bit FLAC. No pitch, EQ, compression or level change."
+  "modifications": "Freesound HQ preview (MP3) decoded, summed to mono, resampled to 44.1 kHz, cut to one stroke (3 ms pre-roll), 60 ms fade-out (the ring was cut by the next stroke in the recording), 16-bit FLAC. No pitch, EQ, compression or level change.",
+  "end_level_db": -16.0
  },
  {
   "file": "pandeiro_jingle_v3_r3.flac",
@@ -204,9 +198,10 @@
   "source": "https://freesound.org/people/MeanRaccoon/sounds/844751/",
   "license": "CC0 1.0",
   "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
-  "source_start_s": 172.9102,
-  "source_end_s": 173.0176,
-  "modifications": "Freesound HQ preview (MP3) decoded, summed to mono, resampled to 44.1 kHz, cut to one stroke (3 ms pre-roll), 10 ms fade-out, 16-bit FLAC. No pitch, EQ, compression or level change."
+  "source_start_s": 169.0441,
+  "source_end_s": 169.1311,
+  "modifications": "Freesound HQ preview (MP3) decoded, summed to mono, resampled to 44.1 kHz, cut to one stroke (3 ms pre-roll), 60 ms fade-out (the ring was cut by the next stroke in the recording), 16-bit FLAC. No pitch, EQ, compression or level change.",
+  "end_level_db": -19.8
  },
  {
   "file": "pandeiro_jingle_v3_r4.flac",
@@ -215,42 +210,22 @@
   "source": "https://freesound.org/people/MeanRaccoon/sounds/844751/",
   "license": "CC0 1.0",
   "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
-  "source_start_s": 190.8331,
-  "source_end_s": 190.9144,
-  "modifications": "Freesound HQ preview (MP3) decoded, summed to mono, resampled to 44.1 kHz, cut to one stroke (3 ms pre-roll), 10 ms fade-out, 16-bit FLAC. No pitch, EQ, compression or level change."
+  "source_start_s": 181.2578,
+  "source_end_s": 181.3477,
+  "modifications": "Freesound HQ preview (MP3) decoded, summed to mono, resampled to 44.1 kHz, cut to one stroke (3 ms pre-roll), 60 ms fade-out (the ring was cut by the next stroke in the recording), 16-bit FLAC. No pitch, EQ, compression or level change.",
+  "end_level_db": -12.7
  },
  {
-  "file": "pandeiro_jingle_v4_r1.flac",
-  "author": "Paulo_Gonçalves",
-  "title": "pandeiro_plat_01.wav",
-  "source": "https://freesound.org/people/Paulo_Gon%C3%A7alves/sounds/182566/",
-  "license": "CC BY 4.0",
-  "license_url": "https://creativecommons.org/licenses/by/4.0/",
-  "source_start_s": 0.0,
-  "source_end_s": 0.1611,
-  "modifications": "Freesound HQ preview (MP3) decoded, summed to mono, resampled to 44.1 kHz, cut to one stroke (3 ms pre-roll), 10 ms fade-out, 16-bit FLAC. No pitch, EQ, compression or level change."
- },
- {
-  "file": "pandeiro_jingle_v4_r2.flac",
-  "author": "Paulo_Gonçalves",
-  "title": "pandeiro_plat_02.wav",
-  "source": "https://freesound.org/people/Paulo_Gon%C3%A7alves/sounds/182565/",
-  "license": "CC BY 4.0",
-  "license_url": "https://creativecommons.org/licenses/by/4.0/",
-  "source_start_s": 0.0,
-  "source_end_s": 0.2106,
-  "modifications": "Freesound HQ preview (MP3) decoded, summed to mono, resampled to 44.1 kHz, cut to one stroke (3 ms pre-roll), 10 ms fade-out, 16-bit FLAC. No pitch, EQ, compression or level change."
- },
- {
-  "file": "pandeiro_jingle_v4_r3.flac",
-  "author": "Paulo_Gonçalves",
-  "title": "pandeiro_plat_03.wav",
-  "source": "https://freesound.org/people/Paulo_Gon%C3%A7alves/sounds/182570/",
-  "license": "CC BY 4.0",
-  "license_url": "https://creativecommons.org/licenses/by/4.0/",
-  "source_start_s": 0.0,
-  "source_end_s": 0.1303,
-  "modifications": "Freesound HQ preview (MP3) decoded, summed to mono, resampled to 44.1 kHz, cut to one stroke (3 ms pre-roll), 10 ms fade-out, 16-bit FLAC. No pitch, EQ, compression or level change."
+  "file": "pandeiro_jingle_v3_r5.flac",
+  "author": "MeanRaccoon",
+  "title": "pandeiro A collection",
+  "source": "https://freesound.org/people/MeanRaccoon/sounds/844751/",
+  "license": "CC0 1.0",
+  "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+  "source_start_s": 190.9144,
+  "source_end_s": 190.9927,
+  "modifications": "Freesound HQ preview (MP3) decoded, summed to mono, resampled to 44.1 kHz, cut to one stroke (3 ms pre-roll), 60 ms fade-out (the ring was cut by the next stroke in the recording), 16-bit FLAC. No pitch, EQ, compression or level change.",
+  "end_level_db": -15.8
  },
  {
   "file": "tamborim_muted_v1_r1.flac",
@@ -259,9 +234,10 @@
   "source": "https://freesound.org/people/MeanRaccoon/sounds/844752/",
   "license": "CC0 1.0",
   "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
-  "source_start_s": 0.9635,
-  "source_end_s": 1.0361,
-  "modifications": "Freesound HQ preview (MP3) decoded, summed to mono, resampled to 44.1 kHz, cut to one stroke (3 ms pre-roll), 10 ms fade-out, 16-bit FLAC. No pitch, EQ, compression or level change."
+  "source_start_s": 11.1658,
+  "source_end_s": 11.2587,
+  "modifications": "Freesound HQ preview (MP3) decoded, summed to mono, resampled to 44.1 kHz, cut to one stroke (3 ms pre-roll), 60 ms fade-out (the ring was cut by the next stroke in the recording), 16-bit FLAC. No pitch, EQ, compression or level change.",
+  "end_level_db": -10.3
  },
  {
   "file": "tamborim_muted_v1_r2.flac",
@@ -270,20 +246,22 @@
   "source": "https://freesound.org/people/MeanRaccoon/sounds/844752/",
   "license": "CC0 1.0",
   "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
-  "source_start_s": 61.051,
-  "source_end_s": 61.1322,
-  "modifications": "Freesound HQ preview (MP3) decoded, summed to mono, resampled to 44.1 kHz, cut to one stroke (3 ms pre-roll), 10 ms fade-out, 16-bit FLAC. No pitch, EQ, compression or level change."
+  "source_start_s": 93.0364,
+  "source_end_s": 93.1177,
+  "modifications": "Freesound HQ preview (MP3) decoded, summed to mono, resampled to 44.1 kHz, cut to one stroke (3 ms pre-roll), 60 ms fade-out (the ring was cut by the next stroke in the recording), 16-bit FLAC. No pitch, EQ, compression or level change.",
+  "end_level_db": -14.2
  },
  {
   "file": "tamborim_muted_v1_r3.flac",
   "author": "MeanRaccoon",
-  "title": "tamborim A1 collection",
-  "source": "https://freesound.org/people/MeanRaccoon/sounds/844752/",
+  "title": "tamborim B collection",
+  "source": "https://freesound.org/people/MeanRaccoon/sounds/844754/",
   "license": "CC0 1.0",
   "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
-  "source_start_s": 106.5127,
-  "source_end_s": 106.594,
-  "modifications": "Freesound HQ preview (MP3) decoded, summed to mono, resampled to 44.1 kHz, cut to one stroke (3 ms pre-roll), 10 ms fade-out, 16-bit FLAC. No pitch, EQ, compression or level change."
+  "source_start_s": 18.8922,
+  "source_end_s": 18.9677,
+  "modifications": "Freesound HQ preview (MP3) decoded, summed to mono, resampled to 44.1 kHz, cut to one stroke (3 ms pre-roll), 60 ms fade-out (the ring was cut by the next stroke in the recording), 16-bit FLAC. No pitch, EQ, compression or level change.",
+  "end_level_db": -10.6
  },
  {
   "file": "tamborim_muted_v1_r4.flac",
@@ -292,9 +270,10 @@
   "source": "https://freesound.org/people/MeanRaccoon/sounds/844754/",
   "license": "CC0 1.0",
   "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
-  "source_start_s": 33.8401,
-  "source_end_s": 33.9213,
-  "modifications": "Freesound HQ preview (MP3) decoded, summed to mono, resampled to 44.1 kHz, cut to one stroke (3 ms pre-roll), 10 ms fade-out, 16-bit FLAC. No pitch, EQ, compression or level change."
+  "source_start_s": 51.1505,
+  "source_end_s": 51.255,
+  "modifications": "Freesound HQ preview (MP3) decoded, summed to mono, resampled to 44.1 kHz, cut to one stroke (3 ms pre-roll), 60 ms fade-out (the ring was cut by the next stroke in the recording), 16-bit FLAC. No pitch, EQ, compression or level change.",
+  "end_level_db": -11.3
  },
  {
   "file": "tamborim_muted_v1_r5.flac",
@@ -303,9 +282,10 @@
   "source": "https://freesound.org/people/MeanRaccoon/sounds/844754/",
   "license": "CC0 1.0",
   "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
-  "source_start_s": 104.6812,
-  "source_end_s": 104.7625,
-  "modifications": "Freesound HQ preview (MP3) decoded, summed to mono, resampled to 44.1 kHz, cut to one stroke (3 ms pre-roll), 10 ms fade-out, 16-bit FLAC. No pitch, EQ, compression or level change."
+  "source_start_s": 106.7768,
+  "source_end_s": 106.9162,
+  "modifications": "Freesound HQ preview (MP3) decoded, summed to mono, resampled to 44.1 kHz, cut to one stroke (3 ms pre-roll), 60 ms fade-out (the ring was cut by the next stroke in the recording), 16-bit FLAC. No pitch, EQ, compression or level change.",
+  "end_level_db": -15.9
  },
  {
   "file": "tamborim_muted_v2_r1.flac",
@@ -316,7 +296,8 @@
   "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
   "source_start_s": 0.8735,
   "source_end_s": 0.9635,
-  "modifications": "Freesound HQ preview (MP3) decoded, summed to mono, resampled to 44.1 kHz, cut to one stroke (3 ms pre-roll), 10 ms fade-out, 16-bit FLAC. No pitch, EQ, compression or level change."
+  "modifications": "Freesound HQ preview (MP3) decoded, summed to mono, resampled to 44.1 kHz, cut to one stroke (3 ms pre-roll), 60 ms fade-out (the ring was cut by the next stroke in the recording), 16-bit FLAC. No pitch, EQ, compression or level change.",
+  "end_level_db": -15.3
  },
  {
   "file": "tamborim_muted_v2_r2.flac",
@@ -325,9 +306,10 @@
   "source": "https://freesound.org/people/MeanRaccoon/sounds/844752/",
   "license": "CC0 1.0",
   "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
-  "source_start_s": 49.5019,
-  "source_end_s": 49.5803,
-  "modifications": "Freesound HQ preview (MP3) decoded, summed to mono, resampled to 44.1 kHz, cut to one stroke (3 ms pre-roll), 10 ms fade-out, 16-bit FLAC. No pitch, EQ, compression or level change."
+  "source_start_s": 46.7823,
+  "source_end_s": 46.8607,
+  "modifications": "Freesound HQ preview (MP3) decoded, summed to mono, resampled to 44.1 kHz, cut to one stroke (3 ms pre-roll), 60 ms fade-out (the ring was cut by the next stroke in the recording), 16-bit FLAC. No pitch, EQ, compression or level change.",
+  "end_level_db": -14.8
  },
  {
   "file": "tamborim_muted_v2_r3.flac",
@@ -336,9 +318,10 @@
   "source": "https://freesound.org/people/MeanRaccoon/sounds/844752/",
   "license": "CC0 1.0",
   "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
-  "source_start_s": 113.38,
-  "source_end_s": 113.4642,
-  "modifications": "Freesound HQ preview (MP3) decoded, summed to mono, resampled to 44.1 kHz, cut to one stroke (3 ms pre-roll), 10 ms fade-out, 16-bit FLAC. No pitch, EQ, compression or level change."
+  "source_start_s": 88.4186,
+  "source_end_s": 88.4998,
+  "modifications": "Freesound HQ preview (MP3) decoded, summed to mono, resampled to 44.1 kHz, cut to one stroke (3 ms pre-roll), 60 ms fade-out (the ring was cut by the next stroke in the recording), 16-bit FLAC. No pitch, EQ, compression or level change.",
+  "end_level_db": -17.7
  },
  {
   "file": "tamborim_muted_v2_r4.flac",
@@ -349,7 +332,8 @@
   "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
   "source_start_s": 70.4057,
   "source_end_s": 70.487,
-  "modifications": "Freesound HQ preview (MP3) decoded, summed to mono, resampled to 44.1 kHz, cut to one stroke (3 ms pre-roll), 10 ms fade-out, 16-bit FLAC. No pitch, EQ, compression or level change."
+  "modifications": "Freesound HQ preview (MP3) decoded, summed to mono, resampled to 44.1 kHz, cut to one stroke (3 ms pre-roll), 60 ms fade-out (the ring was cut by the next stroke in the recording), 16-bit FLAC. No pitch, EQ, compression or level change.",
+  "end_level_db": -14.3
  },
  {
   "file": "tamborim_muted_v2_r5.flac",
@@ -360,7 +344,8 @@
   "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
   "source_start_s": 104.6029,
   "source_end_s": 104.6812,
-  "modifications": "Freesound HQ preview (MP3) decoded, summed to mono, resampled to 44.1 kHz, cut to one stroke (3 ms pre-roll), 10 ms fade-out, 16-bit FLAC. No pitch, EQ, compression or level change."
+  "modifications": "Freesound HQ preview (MP3) decoded, summed to mono, resampled to 44.1 kHz, cut to one stroke (3 ms pre-roll), 60 ms fade-out (the ring was cut by the next stroke in the recording), 16-bit FLAC. No pitch, EQ, compression or level change.",
+  "end_level_db": -21.0
  },
  {
   "file": "surdo_high_open_v1_r1.flac",
@@ -371,7 +356,8 @@
   "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
   "source_start_s": 1.5556,
   "source_end_s": 2.081,
-  "modifications": "Freesound HQ preview (MP3) decoded, summed to mono, resampled to 44.1 kHz, cut to one stroke (3 ms pre-roll), 10 ms fade-out, 16-bit FLAC. No pitch, EQ, compression or level change."
+  "modifications": "Freesound HQ preview (MP3) decoded, summed to mono, resampled to 44.1 kHz, cut to one stroke (3 ms pre-roll), 60 ms fade-out (the ring was cut by the next stroke in the recording), 16-bit FLAC. No pitch, EQ, compression or level change.",
+  "end_level_db": -24.4
  },
  {
   "file": "surdo_high_open_v1_r2.flac",
@@ -382,7 +368,8 @@
   "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
   "source_start_s": 3.2333,
   "source_end_s": 3.7122,
-  "modifications": "Freesound HQ preview (MP3) decoded, summed to mono, resampled to 44.1 kHz, cut to one stroke (3 ms pre-roll), 10 ms fade-out, 16-bit FLAC. No pitch, EQ, compression or level change."
+  "modifications": "Freesound HQ preview (MP3) decoded, summed to mono, resampled to 44.1 kHz, cut to one stroke (3 ms pre-roll), 60 ms fade-out (the ring was cut by the next stroke in the recording), 16-bit FLAC. No pitch, EQ, compression or level change.",
+  "end_level_db": -19.7
  },
  {
   "file": "surdo_high_open_v1_r3.flac",
@@ -393,7 +380,8 @@
   "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
   "source_start_s": 7.0268,
   "source_end_s": 7.5144,
-  "modifications": "Freesound HQ preview (MP3) decoded, summed to mono, resampled to 44.1 kHz, cut to one stroke (3 ms pre-roll), 10 ms fade-out, 16-bit FLAC. No pitch, EQ, compression or level change."
+  "modifications": "Freesound HQ preview (MP3) decoded, summed to mono, resampled to 44.1 kHz, cut to one stroke (3 ms pre-roll), 60 ms fade-out (the ring was cut by the next stroke in the recording), 16-bit FLAC. No pitch, EQ, compression or level change.",
+  "end_level_db": -22.1
  },
  {
   "file": "surdo_high_open_v1_r4.flac",
@@ -404,7 +392,8 @@
   "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
   "source_start_s": 9.1544,
   "source_end_s": 9.708,
-  "modifications": "Freesound HQ preview (MP3) decoded, summed to mono, resampled to 44.1 kHz, cut to one stroke (3 ms pre-roll), 10 ms fade-out, 16-bit FLAC. No pitch, EQ, compression or level change."
+  "modifications": "Freesound HQ preview (MP3) decoded, summed to mono, resampled to 44.1 kHz, cut to one stroke (3 ms pre-roll), 60 ms fade-out (the ring was cut by the next stroke in the recording), 16-bit FLAC. No pitch, EQ, compression or level change.",
+  "end_level_db": -27.0
  },
  {
   "file": "surdo_high_open_v2_r1.flac",
@@ -415,7 +404,8 @@
   "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
   "source_start_s": 0.0086,
   "source_end_s": 0.4759,
-  "modifications": "Freesound HQ preview (MP3) decoded, summed to mono, resampled to 44.1 kHz, cut to one stroke (3 ms pre-roll), 10 ms fade-out, 16-bit FLAC. No pitch, EQ, compression or level change."
+  "modifications": "Freesound HQ preview (MP3) decoded, summed to mono, resampled to 44.1 kHz, cut to one stroke (3 ms pre-roll), 60 ms fade-out (the ring was cut by the next stroke in the recording), 16-bit FLAC. No pitch, EQ, compression or level change.",
+  "end_level_db": -24.1
  },
  {
   "file": "surdo_high_open_v2_r2.flac",
@@ -426,7 +416,8 @@
   "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
   "source_start_s": 1.0041,
   "source_end_s": 1.5556,
-  "modifications": "Freesound HQ preview (MP3) decoded, summed to mono, resampled to 44.1 kHz, cut to one stroke (3 ms pre-roll), 10 ms fade-out, 16-bit FLAC. No pitch, EQ, compression or level change."
+  "modifications": "Freesound HQ preview (MP3) decoded, summed to mono, resampled to 44.1 kHz, cut to one stroke (3 ms pre-roll), 60 ms fade-out (the ring was cut by the next stroke in the recording), 16-bit FLAC. No pitch, EQ, compression or level change.",
+  "end_level_db": -26.2
  },
  {
   "file": "surdo_high_open_v2_r3.flac",
@@ -437,7 +428,8 @@
   "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
   "source_start_s": 3.7122,
   "source_end_s": 4.2462,
-  "modifications": "Freesound HQ preview (MP3) decoded, summed to mono, resampled to 44.1 kHz, cut to one stroke (3 ms pre-roll), 10 ms fade-out, 16-bit FLAC. No pitch, EQ, compression or level change."
+  "modifications": "Freesound HQ preview (MP3) decoded, summed to mono, resampled to 44.1 kHz, cut to one stroke (3 ms pre-roll), 60 ms fade-out (the ring was cut by the next stroke in the recording), 16-bit FLAC. No pitch, EQ, compression or level change.",
+  "end_level_db": -24.4
  },
  {
   "file": "surdo_high_open_v2_r4.flac",
@@ -448,7 +440,8 @@
   "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
   "source_start_s": 4.7745,
   "source_end_s": 5.3318,
-  "modifications": "Freesound HQ preview (MP3) decoded, summed to mono, resampled to 44.1 kHz, cut to one stroke (3 ms pre-roll), 10 ms fade-out, 16-bit FLAC. No pitch, EQ, compression or level change."
+  "modifications": "Freesound HQ preview (MP3) decoded, summed to mono, resampled to 44.1 kHz, cut to one stroke (3 ms pre-roll), 60 ms fade-out (the ring was cut by the next stroke in the recording), 16-bit FLAC. No pitch, EQ, compression or level change.",
+  "end_level_db": -26.4
  },
  {
   "file": "surdo_low_open_v1_r1.flac",
@@ -459,7 +452,8 @@
   "license_url": "https://creativecommons.org/licenses/by/3.0/",
   "source_start_s": 0.0202,
   "source_end_s": 0.4846,
-  "modifications": "Freesound HQ preview (MP3) decoded, summed to mono, resampled to 44.1 kHz, cut to one stroke (3 ms pre-roll), 10 ms fade-out, 16-bit FLAC. No pitch, EQ, compression or level change."
+  "modifications": "Freesound HQ preview (MP3) decoded, summed to mono, resampled to 44.1 kHz, cut to one stroke (3 ms pre-roll), 10 ms fade-out, 16-bit FLAC. No pitch, EQ, compression or level change.",
+  "end_level_db": -45.7
  },
  {
   "file": "surdo_low_open_v1_r2.flac",
@@ -470,7 +464,8 @@
   "license_url": "https://creativecommons.org/licenses/by/3.0/",
   "source_start_s": 3.0591,
   "source_end_s": 3.4829,
-  "modifications": "Freesound HQ preview (MP3) decoded, summed to mono, resampled to 44.1 kHz, cut to one stroke (3 ms pre-roll), 10 ms fade-out, 16-bit FLAC. No pitch, EQ, compression or level change."
+  "modifications": "Freesound HQ preview (MP3) decoded, summed to mono, resampled to 44.1 kHz, cut to one stroke (3 ms pre-roll), 10 ms fade-out, 16-bit FLAC. No pitch, EQ, compression or level change.",
+  "end_level_db": -40.8
  },
  {
   "file": "surdo_low_open_v1_r3.flac",
@@ -481,7 +476,8 @@
   "license_url": "https://creativecommons.org/licenses/by/3.0/",
   "source_start_s": 6.0603,
   "source_end_s": 6.4841,
-  "modifications": "Freesound HQ preview (MP3) decoded, summed to mono, resampled to 44.1 kHz, cut to one stroke (3 ms pre-roll), 10 ms fade-out, 16-bit FLAC. No pitch, EQ, compression or level change."
+  "modifications": "Freesound HQ preview (MP3) decoded, summed to mono, resampled to 44.1 kHz, cut to one stroke (3 ms pre-roll), 10 ms fade-out, 16-bit FLAC. No pitch, EQ, compression or level change.",
+  "end_level_db": -40.9
  },
  {
   "file": "surdo_low_open_v1_r4.flac",
@@ -492,6 +488,7 @@
   "license_url": "https://creativecommons.org/licenses/by/3.0/",
   "source_start_s": 9.0615,
   "source_end_s": 9.4823,
-  "modifications": "Freesound HQ preview (MP3) decoded, summed to mono, resampled to 44.1 kHz, cut to one stroke (3 ms pre-roll), 10 ms fade-out, 16-bit FLAC. No pitch, EQ, compression or level change."
+  "modifications": "Freesound HQ preview (MP3) decoded, summed to mono, resampled to 44.1 kHz, cut to one stroke (3 ms pre-roll), 10 ms fade-out, 16-bit FLAC. No pitch, EQ, compression or level change.",
+  "end_level_db": -40.7
  }
 ]
