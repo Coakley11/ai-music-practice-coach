@@ -11300,7 +11300,7 @@ def _mark_backing_playback_ended() -> None:
 _backing_art_identity: Any = None
 
 
-def _create_backing_card_slots(art: bool = False) -> tuple[Any, tuple | None]:
+def _create_backing_card_slots(art: bool = False, jam: str = "") -> tuple[Any, tuple | None]:
     """Card head slot plus its controls row: Original / Practice key | BPM | Play.
 
     The row is ordinary page flow directly under the card (the card reserves the
@@ -11312,11 +11312,12 @@ def _create_backing_card_slots(art: bool = False) -> tuple[Any, tuple | None]:
     below jumped up 300-500 px and back. A container re-sent at the same place
     keeps the previous card on screen until the new one replaces it.
     """
-    if art:
+    if art or jam:
         # Album-cover card: artwork, then keys, facts, then BPM and Play, all inside one framed container.
         # The same widgets with the same keys; only where they sit changes. Slots: keys, BPM, Play, facts.
+        # A generated jam's card (``jam``) is the same layout in its own container.
         try:
-            with st.container(key="backing_art_card"):
+            with (st.container(key=jam) if jam else st.container(key="backing_art_card")):
                 head = st.container()
                 with st.container(key="backing_card_controls"):
                     keys = st.container()
@@ -11337,6 +11338,16 @@ def _create_backing_card_slots(art: bool = False) -> tuple[Any, tuple | None]:
         return head, tuple(cols)
     except Exception:
         return head, None
+
+
+def _backing_jam_card_key(ctx: Any) -> str:
+    """The container of a generated jam's own Backing card ("" for everything else)."""
+    try:
+        from backing_jam_card import jam_card_key
+
+        return jam_card_key(ctx)
+    except Exception:
+        return ""
 
 
 def _backing_art_wanted(kind: str, creative_source: str = "") -> bool:
@@ -23477,7 +23488,8 @@ elif _studio_page == "backing":
             art=_backing_art_wanted(
                 _backing_card_kind,
                 str(getattr(_creative_backing_ctx, "source", "") or "") if _backing_card_kind == "creative" else "",
-            )
+            ),
+            jam=_backing_jam_card_key(_creative_backing_ctx) if _backing_card_kind == "creative" else "",
         )
         _set_backing_art_actions_slot(_backing_card_cols)
     except Exception as _backing_card_err:
@@ -24013,7 +24025,54 @@ elif _studio_page == "backing":
         except Exception:
             pass
         _art_slots = bool(_backing_card_cols is not None and len(_backing_card_cols) > 3)
-        if _backing_card_slot is not None and _art_slots:
+        _jam_card = _backing_jam_card_key(_creative_backing_ctx) if _backing_card_kind == "creative" else ""
+        if _backing_card_slot is not None and _art_slots and _jam_card:
+            with _backing_card_slot.container():
+                try:
+                    from backing_context_ui import creative_live_style_meter as _jam_live
+                    from backing_jam_card import render_backing_jam_card
+                    from backing_musical_state import resolve_current_backing_musical_state as _jam_state
+                    from backing_play_session import current_backing_play_bpm as _jam_bpm
+
+                    _jam_musical = _backing_musical or _jam_state(st.session_state, applied_bpm=int(_status_bpm))
+                    _jam_now = _jam_live(
+                        _creative_backing_ctx,
+                        st.session_state,
+                        state=_jam_musical,
+                        applied_groove=str(default_groove_style or ""),
+                        applied_meter=str(_applied_meter_pre or ""),
+                    )
+                    render_backing_jam_card(
+                        st,
+                        _creative_backing_ctx,
+                        st.session_state,
+                        state=_jam_musical,
+                        groove=str(_jam_now.get("live_groove") or default_groove_style or ""),
+                        meter=str(_jam_now.get("live_meter") or _applied_meter_pre or ""),
+                        bpm=int(
+                            _jam_bpm(
+                                st.session_state,
+                                default=0,
+                                sync_id=str(st.session_state.get("_backing_page_bpm_sync_id") or ""),
+                            )
+                            or _status_bpm
+                        ),
+                    )
+                except Exception as _jam_card_err:
+                    if _developer_mode_enabled():
+                        st.caption(f"Developer · jam card: {_jam_card_err}")
+                    render_backing_creative_context_card(
+                        st,
+                        _creative_backing_ctx,
+                        st.session_state,
+                        applied_bpm=int(_status_bpm),
+                        applied_groove=default_groove_style,
+                        applied_meter=_applied_meter_pre,
+                        practice_key=_backing_practice_key,
+                        written_key=_backing_written_key,
+                        musical_state=_backing_musical,
+                    )
+        elif _backing_card_slot is not None and _art_slots:
             _creative_art = None
             if _backing_card_kind == "creative" and _creative_backing_ctx is not None:
                 try:
