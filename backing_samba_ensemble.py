@@ -49,7 +49,7 @@ HUMAN = {
 # scaled (SECTION_LEVEL) so the section sits about 9 LU under the music even without MUSIC_BAND_BALANCE.
 SECTION_LEVEL = 0.66
 LEVEL = {
-    "surdo_low": 0.0150, "surdo_high": 0.0105,
+    "surdo_low": 0.0225, "surdo_high": 0.0080,
     "pandeiro_skin_muted": 0.0058, "pandeiro_skin_open": 0.0064, "pandeiro_jingle": 0.0036, "pandeiro_shake": 0.0030,
     "tamborim": 0.0056, "agogo_high": 0.0036, "agogo_low": 0.0036, "ganza_down": 0.0037, "ganza_up": 0.0037,
 }
@@ -111,7 +111,7 @@ def bar_strokes(bar_number: int, *, intensity: str = "Medium") -> list[Stroke]:
         # Surdos: primeira (low) open on the "2", muted touch on the "1"; segunda (high) open "1", muted "2".
         s.append(Stroke(half + 1.0, "surdo_low", 0.92))
         s.append(Stroke(half, "surdo_low", 0.34, muted=True))
-        s.append(Stroke(half, "surdo_high", 0.66))
+        s.append(Stroke(half, "surdo_high", 0.46))  # the segunda answers; the primeira's "2" leads
         if not light:
             s.append(Stroke(half + 1.0, "surdo_high", 0.30, muted=True))
         if phrase_end and half == 2.0:
