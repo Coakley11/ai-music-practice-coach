@@ -2529,6 +2529,9 @@ def synthesize_chords_to_numpy(
         # The section's texture (``None`` for unlabelled / unknown sections: the groove
         # exactly as before). It narrows the loudness spread between sections and
         # reshapes the bar's grid; the bass, comp and drum blocks below read it.
+        # This bar's place in the arrangement plan (MUSIC_ARRANGEMENT_PLAN; None when the plan is off). Read by the
+        # percussion, guitar, drum-fill and horn blocks below, so it is set before any of them.
+        _arr_bar = arr_plan.at(idx) if arr_plan is not None else None
         latin_bar = None
         if style in _lg.LATIN_STYLES and pulses_per_bar == 4:
             latin_bar = _lg.bar(style, idx, intensity=(plan.intensity if plan is not None else "Medium"))
@@ -2560,7 +2563,6 @@ def synthesize_chords_to_numpy(
                 bar_patterns = dict(bar_patterns)
                 for part in replaced:
                     bar_patterns[part] = []
-        _arr_bar = arr_plan.at(idx) if arr_plan is not None else None
         section_tex = (_ap.bar_texture(arr_plan, idx, section_plan[idx]) if arr_plan is not None
                        else _sa.bar_texture(style, section_plan[idx]))
         if plan is not None:

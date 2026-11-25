@@ -231,3 +231,26 @@ def test_a_planned_take_keeps_its_loudness_and_its_switch(monkeypatch):
     assert abs(bl.integrated_lufs(on, sr) + 22.0) < 0.5 and abs(bl.integrated_lufs(off, sr) + 22.0) < 0.5
     n = min(len(on), len(off))
     assert not np.allclose(on[:n], off[:n])
+
+
+@pytest.mark.parametrize("style", ["Samba", "Latin jazz"])
+@pytest.mark.parametrize("plan_on", [False, True])
+def test_the_recorded_percussion_renders_with_and_without_the_plan(monkeypatch, style, plan_on):
+    """The Samba section and the Latin percussionist read the bar's plan before anything else does (a take with
+    them on used to stop on the first bar, plan on or off)."""
+    import backing_audio as ba
+    import backing_latin_percussion as lp
+    import backing_samba_ensemble as se
+
+    for k, v in (("MUSIC_LATIN_GROOVES", "1"), ("MUSIC_SAMBA_ENSEMBLE", "1"), ("MUSIC_DRUM_KIT_V2", "1")):
+        monkeypatch.setenv(k, v)
+    monkeypatch.delenv("MUSIC_BACKING_LOUDNESS", raising=False)
+    if plan_on:
+        monkeypatch.setenv(ap.SWITCH, "1")
+    else:
+        monkeypatch.delenv(ap.SWITCH, raising=False)
+    assert se.enabled() if style == "Samba" else lp.plays(style)
+    rows = [{"chord": c, "section": n, "bar_in_section": i, "section_bars": 2}
+            for n, cs in (("A", ["Dm7", "G7"]), ("B", ["Cmaj7", "A7"])) for i, c in enumerate(cs)]
+    audio, sr = ba.synthesize_chords_to_numpy(rows, bpm=104, loops=1, style=style)
+    assert len(audio) > sr and float(np.max(np.abs(audio))) > 0.01
