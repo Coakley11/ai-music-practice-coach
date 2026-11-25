@@ -63,10 +63,6 @@ FEATURE_ICONS: dict[str, str] = {
     "practice_melody_generated": "🌟",
     "practice_melody_uploaded": "📤",
     "practice_melody_original": "💿",
-    # Backing's two melody modes: the notes of the Melody phase, and a page of written music. Not 🎼, which is
-    # the Songs page; the labels beside them are unchanged.
-    "backing_mode_practice_melody": "🎶",
-    "backing_mode_uploaded_melodies": "📄",
     "song_coach": "🧑‍🏫",
     "section_deep_focus": "🔬",
     "scales_approaches": "🪜",

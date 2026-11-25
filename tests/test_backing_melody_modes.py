@@ -175,38 +175,3 @@ def test_in_normal_voice_the_full_height_sheet_follows_the_lyrics_when_the_lead_
     # A lyric line or the singing panel itself (a song without lyrics) is the singing target (user rule 2026-11-21).
     assert "toLyric = !!(lyricLead && window.__karaokeIsPanelTarget && window.__karaokeIsPanelTarget(lyricLead))" in branch
     assert 'request("lead-sheet", toLyric ? lyricLead : currentCell, {{ why: toLyric ? "karaoke-lyric" : "chord" }})' in branch
-
-
-def test_each_mode_button_shows_its_own_icon_then_the_unchanged_label():
-    """Owner 2026-11-25: musical notes for Practice Melody, a written page for My Uploaded Melodies."""
-    from music_feature_icons import FEATURE_ICONS, INSTRUMENT_ICONS
-
-    assert bmm.mode_button_label(bmm.MODE_PRACTICE) == "🎶 Practice Melody"
-    assert bmm.mode_button_label(bmm.MODE_UPLOADED) == "📄 My Uploaded Melodies"
-    assert FEATURE_ICONS["backing_mode_practice_melody"] == FEATURE_ICONS["phase_melody"]   # the app's Melody icon
-    uploaded = FEATURE_ICONS["backing_mode_uploaded_melodies"]
-    assert [k for k, v in FEATURE_ICONS.items() if v == uploaded] == ["backing_mode_uploaded_melodies"]
-    assert uploaded not in INSTRUMENT_ICONS.values()
-    assert bmm.mode_button_label("nonsense") == "nonsense"
-
-
-def test_the_icons_change_only_the_button_text_not_the_stored_choice():
-    """The selector still stores "practice" / "uploaded" under the same key, with each icon on one option."""
-    from streamlit.testing.v1 import AppTest
-
-    def page():
-        import streamlit as st
-
-        import backing_melody_modes as m
-
-        st.session_state["returned"] = m.render_melody_mode_selector(st, st.session_state)
-
-    at = AppTest.from_function(page, default_timeout=60).run()
-    assert not at.exception
-    assert at.session_state["returned"] == "practice"
-    assert list(bmm.MODES) == ["practice", "uploaded"]
-    assert bmm.MODE_LABELS == {"practice": "Practice Melody", "uploaded": "My Uploaded Melodies"}
-    at.session_state[bmm.MODE_KEY] = "uploaded"
-    at.run()
-    assert not at.exception
-    assert at.session_state["returned"] == "uploaded"
