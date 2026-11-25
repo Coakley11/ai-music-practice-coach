@@ -165,6 +165,13 @@ def generator_summary(jam: Mapping[str, Any] | None, *, key_label: Callable[[str
 # --- HTML fragments ---------------------------------------------------------------------------------
 
 
+def shown_option(value: Any, options: Iterable[str]) -> str:
+    """``value`` when it is one of the control's options, else "" (no chip): a banner never names a setting the
+    control itself does not show."""
+    v = str(value or "").strip()
+    return v if v in {str(o) for o in options} else ""
+
+
 def _chips(items: Iterable[tuple[str, str]], cls: str = "jc-chip") -> str:
     return "".join(
         f'<span class="{cls}"><span class="jc-chip-k">{_E(k)}</span> {_E(v)}</span>' for k, v in items if str(v or "").strip()
@@ -341,7 +348,7 @@ def _shared_css() -> str:
 {each('.jc-chip-k')}{{font-weight:600;color:var(--jc-muted)}}
 {each('.jc-group')}{{margin:.1rem 0 .1rem;font-size:.7rem;font-weight:850;letter-spacing:.07em;text-transform:uppercase;color:var(--jc-accent)}}
 {each('.jc-group-i')}{{margin-right:.3rem}}
-{each('.jc-step')}{{display:flex;align-items:center;gap:.45rem;margin:.35rem 0 0;font-size:.82rem;font-weight:850;color:var(--jc-ink)}}
+{each('.jc-step')}{{display:flex;align-items:center;gap:.45rem;margin:.45rem 0 .5rem;font-size:.82rem;font-weight:850;color:var(--jc-ink)}}
 {each('.jc-step-n')}{{display:inline-grid;place-items:center;width:1.45rem;height:1.45rem;border-radius:999px;background:var(--jc-accent);color:var(--jc-accent-ink);font-size:.75rem}}
 {each('.jc-lineup')}{{padding:.55rem .7rem;border-radius:14px;background:var(--jc-panel);border:1px solid var(--jc-line)}}
 {each('.jc-lineup-h')}{{margin:0 0 .35rem;font-size:.72rem;font-weight:850;letter-spacing:.06em;text-transform:uppercase;color:var(--jc-muted)}}
@@ -364,7 +371,7 @@ def _shared_css() -> str:
 {each('.jc-sec-badge')}{{padding:.12rem .6rem;border-radius:999px;background:var(--jc-tone);color:#fff;font-weight:850;font-size:.8rem;
  text-shadow:0 1px 1px rgba(0,0,0,.25)}}
 {each('.jc-sec-count')}{{font-size:.74rem;font-weight:700;color:var(--jc-muted)}}
-{each('.jc-chords')}{{display:flex;flex-wrap:wrap;gap:.35rem}}
+{each('.jc-chords')}{{display:flex;flex-wrap:wrap;gap:.35rem;margin-bottom:.6rem}}
 {each('.jc-chord')}{{min-width:3rem;text-align:center;padding:.32rem .6rem;border-radius:10px;font-weight:850;font-size:.95rem;
  background:var(--jc-chord-bg);color:var(--jc-chord-ink);border:1px solid var(--jc-chip-line);border-left:4px solid var(--jc-tone)}}
 {bands}{{gap:.35rem}}

@@ -298,3 +298,16 @@ class HelperTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_banner_chips_only_name_a_value_the_control_shows():
+    """A Song-Based seed ("Song Default") is not a Style Jam style: the banner must not show it as the style."""
+    import jam_card_art as jca
+    from improvisation_intelligence import STYLE_JAM_STYLES
+
+    assert jca.shown_option("Bossa Nova", STYLE_JAM_STYLES) == "Bossa Nova"
+    assert jca.shown_option("Song Default", STYLE_JAM_STYLES) == ""
+    assert jca.shown_option(None, STYLE_JAM_STYLES) == ""
+    html = jca.hero_html("style_jam", kicker="k", title="t", line="l",
+                         chips=(("Style", jca.shown_option("Song Default", STYLE_JAM_STYLES)), ("Tempo", "100 BPM")))
+    assert "Song Default" not in html and "100 BPM" in html

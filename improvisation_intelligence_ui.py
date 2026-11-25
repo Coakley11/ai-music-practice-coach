@@ -2039,7 +2039,8 @@ def _tab_entry_modes(
                         "to improvise over, ready to open in Backing."
                     ),
                     chips=(
-                        ("Style", str(session_state.get("improv_style") or "")),
+                        # Only a value the Style control can show (a Song-Based "Song Default" seed is not one).
+                        ("Style", jam_art.shown_option(session_state.get("improv_style"), STYLE_JAM_STYLES)),
                         ("Tempo", f"{session_state.get('improv_style_bpm', 110)} BPM"),
                     ),
                 ),
@@ -2219,7 +2220,7 @@ def _tab_entry_modes(
                     ),
                     chips=(
                         ("Band", str(session_state.get("improv_ensemble") or "")),
-                        ("Groove", str(session_state.get("improv_jam_style") or "")),
+                        ("Groove", jam_art.shown_option(session_state.get("improv_jam_style"), STYLE_JAM_STYLES)),
                     ),
                 ),
                 unsafe_allow_html=True,
