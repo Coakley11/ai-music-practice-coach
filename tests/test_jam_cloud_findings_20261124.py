@@ -415,6 +415,29 @@ class StyleJamShowsOnlyItsOwnJamTests(unittest.TestCase):
                         sec = generate_style_progression(style=style, key_center=key, mood=mood, seed=seed)
                         self.assertTrue(is_style_jam_section_map(sec), (style, key, mood, sec))
 
+    def test_jams_of_every_difficulty_and_after_a_key_change_are_still_recognised(self):
+        """Ownership is the generator's section naming "<part> (<style>)", the only writer of Style Jam's slot since
+        Style Jam was added (cb5c03cf); every other write (key change, record / Backing restore) keeps the names.
+        So a real jam is never rejected because its style, difficulty, key or arrangement differs."""
+        from creative_key_sync import retranspose_generated_sections
+        from improvisation_intelligence import (
+            DIFFICULTY_LEVELS,
+            STYLE_JAM_STYLES,
+            generate_style_progression,
+            is_style_jam_section_map,
+        )
+
+        for style in STYLE_JAM_STYLES:
+            for difficulty in DIFFICULTY_LEVELS:
+                sec = generate_style_progression(style=style, key_center="C", difficulty=difficulty, mood="Bright")
+                self.assertTrue(is_style_jam_section_map(sec), (style, difficulty, sec))
+                for to_key in ("Db", "E", "F#", "Bb", "Am", "C#m"):
+                    moved = retranspose_generated_sections(sec, from_key="C", to_key=to_key)
+                    self.assertTrue(is_style_jam_section_map(moved), (style, difficulty, to_key, moved))
+        # A style whose own name has parentheses, and a longer arrangement, are still the jam's own.
+        self.assertTrue(is_style_jam_section_map({"A (Funk (Modern))": ["E9"], "B (Funk (Modern))": ["A9"]}))
+        self.assertTrue(is_style_jam_section_map({f"{p} (Bossa Nova)": ["Dmaj7"] for p in ("A", "B", "A'", "C", "Coda")}))
+
     def test_another_sources_chords_are_not_style_jams(self):
         from improvisation_intelligence import is_style_jam_section_map
 
