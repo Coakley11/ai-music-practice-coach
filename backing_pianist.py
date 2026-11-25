@@ -15,7 +15,7 @@ from __future__ import annotations
 import os
 import pathlib
 import zlib
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import lru_cache
 
 import numpy as np
@@ -39,6 +39,8 @@ REGISTERS = {
     "Ballad": (48, 77, 84),  # a wide, open instrument
     "Jewish ballad": (48, 77, 84),
     "Bossa nova": (52, 72, 76),  # close and understated
+    "Samba": (52, 74, 79),
+    "Latin jazz": (52, 74, 79),
 }
 _DEFAULT_REGISTER = (48, 76, 81)
 # Where the left hand's bass notes may go. The ballad pianist carries the low end himself.
@@ -231,6 +233,23 @@ _BOSSA = (
     ((0.0, 1.4, "S", 0.80), (3.5, 0.4, "N", 0.70)),
 )
 
+# Samba: the partido alto (one 4/4 bar = two 2/4 samba bars), its reversed half, a sparser answer and a
+# teleco-teco-like figure; short, percussive chords.
+_SAMBA = (
+    ((0.25, 0.22, "S", 0.80), (1.0, 0.30, "C", 0.92), (1.5, 0.24, "S", 0.74), (2.0, 0.30, "C", 0.88), (2.5, 0.24, "S", 0.74), (3.25, 0.30, "C", 0.84)),
+    ((0.0, 0.30, "C", 0.90), (0.5, 0.24, "S", 0.74), (1.25, 0.30, "C", 0.84), (2.25, 0.22, "S", 0.78), (3.0, 0.30, "C", 0.90), (3.5, 0.26, "N", 0.80)),
+    ((0.25, 0.24, "S", 0.78), (1.0, 0.40, "C", 0.90), (2.5, 0.30, "C", 0.82), (3.5, 0.30, "N", 0.80)),
+    ((0.0, 0.25, "C", 0.90), (0.75, 0.20, "S", 0.70), (1.5, 0.25, "C", 0.82), (2.25, 0.20, "S", 0.70), (3.0, 0.25, "C", 0.86)),
+)
+# Latin jazz: sparse, syncopated comping that pushes the next chord on the "and" of 4 (the montuno is a
+# separate, harmony-gated part).
+_LATIN_JAZZ = (
+    ((0.0, 0.40, "C", 0.88), (1.5, 0.40, "C", 0.80), (3.5, 0.45, "N", 0.84)),
+    ((1.0, 0.35, "S", 0.74), (2.5, 0.40, "C", 0.82)),
+    ((0.5, 0.30, "S", 0.72), (1.5, 0.35, "C", 0.84), (3.0, 0.35, "S", 0.74), (3.5, 0.40, "N", 0.82)),
+    ((0.0, 1.00, "C", 0.86), (2.5, 0.35, "T", 0.74)),
+)
+
 
 @dataclass(frozen=True)
 class StyleHands:
@@ -257,6 +276,8 @@ HANDS: dict[str, StyleHands] = {
     "Funk groove": StyleHands(_FUNK, "rootless", 65, True, (2, 2, 3, 4), 0.14, 0.05, 0.08, 0.04, 0.66, (0, 1, 3)),
     "Ballad": StyleHands(_BALLAD, "open", 60, True, (4, 2, 3), 0.03, 0.0, 0.26, 0.04, 0.54, (1, 2, 3, 4), True, 0.15),
     "Bossa nova": StyleHands(_BOSSA, "rootless", 62, True, (2, 4, 3), 0.14, 0.05, 0.08, 0.08, 0.50, (0, 1, 2, 3)),
+    "Samba": StyleHands(_SAMBA, "rootless", 63, True, (2, 4, 2), 0.08, 0.02, 0.10, 0.12, 0.58, (2, 3)),
+    "Latin jazz": StyleHands(_LATIN_JAZZ, "rootless", 62, True, (2, 4, 2), 0.12, 0.04, 0.10, 0.18, 0.56, (1, 3)),
 }
 # How a phrase stays alive: (chance of a contrasting bar, of moving one hit by an eighth, of an answering hit).
 _LIFE = {
@@ -271,8 +292,10 @@ _LIFE = {
     "Ballad": (0.24, 0.10, 0.20),
     "Jewish ballad": (0.24, 0.10, 0.20),
     "Bossa nova": (0.14, 0.18, 0.10),
+    "Samba": (0.16, 0.14, 0.12),
+    "Latin jazz": (0.18, 0.22, 0.14),
 }
-_SPARSE_STYLES = frozenset({"Jazz swing", "Funk groove", "Soul", "Soul groove", "Bossa nova"})
+_SPARSE_STYLES = frozenset({"Jazz swing", "Funk groove", "Soul", "Soul groove", "Bossa nova", "Latin jazz"})
 # Broken-chord contours: rising, rocking, falling, wide.
 _CONTOURS = ((0, 1, 2, 3), (0, 2, 1, 3), (0, 3, 2, 1), (0, 2, 3, 1))
 HANDS["Pop"] = HANDS["Pop groove"]
@@ -296,10 +319,25 @@ class Hit:
 class Pianist:
     """One player for one song. Call ``bar`` in order; the same song always plays the same way."""
 
-    def __init__(self, style: str, seed, *, has_guitar: bool = False, level: str = "Intermediate", chord_notes=None, bass_note=None) -> None:
+    def __init__(self, style: str, seed, *, has_guitar: bool = False, level: str = "Intermediate", chord_notes=None, bass_note=None, performance=None) -> None:
         self.style = style
         self.seed = str(seed)
         self.hands = HANDS.get(style, _FALLBACK)
+        # Backing Engine 2.0: how the jam's mood / intensity / difficulty ask this pianist to play (None = as always).
+        self._len = 1.0
+        self._roll_extra = 0.0
+        self._release = 1.0
+        self._sparse = False
+        self._busy = False
+        self._motion = 1.0
+        if performance is not None:
+            self.hands = _perform_hands(self.hands, performance)
+            self._len = float(performance.length)
+            self._release = max(1.0, float(performance.length))
+            self._roll_extra = float(performance.roll)
+            self._sparse = float(performance.density) < 0.8
+            self._busy = float(performance.density) > 1.15
+            self._motion = float(getattr(performance, "motion", 1.0))
         self.has_guitar = has_guitar
         self.chord_notes = chord_notes
         self.bass_note = bass_note
@@ -318,6 +356,12 @@ class Pianist:
         self.floor, self.with_melody, self.without_melody = REGISTERS.get(style, _DEFAULT_REGISTER)
         if has_guitar:
             self.floor = max(self.floor, GUITAR_FLOOR)
+        if performance is not None and int(performance.register):
+            # Bright sits higher on the keyboard, dark lower; the soloist's room above keeps its size.
+            shift = int(performance.register)
+            self.floor, self.with_melody, self.without_melody = (
+                max(40, self.floor + shift), self.with_melody + shift, self.without_melody + shift,
+            )
         self.ceiling = self.with_melody
         self.full = False
         # A song's own centre: one pianist likes to sit a little higher or lower than another.
@@ -334,7 +378,7 @@ class Pianist:
         r = _roll(self.seed, "phrase", self.phrase_no, bar)
         lengths = self.hands.bars
         self.phrase_left = lengths[int(r * len(lengths)) % len(lengths)]
-        if role_full:
+        if role_full and not self._sparse:
             # A full section builds: the fuller half of the style's ideas, so a chorus never plays less than a verse.
             sizes = sorted(len(i) for i in self.hands.ideas)
             # The last chorus takes the fullest ideas of all.
@@ -342,6 +386,11 @@ class Pianist:
             pool = [i for i, idea in enumerate(self.hands.ideas) if len(idea) >= middle]
         else:
             pool = list(self.hands.sparse_ideas)
+        if self._sparse:
+            # A light band: the plainest third of the style's ideas (held chords, half notes), in every section.
+            sizes = sorted(len(i) for i in self.hands.ideas)
+            plain = sizes[(len(sizes) - 1) // 3]
+            pool = [i for i, idea in enumerate(self.hands.ideas) if len(idea) <= plain] or pool
         pool = [p for p in pool if p < len(self.hands.ideas)]
         self.pool = pool
         self.contour = _CONTOURS[int(_roll(self.seed, "contour", self.phrase_no) * len(_CONTOURS)) % len(_CONTOURS)]
@@ -356,6 +405,10 @@ class Pianist:
     def _vary(self, cells: list, tag) -> list:
         """A person does not play one bar twice: sometimes a contrasting bar, a hit moved by an eighth, an answer."""
         change, displace, answer = _LIFE.get(self.style, (0.2, 0.25, 0.2))
+        if self._motion != 1.0:
+            # The jam's rhythmic life: an energetic or advanced player varies more, a mellow or beginner one less.
+            m = self._motion
+            change, displace, answer = (min(0.8, change * m), min(0.8, displace * m), min(0.8, answer * m))
         if self.pool and _roll(self.seed, "bbar", tag) < change:
             others = [p for p in self.pool if p != self.idea] or self.pool
             cells = list(self.hands.ideas[others[int(_roll(self.seed, "bpick", tag) * len(others)) % len(others)]])
@@ -512,9 +565,56 @@ class Pianist:
         self._sounding = str(last) if last is not None else None
         return hits
 
+    # Montuno (Latin jazz): a two-bar figure on the 2-3 clave, octave-doubled chord tones with one inner tone.
+    # Each cell is (beat, which line note: "a" the fifth, "b" the third, "push" the next chord ahead of the bar).
+    MONTUNO_CELLS = (
+        ((0.5, "a"), (1.5, "b"), (2.0, "a"), (3.0, "b"), (3.5, "a")),  # 2 side
+        ((0.0, "a"), (1.0, "b"), (1.5, "a"), (2.5, "b"), (3.5, "push")),  # 3 side
+    )
+
+    def montuno_bar(self, segments, next_chord, *, side: int, velocity: float = 0.78) -> list[Hit]:
+        """One bar of piano montuno. Only call it where ``backing_latin_grooves.montuno_fits`` said the harmony
+        suits one; each note is a tone of the chord sounding at its beat (the push: of the next chord)."""
+        self._prev_sounding = self._sounding
+        chords = [s for s in segments if s[2] is not None]
+        if not chords:
+            return []
+        hits: list[Hit] = []
+        top_prev = self.prev[-1] if self.prev else 72
+        for beat, tag in self.MONTUNO_CELLS[int(side) % 2]:
+            if tag == "push":
+                chord = next_chord
+                if chord is None:
+                    continue
+            else:
+                chord = next((c for s0, e0, c in chords if s0 <= beat < e0), None)
+                if chord is None:
+                    continue
+            h = self._h(chord)
+            pc = (h.third if tag == "b" else h.fifth) if tag != "push" else h.root
+            if pc is None:
+                pc = h.root
+            top = min((m for m in range(66, 80) if m % 12 == pc), key=lambda m: (abs(m - top_prev), m))
+            low = top - 12
+            inner_pcs = [p for p in h.written if p != pc]
+            inner = min(
+                (m for m in range(low + 1, top) if m % 12 in inner_pcs),
+                key=lambda m: (abs(m - (low + 6)), m),
+                default=None,
+            )
+            notes = (low, inner, top) if inner is not None else (low, top)
+            accent = 1.0 if float(beat) == int(beat) else 0.9
+            hits.append(Hit(float(beat), 0.42, notes, velocity * accent, "chord", push=tag == "push"))
+            top_prev = top
+        if hits:
+            self.prev = list(hits[-1].notes)
+        last = next((s[2] for s in reversed(list(segments)) if s[2] is not None), None)
+        self._sounding = str(last) if last is not None else None
+        return hits
+
     def _bar(self, segments, next_chord, *, role: str, quiet: bool, bar_in_section: int, section_end: bool, bar_index: int, pulses_per_bar: int, intensity: float = 1.0, section_bars: int = 0, lift: bool = False) -> list[Hit]:
         """``lift``: the arrangement's last chorus, which plays everything and adds weight below."""
-        full = role in FULL_ROLES and not quiet
+        full = (role in FULL_ROLES or self._busy) and not quiet
         lift = lift and full
         self.full = full
         # Only a bar that ends with a push hands its chord on; every other way out of a bar clears it.
@@ -574,6 +674,8 @@ class Pianist:
             chord = seg[2]
             push = False
             at = beat
+            if self._sparse and voice == "C" and k > 0 and hands.voicing == "rootless":
+                voice = "S"  # a light band: shells (guide tones) after the bar's first chord
             if voice == "N":
                 if next_chord is None or beat + held < 4.0 and seg is not segments[-1]:
                     voice = "C"
@@ -585,6 +687,8 @@ class Pianist:
             held = min(held, limit) if not push else min(held, 1.0)
             # Note lengths breathe: a touch longer or shorter each time.
             held = max(0.08, held * (0.86 + 0.28 * _roll(self.seed, "len", tag0, k)))
+            if self._len != 1.0:
+                held = max(0.08, held * self._len)  # the mood's articulation: detached or legato
             if not push:
                 held = min(held, end - at)
             h = self._h(chord)
@@ -596,10 +700,10 @@ class Pianist:
                 hits.append(Hit(at, held, (notes[self.contour[int(voice[1:]) % 4] % len(notes)],), vel, "broken"))
             elif voice == "R":
                 notes = self._chord_voicing(h, "C", (tag0, k))
-                hits.append(Hit(at, held, tuple(notes), vel, "chord", roll=0.018 + 0.016 * _roll(self.seed, "roll", tag0)))
+                hits.append(Hit(at, held, tuple(notes), vel, "chord", roll=0.018 + 0.016 * _roll(self.seed, "roll", tag0) + self._roll_extra))
             else:
                 notes = self._chord_voicing(h, voice, (tag0, k))
-                hits.append(Hit(at, held, tuple(notes), vel, "chord", push=push))
+                hits.append(Hit(at, held, tuple(notes), vel, "chord", push=push, roll=self._roll_extra))
         last_seg = segments[-1]
         if figure_at is None and not quiet and last_seg[2] is not None and hands.pickup > 0.0 and last_seg[1] - 3.5 > 0.25 and not self.simple:
             r = _roll(self.seed, "pickup", tag0)
@@ -756,11 +860,30 @@ class Pianist:
                 if recorded:
                     _grand().add_note(
                         bus, sr, at, max(0.04, held), int(midi), loud * shape[i], note_vel, f"{self.seed}:{at:.4f}:{midi}",
-                        release_sec=0.09 if pedalled else 0.05, offset_sec=0.0012 * r, detune_cents=(r - 0.5) * 2.0,
+                        release_sec=(0.09 if pedalled else 0.05) * self._release, offset_sec=0.0012 * r, detune_cents=(r - 0.5) * 2.0,
                     )
                 else:
                     _kv.add_piano_note(bus, sr, at, max(0.04, held), int(midi), loud * shape[i], note_vel)
 
 
-def start(style: str, seed, *, has_guitar: bool, level: str, chord_notes, bass_note) -> Pianist:
-    return Pianist(style, seed, has_guitar=has_guitar, level=level, chord_notes=chord_notes, bass_note=bass_note)
+def _perform_hands(hands: StyleHands, perf) -> StyleHands:
+    """The style's hands, played the way the jam asks (Backing Engine 2.0 :class:`RolePerformance`)."""
+    density = float(perf.density)
+    space = hands.space * float(perf.space) + max(0.0, 1.0 - density) * 0.3
+    rest_bar = hands.rest_bar * (1.0 + 2.0 * max(0.0, 1.0 - density)) if density <= 1.0 else hands.rest_bar * 0.3
+    colour = hands.colour if perf.colour == "style" else perf.colour == "rich"
+    return replace(
+        hands,
+        space=float(np.clip(space, 0.0, 0.85)),
+        rest_bar=float(np.clip(rest_bar, 0.0, 0.4)),
+        fill=float(np.clip(hands.fill * float(perf.fills), 0.0, 0.85)),
+        push=float(np.clip(hands.push * float(perf.push), 0.0, 0.7)),
+        velocity=float(np.clip(hands.velocity * float(perf.velocity), 0.2, 1.0)),
+        centre=hands.centre + int(perf.register),
+        colour=colour,
+        pickup=float(np.clip(hands.pickup * float(perf.fills), 0.0, 0.6)),
+    )
+
+
+def start(style: str, seed, *, has_guitar: bool, level: str, chord_notes, bass_note, performance=None) -> Pianist:
+    return Pianist(style, seed, has_guitar=has_guitar, level=level, chord_notes=chord_notes, bass_note=bass_note, performance=performance)

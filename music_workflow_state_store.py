@@ -100,6 +100,12 @@ class WorkflowStateBlob:
     groove: str = ""
     tempo_bpm: int = 0
     meter: str = "4/4"
+    # Backing Engine 2.0: the jam's own Groove intensity, Difficulty and (Generator) Ensemble, recorded
+    # while its Creative controls are live. The widgets themselves reset to transient defaults whenever
+    # the controls unmount, so Backing reads these, never the off-screen widgets.
+    play_intensity: str = ""
+    play_level: str = ""
+    ensemble: str = ""
     playback_scope: str = ""
     style_owner: str = ""
     progression_owner: str = ""
@@ -149,6 +155,9 @@ class WorkflowStateBlob:
             groove=str(raw.get("groove") or ""),
             tempo_bpm=int(raw.get("tempo_bpm") or 0),
             meter=str(raw.get("meter") or "4/4"),
+            play_intensity=str(raw.get("play_intensity") or ""),
+            play_level=str(raw.get("play_level") or ""),
+            ensemble=str(raw.get("ensemble") or ""),
             playback_scope=str(raw.get("playback_scope") or ""),
             style_owner=str(raw.get("style_owner") or ""),
             progression_owner=str(raw.get("progression_owner") or ""),

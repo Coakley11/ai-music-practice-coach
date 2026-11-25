@@ -156,31 +156,71 @@ def finalize_generated_style_jam_key_seal(session: dict[str, Any], key_center: s
         pass
 
 
-def commit_style_jam_control_settings(session: dict[str, Any]) -> bool:
-    """Write Style / Mood / Groove / BPM / difficulty from widgets into the generated blob.
+def _jam_play_settings_mutator(owner: str, vals: dict[str, Any]):
+    """Write the owner's own Difficulty / Groove intensity / (Generator) Ensemble into its record."""
+    from jam_control_ownership import GENERATOR
 
-    Widget values are the user intent. Do not project the old blob over them first.
+    def _apply(b: WorkflowStateBlob) -> None:
+        if vals.get("level"):
+            b.play_level = str(vals["level"])
+        if vals.get("intensity"):
+            b.play_intensity = str(vals["intensity"])
+        if owner == GENERATOR and vals.get("ensemble"):
+            b.ensemble = str(vals["ensemble"])
+
+    return _apply
+
+
+def commit_style_jam_control_settings(session: dict[str, Any], owner: str = "") -> bool:
+    """Write a jam's own Style / Mood / Groove / BPM / Difficulty / Ensemble controls into its own record.
+
+    ``owner`` is the jam whose control changed (each callback names it). It used to be read from the mode
+    on screen, so a Style Jam callback that fired while the Generator was being shown wrote the
+    Generator's off-screen defaults into the Generator's record. Without ``owner`` (older callers) the mode
+    on screen decides, as before. Widget values are the user intent: the old record is not projected over
+    them first. When ``owner`` is not the jam on screen, only its own record changes: the active workflow
+    and the other jam are left alone.
     """
-    entry = str(session.get("improv_entry_mode") or "").strip()
-    owner = "jam_session_generator" if entry == "Jam Session Generator" else "style_jam"
-    if entry == "Jam Session Generator":
-        style = str(session.get("improv_jam_style") or "").strip()
-        mood = str(session.get("improv_jam_mood") or "").strip()
-        groove = str(session.get("improv_groove") or "").strip()
-        try:
-            tempo = int(session.get("improv_jam_bpm") or 0)
-        except (TypeError, ValueError):
-            tempo = 0
-    else:
-        style = str(session.get("improv_style") or "").strip()
-        mood = str(session.get("improv_mood") or "").strip()
-        groove = str(session.get("improv_groove") or "").strip()
-        try:
-            tempo = int(session.get("improv_style_bpm") or 0)
-        except (TypeError, ValueError):
-            tempo = 0
-    difficulty = str(session.get("improv_difficulty") or "").strip()
+    from jam_control_ownership import (
+        CONTROL_KEYS,
+        GENERATOR,
+        STYLE_JAM,
+        current_jam_owner,
+        owner_control_values,
+        owner_record,
+    )
+
+    on_screen = current_jam_owner(session) or STYLE_JAM
+    owner = owner if owner in (STYLE_JAM, GENERATOR) else on_screen
+    keys = CONTROL_KEYS[owner]
+    vals = owner_control_values(session, owner)
+    style = str(session.get(keys["style"]) or "").strip()
+    mood = str(session.get(keys["mood"]) or "").strip()
+    # Each jam's own Groove intensity (the Generator never reads Style Jam's widget).
+    groove = str(session.get(keys["intensity"]) or "").strip()
+    try:
+        tempo = int(session.get(keys["bpm"]) or 0)
+    except (TypeError, ValueError):
+        tempo = 0
     meter = str(session.get("improv_style_meter") or session.get("backing_time_signature") or "").strip()
+    play = _jam_play_settings_mutator(owner, vals)
+
+    if owner != on_screen:
+        blob = owner_record(session, owner)
+        if blob is None:
+            return False
+        if style:
+            blob.style = style
+        if mood:
+            blob.mood = mood
+        if groove:
+            blob.groove = groove
+        if tempo:
+            blob.tempo_bpm = int(tempo)
+        play(blob)
+        save_workflow_blob(session, blob, source="jam_control_settings_own_record")
+        return True
+
     ptr = get_active_workflow_pointer(session)
     if ptr is None or str(ptr.workflow_owner or "") != owner:
         try:
@@ -224,7 +264,7 @@ def commit_style_jam_control_settings(session: dict[str, Any]) -> bool:
             b.tempo_bpm = int(tempo)
         if meter:
             b.meter = meter
-        _ = difficulty
+        play(b)
 
     result = mutate_active_workflow(
         session,
@@ -277,7 +317,12 @@ def commit_style_jam_generation(
             b.tempo_bpm = int(tempo_bpm)
         b.generated_session_id = sid
         b.source_type = "generated"
+        play(b)
 
+    # The jam's own Difficulty / Groove intensity are part of what was generated (its record holds them).
+    from jam_control_ownership import STYLE_JAM, owner_control_values
+
+    play = _jam_play_settings_mutator(STYLE_JAM, owner_control_values(session, STYLE_JAM))
     if ptr and ptr.workflow_owner == "style_jam" and ptr.workflow_session_id == sid:
         result = mutate_active_workflow(session, _mut, mutation_type="style_jam_generate", source="generate_progression")
         return result.ok
@@ -293,6 +338,7 @@ def commit_style_jam_generation(
         groove=groove,
         tempo_bpm=int(tempo_bpm or 0),
     )
+    play(blob)
     save_workflow_blob(session, blob, source="style_jam_generate")
     act = activate_workflow(
         session,
@@ -329,8 +375,14 @@ def commit_jam_session_generation(
         tempo_bpm = int(session.get("improv_jam_bpm") or jam.get("bpm") or 0)
     except (TypeError, ValueError):
         tempo_bpm = 0
-    mood = str(jam.get("mood") or jam.get("atmosphere") or session.get("improv_jam_mood") or "Mellow")
+    from jam_control_ownership import GENERATOR, owner_control_values
+
+    own = owner_control_values(session, GENERATOR)
+    # The musician's own Atmosphere choice is the jam's mood. (The generated dict carries only a description
+    # of it -- "edge and backbeat" for Gritty -- which used to land in the record and outlive the choice.)
+    mood = str(own.get("mood") or jam.get("mood") or jam.get("atmosphere") or session.get("improv_jam_mood") or "Mellow")
     groove = str(session.get("improv_groove") or jam.get("style") or style or "")
+    play = _jam_play_settings_mutator(GENERATOR, own)
 
     def _mut(b: WorkflowStateBlob) -> None:
         b.keys = KeyAuthority(
@@ -348,6 +400,7 @@ def commit_jam_session_generation(
             b.tempo_bpm = int(tempo_bpm)
         b.section_map = copy.deepcopy(sections)
         b.source_type = "generated"
+        play(b)
 
     ptr = get_active_workflow_pointer(session)
     if ptr and ptr.workflow_owner == "jam_session_generator" and ptr.workflow_session_id == sid and not new_session:
@@ -371,6 +424,7 @@ def commit_jam_session_generation(
         section_map=copy.deepcopy(sections),
         source_type="generated",
     )
+    play(blob)
     save_workflow_blob(session, blob, source="jam_session_generate")
     try:
         from improv_jam_session_projection import set_improv_jam_session

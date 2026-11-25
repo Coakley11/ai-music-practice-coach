@@ -103,6 +103,8 @@ def consume_pending_generated_progression(session: dict[str, Any], *, st: Any | 
                 key_center=key_c,
                 tempo=requested_tempo,
                 mood=jam_mood,
+                # The Generator's own Difficulty, as Style Jam passes its own.
+                difficulty=str(session.get("improv_jam_difficulty") or "Intermediate"),
             )
             if isinstance(jam, dict):
                 jam["bpm"] = requested_tempo

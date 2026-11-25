@@ -4439,6 +4439,50 @@ def _tool_type_for_backing_context(ctx: BackingContext) -> str:
     return "entry_style_jam"
 
 
+def _jam_sections_from_context(ctx: Any) -> dict[str, list[str]]:
+    """A generated jam's own section map, from the sealed jam its Backing context carries.
+
+    Only when those sections spell exactly the context's progression (e.g. not after a Style Jam key
+    change re-transposed the context); otherwise {} and the caller keeps its own fallback.
+    """
+    raw = getattr(ctx, "sealed_jam_snapshot", None)
+    sm = raw.get("section_map") if isinstance(raw, dict) else None
+    if not isinstance(sm, dict) or not sm:
+        return {}
+    sections = {str(k): [str(c) for c in (v or [])] for k, v in sm.items() if isinstance(v, list)}
+    flat = [c for chs in sections.values() for c in chs]
+    if not flat or flat != [str(c) for c in (getattr(ctx, "progression", None) or [])]:
+        return {}
+    return sections
+
+
+def _style_jam_sections_for_restore(session: dict[str, Any], ctx: Any) -> dict[str, list[str]]:
+    """Style Jam's own sections when Creative is restored from its Backing context ({} = keep what it has).
+
+    Style Jam's record owns its sections, then the sealed jam's own section map. A Backing context's flat
+    progression under its label is not a section map: it folded A / B / A' into one section, and under a
+    song's label ("Jazz tune · Dmaj7–G7–C7–G7") it showed another song's chords as Style Jam's jam.
+    """
+    try:
+        from jam_control_ownership import owner_record
+
+        rec = owner_record(session, "style_jam")
+        sm = getattr(rec, "section_map", None) if rec is not None else None
+        if isinstance(sm, dict) and sm:
+            return {str(k): [str(c) for c in (v or [])] for k, v in sm.items() if isinstance(v, list)}
+    except ImportError:
+        pass
+    own = _jam_sections_from_context(ctx)
+    if own:
+        return own
+    current = session.get("improv_generated_sections")
+    if isinstance(current, dict) and current:
+        return {}
+    style = str(getattr(ctx, "style", "") or "Style Jam").strip() or "Style Jam"
+    # Named as Style Jam's generator names its sections ("<part> (<style>)").
+    return {f"A ({style})": [str(c) for c in (getattr(ctx, "progression", None) or [])]}
+
+
 def resolve_entry_jam_entry_mode(
     session: dict[str, Any],
     *,
@@ -4458,15 +4502,28 @@ def resolve_entry_jam_entry_mode(
                 return snap_entry
     except ImportError:
         pass
+    # The jam being returned from names its own mode. The widget may hold a transient default
+    # (it resets whenever Creative's controls unmount), so it comes second.
+    if ctx is not None:
+        ctx_entry = str(ctx.entry_mode or "").strip()
+        if ctx_entry in ("Style Jam Mode", "Jam Session Generator"):
+            return ctx_entry
+    try:
+        from generated_workflow_artifact import creative_jam_controls_live, stored_entry_jam_context
+
+        if not (
+            creative_jam_controls_live(session, "style_jam") or creative_jam_controls_live(session, "jam_session_generator")
+        ):
+            stored = stored_entry_jam_context(session)  # Backing, e.g. after a reload: the jam on screen
+            if stored is not None:
+                return str(stored.entry_mode)
+    except ImportError:
+        pass
     widget = str(session.get("improv_entry_mode") or "").strip()
     if widget == "Style Jam Mode":
         return "Style Jam Mode"
     if widget == "Jam Session Generator":
         return "Jam Session Generator"
-    if ctx is not None:
-        ctx_entry = str(ctx.entry_mode or "").strip()
-        if ctx_entry in ("Style Jam Mode", "Jam Session Generator"):
-            return ctx_entry
     if widget == "Jam Session Generator":
         return widget
     try:
@@ -4959,7 +5016,10 @@ def restore_session_widgets_from_backing_context(
             pass
         return str(candidate or "").strip()
 
-    if ctx.source in {"custom_progression", "regular_song"}:
+    # Song sources (Catalog, Custom, Composition) return to their own pages, not Creative: they never become a
+    # Creative tool. A Composition song's context restored on reload used to turn the Creative session into a
+    # Style Jam holding the song's chords ("Jazz tune · Dmaj7–G7–C7–G7" as Style Jam's jam).
+    if ctx.source in {"custom_progression", "regular_song", "composition_song"}:
         concert = str(
             ctx.concert_key or ctx.display_key or ctx.key or session.get("display_key") or ""
         ).strip()
@@ -5070,12 +5130,20 @@ def restore_session_widgets_from_backing_context(
                 session["improv_jam_bpm"] = int(ctx.bpm)
             if ctx.mood:
                 session["improv_jam_mood"] = ctx.mood
+            # The Generator's own Groove intensity / Difficulty / Ensemble come back
+            # as chosen (Style Jam's widgets are not touched).
+            if ctx.groove_intensity:
+                session["improv_jam_intensity"] = ctx.groove_intensity
+            if ctx.difficulty:
+                session["improv_jam_difficulty"] = ctx.difficulty
+            if str(getattr(ctx, "ensemble", "") or ""):
+                session["improv_ensemble"] = ctx.ensemble
             jam = session.get("improv_jam_session")
             if isinstance(jam, dict) and ctx.progression:
                 sections = jam.get("sections")
                 if not isinstance(sections, dict) or not sections:
                     label = str(ctx.progression_label or ctx.style or "Jam").strip() or "Jam"
-                    jam = {**jam, "sections": {label: list(ctx.progression)}}
+                    jam = {**jam, "sections": _jam_sections_from_context(ctx) or {label: list(ctx.progression)}}
                     session["improv_jam_session"] = jam
         else:
             if ctx.style:
@@ -5117,8 +5185,9 @@ def restore_session_widgets_from_backing_context(
             if ctx.meter:
                 session["improv_style_meter"] = ctx.meter
             if ctx.progression:
-                label = str(ctx.progression_label or ctx.style or "Style Jam").strip() or "Style Jam"
-                session["improv_generated_sections"] = {label: list(ctx.progression)}
+                sections = _style_jam_sections_for_restore(session, ctx)
+                if sections:
+                    session["improv_generated_sections"] = sections
         meta = dict(session.get("improv_style_meta") or {})
         meta_bpm = int(ctx.bpm or meta.get("bpm") or 100)
         try:
@@ -5193,8 +5262,18 @@ def restore_session_widgets_from_backing_context(
             if ctx.meter:
                 sess.meter = str(ctx.meter).strip()
             if ctx.progression:
-                label = str(ctx.progression_label or ctx.style or "Jam").strip() or "Jam"
-                sess.sections = {label: list(ctx.progression)}
+                if sess.tool_type == "entry_style_jam":
+                    # Style Jam's session takes Style Jam's own sections (its record), never the context's
+                    # label over its flat progression.
+                    own = _style_jam_sections_for_restore(session, ctx) or dict(
+                        session.get("improv_generated_sections") or {}
+                    )
+                    if own:
+                        sess.sections = own
+                else:
+                    label = str(ctx.progression_label or ctx.style or "Jam").strip() or "Jam"
+                    # The jam's own sections (A / B / A'), never one merged section, when the context has them.
+                    sess.sections = _jam_sections_from_context(ctx) or {label: list(ctx.progression)}
             if concert:
                 sess.concert_key = concert
                 if sess.tool_type in {"entry_style_jam", "jam_session_generator"}:

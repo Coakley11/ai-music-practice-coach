@@ -180,7 +180,8 @@ class TestChordDigest(unittest.TestCase):
         main = src[src.index("def _backing_signature_for_bpm") :][:2600]
         self.assertIn(
             "_backing_chord_digest(_backing_digest_sections, _audio_signature_key, selected_section_names),\n"
-            "            _backing_arrangement_tag(),",
+            # A generated jam's performance plan is part of the renderer tag (Engine 2.0 slice 2).
+            "            _backing_arrangement_tag(performance=_backing_performance),",
             main,
         )
         self.assertIn("_backing_chord_digest(_secs, tgt, snap[\"section_names\"]),", src)

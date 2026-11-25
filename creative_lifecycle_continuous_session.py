@@ -175,7 +175,32 @@ def configure_style_jam_controls(session: dict[str, Any]) -> None:
     session["improv_intelligence_tab"] = "Entry & Jam"
     session["improv_entry_mode"] = "Style Jam Mode"
     session["improv_style"] = STYLE_JAM_STYLE
+    # Style Jam opens on screen before the musician picks its key. The song's Practice Key (Ebm) must not become the
+    # jam's own key on the way: that leak (the song reconciler's write redirected into the jam's store, fixed in
+    # f1c463b2) is what made the Cloud jam play the song's key.
+    try:
+        from music_workflow_creative_nav import sync_workflow_for_creative_tab
+        from songs.practice_key_state import get_practice_concert_key
+
+        sync_workflow_for_creative_tab(session, "Entry & Jam")
+        song_pick = str(session.get("active_catalog_pick_key") or "")
+        song_key = str(get_practice_concert_key(session, song_pick, default="") or "") if song_pick else ""
+        jam_key = str(get_practice_concert_key(session, "creative::entry_style_jam", default="") or "")
+        assert not (song_key and jam_key == song_key), f"the song's Practice Key {song_key!r} leaked into Style Jam's own key"
+    except ImportError:
+        pass
     session["improv_style_key"] = "E"
+    # The musician picks E in Style Jam's Concert Key control. In the app that choice is kept as the jam's own
+    # Practice Key on its creative:: pick (on_improv_style_key_change -> the pre-widget key edit; in the browser the
+    # saved state then holds creative::entry_style_jam = the chosen key). Setting the widget value alone is not a
+    # choice the app sees: before 2026-11-25 this harness only kept its E because the song reconciler leaked the
+    # song's Practice Key into Style Jam's store (the Cloud bug fixed in f1c463b2).
+    try:
+        from songs.practice_key_state import set_practice_concert_key
+
+        set_practice_concert_key(session, "E", pick_key="creative::entry_style_jam")
+    except ImportError:
+        pass
     session["improv_mood"] = "Bright"
     session["improv_groove"] = "Light"
     session["improv_style_bpm"] = 120
@@ -215,6 +240,14 @@ def assert_style_jam_generation_steps_13_to_16(session: dict[str, Any], state: C
     assert first.artifact_id and second.artifact_id and first.artifact_id != second.artifact_id
     assert first.control_fingerprint != second.control_fingerprint
     assert "E" in first.progression_head.upper() or "MAJ" in first.progression_head.upper()
+    # The jam is generated in the key the musician chose and keeps it as its own: a song's Practice Key leaking into
+    # Style Jam's store (the Cloud bug fixed in f1c463b2 - the song reconciler's write redirected into the jam) makes
+    # the jam's key the song's (Ebm here) and fails these.
+    from songs.practice_key_state import get_practice_concert_key
+
+    jam_key = str(get_practice_concert_key(session, "creative::entry_style_jam", default="") or "")
+    assert jam_key == "E", f"Style Jam's own key is {jam_key!r}, not the musician's E"
+    assert "Emaj7" in [c.strip() for c in first.progression_head.split(",")], first.progression_head
     state.style_jam_snapshot = GeneratedWorkflowArtifactSnapshot.from_dict(
         session.get("_generated_artifact_last_style_jam")
     )

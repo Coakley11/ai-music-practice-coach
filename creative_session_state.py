@@ -684,6 +684,12 @@ def apply_creative_session_to_session(
                     sess.tool_type == "jam_session_generator"
                     and ident_owner == "style_jam"
                 )
+                # The mirror: the Generator's active identity (restored with its jam on reload) never
+                # becomes Style Jam's key when Style Jam's own Creative session is restored.
+                leftover_generator = (
+                    sess.tool_type == "entry_style_jam"
+                    and ident_owner == "jam_session_generator"
+                )
                 leftover_other_jam = (
                     sess.tool_type == "jam_session_generator"
                     and ident_owner == "jam_session_generator"
@@ -691,7 +697,7 @@ def apply_creative_session_to_session(
                     and ident_sid
                     and ident_sid != jam_id
                 )
-                if leftover_style or leftover_other_jam:
+                if leftover_style or leftover_generator or leftover_other_jam:
                     ident = None
                 elif ident is not None:
                     concert = ident.practice_key_token
@@ -837,6 +843,22 @@ def apply_creative_session_to_session(
         elif sync_live_sections:
             sync_live_sections(session, source="creative_session_unbound")
     else:
+        try:
+            from improvisation_intelligence import STYLE_JAM_STYLES, is_style_jam_section_map
+
+            own_sections = bool(sess.sections) and is_style_jam_section_map(sess.sections)
+            # A song's Backing context restored as Style Jam before the Composition-song fix: its sections carry
+            # the song's Backing label ("Jazz tune · Dmaj7–G7–C7–G7") or the session carries the song's style
+            # ("Jazz", not a Style Jam style), with that song's tempo and feel.
+            leaked = bool(sess.sections) and not own_sections and (
+                any(" · " in str(name) for name in sess.sections)
+                or str(sess.style or "").strip() not in STYLE_JAM_STYLES
+            )
+        except ImportError:
+            own_sections, leaked = bool(sess.sections), False
+        if leaked:
+            # Not Style Jam's: none of its values reach Style Jam's controls or sections.
+            return
         _set("improv_style", sess.style)
         if widget_safe:
             try:
@@ -852,7 +874,8 @@ def apply_creative_session_to_session(
         _set("improv_groove", sess.groove_intensity)
         _set("improv_difficulty", sess.difficulty)
         _set("improv_style_meter", sess.meter)
-        if sess.sections:
+        # Only sections Style Jam generated become Style Jam's sections.
+        if sess.sections and own_sections:
             session["improv_generated_sections"] = {k: list(v) for k, v in sess.sections.items()}
 
     session["improv_style_meta"] = {

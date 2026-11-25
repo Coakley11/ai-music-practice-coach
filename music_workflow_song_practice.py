@@ -693,6 +693,16 @@ def reconcile_catalog_practice_key_owner(session: dict[str, Any], *, source: str
         except ImportError:
             pass
         return str(session.get("display_key") or session.get("concert_key") or "").strip()
+    if str(pick).startswith("creative::"):
+        # A Style Jam / Jam Session pick is not a catalog song: its key is the jam's own (sealed when it was
+        # generated). Reading it is fine; writing the song's key into it made a jam generated in G play in the
+        # Composition song's D (browser trace 2026-11-25: written before Generate and again right after the seal).
+        try:
+            from songs.practice_key_state import get_practice_concert_key
+
+            return str(get_practice_concert_key(session, pick) or "").strip()
+        except ImportError:
+            return ""
     sel = session.get("selected_song") if isinstance(session.get("selected_song"), dict) else {}
     original = str((sel or {}).get("key") or "").strip()
     # A Custom / Composition SBI lane on screen is a preview with its own key.
@@ -897,9 +907,12 @@ def reconcile_catalog_practice_key_owner(session: dict[str, Any], *, source: str
         return ""
 
     try:
-        from songs.practice_key_state import set_practice_concert_key
+        from songs.practice_key_state import heal_write_lands_in_creative_jam_store, set_practice_concert_key
 
-        if pick and not _is_jam_key(chosen):
+        # With a Style Jam / Jam Session on screen the jam owns the practice settings, and a write for the song's
+        # own pick is redirected into the jam's store (resolve_settings_pick_for_write): the song's key would
+        # replace the key the jam was generated in. The song's own store needs no heal from here then.
+        if pick and not _is_jam_key(chosen) and not heal_write_lands_in_creative_jam_store(session, pick):
             set_practice_concert_key(session, chosen, pick_key=pick)
     except ImportError:
         pass

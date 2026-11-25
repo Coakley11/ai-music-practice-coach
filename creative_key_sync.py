@@ -1277,22 +1277,24 @@ def apply_specialized_jam_practice_key(session: dict[str, Any], new_key: str) ->
             set_creative_session(session, sess)
     except Exception:
         pass
-    # Keep improv_jam_session coherent: UUID + key must survive disk hydrate.
-    try:
-        jam = session.get("improv_jam_session")
-        jam = dict(jam) if isinstance(jam, dict) else {}
-        sid = str(
-            jam.get("id")
-            or session.get("_jam_session_generator_session_id")
-            or ""
-        ).strip()
-        if sid:
-            jam["id"] = sid
-            session["_jam_session_generator_session_id"] = sid
-        jam["key"] = new
-        session["improv_jam_session"] = jam
-    except Exception:
-        pass
+    # Keep improv_jam_session coherent: UUID + key must survive disk hydrate. It is the Generator's jam:
+    # a Style Jam key edit never rewrites the Generator's key.
+    if jam_owner != "style_jam":
+        try:
+            jam = session.get("improv_jam_session")
+            jam = dict(jam) if isinstance(jam, dict) else {}
+            sid = str(
+                jam.get("id")
+                or session.get("_jam_session_generator_session_id")
+                or ""
+            ).strip()
+            if sid:
+                jam["id"] = sid
+                session["_jam_session_generator_session_id"] = sid
+            jam["key"] = new
+            session["improv_jam_session"] = jam
+        except Exception:
+            pass
     try:
         from h3_live_key_trace import emit_display_key_write
 
@@ -1422,7 +1424,8 @@ def apply_specialized_jam_practice_key(session: dict[str, Any], new_key: str) ->
             save_workflow_blob(session, blob, source="sidebar_jam_backing_canonical")
             session["_jam_pk_mutation"]["fallback_blob"] = True
         if blob is not None:
-            jam = session.get("improv_jam_session")
+            # improv_jam_session is the Generator's jam: Style Jam's record never becomes its key or sections.
+            jam = session.get("improv_jam_session") if jam_owner != "style_jam" else None
             if isinstance(jam, dict):
                 jam = dict(jam)
                 jam["key"] = str(blob.keys.practice_tonic or tonic or new)
@@ -1643,7 +1646,13 @@ def restore_jam_visit_practice_key_after_hydrate(session: dict[str, Any]) -> str
     want = str(resolve_jam_visit_practice_key(session) or "").strip()
     if not want:
         return ""
-    style = "Style Jam" in entry or tool == "entry_style_jam"
+    # The key belongs to the jam the restored Creative session is (resolve_jam_visit_practice_key decides the
+    # same way). During a reload the entry mode can still be the other jam's, restored earlier from the
+    # workspace -- writing there would hand the Generator's key to Style Jam (or the reverse).
+    if tool in {"entry_style_jam", "jam_session_generator"}:
+        style = tool == "entry_style_jam"
+    else:
+        style = "Style Jam" in entry
     widget_key = "improv_style_key" if style else "improv_jam_key"
     pending_key = PENDING_IMPROV_STYLE_KEY if style else PENDING_IMPROV_JAM_KEY
     session[pending_key] = want
@@ -1739,6 +1748,37 @@ def _key_steps_to_center(key_center: str) -> int:
     root, _suffix = split_chord(str(key_center or "C"))
     target = normalize_root(root)
     return semitone_distance("C", target)
+
+
+def _own_jam_key_edit_tokens(session: dict[str, Any]) -> tuple[str, str]:
+    """(pending, committed) key edits that belong to the jam on screen ('' where none does).
+
+    The commit token is shared by every Practice Key edit: it counts only when this jam's own saved key
+    is that token (its own edit), never for a catalog song's or the other jam's edit.
+    """
+    style = "Style Jam" in str(session.get("improv_entry_mode") or "")
+    pending = str(session.get(PENDING_IMPROV_STYLE_KEY if style else PENDING_IMPROV_JAM_KEY) or "").strip()
+    commit = str(session.get("_pk_user_commit_token") or "").strip()
+    if commit:
+        own = ""
+        try:
+            from songs.practice_key_state import (
+                CREATIVE_JAM_SESSION_PICK,
+                CREATIVE_STYLE_JAM_PICK,
+                get_practice_concert_key,
+            )
+
+            own = str(
+                get_practice_concert_key(
+                    session, CREATIVE_STYLE_JAM_PICK if style else CREATIVE_JAM_SESSION_PICK, default=""
+                )
+                or ""
+            ).strip()
+        except Exception:
+            own = ""
+        if own != commit:
+            commit = ""
+    return pending, commit
 
 
 def creative_entry_concert_key(session: dict[str, Any]) -> str:
@@ -2164,6 +2204,33 @@ def seed_jam_concert_widget_before_mount(session: dict[str, Any]) -> str:
     except Exception:
         pass
     return str(session.get("improv_jam_key") or want)
+
+
+def seed_style_concert_widget_before_mount(session: dict[str, Any]) -> str:
+    """A Style Jam nobody has keyed yet shows the key it will play in, before its Concert Key control mounts.
+
+    Browser 2026-11-24 (Composition song in D active): a never-keyed Style Jam's control showed the start-up "G", the
+    heading and the generated chords followed the control (G), while the progression's Practice-key line and Backing
+    followed the Style Jam key authority, which skips that start-up default and resolves the song's D -- the jam was
+    shown in one key and played in another. Only that case is touched: the jam has no key of its own yet
+    (``jam_key_was_chosen``), the control still holds a start-up default (G / Eb / empty) and the authority differs.
+    A key the musician picks, or one a generated jam carries, is never replaced."""
+    live = str(session.get("improv_style_key") or "").strip()
+    try:
+        from backing_practice_key_control import STYLE_JAM_REMOUNT_DEFAULTS, style_jam_authoritative_concert_key
+        from sbi_lane_practice_key import jam_key_was_chosen
+    except ImportError:
+        return live
+    if jam_key_was_chosen(session, "style_jam") or live not in STYLE_JAM_REMOUNT_DEFAULTS:
+        return live
+    want = str(style_jam_authoritative_concert_key(session) or "").strip()
+    if not want or want == live or want in STYLE_JAM_REMOUNT_DEFAULTS:
+        return live
+    try:
+        session["improv_style_key"] = want
+    except Exception:
+        return live
+    return str(session.get("improv_style_key") or want)
 
 
 def flush_pending_creative_major_keys(session: dict[str, Any]) -> None:
@@ -3812,21 +3879,28 @@ def prepare_creative_sidebar_display_key(st: Any, session: dict[str, Any]) -> li
             if jam_tok not in options:
                 options = [jam_tok] + options
             live_dk = str(session.get("display_key") or "").strip()
-            pending_jam = str(session.get(PENDING_IMPROV_JAM_KEY) or "").strip()
-            commit_jam = str(session.get("_pk_user_commit_token") or "").strip()
-            # The commit token is pick-scoped: Perfect's own C# commit is not a
-            # jam edit (it pulled a Style Jam in E onto Perfect's C#).
-            _commit_pick = str(session.get("_pk_user_commit_pick") or "").strip()
-            if _commit_pick and not _commit_pick.startswith("creative::"):
-                commit_jam = ""
+            # Only the jam on screen's own edit may replace its token: the Generator's pending key and a
+            # commit token another owner made are not Style Jam's (they gave Style Jam F the Generator's Eb).
+            pending_jam, commit_jam = _own_jam_key_edit_tokens(session)
+            _style_on_screen = "Style Jam" in str(session.get("improv_entry_mode") or "")
             if live_dk and live_dk != jam_tok:
                 if jam_tok in {pending_jam, commit_jam} and live_dk not in {pending_jam, commit_jam}:
-                    session.pop("display_key", None)
+                    # Only for Style Jam, whose control is written below. With the Generator on screen nothing
+                    # writes the sidebar key afterwards, so dropping it showed its first option (C).
+                    if _style_on_screen:
+                        session.pop("display_key", None)
                 elif live_dk in {pending_jam, commit_jam} - {""}:
                     jam_tok = live_dk
+            if not _style_on_screen and live_dk and live_dk not in options:
+                # The sidebar keeps the song's key (C#m) while the Generator's own key is major: a value missing
+                # from the options showed the first option (C) instead.
+                options = [live_dk] + options
             # The generated workflow key is a temporary projection.  Do not
             # write it through the global source's Practice Key widget.
-            session["improv_style_key"] = jam_tok
+            # Only Style Jam's own key goes into Style Jam's control: with the Generator active this token is the
+            # Generator's key, and writing it here gave Style Jam the Generator's key after the Generator's reload.
+            if "Style Jam" in str(session.get("improv_entry_mode") or ""):
+                session["improv_style_key"] = jam_tok
             session.pop(PENDING_DISPLAY_KEY, None)
             return options
     if visit_src in {"missions", "sbi_active"} and visit_tok:
@@ -3861,13 +3935,9 @@ def prepare_creative_sidebar_display_key(st: Any, session: dict[str, Any]) -> li
             if jam_tok not in options:
                 options = [jam_tok] + options
             live_dk = str(session.get("display_key") or "").strip()
-            pending_jam = str(session.get(PENDING_IMPROV_JAM_KEY) or "").strip()
-            commit_jam = str(session.get("_pk_user_commit_token") or "").strip()
-            # The commit token is pick-scoped: Perfect's own C# commit is not a
-            # jam edit (it pulled a Style Jam in E onto Perfect's C#).
-            _commit_pick = str(session.get("_pk_user_commit_pick") or "").strip()
-            if _commit_pick and not _commit_pick.startswith("creative::"):
-                commit_jam = ""
+            # Only the jam on screen's own edit may replace its token: the Generator's pending key and a
+            # commit token another owner made are not Style Jam's (they gave Style Jam F the Generator's Eb).
+            pending_jam, commit_jam = _own_jam_key_edit_tokens(session)
             if live_dk and live_dk != jam_tok:
                 if jam_tok in {pending_jam, commit_jam} and live_dk not in {pending_jam, commit_jam}:
                     session.pop("display_key", None)
@@ -5009,44 +5079,41 @@ def on_improv_style_key_change() -> None:
     )
 
 
-def on_improv_style_jam_setting_change() -> None:
-    """BPM / groove / style / mood / difficulty change — refresh meta and invalidate backing handoff."""
+def _on_jam_control_change(owner: str, writer: str) -> None:
+    """A jam control changed: write that jam's own record, and re-seal Backing only for the jam on screen.
+
+    Callbacks run before the script, with every widget value the browser holds. A control that was not on
+    screen in the run the musician interacted with did not change by their hand: the browser reports a
+    redrawn control's first option (Beginner, Light, ...) as a change. Such a callback writes nothing.
+    """
     import streamlit as st
 
-    before_pick = guard_creative_catalog_pick_before_edit(
-        st.session_state, writer="on_improv_style_jam_setting_change"
-    )
-    try:
-        from music_workflow_generated_session import commit_style_jam_control_settings
+    from jam_control_ownership import controls_drawn_last_run, current_jam_owner, jam_callback_scope
 
-        commit_style_jam_control_settings(st.session_state)
-    except ImportError:
-        pass
-    sync_creative_style_jam_meta(st.session_state)
-    invalidate_creative_backing_context(st.session_state)
-    verify_creative_catalog_pick_after_edit(
-        st.session_state, before_pick=before_pick, writer="on_improv_style_jam_setting_change"
-    )
+    if not controls_drawn_last_run(st.session_state, owner):
+        return
+    with jam_callback_scope(owner):
+        before_pick = guard_creative_catalog_pick_before_edit(st.session_state, writer=writer)
+        try:
+            from music_workflow_generated_session import commit_style_jam_control_settings
+
+            commit_style_jam_control_settings(st.session_state, owner=owner)
+        except ImportError:
+            pass
+        if current_jam_owner(st.session_state) == owner:
+            sync_creative_style_jam_meta(st.session_state)
+            invalidate_creative_backing_context(st.session_state)
+        verify_creative_catalog_pick_after_edit(st.session_state, before_pick=before_pick, writer=writer)
+
+
+def on_improv_style_jam_setting_change() -> None:
+    """Style Jam: BPM / groove / style / mood / difficulty change -- its own record, then its Backing hand-off."""
+    _on_jam_control_change("style_jam", "on_improv_style_jam_setting_change")
 
 
 def on_improv_jam_setting_change() -> None:
-    """Jam Session BPM / mood change — refresh meta and invalidate backing handoff."""
-    import streamlit as st
-
-    before_pick = guard_creative_catalog_pick_before_edit(
-        st.session_state, writer="on_improv_jam_setting_change"
-    )
-    try:
-        from music_workflow_generated_session import commit_style_jam_control_settings
-
-        commit_style_jam_control_settings(st.session_state)
-    except ImportError:
-        pass
-    sync_creative_style_jam_meta(st.session_state)
-    invalidate_creative_backing_context(st.session_state)
-    verify_creative_catalog_pick_after_edit(
-        st.session_state, before_pick=before_pick, writer="on_improv_jam_setting_change"
-    )
+    """Jam Session Generator: a control change -- its own record, then its Backing hand-off."""
+    _on_jam_control_change("jam_session_generator", "on_improv_jam_setting_change")
 
 
 def ensure_creative_analysis_mode_restored(session_state: dict[str, Any]) -> str:

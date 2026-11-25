@@ -266,6 +266,22 @@ def style_jam_authoritative_concert_key(session: dict[str, Any]) -> str:
     return live or pending or widget or sticky or creative or ctx_tok
 
 
+def jam_owner_record_key(session: dict[str, Any], owner: str) -> str:
+    """The key a jam's own workflow record holds ('' when it has no record or no key)."""
+    try:
+        from jam_control_ownership import owner_record
+        from music_theory import key_center_token
+
+        rec = owner_record(session, owner)
+        keys = getattr(rec, "keys", None) if rec is not None else None
+        tonic = str(getattr(keys, "practice_tonic", "") or "").strip() if keys is not None else ""
+        if tonic:
+            return key_center_token(tonic, str(getattr(keys, "practice_mode", "") or "major"))
+    except Exception:
+        pass
+    return ""
+
+
 def jam_generator_authoritative_concert_key(session: dict[str, Any]) -> str:
     """Live Jam Generator concert key. Mounted C / sealed ctx / Perfect G lose.
 
@@ -343,6 +359,13 @@ def jam_generator_authoritative_concert_key(session: dict[str, Any]) -> str:
             if tok not in jam_explicit:
                 return False
         return True
+
+    # The Generator's own record holds its key (the musician's choice, or the song's key it started in).
+    # Only an unapplied edit of its own control is newer. Guessing from the live widget and leftover
+    # tokens instead let the control, the sidebar and Backing each show a different key.
+    record = jam_owner_record_key(session, "jam_session_generator")
+    if record and not pending:
+        return record
 
     # Owner-sealed Jam Generator state first. Do not let leftover Style Jam
     # generated/blob Eb sort ahead of sticky/creative Db.

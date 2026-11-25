@@ -294,6 +294,8 @@ def init_improvisation_state(session_state: dict, *, is_custom_active: bool) -> 
     session_state.setdefault("improv_jam_key", "Eb")
     session_state.setdefault("improv_jam_bpm", 120)
     session_state.setdefault("improv_jam_mood", "Dark")
+    session_state.setdefault("improv_jam_intensity", "Medium")
+    session_state.setdefault("improv_jam_difficulty", "Intermediate")
 
 
 def init_creative_lab_state(session_state: dict) -> None:

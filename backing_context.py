@@ -133,6 +133,12 @@ class BackingContext:
     bound_pick_key: str = ""
     sbi_source_owner: str = ""
     sbi_material_kind: str = ""
+    # Generated jams only: Jam Session Generator's band ("" = Style Jam's default band).
+    ensemble: str = ""
+    # Generated jams only: the sealed jam this context was built from (GeneratedWorkflowArtifactSnapshot dict:
+    # session identity, full section map, settings). The Backing context is persisted on every save; the
+    # jam's own workflow record and sealed snapshot are not always, so a reload restores them from here.
+    sealed_jam_snapshot: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if not self.source_label:
@@ -145,7 +151,10 @@ class BackingContext:
             self.source_signature = compute_source_signature(self)
 
     def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        d = asdict(self)
+        if not d.get("sealed_jam_snapshot"):
+            d.pop("sealed_jam_snapshot", None)  # every other source keeps its persisted shape
+        return d
 
     @classmethod
     def from_dict(cls, raw: Any) -> BackingContext | None:
@@ -190,6 +199,10 @@ class BackingContext:
             bound_pick_key=str(raw.get("bound_pick_key") or ""),
             sbi_source_owner=str(raw.get("sbi_source_owner") or ""),
             sbi_material_kind=str(raw.get("sbi_material_kind") or "").strip().lower(),
+            ensemble=str(raw.get("ensemble") or ""),
+            sealed_jam_snapshot=dict(raw.get("sealed_jam_snapshot") or {})
+            if source == "entry_jam" and isinstance(raw.get("sealed_jam_snapshot"), dict)
+            else {},
         )
 
 
@@ -1726,13 +1739,14 @@ def _entry_jam_context_from_owner_snapshot(
     key = display_key = concert_key
     chart_display_key = _resolve_chart_display_key(session, concert_key)
     style = str(snap.style or "").strip() or "Jazz Swing"
-    difficulty = str(snap.level or session.get("improv_difficulty") or "Intermediate").strip()
+    difficulty = str(snap.level or "Intermediate").strip()
     from backing_musical_profile import normalize_backing_play_intensity
     from songs.playback_defaults import normalize_groove_label
 
     rhythm_groove = _entry_jam_rhythm_groove_label(style, str(snap.groove or ""))
     backing_style = normalize_groove_label(style or "Pop groove")
-    groove_intensity = normalize_backing_play_intensity(str(snap.intensity or ""), difficulty=difficulty)
+    # The musician's Groove intensity, independent of Difficulty (Medium if absent).
+    groove_intensity = normalize_backing_play_intensity(str(snap.intensity or ""))
     bpm = int(snap.bpm or 110)
     mood = str(snap.mood or "Mellow").strip()
     meter = str(snap.meter or "4/4").strip()
@@ -1817,6 +1831,8 @@ def _entry_jam_context_from_owner_snapshot(
         jam_id=jam_id,
         entry_mode=entry_mode,
         bound_pick_key="",
+        ensemble=str(getattr(snap, "ensemble", "") or ""),
+        sealed_jam_snapshot=snap.to_dict(),
     )
 
 
@@ -2009,6 +2025,7 @@ def build_entry_jam_context(session: dict[str, Any]) -> BackingContext:
         groove = str(session.get("improv_groove") or style_meta.get("groove") or style).strip()
         bpm = int(session.get("improv_style_bpm") or style_meta.get("bpm") or 110)
         mood = str(session.get("improv_mood") or style_meta.get("mood") or "Mellow").strip()
+    _jam_blob_applied = False
     try:
         from music_workflow_state_store import get_active_workflow_pointer, get_workflow_blob
 
@@ -2019,6 +2036,7 @@ def build_entry_jam_context(session: dict[str, Any]) -> BackingContext:
             if blob is not None and int(getattr(blob, "tempo_bpm", 0) or 0) > 0:
                 bpm = int(blob.tempo_bpm)
             if blob is not None:
+                _jam_blob_applied = True
                 if str(blob.style or "").strip():
                     style = str(blob.style).strip()
                 if str(blob.mood or "").strip():
@@ -2027,17 +2045,42 @@ def build_entry_jam_context(session: dict[str, Any]) -> BackingContext:
                     groove = str(blob.groove).strip()
     except ImportError:
         pass
+    if not _jam_blob_applied and entry_mode == "Jam Session Generator":
+        # No workflow pointer (e.g. after a reload onto Backing): while Creative is not live, the jam on screen
+        # (the persisted Backing context) outranks the Generator widgets' transient defaults.
+        try:
+            from generated_workflow_artifact import creative_jam_controls_live, stored_entry_jam_context
 
-    groove_intensity = str(
-        session.get("improv_groove") or style_meta.get("groove") or style_meta.get("groove_intensity") or "Medium"
-    ).strip()
+            _stored = (
+                None if creative_jam_controls_live(session, "jam_session_generator")
+                else stored_entry_jam_context(session, "jam_session_generator")
+            )
+            if _stored is not None:
+                style = str(_stored.style or style)
+                mood = str(_stored.mood or mood)
+                bpm = int(_stored.bpm or bpm)
+        except ImportError:
+            pass
+
     from backing_musical_profile import normalize_backing_play_intensity
+    from generated_workflow_artifact import owner_jam_performance_settings
     from songs.playback_defaults import normalize_groove_label
 
-    difficulty = str(session.get("improv_difficulty") or style_meta.get("difficulty") or "Intermediate").strip()
-    groove_intensity = normalize_backing_play_intensity(groove_intensity, difficulty=difficulty)
+    # Each jam's own Groove intensity / Difficulty / Ensemble: the Generator no
+    # longer reads Style Jam's widgets, and Difficulty never replaces Intensity.
+    _jam_owner = "jam_session_generator" if entry_mode == "Jam Session Generator" else "style_jam"
+    _jam_perf = owner_jam_performance_settings(
+        session,
+        _jam_owner,
+        fallback_intensity=str(style_meta.get("groove_intensity") or style_meta.get("groove") or "")
+        if _jam_owner == "style_jam"
+        else "",
+        fallback_level=str(style_meta.get("difficulty") or "") if _jam_owner == "style_jam" else "",
+    )
+    difficulty = _jam_perf["level"]
+    groove_intensity = _jam_perf["intensity"]
     if _catalog_groove_label_leak(groove_intensity, style):
-        groove_intensity = normalize_backing_play_intensity("", difficulty=difficulty)
+        groove_intensity = normalize_backing_play_intensity("")
     rhythm_groove = _entry_jam_rhythm_groove_label(
         style,
         str(session.get("improv_groove") or groove if entry_mode == "Jam Session Generator" else session.get("improv_groove") or ""),
@@ -2196,6 +2239,7 @@ def build_entry_jam_context(session: dict[str, Any]) -> BackingContext:
         jam_id=jam_id,
         entry_mode=entry_mode,
         bound_pick_key="" if entry_mode in {"Style Jam Mode", "Jam Session Generator"} else pick_key,
+        ensemble=_jam_perf["ensemble"],
     )
 
 
@@ -2280,7 +2324,12 @@ def build_mission_context(session: dict[str, Any]) -> BackingContext:
         except ImportError:
             pass
     mission_id = str(session.get("improv_active_mission") or session.get("improv_mission_pick") or "").strip()
-    style_meta = session.get("improv_style_meta") if isinstance(session.get("improv_style_meta"), dict) else {}
+    try:
+        from mission_song_backing_style import mission_style_meta
+
+        style_meta = mission_style_meta(session)
+    except ImportError:
+        style_meta = session.get("improv_style_meta") if isinstance(session.get("improv_style_meta"), dict) else {}
 
     chords_flat = session.get("improv_mission_chord_options")
     idx = int(session.get("ii_selected_chord_index") or session.get("II_SELECTED_CHORD_INDEX") or 0)
@@ -6479,6 +6528,15 @@ def hydrate_backing_context_after_restore(session: dict[str, Any]) -> None:
             clear_backing_context(session)
             _stamp_style_jam_live_concert_key(session, preserved=preserved_style_jam_key)
             return
+    if ctx.source == "entry_jam":
+        try:
+            # The jam on Backing gets back its own record, pointer and sealed snapshot (full sections,
+            # identity, settings) before anything else restores Creative from older copies.
+            from generated_workflow_artifact import restore_generated_jam_from_backing_context
+
+            restore_generated_jam_from_backing_context(session)
+        except ImportError:
+            pass
     try:
         from backing_source_navigation import restore_session_widgets_from_backing_context
 
@@ -6566,6 +6624,14 @@ def reconcile_backing_context_on_backing_page(session: dict[str, Any], *, st_lik
         from creative_return_trace import emit_creative_return_trace
 
         emit_creative_return_trace(session, "RECONCILE_BACKING_PAGE_START")
+    except ImportError:
+        pass
+    try:
+        # A generated jam on Backing whose record / pointer / sealed snapshot did not survive a reload gets
+        # them back from its persisted context (fills only what is missing; idempotent).
+        from generated_workflow_artifact import restore_generated_jam_from_backing_context
+
+        restore_generated_jam_from_backing_context(session)
     except ImportError:
         pass
     try:

@@ -110,9 +110,29 @@ def legacy_session_id_for_owner(session: dict[str, Any], owner: str) -> str:
         stored = str(session.get("_style_jam_workflow_session_id") or "").strip()
         if stored:
             return stored
+        # Style Jam's own latest record names its session. The style control is a poor id: other tools write
+        # it (Song-Based Improvisation leaves "Song Default"), which started a second, stale Style Jam record.
+        try:
+            from jam_control_ownership import owner_record
+
+            rec = owner_record(session, "style_jam")
+            if rec is not None and str(getattr(rec, "workflow_session_id", "") or "").strip():
+                return str(rec.workflow_session_id).strip()
+        except ImportError:
+            pass
         record_legacy_field_read(session, "improv_style", adapter="session_id")
         return str(session.get("improv_style") or "style_jam").strip() or "style_jam"
     if owner == "jam_session_generator":
+        # The Generator's active workflow names its own session (as Style Jam's does). The legacy jam dict can
+        # be a stale Creative workspace copy after a reload (its "id" was once a style name, "Jazz swing").
+        try:
+            from music_workflow_state_store import get_active_workflow_pointer
+
+            ptr = get_active_workflow_pointer(session)
+            if ptr and str(ptr.workflow_owner or "") == "jam_session_generator" and str(ptr.workflow_session_id or "").strip():
+                return str(ptr.workflow_session_id).strip()
+        except ImportError:
+            pass
         record_legacy_field_read(session, "improv_jam_session", adapter="session_id")
         jam = session.get("improv_jam_session")
         if isinstance(jam, dict) and jam.get("id"):
@@ -217,7 +237,29 @@ def build_workflow_blob_from_legacy(session: dict[str, Any], owner: str) -> Work
             blob.section_map = {str(k): list(v) for k, v in gen.items() if isinstance(v, list)}
             blob.progression_owner = "improv_generated_sections"
         meta = session.get("improv_style_meta")
-        if isinstance(meta, dict):
+        # The style meta is shared: the Generator writes it too (entry_mode says whose it is). Another mode's
+        # meta never becomes Style Jam's mood / groove / tempo -- Style Jam's own controls are used instead.
+        meta_mode = str(meta.get("entry_mode") or "").strip() if isinstance(meta, dict) else ""
+        if isinstance(meta, dict) and meta_mode and "Style Jam" not in meta_mode:
+            blob.groove = str(session.get("improv_groove") or "").strip()
+            blob.mood = str(session.get("improv_mood") or "").strip()
+            try:
+                blob.tempo_bpm = int(session.get("improv_style_bpm") or 0)
+            except (TypeError, ValueError):
+                pass
+            blob.meter = str(session.get("improv_style_meter") or "4/4")
+        elif isinstance(meta, dict) and not meta_mode and session.get("improv_style_bpm"):
+            # A meta no mode stamped (the Mission / Song-Based song-default sync writes one while Backing plays the
+            # song) is not Style Jam's either: a Style Jam generated at 112 was rebuilt at the song's 100 / Auto
+            # after "back to the song" + reload. Style Jam's own controls win; the meta only fills what is missing.
+            blob.groove = str(session.get("improv_groove") or meta.get("groove") or "").strip()
+            blob.mood = str(session.get("improv_mood") or meta.get("mood") or "").strip()
+            try:
+                blob.tempo_bpm = int(session.get("improv_style_bpm") or 0)
+            except (TypeError, ValueError):
+                pass
+            blob.meter = str(session.get("improv_style_meter") or meta.get("meter") or "4/4")
+        elif isinstance(meta, dict):
             blob.groove = str(meta.get("groove") or "")
             blob.mood = str(meta.get("mood") or "")
             try:

@@ -795,6 +795,22 @@ def render_backing_creative_context_card(
     ]
     if groove_display and groove_display.lower() not in {style_label.lower(), mood.lower()}:
         badges.append(_semantic_themed_badge("groove", "Groove", groove_display, groove_class))
+    if ctx.source == "entry_jam":
+        # Engine 2.0: the jam's Groove intensity and the band the engine actually renders.
+        badges.append(_semantic_themed_badge("groove", "Intensity", groove_intensity, groove_class))
+        try:
+            from backing_performance_plan import band_summary, performance_plan_for_backing_context
+            from songs.playback_defaults import normalize_groove_label
+
+            _band = band_summary(
+                performance_plan_for_backing_context(
+                    ctx, style=normalize_groove_label(str(live_groove or applied_groove or ctx.style or ""))
+                )
+            )
+            if _band:
+                badges.append(_themed_badge("👥", "Band", _band, "badge-meta"))
+        except Exception:
+            pass
     badges.extend([
         _semantic_themed_badge("level", "Jam level", level_label(difficulty), "badge-groove"),
         _semantic_themed_badge("concert_key", "Concert key", concert, "badge-key"),

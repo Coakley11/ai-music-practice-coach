@@ -10,6 +10,8 @@ StyleSource = Literal["song_metadata", "explicit_user_override", "fallback"]
 MISSION_JAM_STYLE_OVERRIDE_KEY = "mission_jam_style_user_override"
 MISSION_JAM_STYLE_RESOLUTION_KEY = "_mission_jam_style_resolution"
 MISSION_JAM_STYLE_PICK_KEY = "_mission_jam_style_bound_pick_key"
+# The song-default style meta for the Mission, kept apart when Style Jam's own meta is not overwritten.
+MISSION_STYLE_META_KEY = "_mission_jam_style_meta"
 
 NEUTRAL_FALLBACK_STYLE = "Song Default"
 NEUTRAL_FALLBACK_GROOVE = "Auto"
@@ -191,7 +193,42 @@ def use_song_style_for_mission_jam(session: dict[str, Any]) -> MissionJamStyleRe
     return sync_mission_style_from_song(session, force=True)
 
 
+STYLE_JAM_CONTROL_KEYS = ("improv_style", "improv_style_bpm", "improv_groove", "improv_style_meter")
+GENERATOR_CONTROL_KEYS = ("improv_jam_style",)
+BACKING_FEEL_KEYS = ("backing_groove_style", "backing_time_signature")
+
+
+def established_jam_controls(session: dict[str, Any]) -> set[str]:
+    """Controls the Mission / Song-Based song-default sync must leave alone: those of a jam that holds its own
+    generated progression, and Backing's Feel / meter while Backing is playing a jam."""
+    keys: set[str] = set()
+    try:
+        from improvisation_intelligence import is_style_jam_section_map
+
+        if is_style_jam_section_map(session.get("improv_generated_sections")):
+            keys.update(STYLE_JAM_CONTROL_KEYS)
+            # The meta is shared (Song-Based / the Generator write it too): only Style Jam's own is kept.
+            meta = session.get("improv_style_meta")
+            if isinstance(meta, dict) and "Style Jam" in str(meta.get("entry_mode") or ""):
+                keys.add("improv_style_meta")
+    except ImportError:
+        pass
+    jam = session.get("improv_jam_session")
+    if isinstance(jam, dict) and isinstance(jam.get("sections"), dict) and jam.get("sections"):
+        keys.update(GENERATOR_CONTROL_KEYS)
+    try:
+        from backing_context import get_backing_context
+
+        ctx = get_backing_context(session)
+        if ctx is not None and str(getattr(ctx, "source", "") or "") == "entry_jam":
+            keys.update(BACKING_FEEL_KEYS)
+    except ImportError:
+        pass
+    return keys
+
+
 def sync_mission_style_from_song(session: dict[str, Any], *, force: bool = False) -> MissionJamStyleResolution:
+    session.pop(MISSION_STYLE_META_KEY, None)
     resolved = resolve_mission_jam_backing_style(session)
     session[MISSION_JAM_STYLE_RESOLUTION_KEY] = resolved.to_dict()
     if resolved.source == "explicit_user_override" and not force:
@@ -218,17 +255,26 @@ def sync_mission_style_from_song(session: dict[str, Any], *, force: bool = False
             pass
 
     session[MISSION_JAM_STYLE_PICK_KEY] = resolved.pick_key
+    # The song's defaults seed jam controls nobody has used yet. A jam that holds its own generated
+    # progression keeps the settings it was made with (Style Jam generated at 112 came back at the song's 100
+    # after a reload). The Mission still reads the song's values (mission_style_meta).
+    spared = set() if force else established_jam_controls(session)
+
+    def _write(key: str, value: Any) -> None:
+        if key not in spared:
+            session[key] = value
+
     if resolved.groove:
-        session["improv_groove"] = resolved.groove
-        session["backing_groove_style"] = resolved.groove
+        _write("improv_groove", resolved.groove)
+        _write("backing_groove_style", resolved.groove)
     if resolved.style:
-        session["improv_style"] = resolved.style
-        session["improv_jam_style"] = resolved.style
+        _write("improv_style", resolved.style)
+        _write("improv_jam_style", resolved.style)
     if resolved.bpm is not None:
-        session["improv_style_bpm"] = int(resolved.bpm)
+        _write("improv_style_bpm", int(resolved.bpm))
     if resolved.meter:
-        session["improv_style_meter"] = resolved.meter
-        session["backing_time_signature"] = resolved.meter
+        _write("improv_style_meter", resolved.meter)
+        _write("backing_time_signature", resolved.meter)
 
     meta = session.get("improv_style_meta")
     if not isinstance(meta, dict):
@@ -242,8 +288,21 @@ def sync_mission_style_from_song(session: dict[str, Any], *, force: bool = False
         meta["style"] = resolved.style
     if resolved.meter:
         meta["meter"] = resolved.meter
-    session["improv_style_meta"] = meta
+    if "improv_style_meta" in spared:
+        # Style Jam's own meta (its jam's tempo / groove) stays; the Mission reads the song's from its copy.
+        session[MISSION_STYLE_META_KEY] = meta
+    else:
+        session["improv_style_meta"] = meta
     return resolved
+
+
+def mission_style_meta(session: dict[str, Any]) -> dict[str, Any]:
+    """The style meta a Mission reads: the song-default copy when Style Jam's own meta was left alone."""
+    own = session.get(MISSION_STYLE_META_KEY)
+    if isinstance(own, dict):
+        return own
+    meta = session.get("improv_style_meta")
+    return meta if isinstance(meta, dict) else {}
 
 
 def on_mission_song_pick_changed(session: dict[str, Any]) -> None:
@@ -262,6 +321,8 @@ __all__ = [
     "NEUTRAL_FALLBACK_STYLE",
     "MissionJamStyleResolution",
     "clear_mission_jam_style_user_override",
+    "established_jam_controls",
+    "mission_style_meta",
     "on_mission_song_pick_changed",
     "resolve_mission_jam_backing_style",
     "set_mission_jam_style_user_override",

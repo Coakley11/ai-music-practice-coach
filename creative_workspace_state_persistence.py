@@ -303,6 +303,23 @@ def project_creative_workspace_to_session(session: dict[str, Any], *, overwrite:
         val = meta[key]
         if key == CREATIVE_SESSION_KEY and isinstance(val, dict):
             val = _sanitize_creative_session_for_projection(val)
+        try:
+            from creative_context_snapshot_persistence import leaked_style_jam_copy_key
+
+            # A saved copy holding another source's chords as Style Jam's: none of its Style Jam values apply.
+            if leaked_style_jam_copy_key(session, key, val):
+                continue
+        except ImportError:
+            pass
+        if key in session and session.get(key):
+            try:
+                from creative_context_snapshot_persistence import _jam_record_owns_context_key
+
+                # A jam's own record outranks the older saved Creative copy of that jam.
+                if _jam_record_owns_context_key(session, key, val):
+                    continue
+            except ImportError:
+                pass
         if overwrite or key not in session:
             session[key] = copy.deepcopy(val)
 

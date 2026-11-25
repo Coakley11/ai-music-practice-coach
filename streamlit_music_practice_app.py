@@ -1,5 +1,14 @@
 # VERSION: v49_global_transpose_key
 
+# SECURITY (2026-11-23): first, before any app module. After an in-place Streamlit Cloud pull the process can
+# still hold the previous release's auth modules; this loads the current ones (see suite_security_module_refresh).
+try:
+    import suite_security_module_refresh as _suite_security_module_refresh
+
+    _suite_security_module_refresh.refresh_pre_fix_modules()
+except Exception:  # never block start-up
+    pass
+
 import sys
 
 try:
@@ -4748,7 +4757,9 @@ def _on_backing_strings_change() -> None:
         pass
 
 
-def _backing_arrangement_tag(strings: bool | None = None) -> str:
+def _backing_arrangement_tag(strings: bool | None = None, performance=None) -> str:
+    """The renderer identity of a take. A generated jam's performance plan is part of it, so a
+    different mood / intensity / difficulty / band is a different take, never a replayed one."""
     if strings is None:
         strings = _backing_strings_on()
     from backing_audio import drum_renderer_tag
@@ -4758,7 +4769,18 @@ def _backing_arrangement_tag(strings: bool | None = None) -> str:
     from backing_rock_guitar import guitar_renderer_tag
 
     return (_BACKING_RENDERER_TAG + drum_renderer_tag() + piano_renderer_tag() + bass_renderer_tag() + guitar_renderer_tag()
-            + loudness_renderer_tag() + ("+strings" if strings else ""))
+            + loudness_renderer_tag() + ("+strings" if strings else "")
+            + (performance.tag() if performance is not None else ""))
+
+
+def _jam_performance_plan_for(ctx, style):
+    """A generated jam's PerformancePlan for the take about to be built (None for every song)."""
+    try:
+        from backing_performance_plan import performance_plan_for_backing_context
+
+        return performance_plan_for_backing_context(ctx, style=str(style or ""))
+    except Exception:
+        return None
 
 
 def _cached_backing_wav(
@@ -4776,6 +4798,7 @@ def _cached_backing_wav(
     intensity: str = "",
     musical_profile=None,
     strings: bool = False,
+    performance=None,
 ) -> tuple[bytes, bool]:
     cached = _BACKING_WAV_CACHE.get(signature)
     if cached is not None:
@@ -4793,6 +4816,7 @@ def _cached_backing_wav(
         intensity=intensity,
         musical_profile=musical_profile,
         strings=strings,
+        performance=performance,
     )
     _BACKING_WAV_CACHE[signature] = wav
     _evict_oldest(_BACKING_WAV_CACHE)
@@ -4984,6 +5008,7 @@ def _cached_backing_wav_nonblocking(
     strings: bool = False,
     take_request=None,
     install_when_done: bool = False,
+    performance=None,
 ) -> tuple[bytes | None, str]:
     """Prefetch-only variant of ``_cached_backing_wav``: never blocks.
 
@@ -5026,6 +5051,7 @@ def _cached_backing_wav_nonblocking(
             intensity=intensity,
             musical_profile=musical_profile,
             strings=strings,
+            performance=performance,
         )
         fut._backing_take_request = take_request
         _BACKING_WAV_FUTURES[signature] = fut
@@ -18638,7 +18664,21 @@ else:
                 resolve_backing_pk_control_owner,
             )
 
-            if resolve_backing_pk_control_owner(st.session_state) == OWNER_STYLE_JAM:
+            try:
+                from jam_control_ownership import GENERATOR as _GEN, current_jam_owner
+
+                # On Creative with the Generator on screen, improv_jam_key is its own control (a chosen Eb),
+                # not a remount leftover: Style Jam's key never goes into the sidebar then.
+                _generator_on_screen = bool(
+                    str(st.session_state.get("studio_page") or "").strip().lower() == "creative"
+                    and current_jam_owner(st.session_state) == _GEN
+                )
+            except ImportError:
+                _generator_on_screen = False
+            if (
+                resolve_backing_pk_control_owner(st.session_state) == OWNER_STYLE_JAM
+                and not _generator_on_screen
+            ):
                 _sj_pk = str(canonical_concert_key_for_owner(st.session_state) or "").strip()
                 _leftover_jam = str(st.session_state.get("improv_jam_key") or "").strip()
                 if (
@@ -23597,6 +23637,9 @@ elif _studio_page == "backing":
         _backing_gen_mood = ""
         _backing_gen_intensity = ""
         _backing_profile_sig = ()
+    # Backing Engine 2.0: a generated jam's band plays its own Mood / Groove intensity /
+    # Difficulty / Ensemble. Songs get None and render exactly as before.
+    _backing_performance = _jam_performance_plan_for(_creative_backing_ctx, resolved_groove)
     _humanize_level = "Strong"
     _preserve_exact_timing = bool(st.session_state.get(BACKING_PRESERVE_EXACT_KEY, False))
     _humanize_song_data = song_data
@@ -23830,7 +23873,7 @@ elif _studio_page == "backing":
             int(_chord_n),
             int(_kc_short_bars),
             _backing_chord_digest(_backing_digest_sections, _audio_signature_key, selected_section_names),
-            _backing_arrangement_tag(),
+            _backing_arrangement_tag(performance=_backing_performance),
         )
 
     render_scroll_anchor_marker(st, ANCHOR_BACKING_MAIN_CONTROLS)
@@ -23900,6 +23943,7 @@ elif _studio_page == "backing":
         _backing_profile_sig = profile_cache_tuple(_backing_gen_profile)
     except Exception:
         pass
+    _backing_performance = _jam_performance_plan_for(_creative_backing_ctx, resolved_groove)
     _status_bpm = int(bpm or 0)
     try:
         from backing_play_session import current_backing_play_bpm as _fill_play_bpm
@@ -25117,6 +25161,7 @@ elif _studio_page == "backing":
                             musical_profile=_backing_gen_profile,
                             strings=_backing_strings_on(),
                             take_request=_take_request,
+                            performance=_backing_performance,
                         )
                         if _wav_status in ("started", "pending") and _prior_wav_present:
                             # Only go async when there is already audio loaded: the
@@ -25782,6 +25827,7 @@ elif _studio_page == "backing":
                     "mood": _backing_gen_mood,
                     "intensity": _backing_gen_intensity,
                     "musical_profile": _backing_gen_profile,
+                    "performance": _backing_performance,
                     "humanize_song": _humanize_song_data,
                     "strings": _backing_strings_on(),
                     "gen": arm_key_cycle_prefetch(st.session_state),
@@ -25925,7 +25971,7 @@ elif _studio_page == "backing":
                                 and _ck[9] == snap.get("preserve")
                                 and _ck[10] == snap.get("profile_sig")
                                 and _ck[-2] == _pf_digest
-                                and _ck[-1] == _backing_arrangement_tag(bool(snap.get("strings")))
+                                and _ck[-1] == _backing_arrangement_tag(bool(snap.get("strings")), snap.get("performance"))
                             ):
                                 _have = True
                                 _hit_sig = _ck
@@ -26245,7 +26291,7 @@ elif _studio_page == "backing":
                         int(len(_ch or ())),
                         int(_pf_short),
                         _backing_chord_digest(_secs, tgt, snap["section_names"]),
-                        _backing_arrangement_tag(bool(snap.get("strings"))),
+                        _backing_arrangement_tag(bool(snap.get("strings")), snap.get("performance")),
                     )
                     def _kc_push_next_buffer() -> None:
                         try:
@@ -26361,6 +26407,7 @@ elif _studio_page == "backing":
                         strings=bool(snap.get("strings")),
                         take_request=snap.get("take_request"),
                         install_when_done=True,
+                        performance=snap.get("performance"),
                     )
                     if _wav_status in ("started", "pending"):
                         return
