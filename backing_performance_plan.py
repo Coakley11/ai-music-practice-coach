@@ -301,6 +301,10 @@ def resolve_performance_plan(
         spec = ENSEMBLES[ens_n]
         roles = list(spec.roles)
         missing = list(spec.missing)
+        if "horns" in missing and _horns_playable():
+            # MUSIC_HORNS: the recorded tenor sax plays the quartet's horn part; never claimed without it.
+            missing.remove("horns")
+            roles.append("horns")
     else:
         roles = ["keys", "bass", "drums"]
         missing = []
@@ -319,10 +323,20 @@ def resolve_performance_plan(
             perf[role] = _merge(perf[role], change)
     return PerformancePlan(
         style=str(style), mood=mood_n, intensity=inten_n, level=level_n, ensemble=ens_n,
-        roles=tuple(r for r in ("keys", "guitar", "bass", "drums") if r in roles),
+        roles=tuple(r for r in ("keys", "guitar", "horns", "bass", "drums") if r in roles),
         keys=perf["keys"], bass=perf["bass"], drums=perf["drums"], guitar=perf["guitar"],
         unavailable=tuple(missing), fallbacks=tuple(fallbacks),
     )
+
+
+def _horns_playable() -> bool:
+    """The horn part has working audio: ``MUSIC_HORNS`` is on and the tenor sax pack is present."""
+    try:
+        import backing_horns as _bh
+
+        return bool(_bh.enabled()) and (_bh.HORN_PACK / "manifest.json").is_file()
+    except ImportError:
+        return False
 
 
 # Rollback switch for the jam wiring (slice 2). Generated jams use their plan unless this is set to
@@ -360,7 +374,7 @@ def performance_plan_for_backing_context(ctx: Any, *, style: str) -> Performance
     )
 
 
-_ROLE_NAMES = {"keys": "piano", "guitar": "guitar", "bass": "bass", "drums": "drums"}
+_ROLE_NAMES = {"keys": "piano", "guitar": "guitar", "bass": "bass", "drums": "drums", "horns": "tenor sax"}
 _MISSING_NAMES = {"horns": "horns", "percussion": "Latin percussion", "guitar": "guitar"}
 
 

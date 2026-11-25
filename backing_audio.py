@@ -3346,6 +3346,7 @@ def synthesize_chords_to_numpy(
             guitar_bus = guitar_bus * float(np.clip(_ROCK_GUITAR_BALANCE * _rhythm_rms / _guitar_rms, 0.05, 20.0))
     if plan is not None and not plan.plays("keys"):
         keys_bus[:] = 0.0  # a band without keys (a Rock trio): the comping lays out entirely
+    horns_bus = _horn_background(plan, chord_list, bar, pulse, pulses_per_bar, sr, len(audio), _rhythm_rms)
     LAST_MIX_STATS.clear()
     LAST_MIX_STATS.update(
         rhythm_rms=float(np.sqrt(np.mean(audio ** 2))),
@@ -3353,7 +3354,9 @@ def synthesize_chords_to_numpy(
         strings_rms=float(np.sqrt(np.mean(strings_bus ** 2))) if strings_bus is not None else 0.0,
         guitar_rms=float(np.sqrt(np.mean(guitar_bus ** 2))) if guitar_bus is not None else 0.0,
     )
-    want = {"rhythm", "keys", "strings", "guitar"} if layers is None else set(layers)
+    if horns_bus is not None:
+        LAST_MIX_STATS["horns_rms"] = float(np.sqrt(np.mean(horns_bus ** 2)))
+    want = {"rhythm", "keys", "strings", "guitar", "horns"} if layers is None else set(layers)
     if "rhythm" not in want:
         audio[:] = 0.0
     if "keys" in want:
@@ -3362,6 +3365,8 @@ def synthesize_chords_to_numpy(
         audio += guitar_bus
     if strings_bus is not None and "strings" in want:
         audio += strings_bus
+    if horns_bus is not None and "horns" in want:
+        audio += horns_bus
     audio = np.tanh(audio)
     import backing_loudness as _loud
 
@@ -3372,6 +3377,43 @@ def synthesize_chords_to_numpy(
         return audio, sr
     audio = audio / (np.max(np.abs(audio)) + 1e-9) * 0.86
     return audio, sr
+
+
+# The horn section sits under the rhythm section and the piano: a background, never the lead.
+HORNS_BALANCE = 0.42
+
+
+def _horn_background(plan, chord_list, bar, pulse, pulses_per_bar, sr, n, rhythm_rms):
+    """The tenor sax's guide-tone background for a plan that plays horns (``MUSIC_HORNS``), else None.
+
+    Built from the take's own bars (each bar starts at ``idx * bar``, its chords from ``_sounding_segments``),
+    so the line follows the form, repeats and pushes exactly as the band does.
+    """
+    if plan is None or not plan.plays("horns"):
+        return None
+    import backing_horns as _bh
+
+    if not _bh.enabled():
+        return None
+    spans = []
+    for idx, event in enumerate(chord_list):
+        for s0, e0, ch in _sounding_segments(str(event.get("chord") or ""), pulses_per_bar):
+            if ch and e0 > s0:
+                spans.append(_bh.ChordSpan(chord=str(ch), start_sec=idx * bar + s0 * pulse,
+                                           dur_sec=(e0 - s0) * pulse, beats=float(e0 - s0)))
+    if not spans:
+        return None
+    velocity = {"Light": 0.45, "Medium": 0.6, "Heavy": 0.75}.get(str(plan.intensity), 0.6)
+    notes = _bh.sustained_background(spans, voices=1, beats_per_bar=pulses_per_bar, velocity=velocity)
+    line = _bh.render_line(notes, sr, gain=1.0, seconds=n / sr, seed="horns")
+    if line is None:
+        return None
+    bus = np.zeros(n, dtype=np.float64)
+    bus[: min(n, len(line))] = line[:n]
+    horns_rms = float(np.sqrt(np.mean(bus ** 2)))
+    if rhythm_rms > 1e-6 and horns_rms > 1e-6:
+        bus *= float(np.clip(HORNS_BALANCE * rhythm_rms / horns_rms, 0.05, 50.0))
+    return bus
 
 
 def pcm16_wav_bytes_from_float(audio, sr=44100):

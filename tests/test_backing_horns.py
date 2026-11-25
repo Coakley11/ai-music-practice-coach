@@ -48,15 +48,17 @@ def test_switch_on_values(monkeypatch, value):
     assert bh.horns_renderer_tag() == "+horns-tenor1"
 
 
-def test_engine_and_ensembles_do_not_use_the_horns():
-    """This slice adds an instrument; no existing render, renderer list or ensemble changes."""
+def test_with_the_switch_off_no_ensemble_plays_horns(monkeypatch):
+    """Off: the quartet still names its horn as not available; no ensemble claims horns."""
     import backing_performance_plan as pp
 
-    for name in ("backing_audio.py", "backing_performance_plan.py", "backing_sound_status.py"):
-        assert "backing_horns" not in (ROOT / name).read_text(encoding="utf-8")
+    monkeypatch.delenv("MUSIC_HORNS", raising=False)
     assert "horns" not in pp.RENDERABLE_ROLES
     assert "horns" in pp.ENSEMBLES["Jazz quartet"].missing
     assert all("horns" not in spec.roles for spec in pp.ENSEMBLES.values())
+    plan = pp.resolve_performance_plan(style="Jazz swing", ensemble="Jazz quartet")
+    assert not plan.plays("horns") and "horns" in plan.unavailable
+    assert "horns not available yet" in pp.band_summary(plan)
 
 
 # --- The pack ---------------------------------------------------------------------------------------
