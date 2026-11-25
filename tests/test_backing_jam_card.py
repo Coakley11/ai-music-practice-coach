@@ -113,7 +113,8 @@ def test_the_css_only_touches_the_jam_cards():
         rule = rule.strip()
         if rule.startswith("@"):
             continue
-        for sel in re.split(r",(?![^()]*))", rule):
+        rule = re.sub(r":where\(.*\)", "", rule)
+        for sel in rule.split(","):
             sel = sel.strip()
             assert "jam_card_backing" in sel or sel.startswith(('[class*="st-key-jam_card_', ".st-key-jam_card_")), sel
     assert art.STYLE_JAM_CARD + "{" not in body  # Creative's own cards keep their own rules
