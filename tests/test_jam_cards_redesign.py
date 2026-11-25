@@ -29,7 +29,7 @@ JAM_WIDGETS_BEFORE: dict[str, tuple] = {
     "improv_groove": ("selectbox", ("'Groove intensity'", "list(GROOVE_INTENSITY)"), (("key", "'improv_groove'"), ("on_change", "on_improv_style_jam_setting_change"), ("persist_state", "'session'"))),
     "improv_style_prompt": ("text_input", ("'Describe your jam (optional)'",), (("key", "'improv_style_prompt'"), ("placeholder", "'e.g. medium jazz-funk progression in D minor'"))),
     "improv_gen_style": ("button", ("'Generate progression'",), (("args", "(session_state,)"), ("key", "'improv_gen_style'"), ("on_click", "_queue_style_jam_generation_intent"), ("type", "'primary'"))),
-    "improv_ensemble": ("selectbox", ("'Ensemble'", "list(JAM_ENSEMBLES)"), (("key", "'improv_ensemble'"), ("on_change", "on_improv_jam_setting_change"), ("persist_state", "'session'"))),
+    "improv_ensemble": ("selectbox", ("'Ensemble'", "list(jam_ensembles())"), (("key", "'improv_ensemble'"), ("on_change", "on_improv_jam_setting_change"), ("persist_state", "'session'"))),
     "improv_jam_style": ("selectbox", ("'Groove style'", "list(STYLE_JAM_STYLES)"), (("key", "'improv_jam_style'"), ("on_change", "on_improv_jam_setting_change"), ("persist_state", "'session'"))),
     "improv_jam_difficulty": ("selectbox", ("'Difficulty'", "list(DIFFICULTY_LEVELS)"), (("format_func", "level_label"), ("key", "'improv_jam_difficulty'"), ("on_change", "on_improv_jam_setting_change"), ("persist_state", "'session'"))),
     "improv_jam_key": ("selectbox", ("'Concert Key'", "_jam_key_opts"), (("format_func", "display_key_label"), ("key", "'improv_jam_key'"), ("on_change", "on_improv_jam_key_change"), ("persist_state", "'session'"))),
@@ -131,7 +131,7 @@ class StyleJamCardTests(unittest.TestCase):
 
 class GeneratorCardTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.src = _branch_source('from jam_control_ownership import JAM_ENSEMBLES, seed_jam_controls_before_mount', "")
+        self.src = _branch_source('from jam_control_ownership import jam_ensembles, seed_jam_controls_before_mount', "")
 
     def test_the_card_band_and_groups_are_keyed_containers(self) -> None:
         self.assertIn("st.container(key=jam_art.GENERATOR_CARD)", self.src)
