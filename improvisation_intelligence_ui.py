@@ -2041,6 +2041,12 @@ def _tab_entry_modes(
                     on_change=on_improv_style_jam_setting_change,
                 )
                 try:
+                    from creative_key_sync import seed_style_concert_widget_before_mount
+
+                    seed_style_concert_widget_before_mount(session_state)  # a never-keyed jam shows the key it plays in
+                except ImportError:
+                    pass
+                try:
                     from music_theory import display_key_label
 
                     _style_key_opts = creative_complete_concert_key_options(

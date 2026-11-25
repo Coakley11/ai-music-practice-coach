@@ -539,3 +539,42 @@ class SavedLeakNeverReplacesStyleJamTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class NeverKeyedStyleJamShowsItsKeyTests(unittest.TestCase):
+    """Browser 2026-11-24 (Composition song in D): a never-keyed Style Jam's control showed the start-up G and generated in
+    G, while its progression's Practice-key line and Backing played D. The control now shows the key it will play in."""
+
+    def _fresh(self):
+        return {"improv_entry_mode": "Style Jam Mode", "improv_style_key": "G", "_pending_display_key": "D"}
+
+    def test_a_never_keyed_style_jam_shows_the_key_it_plays_in(self):
+        from backing_practice_key_control import style_jam_authoritative_concert_key
+        from creative_key_sync import seed_style_concert_widget_before_mount
+
+        s = self._fresh()
+        self.assertEqual(style_jam_authoritative_concert_key(s), "D")
+        self.assertEqual(seed_style_concert_widget_before_mount(s), "D")
+        self.assertEqual(s["improv_style_key"], "D")
+        self.assertEqual(style_jam_authoritative_concert_key(s), "D")  # the control and the authority now agree
+
+    def test_a_generated_style_jam_keeps_its_key(self):
+        from creative_key_sync import seed_style_concert_widget_before_mount
+
+        s = dict(self._fresh(), improv_generated_sections={"A (Bossa Nova)": ["Am7", "D7", "Gmaj7"]})
+        self.assertEqual(seed_style_concert_widget_before_mount(s), "G")
+
+    def test_a_key_the_musician_picked_is_never_replaced(self):
+        from creative_key_sync import seed_style_concert_widget_before_mount
+        from sbi_lane_practice_key import _jam_workflow_pick
+        from songs.practice_key_state import set_practice_concert_key
+
+        s = dict(self._fresh(), improv_style_key="F")
+        self.assertEqual(seed_style_concert_widget_before_mount(s), "F")  # not a start-up default
+        s = self._fresh()
+        set_practice_concert_key(s, "G", pick_key=_jam_workflow_pick("style_jam"))  # G chosen on purpose
+        self.assertEqual(seed_style_concert_widget_before_mount(s), "G")
+
+    def test_the_seed_runs_before_the_control_mounts(self):
+        src = (ROOT / "improvisation_intelligence_ui.py").read_text(encoding="utf-8")
+        self.assertLess(src.index("seed_style_concert_widget_before_mount(session_state)"), src.index('key="improv_style_key"'))
