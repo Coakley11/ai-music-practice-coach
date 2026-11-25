@@ -342,6 +342,9 @@ def test_lineup_names_each_horn_the_engine_plays(monkeypatch):
     monkeypatch.setattr(pp, "resolve_performance_plan", lambda **k: playing)
     names = [n for _, n in jca.ensemble_lineup("Test quintet", "Jazz Swing")[0]]
     assert names == ["Keys", "Trumpet", "Tenor sax", "Bass", "Drums"]
+    monkeypatch.setitem(pp.ENSEMBLES, "Jazz quintet", spec)
+    names = [n for _, n in jca.ensemble_lineup("Jazz quintet", "Jazz Swing")[0]]
+    assert names == ["Piano", "Trumpet", "Tenor sax", "Upright bass", "Drums"]  # the jazz wording, like the trio
     html = jca.lineup_html("Test quintet", "Jazz Swing")
     assert "Trumpet" in html and "Tenor sax" in html and "Not in the backing yet" not in html
     silent = types.SimpleNamespace(roles=("keys", "bass", "drums"), unavailable=("horns",), horns=())

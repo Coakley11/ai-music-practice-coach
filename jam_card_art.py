@@ -57,6 +57,7 @@ _HORN_LABELS: dict[str, tuple[str, str]] = {
 _ROLE_NAMES_BY_ENSEMBLE: dict[str, dict[str, str]] = {
     "Jazz trio": {"keys": "Piano", "bass": "Upright bass"},
     "Jazz quartet": {"keys": "Piano", "bass": "Upright bass", "horns": "Sax / trumpet"},
+    "Jazz quintet": {"keys": "Piano", "bass": "Upright bass", "horns": "Trumpet & tenor sax"},
     "Rock trio": {"guitar": "Electric guitar"},
     "Latin quartet": {"keys": "Piano", "percussion": "Congas / timbales"},
 }
