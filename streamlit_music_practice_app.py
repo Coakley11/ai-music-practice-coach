@@ -18853,7 +18853,15 @@ def _on_backing_filter_change() -> None:
         if transport_intent(st.session_state) != "playing":
             # A prior Play's remount marker cannot suppress a stopped/paused edit.
             st.session_state.pop("_kc_settings_applied_this_play", None)
+        _kc_noise = False
         if st.session_state.get("_kc_settings_applied_this_play"):
+            from backing_key_cycle import settings_change_is_remount_noise
+
+            _kc_noise = settings_change_is_remount_noise(st.session_state)
+            if not _kc_noise:
+                # The musician's own edit. Undoing it put the previous groove / tempo back moments later.
+                st.session_state.pop("_kc_settings_applied_this_play", None)
+        if _kc_noise:
             try:
                 _canon = canonical_backing_filters(st.session_state) or {}
                 _cg = normalize_backing_groove(_canon.get("backing_groove_style"))
@@ -24885,7 +24893,11 @@ elif _studio_page == "backing":
         try:
             from backing_key_cycle import arm_key_cycle_for_explicit_play
 
-            arm_key_cycle_for_explicit_play(st.session_state)
+            # A take that finished building in the background (a new setting, a cold key) is not a Play press:
+            # the cycle goes on at its current key. Only Play itself starts again from the first key.
+            arm_key_cycle_for_explicit_play(
+                st.session_state, keep_position=bool(_async_wav_ready and not _play_clicked)
+            )
         except Exception:
             st.session_state.pop("_backing_transport_user_stopped", None)
             st.session_state.pop("_kc_hard_stop", None)
@@ -27815,9 +27827,9 @@ elif _studio_page == "backing":
             pass
 
     if _bk_melody_mode == _BK_MODE_PRACTICE and _pmb_melody is not None:
-        with st.expander(
-            f"{FEATURE_ICONS['backing']} Practice Melody", expanded=True
-        ):
+        from melody_panel_visibility import PRACTICE as _PMB_PANEL, melody_expander as _pmb_expander
+
+        with _pmb_expander(st, f"{FEATURE_ICONS['backing']} Practice Melody", _PMB_PANEL, _pmb_song_identity):
             # Section-Focus-scoped display (Slice F1): if Backing is looping
             # specific section(s), show the matching melody section(s) --
             # the same structured sections from Slice A, never a second
@@ -27980,9 +27992,13 @@ elif _studio_page == "backing":
             from composition_songs_bridge import composition_section_lyrics_alignment as _bk_lyrics_alignment
 
             _bk_align_by_sec = _bk_lyrics_alignment(_bk_comp_doc)
-        with st.expander(
+        from melody_panel_visibility import ORIGINAL as _BK_OM_PANEL, melody_expander as _bk_om_expander
+
+        with _bk_om_expander(
+            st,
             feature_label("practice_melody_original", "Original Melody"),
-            expanded=True,
+            _BK_OM_PANEL,
+            f"{_bk_om_source}::{song}",
         ):
             st.caption(
                 f"The {'composed' if _bk_om_source == 'composition' else 'original'} melody for **{song}** · "

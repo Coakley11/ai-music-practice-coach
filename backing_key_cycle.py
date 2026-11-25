@@ -10,6 +10,7 @@ plus the temporary-cycle-session correction:
 
 from __future__ import annotations
 
+import time
 from copy import deepcopy
 from typing import Any
 
@@ -1416,13 +1417,9 @@ def reanchor_key_cycle_from_practice_key(
     old_base = str(old.get("base_practice_key") or "").strip()
     old_start = str(old.get("start_cycle_key") or "").strip()
     old_cur = str(old.get("current_playback_key") or "").strip()
-    already = (
-        _keys_equivalent(old_base, base)
-        and _keys_equivalent(old_start, base)
-        and _keys_equivalent(old_cur, base)
-        and int(old.get("offset_semitones") or 0) == 0
-    )
-    if already:
+    # Only a CHANGE of the Practice Key restarts the sequence. The same key committed again (a remounted control,
+    # an instrument or spelling change, a restore) used to send a running cycle back to its first key.
+    if _keys_equivalent(old_base, base) and (not old_start or _keys_equivalent(old_start, base)):
         return old
 
     mag = normalize_cycle_interval(old.get("interval"))
@@ -2132,7 +2129,36 @@ def clear_settings_pending_if_arrangement_applied(
                 sig
             )
     session["_kc_settings_applied_this_play"] = True
+    session["_kc_settings_applied_at"] = time.time()
     return True
+
+
+# How long after a take was installed its redrawn controls may still report their start-up value.
+_REMOUNT_NOISE_SECONDS = 8.0
+
+
+def settings_change_is_remount_noise(session: dict[str, Any]) -> bool:
+    """True when a Backing control's change is the redrawn control, not the musician.
+
+    Right after Play installs a changed arrangement, a redrawn Feel control can report the song's default
+    (Pop) over the chosen one (Blues). Only exactly that counts: the default groove, over a different chosen
+    groove, within moments of the install. Any other groove, a tempo, loops or scope change is the musician's
+    and is kept.
+    """
+    if not session.get("_kc_settings_applied_this_play"):
+        return False
+    try:
+        if time.time() - float(session.get("_kc_settings_applied_at") or 0) > _REMOUNT_NOISE_SECONDS:
+            return False
+        from backing_context import backing_page_transport_defaults
+        from backing_track_state import canonical_backing_filters, normalize_backing_groove
+
+        shown = normalize_backing_groove(session.get("backing_groove_style"))
+        chosen = normalize_backing_groove((canonical_backing_filters(session) or {}).get("backing_groove_style"))
+        default = normalize_backing_groove(backing_page_transport_defaults(session)[1])
+    except Exception:
+        return False
+    return bool(shown and chosen and shown != chosen and shown == default)
 
 
 def note_key_cycle_arrangement_settings_changed(session: dict[str, Any]) -> None:
@@ -3957,8 +3983,13 @@ def resume_key_cycle(session: dict[str, Any]) -> dict[str, Any] | None:
     return data
 
 
-def arm_key_cycle_for_explicit_play(session: dict[str, Any]) -> dict[str, Any] | None:
+def arm_key_cycle_for_explicit_play(
+    session: dict[str, Any], *, keep_position: bool = False
+) -> dict[str, Any] | None:
     """Play Backing Track with cycling On: fresh cycle at the FIRST key.
+
+    ``keep_position``: a take that was being built for the key now sounding is ready. The
+    running cycle goes on at that key; nothing is rewound.
 
     Always restarts from the first chord of the first sequence key using all
     current settings (including pending PK / direction / interval / spelling).
@@ -3977,9 +4008,15 @@ def arm_key_cycle_for_explicit_play(session: dict[str, Any]) -> dict[str, Any] |
         seq = cycle_key_sequence(session, owner)
         if seq:
             start = str(seq[0] or start).strip() or start
+        stays = bool(
+            keep_position
+            and str(data.get("status") or "") == STATUS_RUNNING
+            and str(data.get("current_playback_key") or "").strip()
+        )
         if start:
-            data["current_playback_key"] = start
-            data["offset_semitones"] = 0
+            if not stays:
+                data["current_playback_key"] = start
+                data["offset_semitones"] = 0
             if not str(data.get("start_cycle_key") or "").strip():
                 data["start_cycle_key"] = start
         data["status"] = STATUS_RUNNING

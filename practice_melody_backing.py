@@ -73,6 +73,10 @@ def begin_practice_melody_backing_handoff(
     """
     session_state[PENDING_MELODY_KEY] = melody
     session_state[PENDING_MELODY_SONG_IDENTITY_KEY] = str(song_identity or "")
+    # Asking for the melody opens its panel; nothing else ever reopens one the musician closed.
+    from melody_panel_visibility import PRACTICE, show
+
+    show(session_state, PRACTICE, str(song_identity or ""))
 
 
 def clear_backing_practice_melody(session_state: MutableMapping[str, Any]) -> None:
