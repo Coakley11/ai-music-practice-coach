@@ -197,6 +197,8 @@ def render_span_lick_on_backing(st: Any, session: dict[str, Any], *, applied_bpm
     from music_theory import semitone_distance
     from span_motif_engine import project_span_motif
 
+    # Issue 85: the instrument selected now, not the one the lick was sent to Backing with.
+    inst = str(session.get("instrument") or lick.get("instrument") or "")
     motif = dict(lick["motif"])
     src = str(lick.get("practice_key") or payload.get("practice_key") or concert_key or "C")
     live = str(concert_key or src)
@@ -209,14 +211,14 @@ def render_span_lick_on_backing(st: Any, session: dict[str, Any], *, applied_bpm
     abc = build_motif_abc(
         shown, key_center=chart if shift else str(motif.get("key_center") or chart), bpm=int(applied_bpm or lick.get("bpm") or 100),
         title=f"Mission: {lick.get('mission_label') or ''}",
-        clef=notation_clef_for_instrument(str(lick.get("instrument") or "")),
+        clef=notation_clef_for_instrument(inst),
     )
     try:
         from phrase_expression import apply_focus_expression, expression_caption
 
         abc, plan = apply_focus_expression(
             abc, shown, focus=str(lick.get("focus") or ""), level=str(lick.get("level") or ""),
-            instrument=str(lick.get("instrument") or ""), style=str(lick.get("style") or "default"),
+            instrument=inst, style=str(lick.get("style") or "default"),
         )
         note = expression_caption(plan)
     except Exception:
@@ -240,7 +242,7 @@ def render_span_lick_on_backing(st: Any, session: dict[str, Any], *, applied_bpm
     from improvisation_intelligence_ui import _render_motif_sheet_music
 
     _render_motif_sheet_music(st, abc)
-    if "guitar" in str(lick.get("instrument") or "").lower():
+    if "guitar" in inst.lower():
         st.markdown("**Guitar TAB**")
         st.code(build_motif_guitar_tab(shown), language=None)
     return True

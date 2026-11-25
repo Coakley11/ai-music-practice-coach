@@ -4260,7 +4260,9 @@ def render_mission_practice_lick_on_backing(
     payload = mission_practice_lick_payload(session_state)
     if not payload:
         return
-    inst = str(payload.get("instrument") or "Piano")
+    # Issue 85: the instrument selected now, not the one the lick was sent to Backing with (the panel kept
+    # "Guitar" and its TAB after a switch to Alto Saxophone).
+    inst = str(session_state.get("instrument") or payload.get("instrument") or "Piano")
     motif = dict(payload.get("motif") or {})
     concert_chord = str(motif.get("_concert_chord") or payload.get("chord") or "").strip()
     display_chord = ""
