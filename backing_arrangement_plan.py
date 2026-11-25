@@ -73,6 +73,7 @@ class BarArrangement:
     fill: str = ""  # at a section end: "small" / "medium" / "big" / "ending"; "" otherwise
     move_rate: float = 1.0  # the drummer's small moves inside a phrase, x the style's own rate
     guitar_part: str = ""  # backing_rock_guitar part for this section ("" = the guitarist's own; "rest" = out)
+    guitar_level: float = 1.0  # the guitarist's touch here (x the bar's level): lighter in a verse than a chorus
     perc_intensity: str = "Medium"  # the Samba / Latin percussion section's intensity here
     horn_weights: dict = field(default_factory=dict)  # texture -> weight for the horn phrase starting here
 
@@ -260,11 +261,13 @@ def build(
         fill = _fill(e, nxt[5] if nxt else None, into_final=bool(nxt and nxt[4] and not final), ending=ending) if last_bar else ""
         # Small moves: more as the song opens up, fewer in quiet sections.
         move_rate = float(min(1.6, max(0.35, 0.45 + 1.1 * e)))
+        # The guitarist digs in with the song: a verse sits under its chorus, the last chorus on top.
+        guitar_level = float(min(1.12, max(0.75, 0.62 + 0.5 * e)))
         horn_w = horn_weights(role, e, final_chorus=final, presence=presence) if (p.bar % 4 == 0) else {}
         bars.append(BarArrangement(
             index=idx, role=role, chart_role=p.role, block=p.block, pass_index=p.loop, passes=passes,
             bar_in_section=p.bar, section_bars=p.bars, energy=e, final_chorus=final, fill=fill, move_rate=move_rate,
-            guitar_part=_guitar_part(role, e, seed, p.block), perc_intensity=_perc_intensity(e), horn_weights=horn_w,
+            guitar_part=_guitar_part(role, e, seed, p.block), guitar_level=guitar_level, perc_intensity=_perc_intensity(e), horn_weights=horn_w,
         ))
     return ArrangementPlan(str(style), tuple(bars), int(seed), presence)
 

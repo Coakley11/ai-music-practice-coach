@@ -2620,6 +2620,7 @@ def synthesize_chords_to_numpy(
                 int(event.get("bar_in_section", 0) or 0), bar_is_hit, section_edge, bar_start, pulse, bar, intensity,
                 idx + 1009 * loop_seed, segments=_sounding_segments(chord, pulses_per_bar), chord_notes=chord_notes_for_guitar,
                 section_part=(_arr_bar.guitar_part if _arr_bar is not None else ""),
+                section_level=(_arr_bar.guitar_level if _arr_bar is not None else 1.0),
             )
 
         def _pulse_chord(b_pos: float) -> str:

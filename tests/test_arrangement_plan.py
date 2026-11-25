@@ -120,6 +120,15 @@ def test_the_guitar_changes_its_part_by_section():
     assert parts["bridge"] == "arena" and parts["verse"] != parts["chorus"]
 
 
+
+def test_the_guitarist_plays_a_verse_under_its_chorus():
+    plan, _ = _plan(SONG, "Rock groove")
+    level = {}
+    for b in plan.bars:
+        level.setdefault((b.role, b.final_chorus), b.guitar_level)
+    assert level[("verse", False)] < level[("pre", False)] < level[("chorus", False)] < level[("chorus", True)]
+    assert all(0.75 <= b.guitar_level <= 1.12 for b in plan.bars)
+
 def test_percussion_follows_the_section_energy():
     plan, _ = _plan(SONG, "Samba")
     levels = {b.role: b.perc_intensity for b in plan.bars}
