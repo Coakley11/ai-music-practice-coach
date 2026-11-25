@@ -2159,7 +2159,7 @@ def _tab_entry_modes(
             pass
         st.markdown(creative_tool_heading_markdown("Jam Session Generator"))
         _render_creative_practice_focus_caption(st, session_state)
-        from jam_control_ownership import JAM_ENSEMBLES, seed_jam_controls_before_mount
+        from jam_control_ownership import jam_ensembles, seed_jam_controls_before_mount
 
         # Drawn again after another mode: start from the Generator's own record, never a first option.
         seed_jam_controls_before_mount(session_state, "jam_session_generator")
@@ -2168,7 +2168,7 @@ def _tab_entry_modes(
             with e1:
                 ensemble = st.selectbox(
                     "Ensemble",
-                    list(JAM_ENSEMBLES),
+                    list(jam_ensembles()),
                     key="improv_ensemble",
                     persist_state="session",
                     # The band is part of the arrangement: a new choice re-seals the jam's Backing.

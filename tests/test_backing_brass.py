@@ -123,7 +123,8 @@ def test_unknown_horn_is_an_error():
         bh.horn("flugelhorn")
 
 
-def test_no_ensemble_uses_the_brass(monkeypatch):
+def test_only_the_jazz_quintet_uses_the_brass(monkeypatch):
+    """The trumpet plays only in the Jazz quintet (approved 2026-11-25); the trombone in no ensemble yet."""
     import backing_performance_plan as pp
 
     monkeypatch.setenv("MUSIC_HORNS", "1")
@@ -131,7 +132,8 @@ def test_no_ensemble_uses_the_brass(monkeypatch):
     assert pp.band_summary(plan) == "Piano, tenor sax, bass, drums"
     for name in pp.ENSEMBLES:
         summary = pp.band_summary(pp.resolve_performance_plan(style="Jazz swing", ensemble=name)).lower()
-        assert "trumpet" not in summary and "trombone" not in summary, (name, summary)
+        assert "trombone" not in summary, (name, summary)
+        assert ("trumpet" in summary) == (name == "Jazz quintet"), (name, summary)
 
 
 # --- Range and articulation -------------------------------------------------------------------------
