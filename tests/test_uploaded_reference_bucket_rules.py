@@ -27,10 +27,29 @@ ALLOWED = ("audio/*", "application/pdf", "image/jpeg", "image/png", "image/heic"
 LIMIT = 50 * 1024 * 1024
 
 PDF = b"%PDF-1.7\n1 0 obj\n<<>>\nendobj\ntrailer\n<<>>\n%%EOF\n"
-PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 64
-JPEG = b"\xff\xd8\xff\xe0\x00\x10JFIF\x00" + b"\x00" * 64
-HEIC = b"\x00\x00\x00\x18ftypheic\x00\x00\x00\x00" + b"\x00" * 64
-HEIF = b"\x00\x00\x00\x18ftypmif1\x00\x00\x00\x00" + b"\x00" * 64
+
+
+def _image(fmt: str, brand: bytes = b"") -> bytes:
+    """A real tiny picture: references that cannot be opened are refused (Slice 1), so placeholder bytes are too."""
+    import io
+
+    from PIL import Image
+
+    buf = io.BytesIO()
+    Image.new("RGB", (24, 32), "white").save(buf, format=fmt)
+    data = buf.getvalue()
+    return data[:8] + brand + data[12:] if brand else data
+
+
+PNG, JPEG = _image("PNG"), _image("JPEG")
+try:
+    import pillow_heif
+
+    pillow_heif.register_heif_opener()
+    HEIC, HEIF = _image("HEIF"), _image("HEIF", brand=b"mif1")
+except ImportError:  # without the decoder HEIC is recognised by its header and not opened
+    HEIC = b"\x00\x00\x00\x18ftypheic\x00\x00\x00\x00" + b"\x00" * 64
+    HEIF = b"\x00\x00\x00\x18ftypmif1\x00\x00\x00\x00" + b"\x00" * 64
 
 
 class RuleStore:
