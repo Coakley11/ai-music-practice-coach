@@ -112,3 +112,61 @@ def test_no_selected_instrument_falls_back_to_the_stored_one():
     ss = _session("Guitar")
     ss.pop("instrument")
     assert _draw(ss)["inst"] == "Guitar"
+
+
+# ---- the 2-3 chord (span) panel ------------------------------------------------------------------------------------
+
+def _staged_span(sent_with: str) -> dict:
+    from mission_span_engine import MISSIONS_BY_ID, generate_mission_span_example
+    from mission_span_ui import start_span_mission_backing
+
+    try:
+        from test_mc32_corrections import span
+    except ImportError:
+        from tests.test_mc32_corrections import span
+    example = generate_mission_span_example(MISSIONS_BY_ID["enclose_next_target"], span(["Dm7", "Db7", "Cmaj7"], "C"),
+                                            level="Advanced", style="jazz")
+    example["handoff"]["practice_key"] = "C"
+    ss = {"instrument": sent_with, "concert_key": "C", "display_key": "C", "song": "The Girl from Ipanema"}
+    start_span_mission_backing(ss, example=example, heading="Span", section_label="A", practice_key="C",
+                               with_practice_lick=True, instrument=sent_with, level="Advanced", style="jazz",
+                               focus="", bpm=100, relationship_label="ii-subV-I")
+    return ss
+
+
+def _draw_span(ss: dict):
+    from mission_span_backing import render_span_lick_on_backing
+
+    st, sheets = _St(), []
+    with mock.patch.object(ui, "_render_motif_sheet_music", lambda _st, abc, **_k: sheets.append(str(abc))):
+        assert render_span_lick_on_backing(st, ss, applied_bpm=100, concert_key="C")
+    return {"tab": bool(st.code_blocks), "text": "\n".join(st.lines), "abc": sheets[0]}
+
+
+@pytest.mark.parametrize("instrument, transposing, tab", [
+    ("Guitar", "", True), ("Saxophone", ALTO, False), ("Saxophone", TENOR, False),
+    ("Saxophone", SOPRANO, False), ("Flute", "", False), ("Bass", "", False),
+])
+def test_span_panel_follows_the_selected_instrument(instrument, transposing, tab):
+    from mission_span_backing import SPAN_LICK_KEY
+
+    ss = _staged_span("Guitar")
+    before = copy.deepcopy(ss[SPAN_LICK_KEY])
+    ss["instrument"] = instrument
+    if transposing:
+        ss[SELECTED_TRANSPOSING_INSTRUMENT_KEY] = transposing
+        ss["show_chart_in_instrument_key"] = True
+    seen = _draw_span(ss)
+    assert seen["tab"] is tab
+    assert ("Guitar TAB" in seen["text"]) is tab
+    assert ("clef=bass" in seen["abc"]) is (instrument == "Bass")
+    assert ss[SPAN_LICK_KEY] == before
+
+
+@pytest.mark.parametrize("transposing, key", [(ALTO, "A"), (TENOR, "D"), (SOPRANO, "D")])
+def test_span_panel_is_written_for_the_selected_saxophone(transposing, key):
+    """Concert C is written A for an E-flat alto and D for a B-flat tenor or soprano."""
+    ss = _staged_span("Guitar")
+    ss.update({"instrument": "Saxophone", SELECTED_TRANSPOSING_INSTRUMENT_KEY: transposing,
+               "show_chart_in_instrument_key": True})
+    assert re.search(rf"^K:\s*{key}\b", _draw_span(ss)["abc"], re.M)
