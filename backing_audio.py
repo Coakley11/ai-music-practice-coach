@@ -32,6 +32,7 @@ import backing_arrangement_profiles as _arr_profiles
 import backing_drum_kit as _drum_kit
 import backing_groove_profiles as _groove_profiles
 import backing_latin_grooves as _lg
+import backing_latin_percussion as _lp
 import backing_bass_voice as _bv
 import backing_keys_voice as _kv
 import backing_pianist as _pn
@@ -2227,9 +2228,8 @@ def _style_patterns(style, profile: dict | None = None, *, time_signature: str =
 
 def drum_renderer_tag() -> str:
     """Part of a saved backing's identity, so audio from another drum sound is never replayed as this one."""
-    if not _drum_kit.drum_kit_enabled():
-        return ""
-    return "+drums2-" + _drum_kit._samples.pack_token()
+    tag = "+drums2-" + _drum_kit._samples.pack_token() if _drum_kit.drum_kit_enabled() else ""
+    return tag + _lp.renderer_tag()  # the recorded Latin percussionist ("" unless MUSIC_LATIN_GROOVES is on)
 
 
 def _with_drum_kit(render):
@@ -2519,6 +2519,15 @@ def synthesize_chords_to_numpy(
             latin_bar = _lg.bar(style, idx, intensity=(plan.intensity if plan is not None else "Medium"))
             bar_patterns = dict(bar_patterns)
             bar_patterns.update(latin_bar.grid)
+        # The recorded Latin percussionist (MUSIC_LATIN_GROOVES): its parts replace the kit's stand-ins.
+        perc_hits = None
+        if pulses_per_bar == 4 and _lp.plays(style):
+            perc_hits = _lp.bar_hits(style, idx, intensity=(plan.intensity if plan is not None else "Medium"))
+            replaced = _lp.replaced_kit_parts(style)
+            if replaced:
+                bar_patterns = dict(bar_patterns)
+                for part in replaced:
+                    bar_patterns[part] = []
         section_tex = _sa.bar_texture(style, section_plan[idx])
         if plan is not None:
             section_tex = plan.texture(section_tex, role)  # the jam's groove intensity, around the form
@@ -3183,6 +3192,22 @@ def synthesize_chords_to_numpy(
                     seed=idx * 73 + int(b * 40) + loop_seed,
                     tone=0.45,
                 )
+
+        if perc_hits and not bar_drums_silent and not bar_bridge_breakdown:
+            _lp.play_bar(
+                audio,
+                sr,
+                perc_hits,
+                lambda b, _bs=bar_start, _i=idx: _humanize_time(
+                    _groove_time(_bs, b, pulse, style, swing=swing_amt, pocket=pocket_offset),
+                    seed=_i * 89 + int(b * 100) + loop_seed,
+                    amount=humanize * 0.4,
+                    beat_len=pulse,
+                ),
+                touch=(float(plan.drums.velocity) if plan is not None else 1.0),
+                intensity=intensity * _lp.style_gain(style),
+                seed=idx * 97 + loop_seed,
+            )
 
         if not bar_drums_silent and section_tex is not None and section_tex.crash:
             _add_crash(audio, sr, bar_start, intensity, seed=idx)  # the ending hit
