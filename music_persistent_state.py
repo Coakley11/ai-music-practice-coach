@@ -727,6 +727,8 @@ _PERSIST_KEYS: tuple[str, ...] = (
     "last_analysis_audio",
     "last_analysis_source_label",
     "song_picker_favorites_only",
+    # Uploaded Melodies Slice 3: which of each song's uploaded references Backing shows ({song owner: [ids]}).
+    "_backing_uploaded_reference_selection",
     "cpl_active_progression",
     "cpl_saved_progressions",
     "cpl_builder_version",
@@ -3567,6 +3569,10 @@ def apply_music_disk_state(
         elif key in _LIST_KEYS and isinstance(val, list):
             ss[key] = copy.deepcopy(val)
         elif key in _PERSIST_KEYS:
+            if key == "_backing_uploaded_reference_selection":
+                # This tab's own choice outranks a mid-session re-apply of an older save; a damaged value is ignored.
+                if not isinstance(val, dict) or (not authoritative_restore and key in ss):
+                    continue
             if key == "cpl_active_progression" and isinstance(val, dict):
                 try:
                     from custom_progression_lab import (
@@ -5678,6 +5684,7 @@ def apply_music_session_defaults(st: Any) -> None:
         "karaoke_queue",
         "catalog_favorite_pick_keys",
         "song_picker_favorites_only",
+        "_backing_uploaded_reference_selection",
         "cpl_active_progression",
         "cpl_saved_progressions",
         "cpl_builder_version",
