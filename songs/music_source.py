@@ -4741,6 +4741,12 @@ def note_active_source_change(st: Any, *, invalidate_backing) -> bool:
 
     source_changed = previous_source is not None and previous_source != current_source
     pick_changed = previous_pick is not None and previous_pick != current_pick
+    try:
+        from creative_chord_selection_authority import note_mission_selection_song
+
+        note_mission_selection_song(session_state, song_changed=bool(pick_changed))
+    except ImportError:
+        pass
     if source_changed or pick_changed:
         # A normal Backing Play belongs to the old source. Selecting a new
         # Now Editing song must not carry that permission or pending completion

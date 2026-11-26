@@ -149,6 +149,15 @@ def _click_matches_open_mission(session: dict[str, Any], click: Any) -> bool:
     return True
 
 
+def click_names_another_song(session: dict[str, Any], click: Any) -> bool:
+    """The click was made on a song that is not the active one (Issue 85). Unknown on either side is not "another"."""
+    if not isinstance(click, dict):
+        return False
+    made_on = str(click.get("source_identity") or "").strip()
+    live = _live_mission_identity(session)["source_identity"]
+    return bool(made_on and live and made_on != live)
+
+
 def _click_is_current_selection(
     session: dict[str, Any],
     click: Any,
@@ -274,6 +283,42 @@ def invalidate_mission_chord_selection_for_empty_owner(session: dict[str, Any]) 
     return True
 
 
+#: (chord, section, index) the Mission selection had on the last run that saw no song change.
+MISSION_SELECTION_SEEN_KEY = "_mission_selection_last_seen"
+
+
+def _mission_selection_tuple(session: dict[str, Any]) -> tuple[str, str, str]:
+    return (
+        str(session.get(II_SELECTED_CHORD) or "").strip(),
+        str(session.get(II_SELECTED_SECTION) or "").strip(),
+        str(session.get(II_SELECTED_CHORD_INDEX) if session.get(II_SELECTED_CHORD_INDEX) is not None else ""),
+    )
+
+
+def note_mission_selection_song(session: dict[str, Any], *, song_changed: bool) -> bool:
+    """Issue 85: a Mission chord belongs to the song it was chosen in. Call once per run and on each activation.
+
+    Nothing tied the Mission's chord map and selection to a song, so Autumn Leaves' half-diminished chord stayed
+    selected after Blackbird was opened and Mission Backing looped it as Blackbird's, re-spelled into its Practice Key.
+    On a song change the map and progression (derived, the Missions page rebuilds them) are dropped, and so is the
+    selection when it is the one the previous song had, or its click names another song. A selection that arrived
+    together with the new song (Return to Mission, a saved Mission) is kept. Returns True when one was dropped.
+    """
+    dropped = False
+    if song_changed:
+        for key in ("_improv_mission_section_map", "improv_mission_chord_options", "improv_mission_progression"):
+            session.pop(key, None)
+        seen = session.get(MISSION_SELECTION_SEEN_KEY)
+        now = _mission_selection_tuple(session)
+        carried = bool(now[0]) and isinstance(seen, (list, tuple)) and tuple(str(v) for v in seen) == now
+        if carried or click_names_another_song(session, session.get("_mission_chord_click_authority")):
+            dropped = invalidate_mission_chord_selection_for_empty_owner(session)
+            for key in ("II_SELECTED_CHORD", "II_SELECTED_SECTION", "II_SELECTED_CHORD_INDEX"):
+                session.pop(key, None)
+    session[MISSION_SELECTION_SEEN_KEY] = list(_mission_selection_tuple(session))
+    return dropped
+
+
 def transpose_chord_identity(symbol: str, from_key: str, to_key: str) -> str:
     """Transpose one chord symbol by the Practice Key interval (identity, not index)."""
     src = str(symbol or "").strip()
@@ -397,6 +442,11 @@ def resolve_authoritative_chord_selection(
                 # Leftover Ab/Intro snapshot must not pin an Em (Em/C/G/D) map.
 
     click = session.get("_mission_chord_click_authority")
+    # Issue 85: the branch below re-spells an old click into the live Practice Key and keeps it even when the chart
+    # does not have it. That is right for this song's own click only; another song's chord (Em7b5 in G, re-spelled
+    # A#m7b5 in C#) became Blackbird's Mission chord and was sealed again under Blackbird.
+    if click_names_another_song(session, click):
+        click = None
     if isinstance(click, dict):
         c_sym = str(click.get("chord") or "").strip()
         c_sec = str(click.get("section") or "").strip()
@@ -534,7 +584,11 @@ def resolve_authoritative_chord_selection(
                         break
             if not sym_on_map:
                 click = session.get("_mission_chord_click_authority")
-                if isinstance(click, dict) and str(click.get("chord") or "").strip() == sym:
+                if (
+                    isinstance(click, dict)
+                    and not click_names_another_song(session, click)
+                    and str(click.get("chord") or "").strip() == sym
+                ):
                     return sym, sec, idx
                 return at_ch, at_sec or sec, idx
 
@@ -817,7 +871,9 @@ __all__ = [
     "deduped_section_map_for_focus",
     "ensure_mission_chord_snapshot",
     "global_chord_index_for_section_chord",
+    "click_names_another_song",
     "invalidate_mission_chord_selection_for_empty_owner",
+    "note_mission_selection_song",
     "read_authoritative_mission_chord_selection",
     "read_mission_chord_snapshot",
     "read_mission_section_map_from_session",
