@@ -5975,6 +5975,14 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
   const parentDoc = parentWin.document;
   // The Key Cycling Pause button's action, independent of how it is decorated: its innerText also holds
   // the Material icon's ligature text ("pause" / "play_arrow"), so never compare that text exactly.
+  // Key Cycling's own step controls: its Previous Key / Next Key buttons (and anything else it renders) sit in
+  // its keyed transport row or carry a backing_key_cycle_* key. A label fallback below only ever takes a button
+  // inside them, never any page button that happens to read "Previous" / "Next" (a PDF page turn, a melody).
+  function kcOwnsStepButton(b) {{
+    try {{
+      return !!(b && b.closest && b.closest('[class*="st-key-kc_transport_row"],[class*="st-key-backing_key_cycle_"]'));
+    }} catch (eOwn) {{ return false; }}
+  }}
   function kcPauseBtnLabel(b) {{
     if (!b) return '';
     let el = b.querySelector('[data-testid="stMarkdownContainer"] p') || b.querySelector('p');
@@ -10094,8 +10102,8 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
                 parentWin.__kcPauseBtnHandler(ev);
               }}
               if (typeof parentWin.__kcPauseRouted === 'function') parentWin.__kcPauseRouted(ev);
-            }} else if (/^([◀⏮]\\s*)?Previous( key)?$/i.test(lab)
-                || /^([▶⏭]\\s*)?Next( key)?(\\s*[▶⏭])?$/i.test(lab)) {{
+            }} else if (kcOwnsStepButton(btnHit) && (/^([◀⏮]\\s*)?Previous( key)?$/i.test(lab)
+                || /^([▶⏭]\\s*)?Next( key)?(\\s*[▶⏭])?$/i.test(lab))) {{
               if (typeof parentWin.__kcStepBtnHandler === 'function') {{
                 parentWin.__kcStepBtnHandler({{
                   currentTarget: btnHit, target: btnHit, type: (ev && ev.type) || 'click', orig: ev,
@@ -10153,8 +10161,8 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           if (typeof parentWin.__kcPauseRouted === 'function') parentWin.__kcPauseRouted(ev);
           return;
         }}
-        if (/^([◀⏮]\\s*)?Previous( key)?$/i.test(label)
-            || /^([▶⏭]\\s*)?Next( key)?(\\s*[▶⏭])?$/i.test(label)) {{
+        if (kcOwnsStepButton(btn) && (/^([◀⏮]\\s*)?Previous( key)?$/i.test(label)
+            || /^([▶⏭]\\s*)?Next( key)?(\\s*[▶⏭])?$/i.test(label))) {{
           if (typeof parentWin.__kcStepBtnHandler === 'function') {{
             parentWin.__kcStepBtnHandler({{
               currentTarget: btn, target: btn, type: (ev && ev.type) || 'click', orig: ev,
@@ -10510,7 +10518,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           }} catch (eD) {{}}
         }}
         // Label fallback when Streamlit relocates key classes after remount.
-        if (!delta && btn) {{
+        if (!delta && btn && kcOwnsStepButton(btn)) {{
           try {{
             const lab = String((btn.innerText || btn.textContent || ''))
               .replace(/\\s+/g, ' ').trim();
