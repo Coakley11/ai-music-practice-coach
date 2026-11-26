@@ -35,6 +35,8 @@ def render_melody_controls(
     at, count = library.alternatives(session, identity, recipe)
     watching = library.viewing(session, identity)
     kept = library.kept_melodies(session, identity)
+    # Labels: Key Cycling's page script takes any button labelled just "Previous" / "Next" for its own transport
+    # (backing_key_cycle __kcStepBtnHandler label fallback) and cancels the click.
     # Callbacks, not `if st.button(...): ...; st.rerun()`: a press made while that rerun was still running was
     # dropped (browser 2026-11-25: Previous right after Generate Another did nothing), as on the Key Cycling buttons.
     cols = st.columns([2.2, 1, 1, 1.6])
@@ -42,10 +44,10 @@ def render_melody_controls(
         st.button("🎵 Generate Another Melody", key=ANOTHER_KEY, type="primary", use_container_width=True,
                   on_click=_choose, args=(choose,), kwargs={"another": True})
     with cols[1]:
-        st.button("◀ Previous", key="backing_practice_melody_prev", use_container_width=True,
+        st.button("◀ Previous melody", key="backing_practice_melody_prev", use_container_width=True,
                   disabled=bool(watching) or at == 0, on_click=_choose, args=(choose,), kwargs={"step": -1})
     with cols[2]:
-        st.button("Next ▶", key="backing_practice_melody_next", use_container_width=True,
+        st.button("Next melody ▶", key="backing_practice_melody_next", use_container_width=True,
                   disabled=bool(watching) or at >= count - 1, on_click=_choose, args=(choose,), kwargs={"step": 1})
     with cols[3]:
         if watching:

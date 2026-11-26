@@ -181,3 +181,17 @@ def test_no_backing_melody_panel_is_forced_open():
     original = app[app.index("# ----- Original Melody panel -----") :][:3500]
     for block in (practice, original):
         assert "expanded=True" not in block and "melody_expander as" in block
+
+
+def test_no_other_backing_button_looks_like_a_key_cycling_step():
+    """Key Cycling's page script claims any button labelled like its Previous / Next (label fallback) and cancels
+    the click: the Practice Melody's Previous did nothing on a jam's Backing (browser 2026-11-25)."""
+    import re
+
+    kc = Path("backing_key_cycle.py").read_text(encoding="utf-8")
+    prev_re = re.compile(r"^([◀⏮]\s*)?Previous( key)?$", re.I)
+    next_re = re.compile(r"^([▶⏭]\s*)?Next( key)?(\s*[▶⏭])?$", re.I)
+    assert "Previous( key)?$/i" in kc and "Next( key)?" in kc  # the fallback this test guards against
+    panel = Path("practice_melody_panel.py").read_text(encoding="utf-8")
+    labels = re.findall(r'st\.button\(\s*"([^"]+)"', panel)
+    assert labels and not [x for x in labels if prev_re.match(x) or next_re.match(x)]
