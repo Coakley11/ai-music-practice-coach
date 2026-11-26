@@ -86,14 +86,15 @@ class CycleLeadSheetShapeModeTests(unittest.TestCase):
             chart_display_key=project_cycle_display_key(session, key),
         )
 
-    def test_each_cycling_key_shows_its_concert_cells_shape_hints_and_capo(self) -> None:
+    def test_each_cycling_key_shows_only_the_fixed_shapes_and_its_capo(self) -> None:
         for key, fret in (("Fm", 3), ("F#m", 4), ("Gm", 5)):
             with self.subTest(key=key):
                 html = self._sheet(key)
                 self.assertIn(f"Key: {key}", html)
                 self.assertIn(f"Charts in D minor · capo {fret}", html)
-                self.assertEqual(_cells(html)[:4], [BLUES[key][0], "%", BLUES[key][2], BLUES[key][3]])
-                self.assertEqual(_hints(html)[:3], ["Dm6 shape", "Bb7 shape", "A7 shape"])
+                # The shapes never move while the capo does; no second line of chords (user, 2026-11-25).
+                self.assertEqual(_cells(html)[:4], ["Dm6", "%", "Bb7", "A7"])
+                self.assertEqual(_hints(html), [])
                 # Not the Written-mode layout: no shape key presented as the reading key.
                 self.assertNotIn("Key: Dm", html)
                 self.assertNotIn("Reading Dm", html)
@@ -121,13 +122,13 @@ class CycleLeadSheetShapeModeTests(unittest.TestCase):
 
 
 class CycleCurrentNextProjectionTests(unittest.TestCase):
-    def test_shape_mode_current_next_stay_concert_like_the_cells(self) -> None:
+    def test_shape_mode_current_next_read_the_shapes_like_the_cells(self) -> None:
         from backing_key_cycle import display_projection_bundle
 
         bundle = display_projection_bundle(_capo_session(), sounding_key="F#m", include_timelines=False)
         self.assertEqual(bundle["chartMode"], "shape")
         self.assertEqual(bundle["readingKey"], "Dm")  # playbar still names the shape key
-        self.assertEqual(bundle["displaySemitones"], 0)
+        self.assertEqual(bundle["displaySemitones"], 8)  # F#m sounds, Dm is fingered
 
     def test_written_mode_current_next_still_move_to_the_written_key(self) -> None:
         from backing_key_cycle import display_projection_bundle

@@ -36,6 +36,11 @@ def _resolve(session_state, *, song_identity="cat::Song A|Artist|G", level="Begi
         regenerate=regenerate,
     )
     kwargs.update(overrides)
+    if "sections" not in overrides and kwargs["key_center"] != "G":
+        # As in the app: the sections passed are in the key passed.
+        from music_theory import transpose_sections_dict
+
+        kwargs["sections"] = transpose_sections_dict(kwargs["sections"], "G", kwargs["key_center"])
     return resolve_practice_melody(session_state, **kwargs)
 
 
@@ -160,18 +165,15 @@ class TestLevelChangePolicy(unittest.TestCase):
         self.assertIs(still_advanced, advanced)
         self.assertEqual(still_advanced.level, "Advanced")
 
-    def test_returning_to_a_previous_level_resolves_to_its_own_fresh_baseline(self) -> None:
-        """Documents the chosen policy: returning to a level you'd already
-        generated an alternate for does NOT resurrect that alternate -- it
-        deterministically resolves to level's baseline again. This is the
-        simpler, safer policy relative to caching a whole visit history."""
+    def test_returning_to_a_previous_level_brings_back_its_own_alternative(self) -> None:
+        """User, 2026-11-25: previous alternatives are retained; changing a setting never loses the one chosen."""
         session_state: dict = {}
-        beginner_first = _resolve(session_state, level="Beginner")
-        _resolve(session_state, level="Beginner", regenerate=True)  # now alt_index 1
-        _resolve(session_state, level="Advanced")  # switch away
-        beginner_again = _resolve(session_state, level="Beginner")  # switch back
-        self.assertEqual(beginner_again.alt_index, 0)
-        self.assertEqual(beginner_again.to_dict()["sections"], beginner_first.to_dict()["sections"])
+        _resolve(session_state, level="Beginner")
+        chosen = _resolve(session_state, level="Beginner", regenerate=True)  # alt_index 1
+        _resolve(session_state, level="Advanced")
+        again = _resolve(session_state, level="Beginner")
+        self.assertEqual(again.alt_index, 1)
+        self.assertEqual(again.to_dict()["sections"], chosen.to_dict()["sections"])
 
 
 class TestSongChangePolicy(unittest.TestCase):

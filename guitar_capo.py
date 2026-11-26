@@ -90,11 +90,30 @@ def valid_live_shape_widget_tonic(session_state: dict) -> str:
     return tonic if tonic in extras else ""
 
 
+def _backing_jam_source_id(session_state: dict, page: str, entry: str) -> str:
+    if page != "backing":
+        return ""
+    try:
+        from backing_context import get_backing_context
+
+        ctx = get_backing_context(session_state)
+        if ctx is not None and str(getattr(ctx, "source", "") or "") == "entry_jam":
+            jam_entry = str(getattr(ctx, "entry_mode", "") or entry or "entry_jam").strip()
+            return f"generated::jam::{jam_entry or 'entry_jam'}"
+    except Exception:
+        pass
+    return ""
+
+
 def live_capo_shape_source_id(session_state: dict) -> str:
     """Stable source identity for Shape Key seed vs live-user authority."""
     page = str(session_state.get("studio_page") or "").strip().lower()
     entry = str(session_state.get("improv_entry_mode") or "").strip()
     tab = str(session_state.get("improv_intelligence_tab") or "").strip()
+    # A jam playing on Backing owns its sounding key, whatever song is active elsewhere.
+    jam_on_backing = _backing_jam_source_id(session_state, page, entry)
+    if jam_on_backing:
+        return jam_on_backing
     # Composition UUID owns Capo sounding whenever Composition is the active song —
     # do not let a lagged Catalog pick (Perfect G) win Sounding.
     try:
@@ -133,9 +152,6 @@ def live_capo_shape_source_id(session_state: dict) -> str:
 
         ctx = get_backing_context(session_state)
         src = str(getattr(ctx, "source", "") or "") if ctx is not None else ""
-        if page == "backing" and src == "entry_jam":
-            jam_entry = str(getattr(ctx, "entry_mode", "") or entry or "entry_jam").strip()
-            return f"generated::jam::{jam_entry or 'entry_jam'}"
         if page == "backing" and src in {"custom_progression", "song_improv"}:
             kind = str(getattr(ctx, "sbi_material_kind", "") or "").strip().lower()
             try:
@@ -224,6 +240,17 @@ def owner_guitar_concert_key(session_state: dict, fallback: str = "C") -> str:
     """Concert/sounding key for the live Guitar owner — never leftover Catalog G."""
     live = str(live_capo_shape_source_id(session_state) or "").strip()
     fb = str(fallback or "C").strip() or "C"
+    if live.startswith("generated::jam") and "Style Jam" in live:
+        # Style Jam's own concert key. Asking the Generator below made a Style Jam in C say "Sounding Key: F#".
+        try:
+            from backing_practice_key_control import style_jam_authoritative_concert_key
+
+            jam_tok = str(style_jam_authoritative_concert_key(session_state) or "").strip()
+            if jam_tok:
+                return jam_tok
+        except Exception:
+            pass
+        return str(session_state.get("improv_style_key") or fb).strip()
     if live.startswith("generated::jam"):
         try:
             from backing_context import get_backing_context

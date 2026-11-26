@@ -859,7 +859,6 @@ def render_backing_creative_context_card(
         )
 
     progression_label = "Progression"
-    sounding_line = ""
     if (
         ctx.source != "mission"
         and state.show_chart_badge
@@ -878,27 +877,6 @@ def render_backing_creative_context_card(
         progression_label = "Guitar shape progression"
         if shape_tonic:
             progression_label += f" ({shape_tonic} shapes" + (f", capo {fret}" if fret is not None else "") + ")"
-        shape_chords = [c for chs in (display_sections or {}).values() for c in chs[:4]][:6]
-        if fret is not None and (shape_chords or ctx.progression):
-            try:
-                from music_theory import transpose_chord
-
-                if shape_chords:
-                    sounding = [transpose_chord(c, int(fret), reference_key=sounding_key) for c in shape_chords]
-                else:
-                    # ctx.progression is concert at the saved key; shift by the cycle offset.
-                    offset = (int(fret) - capo_fret_for_shape(concert_raw, shape_tonic)) % 12
-                    sounding = [
-                        transpose_chord(c, offset, reference_key=sounding_key) if offset else c
-                        for c in list(ctx.progression)[:6]
-                    ]
-                sounding_line = (
-                    f'<p class="ui-backing-active-key-line">Sounding progression '
-                    f"({html.escape(str(sounding_key))}): "
-                    f'<strong>{html.escape(" – ".join(str(c) for c in sounding))}</strong></p>'
-                )
-            except Exception:
-                sounding_line = ""
 
     style_line = f"Style: <strong>{backing_style}</strong>"
     if default_style and live_groove and default_style.lower() != live_groove.lower():
@@ -929,7 +907,6 @@ def render_backing_creative_context_card(
         f'<p class="ui-backing-active-key-line">Practice concert key: <strong>{concert}</strong>'
         f" · BPM: <strong>{bpm}</strong> · {style_line} · {meter_line}</p>"
         f"{chart_line}"
-        f"{sounding_line}"
         f'<p class="ui-backing-active-key-line">{html.escape(progression_label)}: <strong>{progression_line}</strong></p>'
         f'<div class="ui-backing-active-badges">{badges_html}</div>'
         f"</div></div>",
