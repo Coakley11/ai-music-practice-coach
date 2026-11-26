@@ -12,6 +12,16 @@ from practice_melody_model import PracticeMelody
 
 ANOTHER_KEY = "backing_practice_melody_another"
 
+# The row's buttons are small: arrows and stars as squares, the generate action a pill.
+_NAV_CSS = (
+    "<style>.st-key-backing_practice_melody_nav{gap:.35rem!important;flex-wrap:wrap;margin:-.2rem 0 .1rem}"
+    ".st-key-backing_practice_melody_nav button{min-height:30px!important;height:30px;padding:0 .6rem!important;"
+    "border-radius:999px!important;font-size:.85rem!important;line-height:1}"
+    ".st-key-backing_practice_melody_nav button p{font-size:.85rem!important}"
+    ".st-key-backing_practice_melody_nav .pm-nav-count{font-size:.8rem;font-weight:700;color:#475569;white-space:nowrap}"
+    ".st-key-backing_practice_melody_nav [data-testid='stElementContainer']{width:auto!important;flex:0 0 auto}</style>"
+)
+
 
 def _label(row: Mapping[str, Any]) -> str:
     focus = str(row.get("focus") or "").strip()
@@ -36,35 +46,41 @@ def render_melody_controls(
     watching = library.viewing(session, identity)
     kept = library.kept_melodies(session, identity)
     # Labels: Key Cycling's page script takes any button labelled just "Previous" / "Next" for its own transport
-    # (backing_key_cycle __kcStepBtnHandler label fallback) and cancels the click.
+    # (backing_key_cycle __kcStepBtnHandler label fallback) and cancels the click; bare arrows are not taken.
     # Callbacks, not `if st.button(...): ...; st.rerun()`: a press made while that rerun was still running was
     # dropped (browser 2026-11-25: Previous right after Generate Another did nothing), as on the Key Cycling buttons.
-    cols = st.columns([2.2, 1, 1, 1.6])
-    with cols[0]:
-        st.button("🎵 Generate Another Melody", key=ANOTHER_KEY, type="primary", use_container_width=True,
-                  on_click=_choose, args=(choose,), kwargs={"another": True})
-    with cols[1]:
-        st.button("◀ Previous melody", key="backing_practice_melody_prev", use_container_width=True,
+    # Compact (user, 2026-11-26: the three big buttons took too much room): one slim row of small controls,
+    #   ◀  Melody 2 of 3  ▶   🪄 Another   ☆   [★ Kept]
+    # each with its full name as a tooltip; the kept melodies in a small popover.
+    from music_feature_icons import semantic_action_icon
+
+    st.markdown(_NAV_CSS, unsafe_allow_html=True)
+    with st.container(key="backing_practice_melody_nav", horizontal=True, vertical_alignment="center", gap="small"):
+        st.button("◀", key="backing_practice_melody_prev", help="Previous melody",
                   disabled=bool(watching) or at == 0, on_click=_choose, args=(choose,), kwargs={"step": -1})
-    with cols[2]:
-        st.button("Next melody ▶", key="backing_practice_melody_next", use_container_width=True,
+        where = "Kept melody" if watching else f"Melody {at + 1} of {max(count, at + 1)}"
+        st.markdown(f'<span class="pm-nav-count">{where}</span>', unsafe_allow_html=True)
+        st.button("▶", key="backing_practice_melody_next", help="Next melody",
                   disabled=bool(watching) or at >= count - 1, on_click=_choose, args=(choose,), kwargs={"step": 1})
-    with cols[3]:
+        st.button(f"{semantic_action_icon('generate') or '🎵'} Another", key=ANOTHER_KEY, type="primary",
+                  help="Generate another melody for these settings (the ones before stay: ◀ ▶)",
+                  on_click=_choose, args=(choose,), kwargs={"another": True})
         if watching:
-            st.button("Remove from kept", key="backing_practice_melody_unkeep", use_container_width=True,
+            st.button("★", key="backing_practice_melody_unkeep", help="Remove this melody from your kept melodies",
                       on_click=library.drop_kept, args=(session, identity, watching))
         else:
-            st.button("☆ Keep this melody", key="backing_practice_melody_keep", use_container_width=True,
+            st.button("☆", key="backing_practice_melody_keep", help="Keep this melody",
                       on_click=_keep, args=(identity, melody, dict(sections), list(section_order), sections_key))
-    if kept:
-        options = [""] + [str(k["id"]) for k in kept]
-        labels = {"": "The melody for the current settings", **{str(k["id"]): _label(k) for k in kept}}
-        key = f"backing_practice_melody_kept::{identity}"
-        session[key] = watching if watching in options else ""
-        st.selectbox(
-            "Kept melodies", options, key=key, format_func=lambda v: labels.get(v, v),
-            on_change=_view, args=(identity, key),
-        )
+        if kept:
+            options = [""] + [str(k["id"]) for k in kept]
+            labels = {"": "The melody for the current settings", **{str(k["id"]): _label(k) for k in kept}}
+            key = f"backing_practice_melody_kept::{identity}"
+            session[key] = watching if watching in options else ""
+            with st.popover(f"★ Kept ({len(kept)})", help="Your kept melodies"):
+                st.selectbox(
+                    "Kept melodies", options, key=key, format_func=lambda v: labels.get(v, v),
+                    on_change=_view, args=(identity, key),
+                )
     shown = next((k for k in kept if str(k.get("id")) == watching), None)
     if shown is not None:
         if not library.fits(shown, sections, [n for n in section_order if n in sections], sections_key):

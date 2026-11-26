@@ -28041,7 +28041,7 @@ elif _studio_page == "backing":
     if _bk_melody_mode == _BK_MODE_PRACTICE and _pmb_melody is not None:
         from melody_panel_visibility import PRACTICE as _PMB_PANEL, melody_expander as _pmb_expander
 
-        with _pmb_expander(st, f"{FEATURE_ICONS['backing']} Practice Melody", _PMB_PANEL, _pmb_song_identity):
+        with _pmb_expander(st, f"{FEATURE_ICONS['practice_melody_generated']} Practice Melody", _PMB_PANEL, _pmb_song_identity):
             # Section-Focus-scoped display (Slice F1): if Backing is looping
             # specific section(s), show the matching melody section(s) --
             # the same structured sections from Slice A, never a second
@@ -28113,7 +28113,7 @@ elif _studio_page == "backing":
         # generator and level the Practice page uses (the melody then also shows on Practice). It never changes
         # the song, key, instrument or backing settings, and never starts or stops playback.
         if st.button(
-            f"{FEATURE_ICONS['backing']} Show a Practice Melody for this {'jam' if _pmb_jam is not None else 'song'}",
+            f"{FEATURE_ICONS['practice_melody_generated']} Show a Practice Melody for this {'jam' if _pmb_jam is not None else 'song'}",
             key="backing_practice_melody_create",
         ):
             _pmb_created = None
