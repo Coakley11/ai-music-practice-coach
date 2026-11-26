@@ -2188,9 +2188,12 @@ def _tab_entry_modes(
                     ),
                     unsafe_allow_html=True,
                 )
+                from creative_key_sync import guitar_shape_sections
+
+                _shown = guitar_shape_sections(session_state, gen)
                 for _sec_i, (sec, chs) in enumerate(gen.items()):
                     with st.container(key=f"{jam_art.STYLE_JAM_SECTION_PREFIX}{_sec_i}"):
-                        st.markdown(jam_art.section_head_html(sec, chs, _sec_i), unsafe_allow_html=True)
+                        st.markdown(jam_art.section_head_html(sec, _shown.get(sec, chs), _sec_i), unsafe_allow_html=True)
                         render_creative_progression_block(st, session_state, {sec: chs})
                 if apply_style_to_playback:
                     apply_style_to_playback()
@@ -2384,9 +2387,12 @@ def _tab_entry_modes(
                         jam_art.lineup_html(str(jam.get("ensemble")), str(jam.get("style") or session_state.get("improv_jam_style") or "")),
                         unsafe_allow_html=True,
                     )
+                from creative_key_sync import guitar_shape_sections
+
+                _shown = guitar_shape_sections(session_state, _jam_sections)
                 for _sec_i, (sec, chs) in enumerate(_jam_sections.items()):
                     with st.container(key=f"{jam_art.GENERATOR_SECTION_PREFIX}{_sec_i}"):
-                        st.markdown(jam_art.section_head_html(sec, chs, _sec_i), unsafe_allow_html=True)
+                        st.markdown(jam_art.section_head_html(sec, _shown.get(sec, chs), _sec_i), unsafe_allow_html=True)
                         render_creative_progression_block(st, session_state, {sec: chs})
                 _render_open_practice_backing_row(
                     st,

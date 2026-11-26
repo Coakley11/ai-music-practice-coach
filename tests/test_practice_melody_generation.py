@@ -96,7 +96,7 @@ class TestSongSpecificity(unittest.TestCase):
                 for event in section.events:
                     if event.is_rest or event.tone_role != "chord_tone":
                         continue
-                    from practice_melody_generator import _chord_tone_pcs
+                    from practice_melody_composer import _pcs as _chord_tone_pcs
 
                     allowed = _chord_tone_pcs(event.chord)
                     self.assertIn(
@@ -202,7 +202,7 @@ class TestMusicalCoherence(unittest.TestCase):
                     self.assertTrue(sounding)
                     last = sounding[-1]
                     self.assertEqual(last.tone_role, "chord_tone")
-                    from practice_melody_generator import _chord_tone_pcs
+                    from practice_melody_composer import _pcs as _chord_tone_pcs
 
                     root_and_third = _chord_tone_pcs(last.chord)[:2]
                     self.assertIn(last.midi % 12, root_and_third)
