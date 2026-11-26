@@ -52,8 +52,11 @@ def test_each_jam_has_its_own_card_and_nothing_else_does():
         assert card.jam_card_key(SimpleNamespace(source=source, entry_mode="Style Jam Mode")) == ""
     assert card.jam_card_key(None) == ""
     style, generator = _html(_ctx("Style Jam Mode", POP), _state(POP)), _html(_ctx("Jam Session Generator"), _state())
-    assert 'data-jam-owner="style_jam"' in style and "jc-hero-style_jam" in style and "Your band" not in style.split("jc-backing-body")[0]
+    assert 'data-jam-owner="style_jam"' in style and "jc-hero-style_jam" in style
     assert 'data-jam-owner="jam_session_generator"' in generator and "jc-hero-jam_generator" in generator
+    # Each wears its own identity: Style Jam the saxophone, the Generator the dice (user, 2026-11-26).
+    assert card.SAX_ICON in style.split("jb-names")[0] and card.DICE_ICON not in style
+    assert card.DICE_ICON in generator.split("jb-names")[0]
 
 
 def test_the_generator_names_its_band_form_chords_tempo_and_settings():

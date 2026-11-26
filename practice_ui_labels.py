@@ -24,6 +24,10 @@ GROOVE_ICONS: dict[str, str] = {
     "Jewish groove": "✡",
     "Jewish hora": "💃",
     "Klezmer groove": "🎻",
+    "Blues groove": "\U0001F3B8",
+    # MUSIC_LATIN_GROOVES (off by default): the two Latin grooves are Backing grooves too.
+    "Samba": "\U0001FA98",
+    "Latin jazz": "\U0001F3BA",
     "Jewish ballad": "🕯",
 }
 

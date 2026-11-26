@@ -299,6 +299,91 @@ def semantic_field_icon(field: str, *, instrument: str = "") -> str:
     return SEMANTIC_FIELD_ICONS.get(key, "")
 
 
+# Jam styles with no genre world of their own (practice_studio.genre_visual_style falls back to the generic note,
+# which is the Catalog source logo, never a style's).
+_EXTRA_STYLE_LOGOS: tuple[tuple[str, str], ...] = (
+    ("samba", "🪘"),  # long drum
+    ("fusion", "⚡"),  # high voltage
+    ("modal", "🌀"),  # cyclone: a vamp that circles
+    ("lo-fi", "📻"),  # radio
+    ("lofi", "📻"),
+    ("lo fi", "📻"),
+)
+
+
+def style_logo(style: str) -> str:
+    """The logo of a musical *style* (Latin, Jazz, Rock ...): the genre's own logo, the one the Songs page shows.
+
+    A style is not a groove: "Latin" is a style (its logo), "Bossa nova" a Backing groove (``groove_logo``)."""
+    raw = str(style or "").strip()
+    if not raw:
+        return ""
+    low = raw.lower()
+    for token, logo in _EXTRA_STYLE_LOGOS:
+        if token in low:
+            return logo
+    try:
+        from practice_studio import genre_visual_style
+
+        logo = str(genre_visual_style(raw).get("emoji") or "")
+    except Exception:
+        logo = ""
+    return "" if logo == SONG_SOURCE_ICONS["catalog"] else logo
+
+
+def groove_logo(groove: str) -> str:
+    """The logo of a Backing *groove* (Bossa nova, Jazz swing, Rock groove ...): practice_ui_labels.GROOVE_ICONS,
+    read through the groove's canonical name ("bossa" -> "Bossa nova")."""
+    raw = str(groove or "").strip()
+    if not raw:
+        return ""
+    try:
+        from practice_ui_labels import GROOVE_ICONS
+    except Exception:
+        return ""
+    if raw in GROOVE_ICONS:
+        return GROOVE_ICONS[raw]
+    try:
+        from songs.playback_defaults import normalize_groove_label
+
+        name = normalize_groove_label(raw)
+    except Exception:
+        name = raw
+    return GROOVE_ICONS.get(name, "")
+
+
+# What a chart's key badge is, by what the chart is read as: the label decides the icon (user, 2026-11-26).
+#   Shape key E        -> the guitar (capo Shape Mode: the shapes the guitarist fingers)
+#   Written key F#     -> the instrument that reads it (saxophone, clarinet, trumpet ...)
+#   Charts in E major  -> the chart icon
+CHART_ICON = FEATURE_ICONS["chord_chart"]
+
+
+def chart_mode_of(label: str = "", mode: str = "") -> str:
+    """"shape", "written" or "charts" from a chart mode ("shape" / "written" / "concert") or, without one, a label."""
+    m = str(mode or "").strip().lower()
+    if m in {"shape", "written"}:
+        return m
+    low = str(label or "").strip().lower()
+    if "shape" in low or "capo" in low:
+        return "shape"
+    if "written" in low:
+        return "written"
+    return "charts"
+
+
+def chart_key_badge(mode: str = "", *, label: str = "", instrument: str = "") -> tuple[str, str]:
+    """(icon, label) for a chart key badge: Shape key (guitar), Written key (the instrument), Charts in (chart)."""
+    kind = chart_mode_of(label, mode)
+    if kind == "shape":
+        return INSTRUMENT_ICONS["Guitar"], "Shape key"
+    if kind == "written":
+        icon = semantic_field_icon("written_key", instrument=instrument) or SEMANTIC_FIELD_ICONS["written_key"]
+        text = str(label or "").strip()
+        return icon, (text if "written" in text.lower() else "Written key")
+    return CHART_ICON, "Charts in"
+
+
 # Studio page id → concept key (nav, headers, compact buttons).
 PAGE_FEATURE_KEYS: dict[str, str] = {
     "home": "home",
@@ -343,7 +428,10 @@ def page_feature_label(page_id: str, text: str) -> str:
 
 
 __all__ = (
+    "CHART_ICON",
     "CLARINET_ICON_SVG",
+    "chart_key_badge",
+    "chart_mode_of",
     "FEATURE_ICONS",
     "INSTRUMENT_ICONS",
     "SEMANTIC_FIELD_ICONS",
@@ -354,8 +442,10 @@ __all__ = (
     "format_icon_html",
     "icon_is_markup",
     "instrument_icon",
+    "groove_logo",
     "semantic_field_icon",
     "song_source_icon",
+    "style_logo",
     "song_source_key",
     "page_feature_icon",
     "page_feature_label",

@@ -11298,6 +11298,8 @@ def _mark_backing_playback_ended() -> None:
 
 # The approved artwork of this run's Backing card (None: today's card).
 _backing_art_identity: Any = None
+# This run's Backing card is a generated jam's own card (Entry & Style Jam / Jam Session Generator).
+_backing_jam_card_on: bool = False
 
 
 def _create_backing_card_slots(art: bool = False, jam: str = "") -> tuple[Any, tuple | None]:
@@ -11351,9 +11353,10 @@ def _backing_jam_card_key(ctx: Any) -> str:
 
 
 def _backing_art_wanted(kind: str, creative_source: str = "") -> bool:
-    global _backing_art_identity, _backing_art_actions_slot
+    global _backing_art_identity, _backing_art_actions_slot, _backing_jam_card_on
     _backing_art_identity = None
     _backing_art_actions_slot = None
+    _backing_jam_card_on = False
     try:
         from backing_art_card import backing_art_enabled
 
@@ -11568,7 +11571,7 @@ def _render_backing_art_actions(*, leadsheet_ready: bool, set_leadsheet_open: An
     Returns True when the row was drawn (album-cover card only). Drawn late in the run, so the Lead sheet and
     Key Cycling labels show the state the controls settled on this run."""
     slot = _backing_art_actions_slot
-    if slot is None or _backing_art_identity is None:
+    if slot is None or (_backing_art_identity is None and not _backing_jam_card_on):
         return False
     kc_allowed = False
     try:
@@ -11613,6 +11616,18 @@ def _render_backing_art_actions(*, leadsheet_ready: bool, set_leadsheet_open: An
                     key="backing_art_key_cycle_btn", use_container_width=True,
                     type="primary" if kc_on else "secondary", on_click=_toggle_backing_key_cycle_from_card,
                 )
+        if _backing_jam_card_on:
+            # A jam's card also says what Backing is set to do (user, 2026-11-26): Key Cycling, the lead sheet,
+            # count-in, what plays and how often -- read from the controls that own them.
+            try:
+                from backing_jam_card import backing_state_html, backing_state_items
+
+                st.markdown(
+                    backing_state_html(backing_state_items(st.session_state, sheet_visible=sheet_shown, sheet_on_play=sheet_pref)),
+                    unsafe_allow_html=True,
+                )
+            except Exception:
+                pass
     return True
 
 
@@ -11684,7 +11699,7 @@ def _render_backing_card_practice_key(original_key: str, practice_key: str) -> N
         + ('<p class="ui-skp-cap">Concert pitch</p>' if orig_known else "")
     )
     pk_label = '<p class="ui-skp-label">Practice key</p>'
-    if _backing_art_identity is not None:
+    if _backing_art_identity is not None or _backing_jam_card_on:
         from song_card_art import backing_key_label
 
         orig_cell = backing_key_label("original") + f'<div class="ui-skp-value">{html.escape(orig_name)}</div>'
@@ -24027,6 +24042,7 @@ elif _studio_page == "backing":
         _art_slots = bool(_backing_card_cols is not None and len(_backing_card_cols) > 3)
         _jam_card = _backing_jam_card_key(_creative_backing_ctx) if _backing_card_kind == "creative" else ""
         if _backing_card_slot is not None and _art_slots and _jam_card:
+            _backing_jam_card_on = True
             with _backing_card_slot.container():
                 try:
                     from backing_context_ui import creative_live_style_meter as _jam_live
@@ -24057,6 +24073,8 @@ elif _studio_page == "backing":
                             )
                             or _status_bpm
                         ),
+                        # The facts under the key row, as on the song cards.
+                        facts_slot=_backing_card_cols[3],
                     )
                 except Exception as _jam_card_err:
                     if _developer_mode_enabled():
