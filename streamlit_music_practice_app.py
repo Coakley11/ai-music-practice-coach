@@ -27334,6 +27334,10 @@ elif _studio_page == "backing":
         set_leadsheet_open=_set_backing_lead_sheet_open,
         sheet_visible=bool(_leadsheet_controls_ready and _leadsheet_open),
     )
+    # The card drew its own Lead sheet button (album-cover and jam cards).
+    _ls_card_has_button = bool(
+        _backing_art_actions_slot is not None and (_backing_art_identity is not None or _backing_jam_card_on)
+    )
     if _leadsheet_controls_ready:
         _ls_col_a, _ls_col_b = st.columns([1, 5])
 
@@ -27365,8 +27369,30 @@ elif _studio_page == "backing":
             # its height, so nothing below jumps, and the element is never added or removed (that once made
             # Streamlit re-create the sheet and stop the resumed take).
             with st.container(key="backing_leadsheet_play_hint_slot"):
+                # Compact (user, 2026-11-26: the open / close control took too much room): small pills, and with the
+                # sheet open the row is the sheet's own slim header (Close lead sheet at its left, the transport's
+                # one line beside it). With the sheet closed on a card that has its own Lead sheet button the row is
+                # hidden -- kept in the page (never added or removed, see above), so nothing below remounts.
+                _ls_hide_row = bool(_ls_card_has_button and not _leadsheet_open)
+                _ls_compact_css = (
+                    ".st-key-backing_leadsheet_hide_btn button,.st-key-backing_leadsheet_show_btn button"
+                    "{min-height:30px!important;height:30px;padding:0 .8rem!important;border-radius:999px!important;"
+                    "font-size:.8rem!important;width:auto!important;white-space:nowrap;}"
+                    ".st-key-backing_leadsheet_hide_btn button p,.st-key-backing_leadsheet_show_btn button p{font-size:.8rem!important;}"
+                    "[data-testid='stHorizontalBlock']:has(.st-key-backing_leadsheet_hide_btn,.st-key-backing_leadsheet_show_btn)"
+                    "{flex-wrap:nowrap!important;gap:8px!important;align-items:center!important;}"
+                    "[data-testid='stHorizontalBlock']:has(.st-key-backing_leadsheet_hide_btn,.st-key-backing_leadsheet_show_btn)"
+                    ">[data-testid='stColumn']:first-child{flex:0 0 auto!important;width:auto!important;min-width:0!important;}"
+                    "[data-testid='stHorizontalBlock']:has(.st-key-backing_leadsheet_hide_btn,.st-key-backing_leadsheet_show_btn)"
+                    ">[data-testid='stColumn']:last-child{flex:1 1 0!important;width:auto!important;min-width:0!important;}"
+                    "[data-testid='stHorizontalBlock']:has(.st-key-backing_leadsheet_hide_btn){padding:4px 6px;margin-bottom:-.6rem;"
+                    "border:1px solid rgba(15,23,42,.12);border-bottom:0;border-radius:14px 14px 0 0;background:rgba(248,250,252,.92);}"
+                    ".st-key-backing_leadsheet_play_hint_slot{min-height:30px!important;}"
+                    + ("[data-testid='stHorizontalBlock']:has(.st-key-backing_leadsheet_show_btn){display:none!important;}"
+                       if _ls_hide_row else "")
+                )
                 st.markdown(
-                    "<style>.st-key-backing_leadsheet_play_hint_slot [data-testid='stCaptionContainer'] p,"
+                    "<style>" + _ls_compact_css + ".st-key-backing_leadsheet_play_hint_slot [data-testid='stCaptionContainer'] p,"
                     ".st-key-backing_leadsheet_play_hint_slot [data-testid='stCaptionContainer']"
                     "{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}"
                     ".st-key-backing_leadsheet_play_hint_slot{min-height:38px;justify-content:center;}"
@@ -27390,7 +27416,7 @@ elif _studio_page == "backing":
                 _hint_intent = str(transport_intent(st.session_state) or "")
                 _hint_feedback = str(st.session_state.get(BACKING_PLAY_FEEDBACK_KEY, "") or "").strip()
                 if not _leadsheet_open:
-                    st.caption("Optional chord follow-along — opens on demand to keep the page light.")
+                    st.caption("Chord follow-along, on demand.")
                 elif _hint_feedback and _surface_owns_audio:
                     # The transport's one-line feedback ("Key Cycle — next key ready.", "Playback stopped").
                     st.caption(_hint_feedback)
