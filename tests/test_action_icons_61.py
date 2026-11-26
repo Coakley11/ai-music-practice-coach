@@ -69,6 +69,12 @@ class VerbsReuseSettledLooks(unittest.TestCase):
         allowed_shared = {
             frozenset({"new", "add"}),
             frozenset({"play", "preview"}),
+            # Creative Lab motif glyphs chosen by the user (2026-11-20). Same picture, different
+            # page and a related sense: moving a motif up/down vs moving a file up/down, and
+            # confirming the pattern settings vs confirming a verified version.
+            frozenset({"upload", "sequence_up"}),
+            frozenset({"download", "sequence_down"}),
+            frozenset({"verify", "apply_settings"}),
         }
         by_icon: dict[str, set[str]] = {}
         for verb, icon in ACTION_ICONS.items():

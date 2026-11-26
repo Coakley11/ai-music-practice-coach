@@ -1,0 +1,199 @@
+{
+ "results": [
+  [
+   "Missions: improv_mission_gen shows \ud83e\ude84 before its label",
+   true,
+   "\ud83e\ude84 Generate example"
+  ],
+  [
+   "Missions: improv_mission_gen label not clipped and on screen",
+   true,
+   "l=32 r=191 vw=390"
+  ],
+  [
+   "Missions: improv_mission_easier shows \ud83c\udf31 before its label",
+   true,
+   "\ud83c\udf31 Easier example"
+  ],
+  [
+   "Missions: improv_mission_easier label not clipped and on screen",
+   true,
+   "l=199 r=358 vw=390"
+  ],
+  [
+   "Missions: improv_mission_harder shows \ud83e\udde0 before its label",
+   true,
+   "\ud83e\udde0 Harder example"
+  ],
+  [
+   "Missions: improv_mission_harder label not clipped and on screen",
+   true,
+   "l=32 r=191 vw=390"
+  ],
+  [
+   "Missions: improv_mission_new shows \ud83d\udca1 before its label",
+   true,
+   "\ud83d\udca1 New idea"
+  ],
+  [
+   "Missions: improv_mission_new label not clipped and on screen",
+   true,
+   "l=199 r=358 vw=390"
+  ],
+  [
+   "Missions: improv_mission_gen still works (page changed, no error)",
+   true,
+   "changed=True errors=0->0"
+  ],
+  [
+   "Missions: improv_mission_easier still works (page changed, no error)",
+   true,
+   "changed=True errors=0->0"
+  ],
+  [
+   "Missions: improv_mission_harder still works (page changed, no error)",
+   true,
+   "changed=True errors=0->0"
+  ],
+  [
+   "Missions: improv_mission_new still works (page changed, no error)",
+   true,
+   "changed=True errors=0->0"
+  ],
+  [
+   "Phrase: improv_gen_motif_chord shows \ud83e\ude84 before its label",
+   true,
+   "\ud83e\ude84 Generate motif for Bb"
+  ],
+  [
+   "Phrase: improv_gen_motif_chord label not clipped and on screen",
+   true,
+   "l=32 r=191 vw=390"
+  ],
+  [
+   "Phrase: improv_motif_new shows \ud83d\udca1 before its label",
+   true,
+   "\ud83d\udca1 New motif"
+  ],
+  [
+   "Phrase: improv_motif_new label not clipped and on screen",
+   true,
+   "l=199 r=358 vw=390"
+  ],
+  [
+   "Phrase: improv_motif_harder shows \ud83e\udde0 before its label",
+   true,
+   "\ud83e\udde0 Harder motif"
+  ],
+  [
+   "Phrase: improv_motif_harder label not clipped and on screen",
+   true,
+   "l=32 r=191 vw=390"
+  ],
+  [
+   "Phrase: improv_motif_easier shows \ud83c\udf31 before its label",
+   true,
+   "\ud83c\udf31 Easier motif"
+  ],
+  [
+   "Phrase: improv_motif_easier label not clipped and on screen",
+   true,
+   "l=199 r=358 vw=390"
+  ],
+  [
+   "Phrase: improv_gen_motif_chord still works (page changed, no error)",
+   true,
+   "changed=True errors=0->0"
+  ],
+  [
+   "Phrase: improv_motif_new still works (page changed, no error)",
+   true,
+   "changed=True errors=0->0"
+  ],
+  [
+   "Phrase: improv_motif_harder still works (page changed, no error)",
+   true,
+   "changed=True errors=0->0"
+  ],
+  [
+   "Phrase: improv_motif_easier still works (page changed, no error)",
+   true,
+   "changed=True errors=0->0"
+  ],
+  [
+   "Phrase: Target scope '2 chords' selected",
+   true,
+   ""
+  ],
+  [
+   "Span motif: improv_span_gen shows \ud83e\ude84 before its label",
+   true,
+   "\ud83e\ude84 Generate span motif"
+  ],
+  [
+   "Span motif: improv_span_gen label not clipped and on screen",
+   true,
+   "l=32 r=191 vw=390"
+  ],
+  [
+   "Span motif: improv_span_new shows \ud83d\udca1 before its label",
+   true,
+   "\ud83d\udca1 New span idea"
+  ],
+  [
+   "Span motif: improv_span_new label not clipped and on screen",
+   true,
+   "l=199 r=358 vw=390"
+  ],
+  [
+   "Span motif: improv_span_easier shows \ud83c\udf31 before its label",
+   true,
+   "\ud83c\udf31 Easier"
+  ],
+  [
+   "Span motif: improv_span_easier label not clipped and on screen",
+   true,
+   "l=32 r=191 vw=390"
+  ],
+  [
+   "Span motif: improv_span_harder shows \ud83e\udde0 before its label",
+   true,
+   "\ud83e\udde0 Harder"
+  ],
+  [
+   "Span motif: improv_span_harder label not clipped and on screen",
+   true,
+   "l=199 r=358 vw=390"
+  ],
+  [
+   "Span motif: improv_span_gen still works (page changed, no error)",
+   true,
+   "changed=True errors=0->0"
+  ],
+  [
+   "Span motif: improv_span_new still works (page changed, no error)",
+   true,
+   "changed=True errors=0->0"
+  ],
+  [
+   "Span motif: improv_span_easier still works (page changed, no error)",
+   true,
+   "changed=True errors=0->0"
+  ],
+  [
+   "Span motif: improv_span_harder still works (page changed, no error)",
+   true,
+   "changed=True errors=0->0"
+  ],
+  [
+   "no horizontal page scroll",
+   true,
+   "390 vs 390"
+  ]
+ ],
+ "notes": [
+  "picked Say dropdown=True landed=True sidebar_song='SONG\\n\\nSONG\\nSay \u2014 John Mayer\\n\\n\ud83c\udfbc Songs\\n\\nSay \u00b7 Pop\\n\\n\ud83d\udcdc Song Original Key: Bb\\n\\n\ud83d\udddd\ufe0f Practice / Co'",
+  "opened Missions: True",
+  "opened Phrase: True"
+ ]
+}

@@ -5,7 +5,7 @@ from __future__ import annotations
 import html
 from typing import Any
 
-from music_feature_icons import FEATURE_ICONS, feature_label
+from music_feature_icons import FEATURE_ICONS, action_label, feature_label
 from song_catalog.user_overrides import (
     USER_VERIFIED,
     catalog_snapshot_from_record,
@@ -168,7 +168,7 @@ def render_lyrics_and_cues_panel(
                 label_visibility="collapsed",
             )
             if st.button(
-                "Auto-assign to sections",
+                action_label("apply_text", "Auto-assign to sections"),
                 key=f"auto_assign_lyrics::{slug}",
                 use_container_width=True,
             ):
@@ -194,7 +194,7 @@ def render_lyrics_and_cues_panel(
                 st.rerun()
 
         if song_data is not None and chart_sections is not None:
-            with st.expander("Manage sections", expanded=False):
+            with st.expander(action_label("edit", "Manage sections"), expanded=False):
                 add_opts = optional_sections_to_add(ordered_all)
                 if add_opts:
                     ac1, ac2 = st.columns([2, 1])
@@ -206,12 +206,16 @@ def render_lyrics_and_cues_panel(
                             label_visibility="collapsed",
                         )
                     with ac2:
-                        if st.button("Add", key=f"lyrics_add_btn::{slug}", use_container_width=True):
+                        if st.button(
+                            action_label("add", "Add"),
+                            key=f"lyrics_add_btn::{slug}",
+                            use_container_width=True,
+                        ):
                             add_lyrics_section(st.session_state, slug, pick_add)
                             mark_lyrics_dirty(st.session_state, slug)
                             st.rerun()
                 if st.button(
-                    "Reset sections to match chart",
+                    action_label("reset", "Reset sections to match chart"),
                     key=f"lyrics_reset_layout::{slug}",
                     use_container_width=True,
                 ):
@@ -296,7 +300,7 @@ def render_lyrics_and_cues_panel(
 
         with save_a:
             if st.button(
-                feature_label("charts_lyrics", "Save Lyrics & Cues"),
+                action_label("save", "Save Lyrics & Cues"),
                 key=f"save_lyrics::{slug}",
                 type="primary",
                 use_container_width=True,
@@ -328,7 +332,7 @@ def render_lyrics_and_cues_panel(
                 st.rerun()
         with save_b:
             if st.button(
-                feature_label("charts_lyrics", "Save as user verified"),
+                action_label("verify", "Save as user verified"),
                 key=f"save_lyrics_verified::{slug}",
                 use_container_width=True,
                 help="Mark as your preferred lyrics/cues (and verified chart if present).",
@@ -383,7 +387,7 @@ def render_lyrics_and_cues_panel(
                 st.rerun()
         with save_c:
             if st.button(
-                feature_label("charts_lyrics", "Revert my lyrics"),
+                action_label("revert", "Revert my lyrics"),
                 key=f"revert_lyrics::{slug}",
                 use_container_width=True,
                 help="Remove your saved lyrics and cues for this song.",

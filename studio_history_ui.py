@@ -259,7 +259,7 @@ def render_upload_history_panel(st_obj: Any) -> None:
             with save_cols[0]:
                 save_label = "Save Changes" if editing_saved else "Save to History"
                 if st_obj.button(
-                    save_label,
+                    action_label("save", save_label),
                     type="primary",
                     key="upload_history_save_btn",
                     use_container_width=True,
@@ -285,7 +285,7 @@ def render_upload_history_panel(st_obj: Any) -> None:
             if editing_saved:
                 with save_cols[1]:
                     if st_obj.button(
-                        "Save as New Copy",
+                        action_label("save", "Save as New Copy"),
                         key="upload_history_save_as_new_btn",
                         use_container_width=True,
                     ):
@@ -582,7 +582,7 @@ def render_multitrack_history_panel(st_obj: Any, *, song_title: str = "") -> Non
         with save_cols[0]:
             if active_catalog_id:
                 if st_obj.button(
-                    "Save Changes",
+                    action_label("save", "Save Changes"),
                     type="primary",
                     key="mt_history_save_changes_btn",
                     use_container_width=True,
@@ -591,7 +591,7 @@ def render_multitrack_history_panel(st_obj: Any, *, song_title: str = "") -> Non
                     _commit_and_save("update", "Saved changes to project")
             else:
                 if st_obj.button(
-                    "Save New Project",
+                    action_label("save", "Save New Project"),
                     type="primary",
                     key="mt_history_save_new_btn",
                     use_container_width=True,
@@ -600,7 +600,7 @@ def render_multitrack_history_panel(st_obj: Any, *, song_title: str = "") -> Non
                     _commit_and_save("new", "Saved new project")
         with save_cols[1]:
             if active_catalog_id and st_obj.button(
-                "Save as New Project",
+                action_label("save", "Save as New Project"),
                 key="mt_history_save_as_new_btn",
                 use_container_width=True,
                 disabled=not has_saveable,

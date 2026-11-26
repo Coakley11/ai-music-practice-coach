@@ -9,6 +9,13 @@ from typing import Any
 
 from tuner_tone import NOTE_NAMES, parse_note_token
 
+from music_feature_icons import action_label
+
+# The same transport glyphs as the metronome (▶️ / ⏹️). Stopping the tuner only stops listening -
+# it is not Backing's Stop or Key Cycling's Off, which live on other pages.
+_TUNER_START_LABEL = action_label("play", "Start Tuner")
+_TUNER_STOP_LABEL = action_label("stop", "Stop Tuner")
+
 NOTE_NAMES_JS = list(NOTE_NAMES)
 
 
@@ -278,8 +285,8 @@ def build_live_tuner_html(config: dict[str, Any]) -> str:
     <div class="lt-strings-row" id="{dom_id}-strings-row"></div>
   </div>
   <div class="lt-toolbar">
-    <button type="button" class="lt-btn primary" id="{dom_id}-start">Start Tuner</button>
-    <button type="button" class="lt-btn danger" id="{dom_id}-stop" disabled>Stop Tuner</button>
+    <button type="button" class="lt-btn primary" id="{dom_id}-start" aria-label="Start Tuner">{_TUNER_START_LABEL}</button>
+    <button type="button" class="lt-btn danger" id="{dom_id}-stop" aria-label="Stop Tuner" disabled>{_TUNER_STOP_LABEL}</button>
     <div class="lt-status" id="{dom_id}-status">Press Start — your browser will ask for microphone access.</div>
   </div>
   <div class="lt-note idle" id="{dom_id}-note">—</div>
