@@ -2782,6 +2782,9 @@ def store_prepared_cycle_audio(
         "path": path,
         "static_url": url,
         "chart_html": html,
+        # How the sheet is read (concert / written key / guitar shapes): a sheet prepared before Shape Mode or
+        # written charts were switched is rebuilt, never shown in the old reading (browser 2026-11-25).
+        "display": cycle_display_signature(session),
         "loops": loops_in_sig,
         # Concert-space follow timeline for this sounding key — required so
         # Current/Next Chord update on seamless handoff (not the prior key).
@@ -2904,6 +2907,68 @@ def _prepared_entry_current(session: dict[str, Any], entry: dict[str, Any]) -> b
     return take_install_allowed(session, request)
 
 
+def cycle_display_signature(session: dict[str, Any]) -> list[str]:
+    """How cycle sheets are read now: the reading mode and what it depends on."""
+    mode = cycle_chart_mode(session)
+    detail = ""
+    try:
+        if mode == "shape":
+            from guitar_capo import CAPO_SHAPE_KEY, shape_tonic_only
+
+            detail = shape_tonic_only(str(session.get(CAPO_SHAPE_KEY) or ""))
+        elif mode == "written":
+            from instrument_transposition import selected_transposing_type
+
+            detail = str(selected_transposing_type(dict(session), str(session.get("instrument") or "")) or "")
+    except Exception:
+        detail = ""
+    return [mode, detail]
+
+
+def _sections_from_timeline(timeline: Any) -> dict[str, list[str]]:
+    out: dict[str, list[str]] = {}
+    seen: set[tuple[str, int]] = set()
+    for ev in timeline or []:
+        if not isinstance(ev, dict):
+            continue
+        name = str(ev.get("section") or "").strip()
+        bar = int(ev.get("bar_in_section") or 0)
+        if not name or not bar or (name, bar) in seen:
+            continue
+        seen.add((name, bar))
+        out.setdefault(name, []).append(str(ev.get("chord") or ""))
+    return out
+
+
+def _restate_prepared_chart(session: dict[str, Any], key: str, entry: dict[str, Any]) -> str:
+    """The prepared key's sheet in the current reading (its concert chords are in its timeline)."""
+    sections = _sections_from_timeline(entry.get("timeline"))
+    if not sections:
+        return ""
+    try:
+        from backing_key_cycle_handoff import build_cycle_lead_sheet_html
+
+        html = str(build_cycle_lead_sheet_html(
+            sounding_key=key,
+            sections=sections,
+            song_name=str(session.get("_kc_chart_song_name") or ""),
+            song_data=session.get("_kc_chart_song_data"),
+            selected_section_names=session.get("_kc_chart_selected_sections"),
+            level=str(session.get("_kc_chart_level") or "Intermediate"),
+            groove_style=str(session.get("_kc_chart_groove") or "Pop groove"),
+            bpm=int(session.get("_kc_chart_bpm") or 100),
+            time_signature=str(session.get("_kc_chart_meter") or "4/4"),
+            session=session,
+            chart_display_key=project_cycle_display_key(session, key),
+        ) or "").strip()
+    except Exception:
+        return ""
+    if html:
+        entry["chart_html"] = html
+        entry["display"] = cycle_display_signature(session)
+    return html
+
+
 def prepared_cycle_chart_html(session: dict[str, Any], sounding_key: str) -> str:
     key = str(sounding_key or "").strip()
     bag = session.get(BACKING_KEY_CYCLE_PREPARED_KEY)
@@ -2913,6 +2978,11 @@ def prepared_cycle_chart_html(session: dict[str, Any], sounding_key: str) -> str
     if not isinstance(entry, dict) or not _prepared_entry_current(session, entry):
         return ""
     html = str(entry.get("chart_html") or "").strip()
+    if list(entry.get("display") or []) != cycle_display_signature(session):
+        # Prepared in another reading (Shape Mode / written charts switched since): rebuilt, or not used.
+        html = _restate_prepared_chart(session, key, entry)
+        if not html:
+            return ""
     if "chord-tone-hints" not in html:
         return html
     # A sheet prepared before a Level change still carries that level's hint lines.

@@ -106,3 +106,23 @@ def test_another_instrument_ignores_the_guitars_capo():
     s = _guitar(instrument="Piano")
     events = [{"pitch": "C4"}]
     assert project_melody_events(events, original_key="C", practice_key="C", instrument="Piano", session_state=s, written=False)[0] == events
+
+
+def test_a_cycle_sheet_prepared_before_shape_mode_is_rebuilt_in_shapes():
+    """Browser 2026-11-25: Shape Mode switched on while cycling in G left that key's prepared sheet in concert chords."""
+    import re as _re
+
+    import backing_key_cycle as kc
+    from backing_take_identity import capture_take_request
+
+    s = {"instrument": "Guitar", "guitar_capo_enabled": False, "guitar_capo_shape_key": "D", "_kc_chart_bpm": 100}
+    timeline = [{"section": "A", "bar_in_section": i + 1, "chord": c} for i, c in enumerate(["Gmaj7", "C7", "F7", "C7"])]
+    s[kc.BACKING_KEY_CYCLE_PREPARED_KEY] = {"G": {
+        "take_request": capture_take_request(s, prefetch=True), "chart_html": "<div class='chord-symbol'>Gmaj7</div>",
+        "display": kc.cycle_display_signature(s), "timeline": timeline,
+    }}
+    assert "Gmaj7" in kc.prepared_cycle_chart_html(s, "G")
+    s["guitar_capo_enabled"] = True  # Shape Mode on, D shapes
+    html = kc.prepared_cycle_chart_html(s, "G")
+    cells = [c for c in _re.findall(r"<div class='chord-symbol'>(.*?)</div>", html)]
+    assert cells[:4] == ["Dmaj7", "G7", "C7", "G7"] and "capo 5" in html

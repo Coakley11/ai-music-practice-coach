@@ -25641,6 +25641,11 @@ elif _studio_page == "backing":
                         ).strip()
                         if _prep_html:
                             st.session_state["_kc_audible_chart_html"] = _prep_html
+                            try:
+                                from backing_key_cycle import cycle_display_signature as _kc_disp_w
+                                st.session_state["_kc_audible_chart_display"] = _kc_disp_w(st.session_state)
+                            except Exception:
+                                pass
                             st.session_state["_kc_last_open_chart_html"] = _prep_html
                     except Exception:
                         pass
@@ -27020,6 +27025,14 @@ elif _studio_page == "backing":
             )
 
             _audible_chart = str(st.session_state.get("_kc_audible_chart_html") or "").strip()
+            try:
+                from backing_key_cycle import cycle_display_signature as _kc_disp
+
+                # A sheet held from before Shape Mode / written charts were switched is in the old reading.
+                if list(st.session_state.get("_kc_audible_chart_display") or []) != _kc_disp(st.session_state):
+                    _audible_chart = ""
+            except Exception:
+                pass
             # Clear Pending only when the installed arrangement matches widgets.
             _kc_clear_if_applied(
                 st.session_state,
@@ -27196,6 +27209,11 @@ elif _studio_page == "backing":
                     _current_backing_signature,
                 ):
                     st.session_state["_kc_audible_chart_html"] = chart_html
+                    try:
+                        from backing_key_cycle import cycle_display_signature as _kc_disp_w
+                        st.session_state["_kc_audible_chart_display"] = _kc_disp_w(st.session_state)
+                    except Exception:
+                        pass
     if chart_html:
         # Hint lines are added to the finished grid (cached and held charts alike) from the
         # chord symbols it displays -- so they follow Practice Key, Written and Shape -- and
