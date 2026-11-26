@@ -21568,7 +21568,7 @@ elif _studio_page == "practice":
                     with _n_col3:
                         st.write("")
                         _gen_notation = st.button(
-                            "Generate notation / TAB",
+                            action_label("sheet_music", "Generate notation / TAB"),
                             key="practice_generate_notation",
                             type="primary",
                             use_container_width=True,
@@ -22457,7 +22457,7 @@ elif _studio_page == "picker":
                 with st.container(key="picker_toggle_song_editor"):
                     if _editor_open:
                         st.button(
-                            "Close editor",
+                            action_label("close", "Close editor"),
                             key="picker_close_song_editor",
                             use_container_width=False,
                             on_click=set_picker_editor_open,
@@ -22465,7 +22465,7 @@ elif _studio_page == "picker":
                         )
                     else:
                         st.button(
-                            "Open editor",
+                            action_label("edit", "Open editor"),
                             key="picker_open_song_editor",
                             use_container_width=False,
                             on_click=set_picker_editor_open,
@@ -28873,7 +28873,7 @@ elif _studio_page == "analysis":
                         st.caption(f"Developer · span alignment unavailable: {_span_exc!r}")
 
             if st.button(
-                "Run AI coach analysis",
+                action_label("analyze", "Run AI coach analysis"),
                 type="primary",
                 key="analysis_run_btn",
                 use_container_width=True,
@@ -30316,7 +30316,7 @@ elif _studio_page == "multitrack":
                 + " could not be brought back just now. Your saved project still has it - "
                 "press **Restore saved audio** to try again."
             )
-            if st.button("Restore saved audio", key="mt_restore_saved_audio_retry"):
+            if st.button(action_label("load", "Restore saved audio"), key="mt_restore_saved_audio_retry"):
                 _mt_restore_retry(st.session_state)
                 st.rerun()
     except Exception:

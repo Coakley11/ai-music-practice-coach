@@ -440,8 +440,10 @@ def render_practice_log_coach_ui(st_module: Any, view: PracticeLogCoachView) -> 
         )
         for line in view.recording_reviews:
             st_module.markdown(f"- {line}")
+        from music_feature_icons import page_feature_label
+
         if st_module.button(
-            "Open Upload Analysis",
+            page_feature_label("analysis", "Open Upload Analysis"),
             key="coach_goto_upload_analysis",
             use_container_width=False,
         ):

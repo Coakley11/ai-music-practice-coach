@@ -6,7 +6,7 @@ import html
 from dataclasses import dataclass
 from typing import Any, Callable
 
-from music_feature_icons import FEATURE_ICONS
+from music_feature_icons import FEATURE_ICONS, action_label
 
 PRACTICE_ACTIVE_TOOL_KEY = "practice_active_tool"
 PRACTICE_TIME_PITCH_TOOL_ID = "time_and_pitch"
@@ -253,7 +253,7 @@ def render_practice_tool_workspace_header(
             unsafe_allow_html=True,
         )
     with h2:
-        if st_module.button("Close", key="practice_tool_close_btn", use_container_width=True):
+        if st_module.button(action_label("close", "Close"), key="practice_tool_close_btn", use_container_width=True):
             session[PRACTICE_ACTIVE_TOOL_KEY] = ""
             try:
                 from practice_workspace_persistence import persist_practice_tool_user_action

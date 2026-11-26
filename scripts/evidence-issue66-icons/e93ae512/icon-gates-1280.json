@@ -1,0 +1,552 @@
+[
+  {
+    "gate": "songs editor: 'Open editor' wears the edit icon",
+    "ok": true,
+    "detail": "rendered '\u270f\ufe0f Open editor'"
+  },
+  {
+    "gate": "songs editor: 'Open editor' is not clipped",
+    "ok": true,
+    "detail": "width=118"
+  },
+  {
+    "gate": "songs editor: 'Open editor' is visible and has an accessible name",
+    "ok": true,
+    "detail": "visible=True aria=''"
+  },
+  {
+    "gate": "the Songs editor opens on Lyrics & Cues",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "gate": "lyrics: 'Save Lyrics & Cues' wears the save icon",
+    "ok": true,
+    "detail": "rendered '\ud83d\udcbe Save Lyrics & Cues'"
+  },
+  {
+    "gate": "lyrics: 'Save Lyrics & Cues' is not clipped",
+    "ok": true,
+    "detail": "width=319"
+  },
+  {
+    "gate": "lyrics: 'Save Lyrics & Cues' is visible and has an accessible name",
+    "ok": true,
+    "detail": "visible=True aria=''"
+  },
+  {
+    "gate": "lyrics: 'Save as user verified' wears the verify icon",
+    "ok": true,
+    "detail": "rendered '\u2705 Save as user verified'"
+  },
+  {
+    "gate": "lyrics: 'Save as user verified' is not clipped",
+    "ok": true,
+    "detail": "width=319"
+  },
+  {
+    "gate": "lyrics: 'Save as user verified' is visible and has an accessible name",
+    "ok": true,
+    "detail": "visible=True aria=''"
+  },
+  {
+    "gate": "lyrics: 'Revert my lyrics' wears the revert icon",
+    "ok": true,
+    "detail": "rendered '\u23ea Revert my lyrics'"
+  },
+  {
+    "gate": "lyrics: 'Revert my lyrics' is not clipped",
+    "ok": true,
+    "detail": "width=319"
+  },
+  {
+    "gate": "lyrics: 'Revert my lyrics' is visible and has an accessible name",
+    "ok": true,
+    "detail": "visible=True aria=''"
+  },
+  {
+    "gate": "songs editor: 'Close editor' wears the close icon",
+    "ok": true,
+    "detail": "rendered '\u2715 Close editor'"
+  },
+  {
+    "gate": "songs editor: 'Close editor' is not clipped",
+    "ok": true,
+    "detail": "width=110"
+  },
+  {
+    "gate": "songs editor: 'Close editor' is visible and has an accessible name",
+    "ok": true,
+    "detail": "visible=True aria=''"
+  },
+  {
+    "gate": "lyrics: 'Auto-assign to sections' wears the apply_text icon",
+    "ok": true,
+    "detail": "rendered '\ud83d\udcdd Auto-assign to sections'"
+  },
+  {
+    "gate": "lyrics: 'Auto-assign to sections' is not clipped",
+    "ok": true,
+    "detail": "width=952"
+  },
+  {
+    "gate": "lyrics: 'Auto-assign to sections' is visible and has an accessible name",
+    "ok": true,
+    "detail": "visible=True aria=''"
+  },
+  {
+    "gate": "lyrics: 'Reset sections to match chart' wears the reset icon",
+    "ok": true,
+    "detail": "rendered '\u21a9\ufe0f Reset sections to match chart'"
+  },
+  {
+    "gate": "lyrics: 'Reset sections to match chart' is not clipped",
+    "ok": true,
+    "detail": "width=952"
+  },
+  {
+    "gate": "lyrics: 'Reset sections to match chart' is visible and has an accessible name",
+    "ok": true,
+    "detail": "visible=True aria=''"
+  },
+  {
+    "gate": "lyrics: the Add button wears the add icon",
+    "ok": true,
+    "detail": "label='\u2795 Add'"
+  },
+  {
+    "gate": "both editors mark 'Save as user verified' identically",
+    "ok": true,
+    "detail": "lyrics label='\u2705 Save as user verified'"
+  },
+  {
+    "gate": "the Songs editor opens on Edit Song Chart",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "gate": "Enable editing turns the chart editor on",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "gate": "chart: 'Add section' wears the add icon",
+    "ok": true,
+    "detail": "rendered '\u2795 Add section'"
+  },
+  {
+    "gate": "chart: 'Add section' is not clipped",
+    "ok": true,
+    "detail": "width=116"
+  },
+  {
+    "gate": "chart: 'Add section' is visible and has an accessible name",
+    "ok": true,
+    "detail": "visible=True aria=''"
+  },
+  {
+    "gate": "chart: 'Delete section' wears the delete icon",
+    "ok": true,
+    "detail": "rendered '\ud83d\uddd1\ufe0f Delete section'"
+  },
+  {
+    "gate": "chart: 'Delete section' is not clipped",
+    "ok": true,
+    "detail": "width=131"
+  },
+  {
+    "gate": "chart: 'Delete section' is visible and has an accessible name",
+    "ok": true,
+    "detail": "visible=True aria=''"
+  },
+  {
+    "gate": "chart: 'Save corrected chart' wears the save icon",
+    "ok": true,
+    "detail": "rendered '\ud83d\udcbe Save corrected chart'"
+  },
+  {
+    "gate": "chart: 'Save corrected chart' is not clipped",
+    "ok": true,
+    "detail": "width=235"
+  },
+  {
+    "gate": "chart: 'Save corrected chart' is visible and has an accessible name",
+    "ok": true,
+    "detail": "visible=True aria=''"
+  },
+  {
+    "gate": "chart: 'Save as user verified' wears the verify icon",
+    "ok": true,
+    "detail": "rendered '\u2705 Save as user verified'"
+  },
+  {
+    "gate": "chart: 'Save as user verified' is not clipped",
+    "ok": true,
+    "detail": "width=235"
+  },
+  {
+    "gate": "chart: 'Save as user verified' is visible and has an accessible name",
+    "ok": true,
+    "detail": "visible=True aria=''"
+  },
+  {
+    "gate": "chart: 'Revert to catalog' wears the revert icon",
+    "ok": true,
+    "detail": "rendered '\u23ea Revert to catalog'"
+  },
+  {
+    "gate": "chart: 'Revert to catalog' is not clipped",
+    "ok": true,
+    "detail": "width=235"
+  },
+  {
+    "gate": "chart: 'Revert to catalog' is visible and has an accessible name",
+    "ok": true,
+    "detail": "visible=True aria=''"
+  },
+  {
+    "gate": "chart: 'Reset draft' wears the reset icon",
+    "ok": true,
+    "detail": "rendered '\u21a9\ufe0f Reset draft'"
+  },
+  {
+    "gate": "chart: 'Reset draft' is not clipped",
+    "ok": true,
+    "detail": "width=235"
+  },
+  {
+    "gate": "chart: 'Reset draft' is visible and has an accessible name",
+    "ok": true,
+    "detail": "visible=True aria=''"
+  },
+  {
+    "gate": "chart: 'Duplicate (' wears the duplicate icon",
+    "ok": true,
+    "detail": "rendered '\ud83d\udccb Duplicate (Intro)'"
+  },
+  {
+    "gate": "chart: 'Duplicate (' is not clipped",
+    "ok": true,
+    "detail": "width=143"
+  },
+  {
+    "gate": "chart: 'Duplicate (' is visible and has an accessible name",
+    "ok": true,
+    "detail": "visible=True aria=''"
+  },
+  {
+    "gate": "chart: 'bar @ end (' wears the add icon",
+    "ok": true,
+    "detail": "rendered '\u2795 bar @ end (Intro)'"
+  },
+  {
+    "gate": "chart: 'bar @ end (' is not clipped",
+    "ok": true,
+    "detail": "width=147"
+  },
+  {
+    "gate": "chart: 'bar @ end (' is visible and has an accessible name",
+    "ok": true,
+    "detail": "visible=True aria=''"
+  },
+  {
+    "gate": "chart: 'last bar (' wears the remove icon",
+    "ok": true,
+    "detail": "rendered '\u2796 last bar (Intro)'"
+  },
+  {
+    "gate": "chart: 'last bar (' is not clipped",
+    "ok": true,
+    "detail": "width=131"
+  },
+  {
+    "gate": "chart: 'last bar (' is visible and has an accessible name",
+    "ok": true,
+    "detail": "visible=True aria=''"
+  },
+  {
+    "gate": "chart: every 'Duplicate (' button wears the same icon (11 found)",
+    "ok": true,
+    "detail": "labels=[\"\\ud83d\\udccb Duplicate (Intro)\", \"\\ud83d\\udccb Duplicate (Verse 1)\", \"\\ud83d\\udccb Duplicate (Chorus 1)\", \"\\ud83d\\udccb Duplicate (Turnaround 1)\", \"\\ud83d\\udccb Duplicate (Verse 2)\", \"\\ud83d\\udccb Duplicate (Chorus 2)\", \"\\ud83d\\udccb Duplicate (Turnaround 2)\", \"\\ud83d\\udccb Duplicate (Bridge)\", \"\\"
+  },
+  {
+    "gate": "chart: every 'bar @ end (' button wears the same icon (11 found)",
+    "ok": true,
+    "detail": "labels=[\"\\u2795 bar @ end (Intro)\", \"\\u2795 bar @ end (Verse 1)\", \"\\u2795 bar @ end (Chorus 1)\", \"\\u2795 bar @ end (Turnaround 1)\", \"\\u2795 bar @ end (Verse 2)\", \"\\u2795 bar @ end (Chorus 2)\", \"\\u2795 bar @ end (Turnaround 2)\", \"\\u2795 bar @ end (Bridge)\", \"\\u2795 bar @ end (Turnaround 3)\", \"\\u2795 bar @ e"
+  },
+  {
+    "gate": "chart: every 'last bar (' button wears the same icon (11 found)",
+    "ok": true,
+    "detail": "labels=[\"\\u2796 last bar (Intro)\", \"\\u2796 last bar (Verse 1)\", \"\\u2796 last bar (Chorus 1)\", \"\\u2796 last bar (Turnaround 1)\", \"\\u2796 last bar (Verse 2)\", \"\\u2796 last bar (Chorus 2)\", \"\\u2796 last bar (Turnaround 2)\", \"\\u2796 last bar (Bridge)\", \"\\u2796 last bar (Turnaround 3)\", \"\\u2796 last bar (Verse "
+  },
+  {
+    "gate": "chart: 'Apply section order' wears the apply_text icon",
+    "ok": true,
+    "detail": "rendered '\ud83d\udcdd Apply section order'"
+  },
+  {
+    "gate": "chart: 'Apply section order' is not clipped",
+    "ok": true,
+    "detail": "width=161"
+  },
+  {
+    "gate": "chart: 'Apply section order' is visible and has an accessible name",
+    "ok": true,
+    "detail": "visible=True aria=''"
+  },
+  {
+    "gate": "chart: 'Download all overrides (JSON)' wears the download icon",
+    "ok": true,
+    "detail": "rendered '\u2b07\ufe0f Download all overrides (JSON)'"
+  },
+  {
+    "gate": "chart: 'Download all overrides (JSON)' is not clipped",
+    "ok": true,
+    "detail": "width=226"
+  },
+  {
+    "gate": "chart: 'Download all overrides (JSON)' is visible and has an accessible name",
+    "ok": true,
+    "detail": "visible=True aria=''"
+  },
+  {
+    "gate": "chart: the overrides uploader wears the upload icon",
+    "ok": true,
+    "detail": "uploader text='\u2b06\ufe0f Import overrides JSON\\n\\nupload\\n\\nUpload\\n\\n500MB per file \u2022 JSON'"
+  },
+  {
+    "gate": "chart: Duplicate still duplicates (the page changed)",
+    "ok": true,
+    "detail": "clicked=True changed=True"
+  },
+  {
+    "gate": "chart: no error after Duplicate",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "gate": "chart: Reset draft still resets without error",
+    "ok": true,
+    "detail": "clicked=True"
+  },
+  {
+    "gate": "chart: 'Revert to catalog' is present and not clicked by this run",
+    "ok": true,
+    "detail": "disabled=False"
+  },
+  {
+    "gate": "chart: 'Delete section' is present and not clicked by this run",
+    "ok": true,
+    "detail": "disabled=False"
+  },
+  {
+    "gate": "the editor panel is still rendered at 1280 px",
+    "ok": true,
+    "detail": "tab='Edit Song Chart'"
+  },
+  {
+    "gate": "1280 px: 'Add section' still wears the add icon",
+    "ok": true,
+    "detail": "rendered '\u2795 Add section'"
+  },
+  {
+    "gate": "1280 px: 'Add section' is not clipped",
+    "ok": true,
+    "detail": "width=116"
+  },
+  {
+    "gate": "1280 px: 'Add section' stays inside the screen",
+    "ok": true,
+    "detail": "right edge=674"
+  },
+  {
+    "gate": "1280 px: 'Delete section' still wears the delete icon",
+    "ok": true,
+    "detail": "rendered '\ud83d\uddd1\ufe0f Delete section'"
+  },
+  {
+    "gate": "1280 px: 'Delete section' is not clipped",
+    "ok": true,
+    "detail": "width=131"
+  },
+  {
+    "gate": "1280 px: 'Delete section' stays inside the screen",
+    "ok": true,
+    "detail": "right edge=850"
+  },
+  {
+    "gate": "1280 px: 'Save corrected chart' still wears the save icon",
+    "ok": true,
+    "detail": "rendered '\ud83d\udcbe Save corrected chart'"
+  },
+  {
+    "gate": "1280 px: 'Save corrected chart' is not clipped",
+    "ok": true,
+    "detail": "width=185"
+  },
+  {
+    "gate": "1280 px: 'Save corrected chart' stays inside the screen",
+    "ok": true,
+    "detail": "right edge=581"
+  },
+  {
+    "gate": "1280 px: 'Save as user verified' still wears the verify icon",
+    "ok": true,
+    "detail": "rendered '\u2705 Save as user verified'"
+  },
+  {
+    "gate": "1280 px: 'Save as user verified' is not clipped",
+    "ok": true,
+    "detail": "width=185"
+  },
+  {
+    "gate": "1280 px: 'Save as user verified' stays inside the screen",
+    "ok": true,
+    "detail": "right edge=782"
+  },
+  {
+    "gate": "1280 px: 'Revert to catalog' still wears the revert icon",
+    "ok": true,
+    "detail": "rendered '\u23ea Revert to catalog'"
+  },
+  {
+    "gate": "1280 px: 'Revert to catalog' is not clipped",
+    "ok": true,
+    "detail": "width=185"
+  },
+  {
+    "gate": "1280 px: 'Revert to catalog' stays inside the screen",
+    "ok": true,
+    "detail": "right edge=983"
+  },
+  {
+    "gate": "1280 px: 'Reset draft' still wears the reset icon",
+    "ok": true,
+    "detail": "rendered '\u21a9\ufe0f Reset draft'"
+  },
+  {
+    "gate": "1280 px: 'Reset draft' is not clipped",
+    "ok": true,
+    "detail": "width=185"
+  },
+  {
+    "gate": "1280 px: 'Reset draft' stays inside the screen",
+    "ok": true,
+    "detail": "right edge=1184"
+  },
+  {
+    "gate": "1280 px: 'Duplicate (' still wears the duplicate icon",
+    "ok": true,
+    "detail": "rendered '\ud83d\udccb Duplicate (Intro)'"
+  },
+  {
+    "gate": "1280 px: 'Duplicate (' is not clipped",
+    "ok": true,
+    "detail": "width=143"
+  },
+  {
+    "gate": "1280 px: 'Duplicate (' stays inside the screen",
+    "ok": true,
+    "detail": "right edge=1075"
+  },
+  {
+    "gate": "1280 px: 'bar @ end (' still wears the add icon",
+    "ok": true,
+    "detail": "rendered '\u2795 bar @ end (Intro)'"
+  },
+  {
+    "gate": "1280 px: 'bar @ end (' is not clipped",
+    "ok": true,
+    "detail": "width=147"
+  },
+  {
+    "gate": "1280 px: 'bar @ end (' stays inside the screen",
+    "ok": true,
+    "detail": "right edge=543"
+  },
+  {
+    "gate": "1280 px: 'last bar (' still wears the remove icon",
+    "ok": true,
+    "detail": "rendered '\u2796 last bar (Intro)'"
+  },
+  {
+    "gate": "1280 px: 'last bar (' is not clipped",
+    "ok": true,
+    "detail": "width=131"
+  },
+  {
+    "gate": "1280 px: 'last bar (' stays inside the screen",
+    "ok": true,
+    "detail": "right edge=795"
+  },
+  {
+    "gate": "1280 px: 'Close editor' still wears the close icon",
+    "ok": true,
+    "detail": "rendered '\u2715 Close editor'"
+  },
+  {
+    "gate": "1280 px: 'Close editor' is not clipped",
+    "ok": true,
+    "detail": "width=110"
+  },
+  {
+    "gate": "1280 px: 'Close editor' stays inside the screen",
+    "ok": true,
+    "detail": "right edge=506"
+  },
+  {
+    "gate": "at least one editor action was measured at 1280 px",
+    "ok": true,
+    "detail": "measured=10 of 10"
+  },
+  {
+    "gate": "no horizontal page scroll at 1280 px",
+    "ok": true,
+    "detail": "scrollWidth=1280 clientWidth=1280"
+  },
+  {
+    "gate": "no button is wider than the screen at 1280 px",
+    "ok": true,
+    "detail": "offenders=[]"
+  },
+  {
+    "gate": "songs editor: Close editor still closes the editor",
+    "ok": true,
+    "detail": "clicked=True"
+  },
+  {
+    "gate": "songs editor after Close: 'Open editor' wears the edit icon",
+    "ok": true,
+    "detail": "rendered '\u270f\ufe0f Open editor'"
+  },
+  {
+    "gate": "songs editor after Close: 'Open editor' is not clipped",
+    "ok": true,
+    "detail": "width=118"
+  },
+  {
+    "gate": "songs editor after Close: 'Open editor' is visible and has an accessible name",
+    "ok": true,
+    "detail": "visible=True aria=''"
+  },
+  {
+    "gate": "custom: a progression is saved so More options has something to delete",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "gate": "custom: Delete saved progression wears the trash icon",
+    "ok": true,
+    "detail": "label='\ud83d\uddd1\ufe0f Delete saved progression'"
+  },
+  {
+    "gate": "custom: the delete button keeps its disabled guard",
+    "ok": true,
+    "detail": "disabled=True"
+  },
+  {
+    "gate": "custom: 'Save to library' already wears the save icon",
+    "ok": true,
+    "detail": "label='\ud83d\udcbe Save to library'"
+  }
+]

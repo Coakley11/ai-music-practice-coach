@@ -1,0 +1,15 @@
+worktree : /c/tmp/ai-music-icons-all
+script   : scripts/_probe_icons_workflows.py
+port     : 8691
+cleared  : ignored app state under /c/tmp/ai-music-icons-all/data (tracked fixtures kept)
+server pid: 266418
+picked Say dropdown=True landed=True sidebar_song='SONG\n\nSONG\nSay — John Mayer\n\n🎼 Songs\n\nSay · Pop\n\n📜 Song Original Key: Bb\n\n🗝️ Practice / Co'
+  PASS  [390px] Run AI coach analysis: shows 🎯 before its label  [🎯 Run AI coach analysis]
+  PASS  [390px] Run AI coach analysis: not clipped, on screen  [l=32 r=358 vw=390 disabled=False]
+  PASS  [390px] Save to History (saved analysis): shows 💾 before its label  [💾 Save Changes]
+  PASS  [390px] Save to History (saved analysis): not clipped, on screen  [l=30 r=360 vw=390 disabled=False]
+  PASS  [390px] Save New Project: shows 💾 before its label  [💾 Save New Project]
+  PASS  [390px] Save New Project: not clipped, on screen  [l=65 r=325 vw=390 disabled=True]
+
+6/6 gates passed at 390px
+stopping the server (pid 266418)

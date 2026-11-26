@@ -5,6 +5,7 @@ from __future__ import annotations
 import html
 from typing import Any
 
+from music_feature_icons import action_label
 from mission_exact_chord_backing import generate_exact_chord_backing_wav, invalidate_exact_chord_backing_cache
 from mission_practice_context import (
     MISSION_CAPTURE_BLOCK_MESSAGE_KEY,
@@ -183,7 +184,7 @@ def render_exact_chord_mission_backing_panel(
     # accompaniment once; Record (the Mission recorder) plays that asset in sync with the mic.
     from mission_generated_backing import current_generated_backing, generate_mission_backing
 
-    if st.button("Generate Backing", key=f"{key_prefix}_generate", use_container_width=True, type="primary"):
+    if st.button(action_label("generate", "Generate Backing"), key=f"{key_prefix}_generate", use_container_width=True, type="primary"):
         with st.spinner("Generating backing…"):
             rec = generate_mission_backing(session)
         if rec is None:
