@@ -193,6 +193,24 @@ def test_the_backing_sheet_header_names_both_keys():
     assert "working in concert key C major, using shape key A major (capo 3)" in html
 
 
+def test_the_card_key_and_the_creative_line_name_the_shape_key_under_the_concert_key():
+    body = APP[APP.index("def _backing_card_shape_caption("):]
+    body = body[:body.index("\ndef ")]
+    assert 'f"Concert key · 🎸 shape key {shape_chart_label_for_concert(concert, shape)}, capo {fret}"' in body
+    assert "_shape_cap = _backing_card_shape_caption(" in APP
+    import creative_key_sync as cks
+
+    out = []
+
+    class _St:
+        def markdown(self, text, **_k):
+            out.append(re.sub("<[^>]+>", "", text))
+
+    s = {"instrument": "Guitar", "guitar_capo_enabled": True, "guitar_capo_shape_key": "A", "concert_key": "C", "display_key": "C"}
+    cks.render_creative_progression_block(_St(), s, {"Verse": ["C", "F", "G", "C"]}, concert_key="C")
+    assert "Practice concert key: C · 🎸 Shape key: A major (capo 3)" in " ".join(out)
+
+
 # --- 5. compact lead sheet -------------------------------------------------------------------------------------------
 
 

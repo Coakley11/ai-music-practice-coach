@@ -5293,10 +5293,23 @@ def render_creative_progression_block(
         )
     except Exception:
         pass
+    _shape_note = ""
+    if display.get("chart_label") == "Guitar shape chart":
+        # Both keys by name (user, 2026-11-26): what sounds, and the shapes the guitarist reads.
+        try:
+            from guitar_capo import CAPO_SHAPE_KEY, capo_fret_for_shape, shape_chart_label_for_concert
+
+            _shape = str(session.get(CAPO_SHAPE_KEY) or "").strip()
+            if _shape:
+                _fret = int(capo_fret_for_shape(display["concert_key"], _shape)) % 12
+                _shape_note = (f" · 🎸 Shape key: <strong>{html.escape(shape_chart_label_for_concert(display['concert_key'], _shape))}"
+                               f"</strong>" + (f" (capo {_fret})" if _fret else ""))
+        except Exception:
+            _shape_note = ""
     st.markdown(
         f'<p class="ui-creative-progression-preview" data-sbi-caption-key="{html.escape(display["concert_key"])}">'
         f"Practice concert key: "
-        f"<strong>{html.escape(display['concert_key'])}</strong></p>",
+        f"<strong>{html.escape(display['concert_key'])}</strong>{_shape_note}</p>",
         unsafe_allow_html=True,
     )
     # Guitar Shape Mode shows the playable shapes only (the concert key is named above).

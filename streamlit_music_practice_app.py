@@ -11722,6 +11722,25 @@ def _render_pending_sidebar_practice_key() -> None:
         _render_backing_pk_owner_select(proxy, proxy["options"], label_visibility="visible")
 
 
+def _backing_card_shape_caption(concert_key: str) -> str:
+    """Guitar Shape Mode: "Concert key · shape key E major, capo 3" under the card's Practice Key ("" otherwise)."""
+    try:
+        if str(st.session_state.get("instrument") or "") != "Guitar" or not st.session_state.get("guitar_capo_enabled"):
+            return ""
+        from guitar_capo import capo_fret_for_shape, shape_chart_label_for_concert
+
+        shape = str(st.session_state.get("guitar_capo_shape_key") or "").strip()
+        concert = str(concert_key or "").strip()
+        if not shape or not concert:
+            return ""
+        fret = int(capo_fret_for_shape(concert, shape)) % 12
+        if not fret:
+            return ""
+        return f"Concert key · 🎸 shape key {shape_chart_label_for_concert(concert, shape)}, capo {fret}"
+    except Exception:
+        return ""
+
+
 def _render_backing_card_practice_key(original_key: str, practice_key: str) -> None:
     """Original Key | Practice / Concert Key ▼ in the Backing card's row.
 
@@ -11808,10 +11827,14 @@ def _render_backing_card_practice_key(original_key: str, practice_key: str) -> N
             st.markdown(pk_label, unsafe_allow_html=True)
             _render_backing_pk_owner_select(proxy, options, label_visibility="collapsed")
             _rel = key_relation_caption(original_key, str(st.session_state.get(widget_key) or current))
-            if _backing_art_identity is not None:
+            if _backing_art_identity is not None or _backing_jam_card_on:
                 _cap = html.escape(_rel) if _rel else "Tap to change"
             else:
                 _cap = "Concert pitch" + (f' · {html.escape(_rel)}' if _rel else "")
+            _shape_cap = _backing_card_shape_caption(str(st.session_state.get(widget_key) or current))
+            if _shape_cap:
+                # Shape Mode: the key above is what sounds; the guitarist reads another (user, 2026-11-26).
+                _cap = html.escape(_shape_cap)
             st.markdown(
                 f'<p class="ui-skp-cap">{_cap}</p>',
                 unsafe_allow_html=True,

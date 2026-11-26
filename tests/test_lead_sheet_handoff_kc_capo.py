@@ -91,7 +91,7 @@ class CycleLeadSheetShapeModeTests(unittest.TestCase):
             with self.subTest(key=key):
                 html = self._sheet(key)
                 self.assertIn(f"Key: {key}", html)
-                self.assertIn(f"Charts in D minor · capo {fret}", html)
+                self.assertIn(f"🎸 Shape Key: D minor · capo {fret}", html)
                 # The shapes never move while the capo does; no second line of chords (user, 2026-11-25).
                 self.assertEqual(_cells(html)[:4], ["Dm6", "%", "Bb7", "A7"])
                 self.assertEqual(_hints(html), [])

@@ -442,7 +442,7 @@ def _card_rules(key: str) -> str:
         f"{k} [data-testid=\"stHorizontalBlock\"]>[data-testid=\"stColumn\"],"
         f"{c} .st-key-backing_art_play_row [data-testid=\"stHorizontalBlock\"]>[data-testid=\"stColumn\"]:last-child"
         "{width:100% !important;flex:1 1 auto !important}"
-        f"{c} .jb-hero{{min-height:214px}}"
+        f"{c} .jb-hero{{min-height:200px}}"
         f"{c} .jb-title{{font-size:1.25rem}}"
         f"{c} .jb-sub{{font-size:.78rem}}"
         f"{c} .jb-logo{{min-width:2.9rem;padding:.25rem .3rem}}"
