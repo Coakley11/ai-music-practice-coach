@@ -427,7 +427,8 @@ def test_an_active_karaoke_set_follows_the_lead_sheet_if_open_else_the_lyrics_ne
     assert "if (sheetShown && pr0 < LS_PRIORITY) return;" in ap
     # and Backing does not draw the melody displays during a set
     assert "_bk_in_karaoke_set = bool(km.is_voice_mode(st.session_state) and km.is_karaoke_session_active(st.session_state))" in APP
-    assert '_bk_melody_mode = "" if _bk_in_karaoke_set else _bk_render_melody_mode(st, st.session_state)' in APP
+    assert "_bk_melodies_on = not _bk_in_karaoke_set" in APP
+    assert "if _bk_melodies_on and _pmb_melody is not None:" in APP
     assert "if _bk_melody_by_sec and not _bk_in_karaoke_set:" in APP
 
 
