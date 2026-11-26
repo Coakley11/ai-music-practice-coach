@@ -350,6 +350,69 @@ def _validate_audio_bytes(audio: Any) -> tuple[bytes | None, str]:
     return data, ""
 
 
+def validate_document_bytes(data: Any) -> tuple[bytes | None, str, str]:
+    """``(bytes, mime_type, error)`` for any reference a musician may keep: a PDF or a photo.
+
+    The type comes from the CONTENT, never the name: PDFs get the full PDF check below,
+    JPEG / PNG / HEIC / HEIF photos are identified by their signature and size-checked.
+    """
+    from upload_media import DOCUMENT_MAX_SIZE_BYTES, document_mime_type
+
+    if data is None or data == b"":
+        return None, "", "missing_document"
+    if isinstance(data, bytearray):
+        data = bytes(data)
+    if not isinstance(data, bytes):
+        return None, "", "invalid_document_type"
+    mime = document_mime_type(data)  # content only: a renamed file is not trusted
+    if mime == "application/pdf":
+        raw, err = validate_pdf_bytes(data)
+        return raw, (mime if raw is not None else ""), err
+    if mime.startswith("image/"):
+        if len(data) > DOCUMENT_MAX_SIZE_BYTES:
+            return None, "", "document_too_large"
+        err = _image_decode_error(data, mime)
+        if err:
+            return None, "", err
+        return data, mime, ""
+    return None, "", "unsupported_document_type"
+
+
+def _image_decode_error(data: bytes, mime: str) -> str:
+    """"" when the photo really decodes, else why not (2026-11-22, Slice 1).
+
+    A signature alone accepted a JPEG cut off halfway through an upload. The pixel count is read
+    from the header before anything is decoded, so an oversized image is refused without the work.
+    A HEIC photo is accepted unchecked where ``pillow-heif`` is missing: it is kept as uploaded and
+    the viewer offers it for download rather than drawing it.
+    """
+    import io
+
+    from upload_media import DOCUMENT_MAX_IMAGE_PIXELS, heif_support
+
+    try:
+        from PIL import Image
+    except ImportError:
+        return ""
+    if mime in ("image/heic", "image/heif") and not heif_support():
+        return ""
+    try:
+        with Image.open(io.BytesIO(data)) as im:
+            w, h = im.size
+            if w <= 0 or h <= 0:
+                return "image_unreadable"
+            if w * h > DOCUMENT_MAX_IMAGE_PIXELS:
+                return "image_too_many_pixels"
+            if im.format == "JPEG":
+                im.draft("RGB", (min(w, 1024), min(h, 1024)))   # every byte is still read, at low cost
+            im.load()
+    except Image.DecompressionBombError:
+        return "image_too_many_pixels"
+    except Exception:
+        return "image_unreadable"
+    return ""
+
+
 def validate_pdf_bytes(data: Any) -> tuple[bytes | None, str]:
     """Is this really a PDF, and is it a sane size?
 
@@ -437,14 +500,60 @@ def save_song_document_local(
         return "", str(exc)
 
 
+#: A refusal of the TYPE, as the storage API words it, rather than any other upload failure.
+#: Measured on a phone: "415 invalid_mime_type: application/pdf is not supported".
+_MIME_REFUSED_MARKERS = ("invalid_mime_type", "mime type", "mime_type", "415")
+
+#: A transitional bridge, OFF by default, for the window before the private bucket allows the
+#: reference types. A file should keep the content type it really has: storing a PDF as an opaque
+#: blob loses the type in the one place that is supposed to know it, and leaning on it would turn
+#: a storage misconfiguration into a permanent app behaviour. The fix is the bucket's allowed-type
+#: list; this only exists so a musician can get their references off one device in the meantime,
+#: and only when switched on deliberately with MUSIC_DOCUMENT_CLOUD_TYPE_BRIDGE=1.
+DOCUMENT_FALLBACK_CONTENT_TYPE = "application/octet-stream"
+
+
+def _type_bridge_enabled() -> bool:
+    return str(os.environ.get("MUSIC_DOCUMENT_CLOUD_TYPE_BRIDGE") or "").strip().lower() in (
+        "1", "true", "yes", "on")
+
+
+def _mime_was_refused(error: Any) -> bool:
+    text = str(error or "").lower()
+    return any(marker in text for marker in _MIME_REFUSED_MARKERS)
+
+
+def document_mime_rejected_message(mime_type: Any, error: Any) -> str:
+    """Why the cloud copy was refused, and what would let it through.
+
+    A musician seeing only "cloud save failed" cannot act, and neither can whoever configures
+    the bucket. This names the type that was refused and the types the private store needs to
+    allow for references to follow a musician between devices.
+    """
+    from upload_media import document_mime_types_accepted
+
+    want = ", ".join(document_mime_types_accepted())
+    return (
+        f"the private storage refused the file type {str(mime_type or '').strip() or 'unknown'} "
+        f"({str(error or '').strip()}). Your file is saved on this device. To let references "
+        f"sync between devices, the private media bucket has to allow: {want}"
+    )
+
+
 def upload_song_document_cloud(
     workspace_id: str,
     document_id: str,
     data: bytes,
     *,
     user_id: str | None = None,
+    mime_type: str = "",
 ) -> tuple[str, str]:
-    """Upload to the private media bucket. ``(storage_ref, error)``."""
+    """Upload to the private media bucket. ``(storage_ref, error)``.
+
+    The declared content type is the type the file really is. It used to be hardcoded to
+    ``application/pdf`` for every reference, which is wrong for a photograph and is what the
+    store refused with ``415 invalid_mime_type``.
+    """
     if not _cloud_storage_enabled():
         return "", "cloud_disabled"
     client = _service_storage_client()
@@ -453,16 +562,32 @@ def upload_song_document_cloud(
     bucket = _media_bucket()
     uid = user_id or _resolve_user_id()
     object_key = build_song_document_object_key(uid, workspace_id, document_id)
-    try:
-        storage = client.storage.from_(bucket)
-        storage.upload(
-            object_key,
-            data,
-            file_options={"content-type": "application/pdf", "upsert": "true"},
-        )
-        return build_storage_ref(bucket, object_key), ""
-    except Exception as exc:
-        return "", str(exc)
+    declared = str(mime_type or "").strip()
+    if not declared:
+        try:
+            from upload_media import document_mime_type
+
+            declared = document_mime_type(data) or "application/pdf"
+        except ImportError:
+            declared = "application/pdf"
+    attempts = [declared]
+    if _type_bridge_enabled() and declared != DOCUMENT_FALLBACK_CONTENT_TYPE:
+        attempts.append(DOCUMENT_FALLBACK_CONTENT_TYPE)
+    last = ""
+    for content_type in attempts:
+        try:
+            storage = client.storage.from_(bucket)
+            storage.upload(
+                object_key,
+                data,
+                file_options={"content-type": content_type, "upsert": "true"},
+            )
+            return build_storage_ref(bucket, object_key), ""
+        except Exception as exc:
+            last = str(exc)
+            if not _mime_was_refused(last):
+                return "", last
+    return "", document_mime_rejected_message(declared, last)
 
 
 def download_song_document_cloud(
@@ -507,6 +632,7 @@ def persist_song_document(
     user_id: str | None = None,
     reuse_storage_ref: str = "",
     reuse_local_path: str = "",
+    mime_type: str = "",
 ) -> dict[str, Any]:
     """Store one document and say honestly where it ended up.
 
@@ -538,7 +664,7 @@ def persist_song_document(
 
     rel, local_err = save_song_document_local(workspace_id, document_id, data)
     ref, cloud_err = upload_song_document_cloud(
-        workspace_id, document_id, data, user_id=user_id
+        workspace_id, document_id, data, user_id=user_id, mime_type=mime_type
     )
     if ref:
         status, error = DOCUMENT_STORAGE_CLOUD, ""

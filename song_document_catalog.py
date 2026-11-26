@@ -171,9 +171,15 @@ def _existing_blob_for_hash(digest: str, *, st: Any | None = None) -> dict[str, 
         return {}
     from media_persistence import list_song_documents
     from media_state import DOCUMENT_STORAGE_CLOUD, DOCUMENT_STORAGE_LOCAL_ONLY
+    from media_storage import _cloud_storage_enabled
 
+    cloud_on = bool(_cloud_storage_enabled())
     for row in list_song_documents(st=st):
         if str(row.get("sha256") or "") != digest:
+            continue
+        # A copy that never reached the cloud (saved during an outage) must not be reused once the cloud is back:
+        # saving the file again is how the musician gets it uploaded.
+        if cloud_on and not str(row.get("storage_ref") or ""):
             continue
         if str(row.get("storage_status") or "") not in (
             DOCUMENT_STORAGE_CLOUD,
@@ -198,13 +204,13 @@ def save_song_document(
     notes: str = "",
     st: Any | None = None,
 ) -> dict[str, Any]:
-    """Validate, store and record one PDF for the active song.
+    """Validate, store and record one reference (a PDF or a photo) for the active song.
 
     Returns ``{ok, row, error, storage_status, reused}``. ``ok`` is the honest answer:
     the bytes reached durable storage *and* the catalog write was confirmed.
     """
     from media_state import DOCUMENT_STORAGE_FAILED, new_song_document_id
-    from media_storage import pdf_page_count, persist_song_document, validate_pdf_bytes
+    from media_storage import pdf_page_count, persist_song_document, validate_document_bytes
 
     owner = active_song_owner(session, st=st)
     if not owner:
@@ -216,7 +222,7 @@ def save_song_document(
             "reused": False,
         }
 
-    raw, err = validate_pdf_bytes(data)
+    raw, mime_type, err = validate_document_bytes(data)
     if raw is None:
         return {
             "ok": False,
@@ -236,6 +242,7 @@ def save_song_document(
         raw,
         reuse_storage_ref=reuse.get("storage_ref", ""),
         reuse_local_path=reuse.get("local_path", ""),
+        mime_type=mime_type,
     )
     if stored.get("storage_status") == DOCUMENT_STORAGE_FAILED:
         # Nothing durable exists, so there is nothing to list. Do not write a row that
@@ -260,9 +267,9 @@ def save_song_document(
             "instrument_tag": instrument_tag,
             "key_tag": key_tag,
             "notes": notes,
-            "mime_type": "application/pdf",
+            "mime_type": mime_type,
             "byte_size": len(raw),
-            "page_count": pdf_page_count(raw),
+            "page_count": pdf_page_count(raw) if mime_type == "application/pdf" else 1,
             "sha256": digest,
             "local_path": stored.get("local_path"),
             "storage_ref": stored.get("storage_ref"),
