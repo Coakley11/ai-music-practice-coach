@@ -33,7 +33,7 @@ def test_the_written_key_is_named_on_the_songs_card():
     identity = A.card_identity("Catalog song", "Pop")
     out = A.songs_body_html(identity, title="S", bpm=90, meter="4/4", level="Intermediate", instrument="Guitar", focus="Voicings",
                             levels=["Beginner"], instruments_general="Guitar", guide={}, written="E", written_label="Shape Key")
-    assert SEMANTIC_FIELD_ICONS["written_key"] in out and "Shape Key" in out
+    assert SEMANTIC_FIELD_ICONS["shape_key"] in out and "Shape Key" in out  # user, 2026-11-26: a shape key wears the guitar
     assert SONG_SOURCE_ICONS["catalog"] in out
 
 

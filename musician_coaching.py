@@ -387,16 +387,29 @@ def playback_settings_working_line(
     pending_play: bool = False,
     sounding_key: str = "",
     capo_fret: int = 0,
+    shape_key: str = "",
 ) -> str:
     """Single descriptive line for Live Follow-Along / lead-sheet headers.
 
-    Guitar shape charts pass ``sounding_key``/``capo_fret`` so the line names
-    what sounds, not only the shape key the chords are written in.
+    Guitar shape charts name both keys (user, 2026-11-26: "You're working in C major" over E shapes was confusing):
+    "You're working in concert key C major, using shape key E major (capo 3), at ...". Either the chart is in the
+    shapes (``practice_key`` the shape key, ``sounding_key`` / ``capo_fret`` what sounds), or the caller names the
+    concert ``practice_key`` and the guitar's ``shape_key``.
     """
     key = format_key_for_musicians(practice_key)
     sounding = str(sounding_key or "").strip()
+    if not sounding and str(shape_key or "").strip():
+        try:
+            from guitar_capo import capo_fret_for_shape, shape_chart_key_for_concert
+
+            fret = int(capo_fret or capo_fret_for_shape(str(practice_key), str(shape_key))) % 12
+            if fret:
+                sounding, capo_fret = str(practice_key), fret
+                key = format_key_for_musicians(shape_chart_key_for_concert(str(practice_key), str(shape_key)))
+        except Exception:
+            pass
     if sounding and capo_fret:
-        key = f"{format_key_for_musicians(sounding)} ({key} shapes, capo {int(capo_fret)})"
+        key = (f"concert key {format_key_for_musicians(sounding)}, using shape key {key} (capo {int(capo_fret)}),")
     tempo = int(bpm or 100)
     meter = str(time_signature or "4/4").strip() or "4/4"
     feel_name = feel_name_for_summary(feel)

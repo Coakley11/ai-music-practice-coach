@@ -210,6 +210,17 @@ def hero_html(identity: CardIdentity, *, title: str, artist: str = "", page: str
     )
 
 
+def _chart_key_icon_label(label: str, instrument: str = "") -> tuple[str, str]:
+    """(icon, label) of a chart key chip: Shape key = guitar, Written key = the instrument, Charts in = chart
+    (music_feature_icons.chart_key_badge; user, 2026-11-26)."""
+    from music_feature_icons import chart_key_badge
+
+    raw = str(label or "Charts in")
+    icon, kind_label = chart_key_badge(label=raw, instrument=str(instrument or ""))
+    # The caller's own wording stays ("Shape Key", "Tenor sax written key"); "Shape" alone reads "Shape key".
+    return icon, (kind_label if raw.strip().lower() in {"shape", "charts", ""} else raw)
+
+
 def _stat(icon: str, label: str, value: str, logo: str = "") -> str:
     logo_html = f'<em class="vg">{logo}</em> ' if logo else ""
     return f'<span class="stat"><i>{icon}</i><span>{_E(label)}</span> <b>{logo_html}{_E(value)}</b></span>'
@@ -254,7 +265,7 @@ def songs_body_html(
             _stat(SEMANTIC_FIELD_ICONS["style"], "Style", identity.style_name, identity.style_logo) if identity.style_name else "",
             _stat(SEMANTIC_FIELD_ICONS["source"], "Source", identity.source_name, identity.source_logo),
         )
-        + ((_stat(SEMANTIC_FIELD_ICONS["written_key"], str(written_label or "Charts in"), str(written)),) if str(written or "").strip() else ())
+        + ((_stat(*_chart_key_icon_label(written_label, instrument), str(written)),) if str(written or "").strip() else ())
     )
     pills = [(LEVEL_ICONS.get(level, ""), level), (instrument_icon(instrument) if instrument else "", instrument), (icon_for_focus(focus) if focus else "", focus)]
     pills_html = "".join(f'<span class="pill"><em class="pg">{g}</em> {_E(t)}</span>' for g, t in pills if str(t or "").strip())
@@ -327,12 +338,7 @@ def backing_chips_html(
         _stat(SEMANTIC_FIELD_ICONS["source"], "Source", identity.source_name, identity.source_logo),
     ]
     if str(written or "").strip():
-        icon = SEMANTIC_FIELD_ICONS["written_key"]
-        if str(written_instrument or "").strip():
-            from music_feature_icons import semantic_field_icon
-
-            icon = semantic_field_icon("written_key", instrument=str(written_instrument)) or icon
-        chips.append(_stat(icon, str(written_label or "Charts in"), str(written)))
+        chips.append(_stat(*_chart_key_icon_label(written_label, written_instrument), str(written)))
     return f'<div class="sc-frag sc-frag-chips {identity.classes} p-backing"><div class="stats bk-stats">{"".join(chips)}</div></div>'
 
 

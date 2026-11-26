@@ -9302,12 +9302,17 @@ def chart_key_mode_badge_html(session: dict) -> str:
         label = "Written charts ON"
         detail = f"Charts in {written_key}"
         variant = "is-written-on"
-        glyph = "📝"
+        # The written key wears the instrument that reads it (user, 2026-11-26).
+        from music_feature_icons import semantic_field_icon as _sfi
+
+        glyph = _sfi("written_key", instrument=str(instrument or "")) or "📝"
     else:
         label = "Concert charts"
         detail = f"Charts in {concert_key}"
         variant = "is-concert"
-        glyph = "🎼"
+        from music_feature_icons import CHART_ICON
+
+        glyph = CHART_ICON
     return (
         f'<div class="ui-chart-key-mode-badge {variant}" role="status">'
         f'<span aria-hidden="true">{glyph}</span>'
@@ -10391,6 +10396,7 @@ def render_backing_setup_context_strip(
     )
     _meter = html.escape(str(meter or "4/4").strip() or "4/4")
     _groove = html.escape(str(groove or "Auto").strip() or "Auto")
+    from music_feature_icons import groove_logo as _groove_logo
     _range = html.escape(str(range_summary or "Full song ×2").strip())
     written_badge = ""
     if _written and _written != _practice:
@@ -10408,7 +10414,7 @@ def render_backing_setup_context_strip(
         f'<span class="ui-backing-ctx-badge meter" title="Time signature">'
         f'<span class="ui-backing-ctx-ico">{format_icon_html(semantic_field_icon("meter"))}</span> <strong>{_meter}</strong></span>'
         f'<span class="ui-backing-ctx-badge groove" title="Rhythm feel">'
-        f'<span class="ui-backing-ctx-ico">{format_icon_html(semantic_field_icon("groove"))}</span> <strong>{_groove}</strong></span>'
+        f'<span class="ui-backing-ctx-ico">{format_icon_html(_groove_logo(str(groove or "")) or semantic_field_icon("groove"))}</span> <strong>{_groove}</strong></span>'
         f'<span class="ui-backing-ctx-badge range" title="Playback range &amp; loops">'
         f'<span class="ui-backing-ctx-ico">{format_icon_html(semantic_field_icon("section"))}</span> {_range}</span>'
         f'<span class="ui-backing-ctx-badge bpm" title="Song default tempo — adjust in Quick Playback">'

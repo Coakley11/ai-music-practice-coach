@@ -203,7 +203,7 @@ class TestSpanMissionBackingCard(unittest.TestCase):
         for bad in ("<svg", "<path", "class=", "&lt;", "viewBox", "instrument-icon"):
             self.assertNotIn(bad, text, bad)
         self.assertIn('<svg class="ui-instrument-icon-clarinet"', html)  # the real icon, rendered
-        for badge in ("Style · Jazz swing", "Concert key · C major", "BPM · 100", "Meter · 4/4",
+        for badge in ("Groove · Jazz swing", "Concert key · C major", "BPM · 100", "Meter · 4/4",
                       "Instrument · Clarinet", "Section · A"):
             self.assertIn(badge, text)
 

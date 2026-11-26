@@ -135,11 +135,14 @@ SEMANTIC_FIELD_ICONS: dict[str, str] = {
     # badges use the correct instrument glyph.
     "written_key": "📝",
     "shape_key": INSTRUMENT_ICONS["Guitar"],
-    "charts": "📝",
+    # "Charts in E major": the chart icon (user, 2026-11-26), not the written-key memo.
+    "charts": FEATURE_ICONS["chord_chart"],
     "bpm": "⏱",
     "meter": "🥁",
     "section": FEATURE_ICONS["section_focus"],
-    "groove": "✨",
+    # A Backing groove field: the Backing icon, as the album cards' "Backing groove" chip (user, 2026-11-26: a groove
+    # never wears the style badge). The groove's own logo goes beside its name (``groove_logo``).
+    "groove": FEATURE_ICONS["backing"],
     # Feel / groove style field (same glyph as style badges).
     "feel": "✨",
     # Advanced Key cycling control — same glyph as FEATURE_ICONS["key_cycle"].

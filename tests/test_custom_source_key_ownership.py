@@ -181,8 +181,8 @@ class TestGuitarShapeLeadSheetContract(unittest.TestCase):
         html = self._chart()
         self.assertIn("Key: Fm", html)
         self.assertNotIn("Key: Dm", html)
-        self.assertIn("Charts in D minor · capo 3", html)
-        self.assertIn("working in F minor", html)
+        self.assertIn("🎸 Shape Key: D minor · capo 3", html)  # user, 2026-11-26: Shape key (guitar icon) and concert key named together
+        self.assertIn("working in concert key F minor, using shape key D minor (capo 3)", html)
 
     def test_cells_are_the_shapes_and_nothing_else(self) -> None:
         import re

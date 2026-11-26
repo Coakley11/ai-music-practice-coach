@@ -102,12 +102,13 @@ def test_a_missions_written_key_wears_the_instrument():
     from music_feature_icons import SEMANTIC_FIELD_ICONS, semantic_field_icon
 
     identity = A.card_identity("Catalog", "Jazz")
+    # User, 2026-11-26: the label decides the icon. "Charts in" wears the chart icon; a written key the instrument.
     plain = A.backing_chips_html(identity, groove="Jazz swing", meter="4/4", written="Bb major", written_label="Charts in")
     clar = A.backing_chips_html(
-        identity, groove="Jazz swing", meter="4/4", written="Bb major", written_label="Charts in", written_instrument="Clarinet"
+        identity, groove="Jazz swing", meter="4/4", written="Bb major", written_label="Written key", written_instrument="Clarinet"
     )
-    assert SEMANTIC_FIELD_ICONS["written_key"] in plain
-    assert semantic_field_icon("written_key", instrument="Clarinet") in clar
+    assert SEMANTIC_FIELD_ICONS["charts"] in plain
+    assert semantic_field_icon("written_key", instrument="Clarinet") in clar and "Written key" in clar
 
 
 def test_a_span_shows_each_chord_in_the_card_strip():

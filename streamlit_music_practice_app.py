@@ -11463,17 +11463,24 @@ def _render_backing_art_facts(
 
     written = str(written_key or "").strip()
     label = "Charts in"
+    _inst_now = str(st.session_state.get("instrument") or "")
     try:
-        if str(st.session_state.get("instrument") or "") == "Guitar" and st.session_state.get("guitar_capo_enabled"):
-            label = "Shape"
+        if _inst_now == "Guitar" and st.session_state.get("guitar_capo_enabled"):
+            label = "Shape key"
+        else:
+            from instrument_transposition import chart_in_instrument_key, is_transposing_instrument
+
+            if is_transposing_instrument(_inst_now) and chart_in_instrument_key(st.session_state):
+                label = "Written key"
     except Exception:
         pass
     info = creative or {}
     render_backing_art_chips(
         st, _backing_art_identity, groove=groove, meter=meter,
         written=written if written and written != str(practice_key or "").strip() else "", written_label=label,
-        # A Mission's written key wears the active instrument (Clarinet, Sax, ...), as today's Mission card does.
-        written_instrument=str(st.session_state.get("instrument") or "") if info.get("mission") else "",
+        # The label decides the icon (user, 2026-11-26): Shape key = guitar, Written key = the instrument
+        # (Clarinet, Sax, ...), Charts in = the chart.
+        written_instrument=_inst_now,
     )
     if info:
         from song_card_art import backing_mission_html
@@ -27197,6 +27204,9 @@ elif _studio_page == "backing":
                     time_signature=str(backing_time_signature),
                     groove_style=str(resolved_groove),
                     pending_play=bool(_settings_pending_caption),
+                    # Shape Mode: the caption names the concert key and the shape key (user, 2026-11-26).
+                    shape_key=str(_sheet_capo_shape or "") if _sheet_shape_sections else "",
+                    capo_fret=int(_sheet_capo_fret or 0) if _sheet_shape_sections else 0,
                 )
             except Exception:
                 pass

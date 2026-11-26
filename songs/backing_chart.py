@@ -678,10 +678,22 @@ def render_backing_chord_chart(
     # concert chords with a second line of shapes were too cluttered). ``sections`` stay the concert chords for every
     # caller; moving them here keeps every bar's weights, pushes, hits and slash basses. The header still names the
     # sounding key, the shapes and the capo.
+    shape_reading = ""  # the shape key the cells are written in, when ``dk`` is the concert key
     if shape_sections and capo_shape_key and not shape_sounding:
         from music_theory import transpose_sections_dict
 
         sections = transpose_sections_dict(sections, str(dk), str(capo_shape_key))
+        try:
+            from guitar_capo import capo_fret_for_shape, shape_chart_key_for_concert
+
+            shape_reading = str(shape_chart_key_for_concert(str(dk), str(capo_shape_key)) or "")
+            if not capo_fret:
+                capo_fret = int(capo_fret_for_shape(str(dk), str(capo_shape_key))) % 12
+        except Exception:
+            shape_reading = ""
+        if shape_reading:
+            # Both keys, by name (user, 2026-11-26): what sounds, and the shapes the guitarist reads.
+            meta_bits[0] = meta_bits[0].replace("Key:", "Concert Key:", 1)
     shape_sections_shown = shape_sections
     shape_sections = None
     if shape_sections_shown and capo_shape_key:
@@ -697,8 +709,9 @@ def render_backing_chord_chart(
                 chart_label = format_key_label_from_parts(tonic, mode)
             except ImportError:
                 chart_label = str(dk or capo_shape_key)
+        # The label decides the icon (user, 2026-11-26): a shape key wears the guitar.
         meta_bits.append(
-            f"📝 Charts in {html.escape(chart_label)}"
+            f"🎸 Shape Key: {html.escape(chart_label)}"
             + (f" · capo {capo_fret}" if capo_fret else "")
         )
     meta_bits.extend([
@@ -717,7 +730,7 @@ def render_backing_chord_chart(
 
         _subtitle = header_subtitle_for_chart(
             song_data,
-            practice_key=str(dk),
+            practice_key=(shape_reading if shape_reading and capo_fret else str(dk)),
             instrument="",
             level=str(level),
             sections=sections,
@@ -725,8 +738,8 @@ def render_backing_chord_chart(
             time_signature=str(time_signature),
             feel=str(groove_style),
             pending_play=bool(pending_play),
-            sounding_key=shape_sounding,
-            capo_fret=int(capo_fret or 0) if shape_sounding else 0,
+            sounding_key=shape_sounding or (str(dk) if shape_reading and capo_fret else ""),
+            capo_fret=int(capo_fret or 0) if (shape_sounding or shape_reading) else 0,
         )
         header_note = (
             f"<div class='lead-subtitle'>{_subtitle_html(_subtitle)}</div>" if _subtitle else ""
@@ -800,6 +813,7 @@ def patch_chart_playback_settings_caption(
     pending_play: bool = False,
     sounding_key: str = "",
     capo_fret: int = 0,
+    shape_key: str = "",
 ) -> str:
     """Update Tempo/Feel/meter caption text without rebuilding chord grid or timeline.
 
@@ -822,6 +836,7 @@ def patch_chart_playback_settings_caption(
         pending_play=bool(pending_play),
         sounding_key=sounding_key,
         capo_fret=capo_fret,
+        shape_key=shape_key,
     )
     escaped = html.escape(caption)
 

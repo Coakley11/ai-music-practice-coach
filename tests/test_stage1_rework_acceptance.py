@@ -198,15 +198,17 @@ class TestGuitarInstrumentEntry(unittest.TestCase):
 
 
 class TestWrittenChartsIconEverywhere(unittest.TestCase):
-    def test_charts_field_uses_written_icon(self):
-        from music_feature_icons import semantic_field_icon
+    # User, 2026-11-26 (replaces the earlier all-memo rule): "Charts in X" wears the chart icon, a Shape key the
+    # guitar, a Written key the instrument that reads it.
+    def test_charts_field_uses_the_chart_icon(self):
+        from music_feature_icons import FEATURE_ICONS, semantic_field_icon
 
-        self.assertEqual(semantic_field_icon("charts"), "📝")
+        self.assertEqual(semantic_field_icon("charts"), FEATURE_ICONS["chord_chart"])
 
-    def test_charts_label_never_uses_guitar_or_chart_glyph(self):
+    def test_shape_mode_is_the_shape_key_field(self):
         from backing_context_ui import chart_badge_semantic_field
 
-        self.assertEqual(chart_badge_semantic_field("Charts in", "shape"), "charts")
+        self.assertEqual(chart_badge_semantic_field("Charts in", "shape"), "shape_key")
         self.assertEqual(chart_badge_semantic_field("Charts", "concert"), "charts")
         self.assertEqual(chart_badge_semantic_field("Shape Key", "shape"), "shape_key")
         self.assertEqual(chart_badge_semantic_field("Written key", "written"), "written_key")
@@ -215,10 +217,10 @@ class TestWrittenChartsIconEverywhere(unittest.TestCase):
         import backing_display
         from songs import backing_chart
 
-        self.assertTrue("📝 Charts in" in inspect.getsource(backing_chart), "backing chart header icon")
+        self.assertTrue("🎸 Shape Key:" in inspect.getsource(backing_chart), "backing chart header icon")
         self.assertTrue(
-            "📝 Charts in" in inspect.getsource(backing_display.render_backing_active_song_card),
-            "active song card charts icon",
+            "🎸 Shape key" in inspect.getsource(backing_display.render_backing_active_song_card),
+            "active song card shape icon",
         )
 
 

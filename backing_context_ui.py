@@ -92,12 +92,27 @@ def _semantic_themed_badge(
     field: str, label: str, value: str, css_class: str = "badge-meta", *, instrument: str = ""
 ) -> str:
     try:
-        from music_feature_icons import semantic_field_icon
+        from music_feature_icons import groove_logo, semantic_field_icon, style_logo
 
         icon = semantic_field_icon(field, instrument=instrument)
+        # A style wears its style logo, a groove its groove logo (user, 2026-11-26).
+        if field == "style":
+            icon = style_logo(value) or icon
+        elif field == "groove" and label == "Groove":
+            icon = groove_logo(value) or icon
     except ImportError:
         icon = ""
     return _themed_badge(icon, label, value, css_class)
+
+
+def _is_backing_groove_name(value: str) -> bool:
+    """A Backing groove's own name ("Bossa nova", "Jazz swing"), not a style ("Latin", "Jazz")."""
+    try:
+        from songs.playback_defaults import GROOVE_STYLE_CHOICES
+
+        return str(value or "").strip() in GROOVE_STYLE_CHOICES and str(value or "").strip() != "Auto"
+    except Exception:
+        return False
 
 
 def _creative_backing_source_brand(
@@ -204,15 +219,12 @@ def _creative_backing_source_brand(
 
 
 def chart_badge_semantic_field(chart_label: str, chart_mode: str = "") -> str:
-    """Icon field for the chart badge: any "Charts…" label uses the written-charts glyph."""
-    label = str(chart_label or "").strip().lower()
-    if label.startswith("chart"):
-        return "charts"
-    if str(chart_mode or "") == "shape" or "shape" in label:
-        return "shape_key"
-    if "written" in label:
-        return "written_key"
-    return "charts"
+    """Icon field for the chart badge (user, 2026-11-26): a shape key wears the guitar, a written key the instrument,
+    "Charts in ..." the chart icon."""
+    from music_feature_icons import chart_mode_of
+
+    kind = chart_mode_of(chart_label, chart_mode)
+    return {"shape": "shape_key", "written": "written_key"}.get(kind, "charts")
 
 
 def _chart_badge_label(session: dict[str, Any], chart_key: str) -> tuple[str, str]:
@@ -232,9 +244,9 @@ def _chart_badge_label(session: dict[str, Any], chart_key: str) -> tuple[str, st
 
             concert = str(getattr(mk, "practice_concert_key", None) or chart_key or "C")
             shape = str(session.get("guitar_capo_shape_key") or chart_key or "")
-            return "Charts in", shape_chart_label_for_concert(concert, shape)
+            return "Shape key", shape_chart_label_for_concert(concert, shape)
         except Exception:
-            return "Charts in", chart_key
+            return "Shape key", chart_key
     if mode == "written":
         return "Written key", chart_key
     return "Charts", chart_key
@@ -785,9 +797,10 @@ def render_backing_creative_context_card(
     groove_class = _groove_badge_class(groove_intensity)
     brand = _creative_backing_source_brand(ctx, session, theme=theme)
     badges = [
+        # The live groove shown here is a groove, so it is labelled and drawn as one.
         _semantic_themed_badge(
-            "style",
-            "Style",
+            "groove" if _is_backing_groove_name(style_label) else "style",
+            "Groove" if _is_backing_groove_name(style_label) else "Style",
             style_label,
             _STYLE_THEMES.get(style_label, {}).get("badge", "badge-style"),
         ),

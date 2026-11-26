@@ -114,9 +114,9 @@ class TestLeadSheetCapoLabels(unittest.TestCase):
             capo_shape_key="D",
             sounding_key="Ab",
         )
-        self.assertIn("Charts in D major · capo 6", html)
+        self.assertIn("🎸 Shape Key: D major · capo 6", html)  # user, 2026-11-26: Shape key (guitar icon) and concert key named together
         self.assertNotIn("capo 5", html)
-        self.assertIn("You&#x27;re working in Ab major (D major shapes, capo 6)", html)
+        self.assertIn("You&#x27;re working in concert key Ab major, using shape key D major (capo 6)", html)
         self.assertNotIn("feel in D ", html)
 
     def test_concert_chart_with_capo_keeps_plain_sounding_line(self) -> None:
@@ -133,8 +133,8 @@ class TestLeadSheetCapoLabels(unittest.TestCase):
             capo_shape_key="D",
             sounding_key="Ab",
         )
-        self.assertIn("Charts in D major · capo 6", html)
-        self.assertIn("You&#x27;re working in Ab major at 133 BPM", html)
+        self.assertIn("🎸 Shape Key: D major · capo 6", html)  # user, 2026-11-26: Shape key (guitar icon) and concert key named together
+        self.assertIn("You&#x27;re working in concert key Ab major, using shape key D major (capo 6), at 133 BPM", html)
 
     def test_prepared_cycle_lead_sheet_carries_cycle_capo(self) -> None:
         from backing_key_cycle_handoff import build_cycle_lead_sheet_html
@@ -149,7 +149,7 @@ class TestLeadSheetCapoLabels(unittest.TestCase):
             chart_display_key="D",
             session=session,
         )
-        self.assertIn("Charts in D major · capo 6", html)
+        self.assertIn("🎸 Shape Key: D major · capo 6", html)  # user, 2026-11-26: Shape key (guitar icon) and concert key named together
         # The shapes are the only chords (user, 2026-11-25): no concert cells, no second line.
         self.assertIn(">G7<", html)
         self.assertNotIn(">Db7<", html)

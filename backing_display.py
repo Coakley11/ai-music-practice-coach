@@ -130,9 +130,10 @@ def render_backing_active_song_card(
             f'<span class="ui-backing-badge written-key">{html.escape(_shape_label)} {_written}</span>'
         )
         if _shape_label == "Shape":
-            # Charts badge keeps full mode (E minor); Shape control is tonic-only (E).
+            # One badge for the guitar's shapes, with the guitar (user, 2026-11-26): "🎸 Shape key E minor".
+            written_badge = ""
             charts_badge = (
-                f'<span class="ui-backing-badge written-key">📝 Charts in {html.escape(_written_raw)}</span>'
+                f'<span class="ui-backing-badge written-key">🎸 Shape key {html.escape(_written_raw)}</span>'
             )
 
     title = html.escape(str(details.get("title") or record.get("title") or "Active song"))

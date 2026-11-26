@@ -767,7 +767,8 @@ def resolve_current_backing_musical_state(
                 try:
                     from guitar_capo import shape_chart_label_for_concert
 
-                    label, value = "Charts in", shape_chart_label_for_concert(concert, shape_key_raw)
+                    # The guitar's shape key, named as such (user, 2026-11-26), beside the concert key.
+                    label, value = "Shape key", shape_chart_label_for_concert(concert, shape_key_raw)
                 except ImportError:
                     label, value = "Guitar shape", display
             else:
