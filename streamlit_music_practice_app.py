@@ -16839,6 +16839,12 @@ try:
 except Exception:
     pass
 note_page_visit(st.session_state, _studio_page)
+try:  # "Open in Backing" opens the chosen uploaded panels for that one Backing visit only
+    from backing_melody_modes import note_studio_page as _bmm_note_studio_page
+
+    _bmm_note_studio_page(st.session_state, _studio_page)
+except Exception:
+    pass
 
 if _studio_page == "openai" and not _openai_api_key:
     navigate_studio_page(st.session_state, "practice")
@@ -21706,6 +21712,18 @@ elif _studio_page == "practice":
                     # song_document_catalog.py. The panel owns only its own widgets and
                     # never touches the Practice Key, instrument or backing settings.
                     from song_document_panel import render_song_documents_panel
+
+                    # Which of them Backing shows beside the music. Drawn here, not in the panel: the panel may
+                    # not know about Backing at all.
+                    try:
+                        from backing_melody_modes import render_active_song_reference_choice
+
+                        _open_uploaded_in_backing = render_active_song_reference_choice(st, st.session_state)
+                    except Exception:
+                        _open_uploaded_in_backing = False
+                    if _open_uploaded_in_backing:
+                        navigate_studio_page(st.session_state, "backing")
+                        st.rerun()
 
                     render_song_documents_panel(st, st.session_state)
 

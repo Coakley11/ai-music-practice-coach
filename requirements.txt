@@ -16,4 +16,8 @@ scipy>=1.11,<2
 imageio-ffmpeg>=0.5.1
 
 supabase>=2.0.0
+# My Uploaded Melodies: PDF pages drawn as images (every browser, phones included) and iPhone HEIC photos.
+# Without them the viewer falls back to the browser's PDF view / a download button.
+pymupdf>=1.24,<2
+pillow-heif>=0.18,<2
 anthropic>=2.3,<3
