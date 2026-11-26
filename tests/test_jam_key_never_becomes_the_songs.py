@@ -42,3 +42,16 @@ def test_the_composition_save_asks_whose_key_it_is():
     src = inspect.getsource(ks.note_display_key_change)
     block = src[src.index("composition_song_is_active(st.session_state)") : src.index("commit_composition_owned_practice_key(st.session_state")]
     assert "not display_key_belongs_to_a_jam(st.session_state)" in block
+    assert "not jam_key_left_on_screen(st.session_state, str(display_key))" in block
+
+
+def test_a_jams_key_carried_to_a_song_page_is_not_the_songs(monkeypatch):
+    import composition_songs_bridge as csb
+    from songs.key_state import jam_key_left_on_screen
+
+    monkeypatch.setattr(csb, "resolve_composition_canonical_keys", lambda *_a, **_k: ("D", "D"))
+    s = {"practice_key_by_source": {"creative::entry_style_jam": "C", "creative::jam_session_generator": "F#"}}
+    assert jam_key_left_on_screen(s, "C") and jam_key_left_on_screen(s, "F#")
+    assert not jam_key_left_on_screen(s, "D") and not jam_key_left_on_screen(s, "E")  # the song's own, or a new key
+    monkeypatch.setattr(csb, "resolve_composition_canonical_keys", lambda *_a, **_k: ("D", "C"))
+    assert not jam_key_left_on_screen(s, "C")  # the song really is in C
