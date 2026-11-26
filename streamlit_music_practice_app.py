@@ -7529,17 +7529,36 @@ def live_follow_along_component_html(
       }});
     }}
 
-    // What is heard lags the media clock by the output device's latency (a few ms wired, 100-300 ms over
-    // Bluetooth): a highlight driven by currentTime alone lit each chord before it was heard (user, 2026-11-26:
-    // the highlighted chord change and the heard chord change must line up). Measured once per playing stretch
-    // from the browser's own estimate (AudioContext.outputLatency), shared on window.top for Key Cycling and the
-    // Practice Melody staff, clamped to a sane range; browsers without the estimate keep 0 (as before).
+    // What is heard lags the media clock by the output device's latency (a few ms wired, often 100-300 ms over
+    // Bluetooth): a highlight driven by currentTime alone lit each chord before it was heard (user, 2026-11-26: the
+    // highlighted chord change and the heard chord change must line up).
+    //  - The amount is the browser's own estimate (AudioContext.outputLatency), taken only when at least three
+    //    plausible readings agree (3-500 ms; under 10 ms counts as none) and capped at 0.35 s. It is an estimate, not
+    //    a measurement of the speaker: without one, nothing shifts (the stable timing of before).
+    //  - A new value is adopted only where the jump cannot be seen: paused, in the first 1.5 s of a take, or when it
+    //    differs by under 20 ms. It persists on window.top across reruns and is re-estimated at most every 30 s.
+    //  - window.top.__bkHeardLatencyOverride (seconds) replaces it, for diagnosis on a known device.
     function heardLatency() {{
       try {{
-        const v = Number(window.top.__bkHeardLatency);
-        if (isFinite(v) && v > 0) return Math.min(v, 0.5);
+        const top = window.top;
+        const o = Number(top.__bkHeardLatencyOverride);
+        if (top.__bkHeardLatencyOverride != null && isFinite(o) && o >= 0) return Math.min(o, 0.5);
+        const v = Number(top.__bkHeardLatency);
+        if (isFinite(v) && v > 0) return Math.min(v, 0.35);
       }} catch (e) {{}}
       return 0;
+    }}
+    function adoptHeardLatency(clock) {{
+      try {{
+        const top = window.top;
+        const next = top.__bkHeardLatencyNext;
+        if (next == null || !isFinite(Number(next))) return;
+        const cur = Number(top.__bkHeardLatency) || 0;
+        if (!clock || clock.paused || (clock.currentTime || 0) < 1.5 || Math.abs(Number(next) - cur) < 0.02) {{
+          top.__bkHeardLatency = Number(next);
+          top.__bkHeardLatencyNext = null;
+        }}
+      }} catch (e) {{}}
     }}
     function measureHeardLatency() {{
       let top;
@@ -7551,20 +7570,19 @@ def live_follow_along_component_html(
         const AC = top.AudioContext || top.webkitAudioContext;
         if (!AC) return;
         const ctx = new AC();
+        if (!("outputLatency" in ctx)) {{ try {{ ctx.close(); }} catch (eC) {{}} return; }}
         const samples = [];
-        const read = () => {{
-          const v = Number(ctx.outputLatency);
-          if (isFinite(v) && v > 0) samples.push(v);
-        }};
         Promise.resolve(ctx.state === "suspended" ? ctx.resume() : null).catch(() => {{}}).then(() => {{
           let n = 0;
           const iv = setInterval(() => {{
-            read();
-            if (++n >= 6) {{
+            const v = Number(ctx.outputLatency);
+            if (ctx.state === "running" && isFinite(v) && v >= 0.003 && v <= 0.5) samples.push(v);
+            if (++n >= 8) {{
               clearInterval(iv);
-              if (samples.length) {{
-                samples.sort((a, b) => a - b);
-                top.__bkHeardLatency = Math.max(0, Math.min(0.5, samples[Math.floor(samples.length / 2)]));
+              if (samples.length >= 3) {{
+                samples.sort((x, y) => x - y);
+                const med = samples[Math.floor(samples.length / 2)];
+                top.__bkHeardLatencyNext = med < 0.01 ? 0 : Math.min(0.35, med);
               }}
               try {{ ctx.close(); }} catch (eC) {{}}
             }}
@@ -7572,12 +7590,22 @@ def live_follow_along_component_html(
         }});
       }} catch (e) {{}}
     }}
+    // After Play, Resume or a seek the music is heard from that point one latency later: hold the highlight there
+    // until then, never back on the chord before it.
+    let heardFloor = null;
     function updateHighlight(force = false) {{
       const clock = followClockAudio();
+      adoptHeardLatency(clock);
       let audioTime = (clock && clock.currentTime) || 0;
       if (clock && !clock.paused) {{
+        // Playing: what is heard now. Paused: the playhead itself (where Resume starts, and where a seek put it).
         measureHeardLatency();
-        audioTime = Math.max(0, audioTime - heardLatency());
+        let heard = Math.max(0, audioTime - heardLatency());
+        if (heardFloor != null && clock === audio) {{
+          if (heard < heardFloor) heard = heardFloor;
+          else heardFloor = null;
+        }}
+        audioTime = heard;
       }}
       try {{
         if (clock && clock.paused && window.parent && window.parent.__kcFollowForceTime != null
@@ -7946,10 +7974,10 @@ def live_follow_along_component_html(
     }}
 
     if (audio) {{
-      audio.addEventListener("play", () => {{ startFollowLoop(); syncStopResumeLabel(); }});
+      audio.addEventListener("play", () => {{ heardFloor = audio.currentTime || 0; startFollowLoop(); syncStopResumeLabel(); }});
       audio.addEventListener("playing", () => {{ startFollowLoop(); syncStopResumeLabel(); }});
       audio.addEventListener("timeupdate", () => updateHighlight(false));
-      audio.addEventListener("seeked", () => updateHighlight(true));
+      audio.addEventListener("seeked", () => {{ heardFloor = audio.paused ? null : (audio.currentTime || 0); updateHighlight(true); }});
       audio.addEventListener("pause", () => {{ updateHighlight(true); syncStopResumeLabel(); }});
       audio.addEventListener("ended", () => {{
         if (animationFrameId) window.cancelAnimationFrame(animationFrameId);

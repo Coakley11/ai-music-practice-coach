@@ -7631,8 +7631,12 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         let t = act ? Number(act.currentTime || 0) : 0;
         try {{
           // What is heard, not the media clock (the lead sheet's own follower measures the device latency).
-          const lat = Number((window.top || parentWin).__bkHeardLatency);
-          if (act && !act.paused && isFinite(lat) && lat > 0) t = Math.max(0, t - Math.min(lat, 0.5));
+          // Same rule as the lead sheet's follower: an override, else an adopted estimate, else nothing.
+          const w = window.top || parentWin;
+          const ov = Number(w.__bkHeardLatencyOverride);
+          const lat = (w.__bkHeardLatencyOverride != null && isFinite(ov) && ov >= 0) ? Math.min(ov, 0.5)
+            : Math.min(Number(w.__bkHeardLatency) || 0, 0.35);
+          if (act && !act.paused && isFinite(lat) && lat > 0) t = Math.max(0, t - lat);
         }} catch (eLat) {{}}
         try {{
           if ((!act || act.paused) && parentWin.__kcFollowForceTime != null

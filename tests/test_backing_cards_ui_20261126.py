@@ -245,13 +245,21 @@ def test_the_lead_sheet_control_is_compact_and_not_doubled_on_a_card():
 
 def test_the_highlight_follows_what_is_heard_not_the_media_clock():
     i = APP.index("function updateHighlight(force = false)")
-    head = APP[i:i + 400]
-    assert "audioTime = Math.max(0, audioTime - heardLatency());" in head and "measureHeardLatency();" in head
-    helper = APP[APP.index("function measureHeardLatency()"):i]
-    assert "outputLatency" in helper and "Math.min(0.5" in helper and "ctx.close()" in helper
+    head = APP[i:i + 900]
+    assert "adoptHeardLatency(clock);" in head and "measureHeardLatency();" in head
+    assert "let heard = Math.max(0, audioTime - heardLatency());" in head
+    assert "if (heardFloor != null && clock === audio)" in head  # resume / seek hold, never back a chord
+    helper = APP[APP.index("    function heardLatency() {{"):i]
+    # Only an agreed, plausible estimate; capped; adopted where a jump cannot be seen; else nothing shifts.
+    for want in ("samples.length >= 3", "v >= 0.003 && v <= 0.5", "Math.min(0.35, med)", "med < 0.01 ? 0",
+                 "(clock.currentTime || 0) < 1.5", "Math.abs(Number(next) - cur) < 0.02", '"outputLatency" in ctx',
+                 "__bkHeardLatencyOverride", "ctx.close()"):
+        assert want in helper, want
+    assert 'audio.addEventListener("play", () => {{ heardFloor = audio.currentTime || 0;' in APP
+    assert 'audio.addEventListener("seeked", () => {{ heardFloor = audio.paused ? null : (audio.currentTime || 0);' in APP
     kc = (ROOT / "backing_key_cycle.py").read_text(encoding="utf-8")
     j = kc.index("function kcUpdateChordHighlight(force)")
-    assert "__bkHeardLatency" in kc[j:j + 900]
+    assert "__bkHeardLatencyOverride" in kc[j:j + 1200] and "Math.min(Number(w.__bkHeardLatency) || 0, 0.35)" in kc[j:j + 1200]
     pm = APP[APP.index("      function tick() {{"):]
     assert "(Date.now() - (pos.ts || 0)) / 1000" in pm[:900]  # the Practice Melody staff is carried forward to now
 
