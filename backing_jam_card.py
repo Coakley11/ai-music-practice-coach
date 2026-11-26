@@ -180,10 +180,31 @@ def _member_icon(name: str) -> str:
     return instrument_icon(name)
 
 
-def _logo(glyph: str, caption: str, cls: str = "") -> str:
+def _logo(glyph: str, caption: str, cls: str = "", kind: str = "") -> str:
     if not glyph or not caption:
         return ""
-    return f'<div class="jb-logo {cls}"><b>{glyph}</b><small>{_E(caption)}</small></div>'
+    head = f"<i>{_E(kind)}</i>" if kind else ""
+    title = f' title="{_E(kind)}: {_E(caption)}"' if kind else ""
+    return f'<div class="jb-logo {cls}"{title}>{head}<b>{glyph}</b><small>{_E(caption)}</small></div>'
+
+
+def silent_reason(name: str) -> str:
+    """Why a band member is not heard: its sound is switched off, or it has none yet (never shown as playing)."""
+    low = str(name or "").lower()
+    if any(h in low for h in ("sax", "trumpet", "trombone", "horn")):
+        try:
+            import backing_horns
+
+            if not backing_horns.enabled():
+                return "recorded horns are switched off"
+        except Exception:
+            pass
+        return "its recorded sound is not installed"
+    if "percussion" in low or "conga" in low:
+        return "no percussion sound yet"
+    if "guitar" in low:
+        return "no guitar sound for this groove yet"
+    return "no sound yet"
 
 
 def jam_card_head_html(facts: Mapping[str, Any]) -> str:
@@ -203,14 +224,16 @@ def jam_card_head_html(facts: Mapping[str, Any]) -> str:
     )
     crest = _logo(DICE_ICON, "Generated", "jb-crest") if generator else _logo(SAX_ICON, "Style Jam", "jb-crest")
     same = groove.lower() == style.lower()
-    logos = _logo(style_logo(style), style) + ("" if same else _logo(groove_logo(groove), groove))
+    logos = _logo(style_logo(style), style, kind="Style") + ("" if same else _logo(groove_logo(groove), groove, kind="Groove"))
     size_pill = ""
     if count:
         size = band_size_word(count)
         size_pill = (f'<span class="jb-pill">{_E(size)} · {count} player{"" if count == 1 else "s"}</span>' if generator
                      else f'<span class="jb-pill">{_E(size)} backing</span>')
     mood = str(facts.get("mood") or "")
-    sub = " · ".join(x for x in (style, ("" if same else f"{groove} groove"), mood, f"{facts['bpm']} BPM" if facts["bpm"] else "") if x)
+    # Style and groove are the labelled tiles beside the name; the line says the feel and the tempo.
+    intensity = str(facts.get("intensity") or "")
+    sub = " · ".join(x for x in (mood, f"{intensity} intensity" if intensity else "", f"{facts['bpm']} BPM" if facts["bpm"] else "") if x)
     kicker_icon = DICE_ICON if generator else SAX_ICON
     return (
         f'<div class="jb-hero jb-{art_name} jc-hero-{art_name} jb-e{int(facts.get("energy", 1))}">'
@@ -253,12 +276,11 @@ def jam_card_facts_html(facts: Mapping[str, Any]) -> str:
     style, groove = str(facts["style"]), str(facts["groove"])
     same = groove.lower() == style.lower()
     c_icon, c_label, c_value = chart_key_chip(facts)
+    # Style, groove, mood, intensity and tempo are on the artwork (labelled tiles and the line under the name): the
+    # chips add only what it does not say -- no heading or fact twice (user, 2026-11-26).
+    del style, groove, same, FEATURE_ICONS, groove_logo, style_logo
     stats = "".join((
-        _stat(SEMANTIC_FIELD_ICONS["style"], "Style", style, style_logo(style)),
-        "" if same else _stat(FEATURE_ICONS["backing"], "Groove", groove, groove_logo(groove)),
         _stat(SEMANTIC_FIELD_ICONS["meter"], "Meter", str(facts["meter"])),
-        _stat("\U0001F319", "Mood", str(facts.get("mood") or "")),
-        _stat("⚡", "Intensity", str(facts.get("intensity") or "")),
         _stat(LEVEL_ICONS.get(str(facts.get("level") or ""), SEMANTIC_FIELD_ICONS["level"]), "Level", str(facts.get("level") or "")),
         _stat(c_icon, c_label, c_value) if c_value else "",
     ))
@@ -267,14 +289,18 @@ def jam_card_facts_html(facts: Mapping[str, Any]) -> str:
     if playing or later:
         members = "".join(f'<span class="jb-member"><i>{_member_icon(n)}</i>{_E(n)}</span>' for n in playing)
         members += "".join(
-            f'<span class="jb-member jb-member-off" title="Not in the backing yet"><i>{_member_icon(n)}</i>{_E(n)}</span>' for n in later
+            f'<span class="jb-member jb-member-off" title="Sound off: {_E(silent_reason(n))}"><i>{_member_icon(n)}</i>{_E(n)}'
+            '<em class="jb-off">🔇 sound off</em></span>' for n in later
         )
-        head = f"Your band · {facts['ensemble']}" if facts.get("ensemble") else "Your band"
+        # The ensemble is already the card's title: the strip only says it is the band.
+        ens = str(facts.get("ensemble") or "")
+        head = f"Your band · {ens}" if ens and ens != str(facts.get("title") or "") else "Your band"
         notes = ""
         if any(n == art.STAND_IN_PIANO for n in playing):
             notes += '<p class="jb-note">The recorded guitar is not available here, so the piano plays the guitar&#39;s part.</p>'
         if later:
-            notes += f'<p class="jb-note">Outlined: not in the backing yet ({_E(", ".join(later))}).</p>'
+            why = "; ".join(f"{n}: {silent_reason(n)}" for n in later)
+            notes += f'<p class="jb-note">Shown in grey, not heard: {_E(why)}.</p>'
         band = f'<div class="jb-band"><p class="jb-h">{_E(head)}</p><div class="jb-members">{members}</div>{notes}</div>'
     form = art.arrangement_form(facts["sections"])
     if form:
@@ -381,6 +407,8 @@ def _card_rules(key: str) -> str:
         f"{c} .jb-logo b{{font-size:1.45rem;line-height:1.1}}"
         f"{c} .jb-logo small{{font-size:.62rem;font-weight:800;color:var(--jc-muted);max-width:4.6rem;text-align:center;line-height:1.15;"
         "overflow:hidden;text-overflow:ellipsis;white-space:nowrap}"
+        f"{c} .jb-logo i{{font-style:normal;font-size:.52rem;font-weight:850;letter-spacing:.08em;text-transform:uppercase;color:var(--jc-muted);line-height:1}}"
+        f"{c} .jb-off{{font-style:normal;font-size:.68rem;font-weight:800;margin-left:.2rem;color:var(--jc-muted)}}"
         f"{c} .jb-crest{{background:var(--jc-accent);border-color:var(--jc-accent)}}"
         f"{c} .jb-crest small{{color:var(--jc-accent-ink)}}"
         f"{c} .jb-names{{min-width:0}}"
@@ -437,11 +465,24 @@ def _card_rules(key: str) -> str:
         "border:1px solid var(--jc-chip-line) !important;color:var(--jc-ink) !important;font-weight:750 !important}"
         f"{c} .st-key-backing_art_actions button[kind=\"primary\"]{{background:var(--jc-accent) !important;color:var(--jc-accent-ink) !important}}"
         f"{c} .st-key-backing_art_actions button p{{color:inherit !important}}"
-        f"@container jamcard (max-width:640px){{{k} [data-testid=\"stHorizontalBlock\"],"
+        # Phone (the card is narrower than 640 px). Original | Practice key stay side by side (each one short
+        # panel); BPM above a full-width Play; the three card buttons wrap into short rows instead of three
+        # full-width ones; smaller chips and art text.
+        f"@container jamcard (max-width:640px){{"
         f"{c} .st-key-backing_art_play_row [data-testid=\"stHorizontalBlock\"]{{flex-direction:column !important;align-items:stretch !important}}"
-        f"{k} [data-testid=\"stHorizontalBlock\"]>[data-testid=\"stColumn\"],"
         f"{c} .st-key-backing_art_play_row [data-testid=\"stHorizontalBlock\"]>[data-testid=\"stColumn\"]:last-child"
         "{width:100% !important;flex:1 1 auto !important}"
+        f"{k} [data-testid=\"stHorizontalBlock\"]{{flex-direction:row !important;flex-wrap:nowrap !important;gap:.45rem !important}}"
+        f"{k} [data-testid=\"stHorizontalBlock\"]>[data-testid=\"stColumn\"],{k} [data-testid=\"stHorizontalBlock\"]>[data-testid=\"stColumn\"]:first-child"
+        "{padding:.45rem .55rem .5rem !important;width:auto !important;flex:1 1 0 !important;min-width:0 !important}"
+        f"{c} .st-key-backing_art_actions [data-testid=\"stHorizontalBlock\"]{{flex-direction:row !important;flex-wrap:wrap !important;gap:.4rem !important}}"
+        f"{c} .st-key-backing_art_actions [data-testid=\"stHorizontalBlock\"]>[data-testid=\"stColumn\"]"
+        "{flex:1 1 9.5rem !important;width:auto !important;min-width:0 !important}"
+        f"{c} .st-key-backing_art_actions button{{min-height:34px !important;padding:.2rem .6rem !important}}"
+        f"{c} .st-key-backing_art_actions button p{{font-size:.8rem !important}}"
+        f"{c} .jb-stat{{font-size:.72rem;padding:.18rem .5rem}}"
+        f"{c} .jb-member{{font-size:.74rem;padding:.18rem .5rem}}"
+        f"{c} .jb-band,{c} .jb-form-wrap{{padding:.4rem .55rem}}"
         f"{c} .jb-hero{{min-height:200px}}"
         f"{c} .jb-title{{font-size:1.25rem}}"
         f"{c} .jb-sub{{font-size:.78rem}}"

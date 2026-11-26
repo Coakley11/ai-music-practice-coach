@@ -314,6 +314,7 @@ def _backdrop(card: str, family: str, energy: int, mood: str) -> str:
 
 def _defs(card: str) -> str:
     common = (
+        '<filter id="jb-mute" color-interpolation-filters="sRGB"><feColorMatrix type="saturate" values="0"/></filter>'
         '<linearGradient id="jb-brass" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fde68a"/><stop offset="1" stop-color="#d97706"/></linearGradient>'
         '<linearGradient id="jb-cym" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#fcd34d"/><stop offset="1" stop-color="#b45309"/></linearGradient>'
     )
@@ -339,6 +340,16 @@ def _defs(card: str) -> str:
 
 
 _STAGE_LEFT, _STAGE_RIGHT, _FLOOR = 420.0, 950.0, 254.0
+
+# The Generator's identity on its own stage: two dice resting at the front edge, left of the band.
+_DICE = (
+    '<g class="jb-dice" transform="translate(352 240)">'
+    '<g transform="rotate(-12)"><rect x="-17" y="-17" width="34" height="34" rx="7" fill="#f8fafc" stroke="#93c5fd" stroke-width="2"/>'
+    '<g fill="#1e3a8a"><circle cx="-8" cy="-8" r="3.2"/><circle cx="0" cy="0" r="3.2"/><circle cx="8" cy="8" r="3.2"/></g></g>'
+    '<g transform="translate(30 6) rotate(14)"><rect x="-14" y="-14" width="28" height="28" rx="6" fill="#dbeafe" stroke="#93c5fd" stroke-width="2"/>'
+    '<g fill="#1e3a8a"><circle cx="-6" cy="-6" r="2.7"/><circle cx="6" cy="-6" r="2.7"/><circle cx="-6" cy="6" r="2.7"/><circle cx="6" cy="6" r="2.7"/></g></g>'
+    "</g>"
+)
 _MAX_HEIGHT = 206.0
 
 
@@ -348,8 +359,19 @@ def _place(drawing: str, cx: float, slot: float, palette: dict[str, str], *, gho
     tx = cx - (x0 + w / 2) * scale
     ty = _FLOOR - (y0 + h) * scale
     body = markup.format(**palette)
-    attrs = ' opacity=".3" class="jb-ghost"' if ghost else ""
-    return f'<g transform="translate({tx:.1f} {ty:.1f}) scale({scale:.3f})"{attrs} data-instrument="{drawing}">{body}</g>'
+    if not ghost:
+        return f'<g transform="translate({tx:.1f} {ty:.1f}) scale({scale:.3f})" data-instrument="{drawing}">{body}</g>'
+    # A member the backing cannot play (its sound switched off, or none yet): grey, faded and tagged, so it never
+    # reads as playing (user, 2026-11-26).
+    top = max(14.0, ty + y0 * scale - 10)
+    tag = (f'<g class="jb-off-tag" transform="translate({cx:.1f} {top:.1f})">'
+           '<rect x="-50" y="-13" width="108" height="22" rx="11" fill="#0f172a" fill-opacity=".78" stroke="#e2e8f0" stroke-opacity=".55"/>'
+           '<path d="M-42 -5 h5 l6 -5 v14 l-6 -5 h-5 z" fill="#e2e8f0"/>'
+           '<path d="M-27 -6 l7 8 M-20 -6 l-7 8" stroke="#fca5a5" stroke-width="2" stroke-linecap="round"/>'
+           '<text x="-14" y="3" text-anchor="start" font-family="system-ui, sans-serif" font-size="11" font-weight="800" '
+           'fill="#f8fafc" letter-spacing=".06em">SOUND OFF</text></g>')
+    return (f'<g transform="translate({tx:.1f} {ty:.1f}) scale({scale:.3f})" opacity=".38" filter="url(#jb-mute)" '
+            f'stroke-dasharray="6 5" class="jb-ghost" data-instrument="{drawing}">{body}</g>{tag}')
 
 
 def _sound(energy: int, card: str, centers: Sequence[float]) -> str:
@@ -415,8 +437,11 @@ def _stage_svg(card: str, playing: tuple[str, ...], not_yet: tuple[str, ...], st
         order.insert(max(0, len(order) // 2), (feature, False))
     for i, (drawing, ghost) in enumerate(order):
         cx = _STAGE_LEFT + width * (i + 0.5)
-        centers.append(cx)
+        if not ghost:
+            centers.append(cx)  # the sound rises only over instruments that play
         parts.append(_place(drawing, cx, width, palette, ghost=ghost))
+    if card == GENERATOR:
+        parts.append(_DICE)
     if family == "rock" and "electric_guitar" in {d for d, _ in order} and slots < 5:
         parts.insert(0, _place("amp", _STAGE_LEFT - 10, 70, palette, ghost=False))
     aria = label or "A stage with the band"

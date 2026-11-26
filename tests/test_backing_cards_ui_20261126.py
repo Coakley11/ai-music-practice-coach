@@ -106,12 +106,30 @@ def test_the_card_names_the_band_size_and_wears_the_dice_style_and_groove_logos(
     assert len(_instruments(head)) == 3
 
 
-def test_the_facts_label_style_and_groove_each_with_its_own_logo():
+def test_style_and_groove_are_labelled_tiles_on_the_artwork_and_never_repeated_below():
     facts = card.jam_card_facts(_ctx(), state=_state(), groove="Bossa nova", meter="4/4", bpm=120)
-    html = card.jam_card_facts_html(facts)
-    assert f"<span>Style</span> <b><em class=\"jb-vg\">{style_logo('Latin')}</em> Latin</b>" in html
-    assert f"<span>Groove</span> <b><em class=\"jb-vg\">{groove_logo('Bossa nova')}</em> Bossa nova</b>" in html
-    assert "<details class=\"jb-prog\">" in html  # the chords are folded away, not a block of text
+    head, body = card.jam_card_head_html(facts), card.jam_card_facts_html(facts)
+    assert f'title="Style: Latin"><i>Style</i><b>{style_logo("Latin")}</b><small>Latin</small>' in head
+    assert f'title="Groove: Bossa nova"><i>Groove</i><b>{groove_logo("Bossa nova")}</b><small>Bossa nova</small>' in head
+    assert "Mellow · Light intensity · 120 BPM" in head
+    for twice in ("<span>Style</span>", "<span>Groove</span>", "<span>Mood</span>", "<span>Intensity</span>", "Your band · Jazz trio"):
+        assert twice not in body, twice  # no fact or heading said twice
+    assert "<span>Meter</span>" in body and "<span>Level</span>" in body
+    assert "<details class=\"jb-prog\">" in body  # the chords are folded away, not a block of text
+
+
+def test_a_member_whose_sound_is_off_is_grey_tagged_and_named_as_not_heard(monkeypatch):
+    import backing_horns
+
+    monkeypatch.setattr(backing_horns, "enabled", lambda: False)
+    svg = stage.jam_stage_svg(stage.GENERATOR, playing=["Piano", "Upright bass", "Drums"], not_yet=["Tenor sax"], mood="Energetic")
+    ghost = svg[svg.index('class="jb-ghost"') - 120:]
+    assert 'filter="url(#jb-mute)"' in ghost[:400] and "SOUND OFF" in svg
+    facts = card.jam_card_facts(_ctx(ensemble="Jazz quartet", style="Jazz"), state=_state(), groove="Jazz swing", meter="4/4", bpm=120)
+    if facts["not_yet"]:  # the horn switch is off in tests
+        body = card.jam_card_facts_html(facts)
+        assert "🔇 sound off" in body and "recorded horns are switched off" in body
+    assert card.silent_reason("Latin percussion") == "no percussion sound yet"
 
 
 def test_a_shape_chart_key_on_the_card_is_the_shape_key_with_the_guitar_and_the_capo():
@@ -244,8 +262,46 @@ def test_the_highlight_follows_what_is_heard_not_the_media_clock():
 def test_practice_melody_controls_are_a_slim_row_of_small_buttons():
     panel = (ROOT / "practice_melody_panel.py").read_text(encoding="utf-8")
     labels = re.findall(r'st\.button\(\s*f?"([^"]+)"', panel)
-    assert "◀" in labels and "▶" in labels and "☆" in labels
+    assert "◀" in labels and "▶" in labels and "☆ Keep" in labels and "★ Kept" in labels
     assert not [x for x in labels if "Previous" in x or "Next" in x or "Generate Another Melody" in x]
-    assert 'horizontal=True' in panel and "st.popover(" in panel
-    assert 'help="Previous melody"' in panel and 'help="Next melody"' in panel
+    assert 'horizontal=True' in panel and "st.popover(" in panel and 'key="backing_practice_melody_steps"' in panel
     assert "FEATURE_ICONS['practice_melody_generated']} Practice Melody" in APP
+
+
+def _melody_row_app():
+    import streamlit as st
+
+    import practice_melody_library as lib
+    import practice_melody_panel as panel
+
+    st.session_state.setdefault("at", 1)
+    st.session_state.setdefault("count", 3)
+    st.session_state.setdefault("calls", [])
+    lib.alternatives = lambda s, i, r: (st.session_state["at"], st.session_state["count"])
+    lib.viewing = lambda s, i: ""
+    lib.kept_melodies = lambda s, i: []
+
+    def choose(**kw):
+        st.session_state["calls"].append(kw)
+        if kw.get("another"):
+            st.session_state["count"] += 1
+            st.session_state["at"] = st.session_state["count"] - 1
+        else:
+            st.session_state["at"] = min(max(0, st.session_state["at"] + kw["step"]), st.session_state["count"] - 1)
+
+    panel.render_melody_controls(st, identity="x", recipe="r", melody=None, sections={"A": ["C"]}, section_order=["A"],
+                                 sections_key="k", choose=choose)
+
+
+def test_next_selects_an_existing_melody_and_only_new_melody_composes_one():
+    from streamlit.testing.v1 import AppTest
+
+    at = AppTest.from_function(_melody_row_app).run(timeout=60)
+    assert not at.exception
+    at.button(key="backing_practice_melody_next").click().run()
+    assert at.session_state["at"] == 2 and at.session_state["count"] == 3  # moved to the existing third; nothing composed
+    assert at.button(key="backing_practice_melody_next").disabled  # at the newest, ▶ never composes
+    at.button(key="backing_practice_melody_another").click().run()
+    assert (at.session_state["at"], at.session_state["count"]) == (3, 4)  # a deliberate new one, the others kept
+    at.button(key="backing_practice_melody_prev").click().run()
+    assert at.session_state["calls"] == [{"step": 1}, {"another": True}, {"step": -1}]
