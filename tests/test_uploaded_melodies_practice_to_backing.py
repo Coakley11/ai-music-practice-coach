@@ -27,6 +27,12 @@ class _St:
     def caption(self, *_a, **_k):
         pass
 
+    def markdown(self, *_a, **_k):
+        pass
+
+    def container(self, **_k):
+        return nullcontext()
+
     def expander(self, _label, *, expanded, key):
         self.panels[key[len(bmm.UPLOADED_PANEL_KEY_PREFIX):]] = expanded
         return nullcontext()
@@ -54,15 +60,18 @@ def practice(session, *, rows=ROWS, choose=None, press=False):
 
 
 def backing(session):
+    """One Backing run: the section buttons apply a pending request first, then the uploaded section draws."""
     st = _St(session)
+    bmm.apply_pending_melody_mode(session)
     bmm.render_uploaded_references(st, session)
     return st.panels
 
 
-def test_a_choice_on_practice_shows_on_backing_in_its_order_and_selects_the_mode(library):
+def test_a_choice_on_practice_shows_on_backing_in_its_order_and_opens_the_section(library):
     s = {}
     practice(s, choose=["c", "a"])
     assert bmm.apply_pending_melody_mode(s) == bmm.MODE_UPLOADED
+    assert bmm.uploaded_section_open(s) is True
     assert list(backing(s)) == ["c", "a"]
 
 
@@ -114,14 +123,17 @@ def test_a_slow_library_does_not_lose_choices(library):
     assert list(backing(s)) == ["a", "c"]  # back once it is listed again
 
 
-def test_clearing_the_choice_clears_it_on_backing_and_does_not_switch_mode(library):
+def test_clearing_the_choice_clears_it_on_backing_and_does_not_reopen_the_section(library):
     s = {}
     practice(s, choose=["a"])
     bmm.apply_pending_melody_mode(s)
-    s[bmm.MODE_KEY] = bmm.MODE_PRACTICE
+    bmm.set_uploaded_section_open(s, False)      # the musician hid the section
     practice(s, choose=[])
-    assert bmm.apply_pending_melody_mode(s) == bmm.MODE_PRACTICE
+    assert bmm.apply_pending_melody_mode(s) == ""
+    assert bmm.uploaded_section_open(s) is False
     assert backing(s) == {}
+    bmm.set_uploaded_section_open(s, True)
+    assert backing(s) == {}                      # open, but nothing chosen
 
 
 def test_choosing_changes_nothing_musical(library):
@@ -167,7 +179,7 @@ def test_the_real_widgets_carry_a_choice_from_practice_to_backing():
         at.session_state["page"] = "backing"
         at.run()
         assert at.multiselect[0].value == ["b", "c"]
-        assert at.session_state[bmm.MODE_KEY] == bmm.MODE_UPLOADED
+        assert at.session_state[bmm.UPLOADED_OPEN_KEY] is True
         at.multiselect[0].set_value(["c"]).run()
         assert at.multiselect[0].value == ["c"]
         at.session_state["page"] = "practice"

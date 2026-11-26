@@ -367,6 +367,7 @@ def _show_notice(st: Any) -> None:
 
 def _manage(st: Any, row: dict) -> None:
     """Rename, retag and delete, for the one selected document."""
+    from music_feature_icons import action_label
     from song_document_catalog import delete_song_document, rename_song_document, retag_song_document
 
     did = str(row.get("document_id") or "")
@@ -375,17 +376,19 @@ def _manage(st: Any, row: dict) -> None:
     # that sets session state and reruns leaves the state unchanged - both measured in
     # a real browser, both silent. A plain container has none of that and costs the
     # musician one less click.
+    # Layout (user, 2026-11-26): the three fields together, Save directly beneath them (it saves exactly those),
+    # and Delete apart in its own box with a destructive look -- never beside Save.
     with st.container(border=True):
-        st.caption("Rename, tag or delete")
-        cols = st.columns([2, 1, 1, 1])
+        st.caption("Rename or tag")
+        cols = st.columns([2, 1, 1])
         title = cols[0].text_input("Name", value=str(row.get("title") or ""),
                                    key=f"{KEY_PREFIX}edit_title_{did}")
         inst = cols[1].text_input("Instrument", value=str(row.get("instrument_tag") or ""),
                                   key=f"{KEY_PREFIX}edit_inst_{did}")
         ktag = cols[2].text_input("Key tag", value=str(row.get("key_tag") or ""),
                                   key=f"{KEY_PREFIX}edit_key_{did}")
-        if cols[3].button("Save changes", key=f"{KEY_PREFIX}save_{did}",
-                          use_container_width=True):
+        if st.button(action_label("save", "Save changes"), key=f"{KEY_PREFIX}save_{did}",
+                     type="primary"):
             ok = True
             if title.strip() and title.strip() != str(row.get("title") or ""):
                 ok = bool(rename_song_document(did, title, st=st).get("ok")) and ok
@@ -398,6 +401,20 @@ def _manage(st: Any, row: dict) -> None:
             ]
             st.rerun()
 
+    box = f"{KEY_PREFIX}danger_{_reader_slug(did)}"
+    armed = str(st.session_state.get(CONFIRM_KEY) or "") == did
+    # A red box. Before confirming, its one button (Delete) has a red outline; while confirming, "Yes, delete it"
+    # is solid red and "Keep it" keeps the ordinary look.
+    st.markdown(
+        f"<style>.st-key-{box}{{border-color:rgba(220,38,38,.45)!important;}}"
+        + ("" if armed else
+           f".st-key-{box} [data-testid='stBaseButton-secondary']{{color:#b91c1c!important;"
+           f"border-color:rgba(220,38,38,.55)!important;}}")
+        + f".st-key-{box} [data-testid='stBaseButton-primary']{{background:#dc2626!important;"
+        f"border-color:#dc2626!important;color:#fff!important;}}</style>",
+        unsafe_allow_html=True,
+    )
+    with st.container(border=True, key=box):
         st.caption("Deleting removes this reference and its file. It cannot be undone.")
         # Two buttons rather than a tick box and a disabled button. A deletion should
         # take a deliberate second action either way, and a button is the control both
@@ -405,15 +422,14 @@ def _manage(st: Any, row: dict) -> None:
         # visually hidden input inside a label, and inside this nested expander a click
         # on that label does not toggle it - measured, not assumed, so the tick-box
         # version could never have been confirmed to work.
-        armed = str(st.session_state.get(CONFIRM_KEY) or "") == did
         if not armed:
-            if st.button("Delete this reference", key=f"{KEY_PREFIX}del_{did}"):
+            if st.button(action_label("delete", "Delete this reference"), key=f"{KEY_PREFIX}del_{did}"):
                 st.session_state[CONFIRM_KEY] = did
                 st.rerun()
         else:
             st.warning("Delete this reference permanently?")
             yes, no = st.columns(2)
-            if yes.button("Yes, delete it", key=f"{KEY_PREFIX}del_yes_{did}",
+            if yes.button(action_label("delete", "Yes, delete it"), key=f"{KEY_PREFIX}del_yes_{did}",
                           type="primary", use_container_width=True):
                 result = delete_song_document(did, st=st)
                 st.session_state[CONFIRM_KEY] = ""

@@ -27875,23 +27875,17 @@ elif _studio_page == "backing":
             st.session_state.pop("_backing_play_request", None)
         st.markdown("</div>", unsafe_allow_html=True)
 
-    # Melodies under the Lead Sheet (user rules 2026-11-20, backing_melody_modes.py): Practice Melody and My
-    # Uploaded Melodies are one choice -- only the active mode's panels are drawn, so a hidden display never takes
-    # part in scrolling. The Original Melody (below) coexists with either.
+    # Melodies under the Lead Sheet (backing_melody_modes.py): Practice Melody and My Uploaded Melodies are two
+    # independent sections (user, 2026-11-26, replacing the 2026-11-20 "one choice" rule) -- either, both or neither
+    # open, Practice Melody first. A closed section is not on the page at all, so it never takes part in scrolling.
+    # The Original Melody (below) coexists with both.
     # An active Karaoke Set shows only the Karaoke lyrics and the optional Lead Sheet (user, 2026-11-20): no
-    # Original, Practice or Uploaded Melody and no melody-mode choice while the set runs.
+    # Original, Practice or Uploaded Melody and no melody buttons while the set runs.
     try:
         _bk_in_karaoke_set = bool(km.is_voice_mode(st.session_state) and km.is_karaoke_session_active(st.session_state))
     except Exception:
         _bk_in_karaoke_set = False
-    try:
-        from backing_melody_modes import MODE_PRACTICE as _BK_MODE_PRACTICE, MODE_UPLOADED as _BK_MODE_UPLOADED
-        from backing_melody_modes import render_melody_mode_selector as _bk_render_melody_mode
-
-        _bk_melody_mode = "" if _bk_in_karaoke_set else _bk_render_melody_mode(st, st.session_state)
-    except ImportError:
-        _BK_MODE_PRACTICE, _BK_MODE_UPLOADED = "practice", "uploaded"
-        _bk_melody_mode = "" if _bk_in_karaoke_set else _BK_MODE_PRACTICE
+    _bk_melodies_on = not _bk_in_karaoke_set
 
     # Practice Melody projection (Slice E/F1) -- an optional layer on top of
     # Backing, never a second owner of song/key/source state. Consuming the
@@ -27994,7 +27988,7 @@ elif _studio_page == "backing":
                 **_kw,
             )
 
-        if _bk_melody_mode == _BK_MODE_PRACTICE and (
+        if _bk_melodies_on and (
             _pmb_melody is not None or _pml.shown_on_backing(st.session_state, _pmb_song_identity)
         ):
             _pmb_melody = _pmb_choose() or _pmb_melody
@@ -28002,10 +27996,25 @@ elif _studio_page == "backing":
     except Exception:
         _pmb_choose = None
 
-    if _bk_melody_mode == _BK_MODE_PRACTICE and _pmb_melody is not None:
+    if _bk_melodies_on:
+        # Practice Melody shows the melody that exists for these settings, or makes the first one, at once (no second
+        # "show" button); only Generate Another makes a new one. My Uploaded Melodies opens its own section.
+        try:
+            from backing_melody_modes import render_melody_section_buttons as _bk_melody_buttons
+
+            _bk_melody_buttons(
+                st, st.session_state, identity=_pmb_song_identity, choose=_pmb_choose,
+                practice_open=_pmb_melody is not None,
+            )
+        except Exception:
+            pass
+
+    if _bk_melodies_on and _pmb_melody is not None:
         from melody_panel_visibility import PRACTICE as _PMB_PANEL, melody_expander as _pmb_expander
 
-        with _pmb_expander(st, f"{FEATURE_ICONS['backing']} Practice Melody", _PMB_PANEL, _pmb_song_identity):
+        with _pmb_expander(
+            st, feature_label("practice_melody_generated", "Practice Melody"), _PMB_PANEL, _pmb_song_identity
+        ):
             # Section-Focus-scoped display (Slice F1): if Backing is looping
             # specific section(s), show the matching melody section(s) --
             # the same structured sections from Slice A, never a second
@@ -28048,6 +28057,9 @@ elif _studio_page == "backing":
                     sections_key=_pmb_chords_key,
                     choose=_pmb_choose,
                 )
+            from backing_melody_modes import render_remove_practice_melody as _bk_remove_pm
+
+            _bk_remove_pm(st, st.session_state, _pmb_song_identity)
             # Measure highlighting (Slice F2): join against Backing's own
             # follow_timeline -- the same playback truth driving Backing's
             # chord-chart follow-along -- never a second clock. Silently
@@ -28072,28 +28084,8 @@ elif _studio_page == "backing":
                 practice_melody_sections_abc(_pmb_melody, _pmb_display_sections, clef=_pmb_clef(str(instrument or ""))),
                 measure_sync=_pmb_measure_sync,
             )
-    elif _bk_melody_mode == _BK_MODE_PRACTICE:
-        # No Practice Melody handed over from Practice yet: make one here, from this song's chart, with the same
-        # generator and level the Practice page uses (the melody then also shows on Practice). It never changes
-        # the song, key, instrument or backing settings, and never starts or stops playback.
-        if st.button(
-            f"{FEATURE_ICONS['backing']} Show a Practice Melody for this {'jam' if _pmb_jam is not None else 'song'}",
-            key="backing_practice_melody_create",
-        ):
-            _pmb_created = None
-            try:
-                _pmb_created = _pmb_choose() if _pmb_choose is not None else None
-                if _pmb_created is not None:
-                    from melody_panel_visibility import PRACTICE as _PMB_PANEL, show as _pmb_show
-
-                    _pml.show_on_backing(st.session_state, _pmb_song_identity)
-                    _pmb_show(st.session_state, _PMB_PANEL, _pmb_song_identity)
-            except Exception:
-                _pmb_created = None
-            if _pmb_created is not None:
-                st.rerun()
-            st.info("There is no structured chord/section data here yet, so a Practice Melody can't be made for it.")
-    elif _bk_melody_mode == _BK_MODE_UPLOADED:
+    if _bk_melodies_on:
+        # Independent of the Practice Melody above: open or closed by its own buttons only.
         try:
             from backing_melody_modes import render_uploaded_references
 

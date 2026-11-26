@@ -741,6 +741,8 @@ _PERSIST_KEYS: tuple[str, ...] = (
     "cpl_last_display_key",
     # Uploaded Melodies Slice 3: which of each song's uploaded references Backing shows ({song owner: [ids]}).
     "_backing_uploaded_reference_selection",
+    # Whether the My Uploaded Melodies section is open on Backing (backing_melody_modes.UPLOADED_OPEN_KEY).
+    "_backing_uploaded_section_open",
     "mt_track_filenames",
     "mt_tracks",
     "mixed_track_wav",
@@ -881,7 +883,7 @@ def _device_view_keys() -> frozenset[str]:
     with the phone open on the same account, every phone save made the desktop
     re-apply the phone's Key cycling Off / editor / lead-sheet state.
     """
-    keys = {"backing_lead_sheet_open", "backing_lead_sheet_on_play"}
+    keys = {"backing_lead_sheet_open", "backing_lead_sheet_on_play", "_backing_uploaded_section_open"}
     try:
         from picker_song_editor import PICKER_EDITOR_UI_KEYS
 

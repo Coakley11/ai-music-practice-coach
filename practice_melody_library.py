@@ -164,6 +164,13 @@ def show_on_backing(session: MutableMapping[str, Any], identity: str) -> None:
         _save(session, identity, {**entry, "backing": True})
 
 
+def hide_on_backing(session: MutableMapping[str, Any], identity: str) -> None:
+    """Remove Practice Melody: off the Backing page. Its alternatives, the one shown and the kept melodies stay."""
+    entry = _entry(session, identity)
+    if entry is not None and entry.get("backing"):
+        _save(session, identity, {**entry, "backing": False})
+
+
 def recipe_for(level: str, style: str, focus: str, meter: tuple[int, int]) -> str:
     return f"{level}|{style_family(style)}|{note_intent(focus)}|{int(meter[0])}/{int(meter[1])}"
 
