@@ -192,3 +192,16 @@ def test_the_practice_page_offers_the_choice_and_the_panel_stays_free_of_backing
     assert bmm.render_active_song_reference_choice(_St(s, press=True), s) is False
     library["owner"], library["rows"] = OWNER, []
     assert bmm.render_active_song_reference_choice(_St(s, press=True), s) is False
+
+
+def test_page_buttons_are_not_taken_for_key_cycling_steps():
+    """Key Cycling's page script claims a Backing button labelled just Previous / Next (optional arrow) and cancels it."""
+    import re
+    from pathlib import Path
+
+    src = (Path(__file__).resolve().parents[1] / "song_document_panel.py").read_text(encoding="utf-8")
+    labels = re.findall(r'\.button\(\s*"([^"]+)"', src)
+    kc_prev = re.compile(r"^([◀⏮]\s*)?Previous( key)?$", re.I)
+    kc_next = re.compile(r"^([▶⏭]\s*)?Next( key)?(\s*[▶⏭])?$", re.I)
+    assert "◀ Previous page" in labels and "Next page ▶" in labels
+    assert not [lab for lab in labels if kc_prev.match(lab) or kc_next.match(lab)]

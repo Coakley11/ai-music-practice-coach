@@ -453,14 +453,16 @@ def _preview(st: Any, row: dict, *, compact: bool, reader: str = "") -> None:
 
     if total > 1:
         nav = st.columns([1, 2, 1])
-        if nav[0].button("Previous", key=f"{key_prefix}prev", disabled=page <= 0,
+        # Not bare "Previous" / "Next": on Backing, Key Cycling's page script takes any button with exactly that label
+        # as its own step control and cancels the click (backing_key_cycle __kcStepBtnHandler label fallback).
+        if nav[0].button("◀ Previous page", key=f"{key_prefix}prev", disabled=page <= 0,
                          use_container_width=True):
             st.session_state[PAGE_KEY + reader] = page - 1
             st.rerun()
         nav[1].markdown(
             f"<div style='text-align:center;padding-top:0.45rem'>Page {page + 1} "
             f"of {total}</div>", unsafe_allow_html=True)
-        if nav[2].button("Next", key=f"{key_prefix}next", disabled=page >= total - 1,
+        if nav[2].button("Next page ▶", key=f"{key_prefix}next", disabled=page >= total - 1,
                          use_container_width=True):
             st.session_state[PAGE_KEY + reader] = page + 1
             st.rerun()
