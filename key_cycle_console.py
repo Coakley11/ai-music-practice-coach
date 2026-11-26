@@ -746,7 +746,7 @@ def render_live_mission_panel(st: Any, session: dict[str, Any], model: dict[str,
         chord_line = (
             f'<div class="kc-live-row"><span>{lead}</span> <span class="kc-live-chord">{html.escape(written)}</span>'
         )
-        if mode in {"shape", "written"} and sounding and sounding != written:
+        if mode == "written" and sounding and sounding != written:
             chord_line += f'<span>sounds as <strong>{html.escape(sounding)}</strong></span>'
         chord_line += "</div>"
     type_html = f'<span class="kc-live-type">{html.escape(etype)}</span>' if etype else ""

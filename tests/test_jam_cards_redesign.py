@@ -119,7 +119,7 @@ class StyleJamCardTests(unittest.TestCase):
         self.assertIn('gen = session_state.get("improv_generated_sections")', self.src)
         self.assertIn("sections=gen,", self.src)
         self.assertIn("for _sec_i, (sec, chs) in enumerate(gen.items()):", self.src)
-        self.assertIn("jam_art.section_head_html(sec, chs, _sec_i)", self.src)
+        self.assertIn("jam_art.section_head_html(sec, _shown.get(sec, chs), _sec_i)", self.src)  # _shown: gen in guitar shapes
         self.assertIn("render_creative_progression_block(st, session_state, {sec: chs})", self.src)
         for foreign in ("improv_jam_session", "song_data", "preview_sections", "improv_ctx"):
             self.assertNotIn(foreign, self.src)

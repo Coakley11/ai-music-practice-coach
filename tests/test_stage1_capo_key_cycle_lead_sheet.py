@@ -150,8 +150,10 @@ class TestLeadSheetCapoLabels(unittest.TestCase):
             session=session,
         )
         self.assertIn("Charts in D major · capo 6", html)
-        self.assertIn(">Db7<", html)  # concert chord present
-        self.assertIn("G7 shape", html)  # shape hint shown alongside concert
+        # The shapes are the only chords (user, 2026-11-25): no concert cells, no second line.
+        self.assertIn(">G7<", html)
+        self.assertNotIn(">Db7<", html)
+        self.assertNotIn("G7 shape", html)
 
 
 class TestFollowAlongChordSpaceLabel(unittest.TestCase):

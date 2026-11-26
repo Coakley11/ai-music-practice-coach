@@ -2010,6 +2010,50 @@ def on_cpl_jump_home_key() -> None:
     st.session_state[BACKING_NEEDS_REGEN] = True
 
 
+def display_key_belongs_to_a_jam(session: Any) -> bool:
+    """True while the key on screen is a generated jam's (Style Jam / Jam Session Generator), not the song's.
+
+    The active Composition must not take it as its own Practice Key: a Style Jam in C, then a visit to Practice,
+    left "Jazz tune" (D) in C (Dev review 2026-11-25)."""
+    try:
+        from backing_context import get_backing_context
+        from creative_key_sync import jam_owns_left_panel_key
+
+        page = str(session.get("studio_page") or "").strip().lower()
+        ctx = get_backing_context(session)
+        if page == "backing" and ctx is not None and str(getattr(ctx, "source", "") or "") == "entry_jam":
+            return True
+        return page in {"creative", "backing"} and bool(jam_owns_left_panel_key(session))
+    except Exception:
+        return False
+
+
+def jam_key_left_on_screen(session: Any, display_key: str) -> bool:
+    """True when the key on screen is a jam's own key carried to a song page, not the song's.
+
+    Arriving on Practice after a Style Jam in C, the shared key still said C and was saved twice as the active
+    Composition's (restored later, but saved meanwhile). The musician's own change of the song's key is committed
+    by the key control's callback, never here."""
+    tok = str(display_key or "").strip()
+    if not tok:
+        return False
+    try:
+        from composition_songs_bridge import resolve_composition_canonical_keys
+        from songs.practice_key_state import CREATIVE_JAM_SESSION_PICK, CREATIVE_STYLE_JAM_PICK, get_practice_concert_key
+
+        jam_keys = {
+            str(get_practice_concert_key(session, pick, default="") or "").strip()
+            for pick in (CREATIVE_STYLE_JAM_PICK, CREATIVE_JAM_SESSION_PICK)
+        }
+        jam_keys.discard("")
+        if tok not in jam_keys:
+            return False
+        _orig, own = resolve_composition_canonical_keys(session)
+        return bool(str(own or "").strip()) and str(own).strip() != tok
+    except Exception:
+        return False
+
+
 def note_display_key_change(st: Any, display_key: str) -> bool:
     """Detect programmatic or widget-driven display-key changes after the sidebar."""
     last = st.session_state.get(LAST_DISPLAY_KEY)
@@ -2164,6 +2208,8 @@ def note_display_key_change(st: Any, display_key: str) -> bool:
             composition_song_is_active(st.session_state)
             and str(display_key or "").strip()
             and not _lane_preview
+            and not display_key_belongs_to_a_jam(st.session_state)
+            and not jam_key_left_on_screen(st.session_state, str(display_key))
         ):
             commit_composition_owned_practice_key(st.session_state, str(display_key).strip())
     except ImportError:

@@ -621,21 +621,21 @@ def seed_backing_practice_key_widget(
         if live_widget and live_widget != canonical:
             session.pop(widget, None)
             live_widget = canonical
+    elif owner in {OWNER_STYLE_JAM, OWNER_JAM_GENERATOR} and canonical:
+        # One widget serves every jam of its kind and is saved with the page, so a value it still holds can
+        # belong to an EARLIER jam: a new Generator jam in concert E drew that jam's F#, which then became
+        # the concert key everywhere (sidebar Concert F# / Written G#). A jam's key is its own record's; the
+        # musician's edit reaches the record in the widget's callback, before this runs.
+        want = canonical
+        if live_widget and live_widget != canonical:
+            session.pop(widget, None)
+            live_widget = canonical
     elif switched or not live_widget:
         want = canonical or live_widget
     elif live_widget and canonical and live_widget != canonical:
         # Widget is this owner's stored value; canonical wins after cycle/commit.
         commit = str(session.get("_pk_user_commit_token") or "").strip()
-        if owner == OWNER_STYLE_JAM and live_widget in remount_defaults:
-            want = canonical
-        elif owner == OWNER_JAM_GENERATOR and live_widget in remount_defaults:
-            want = canonical
-        elif commit == canonical:
-            want = canonical
-        elif (
-            owner == OWNER_JAM_GENERATOR
-            and str(session.get("_pending_improv_jam_key") or "").strip() == canonical
-        ):
+        if commit == canonical:
             want = canonical
         else:
             want = live_widget

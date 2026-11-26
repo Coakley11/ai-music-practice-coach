@@ -674,7 +674,17 @@ def render_backing_chord_chart(
                     shape_sounding = str(transpose_chord(str(dk), int(capo_fret)) or "")
         except Exception:
             shape_sounding = ""
-    if shape_sections and capo_shape_key:
+    # Guitar Shape Mode: the cells are the shapes the guitarist plays, and the only chord symbols (user, 2026-11-25:
+    # concert chords with a second line of shapes were too cluttered). ``sections`` stay the concert chords for every
+    # caller; moving them here keeps every bar's weights, pushes, hits and slash basses. The header still names the
+    # sounding key, the shapes and the capo.
+    if shape_sections and capo_shape_key and not shape_sounding:
+        from music_theory import transpose_sections_dict
+
+        sections = transpose_sections_dict(sections, str(dk), str(capo_shape_key))
+    shape_sections_shown = shape_sections
+    shape_sections = None
+    if shape_sections_shown and capo_shape_key:
         try:
             from guitar_capo import shape_chart_label_for_concert
 
@@ -748,7 +758,7 @@ def render_backing_chord_chart(
             if show_user_lyric_preview
             else ""
         )
-        shape_row = (shape_sections or {}).get(section_name) if shape_sections else None
+        shape_row = None
         display_section_name = display_label_map.get(section_name, section_name)
         section_cards.append(
             f"""
