@@ -3135,13 +3135,16 @@ def render_abc(abc_text, *, measure_sync=None, follow_role="practice-melody"):
           const pos = window.top.__pmBackingPosition;
           const fresh = pos && typeof pos.t === 'number' && (Date.now() - (pos.ts || 0)) < 1000;
           if (fresh) {{
-            t = pos.t;
+            // The broadcast is at most one poll old: carry it forward to now, so this staff is not 0-100 ms late.
+            t = pos.t + (pos.paused ? 0 : Math.max(0, Math.min(0.25, (Date.now() - (pos.ts || 0)) / 1000)));
             paused = !!pos.paused;
             status = 'broadcast pos.t=' + t.toFixed(2) + ' paused=' + paused;
           }} else {{
             const audio = findLiveAudio();
             if (audio) {{
-              t = audio.currentTime || 0;
+              let lat = 0;
+              try {{ lat = Math.min(0.5, Math.max(0, Number(window.top.__bkHeardLatency) || 0)); }} catch (eL) {{}}
+              t = Math.max(0, (audio.currentTime || 0) - (audio.paused ? 0 : lat));
               paused = !!audio.paused;
               status = 'direct pos.t=' + t.toFixed(2) + ' paused=' + paused;
             }}
@@ -7526,9 +7529,56 @@ def live_follow_along_component_html(
       }});
     }}
 
+    // What is heard lags the media clock by the output device's latency (a few ms wired, 100-300 ms over
+    // Bluetooth): a highlight driven by currentTime alone lit each chord before it was heard (user, 2026-11-26:
+    // the highlighted chord change and the heard chord change must line up). Measured once per playing stretch
+    // from the browser's own estimate (AudioContext.outputLatency), shared on window.top for Key Cycling and the
+    // Practice Melody staff, clamped to a sane range; browsers without the estimate keep 0 (as before).
+    function heardLatency() {{
+      try {{
+        const v = Number(window.top.__bkHeardLatency);
+        if (isFinite(v) && v > 0) return Math.min(v, 0.5);
+      }} catch (e) {{}}
+      return 0;
+    }}
+    function measureHeardLatency() {{
+      let top;
+      try {{ top = window.top; }} catch (e) {{ return; }}
+      try {{
+        const now = Date.now();
+        if (top.__bkLatencyAt && now - top.__bkLatencyAt < 30000) return;
+        top.__bkLatencyAt = now;
+        const AC = top.AudioContext || top.webkitAudioContext;
+        if (!AC) return;
+        const ctx = new AC();
+        const samples = [];
+        const read = () => {{
+          const v = Number(ctx.outputLatency);
+          if (isFinite(v) && v > 0) samples.push(v);
+        }};
+        Promise.resolve(ctx.state === "suspended" ? ctx.resume() : null).catch(() => {{}}).then(() => {{
+          let n = 0;
+          const iv = setInterval(() => {{
+            read();
+            if (++n >= 6) {{
+              clearInterval(iv);
+              if (samples.length) {{
+                samples.sort((a, b) => a - b);
+                top.__bkHeardLatency = Math.max(0, Math.min(0.5, samples[Math.floor(samples.length / 2)]));
+              }}
+              try {{ ctx.close(); }} catch (eC) {{}}
+            }}
+          }}, 150);
+        }});
+      }} catch (e) {{}}
+    }}
     function updateHighlight(force = false) {{
       const clock = followClockAudio();
       let audioTime = (clock && clock.currentTime) || 0;
+      if (clock && !clock.paused) {{
+        measureHeardLatency();
+        audioTime = Math.max(0, audioTime - heardLatency());
+      }}
       try {{
         if (clock && clock.paused && window.parent && window.parent.__kcFollowForceTime != null
             && isFinite(Number(window.parent.__kcFollowForceTime))) {{

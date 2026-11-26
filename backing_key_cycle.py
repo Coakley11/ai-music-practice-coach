@@ -7630,6 +7630,11 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         const act = activeAudio();
         let t = act ? Number(act.currentTime || 0) : 0;
         try {{
+          // What is heard, not the media clock (the lead sheet's own follower measures the device latency).
+          const lat = Number((window.top || parentWin).__bkHeardLatency);
+          if (act && !act.paused && isFinite(lat) && lat > 0) t = Math.max(0, t - Math.min(lat, 0.5));
+        }} catch (eLat) {{}}
+        try {{
           if ((!act || act.paused) && parentWin.__kcFollowForceTime != null
               && isFinite(Number(parentWin.__kcFollowForceTime))) {{
             t = Number(parentWin.__kcFollowForceTime);
