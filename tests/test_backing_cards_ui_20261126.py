@@ -57,9 +57,26 @@ def test_a_quintet_shows_its_horns_by_instrument():
     assert sorted(_instruments(svg)) == sorted(["keys", "upright_bass", "drums", "trumpet", "sax"])
 
 
-def test_style_jam_keeps_its_saxophone_at_the_front():
+def test_style_jam_keeps_its_saxophone_as_its_emblem_apart_from_the_band():
     svg = stage.jam_stage_svg(stage.STYLE_JAM, playing=["Keys", "Bass", "Drums"], featured="Saxophone")
-    assert "sax" in _instruments(svg) and len(_instruments(svg)) == 4
+    assert _instruments(svg) == ["keys", "drums", "bass_guitar"]  # the band row is the band, nothing added
+    assert svg.count('data-identity="sax"') == 1 and "jb-dice" not in svg
+    gen = stage.jam_stage_svg(stage.GENERATOR, playing=["Piano", "Bass", "Drums"])
+    assert "jb-dice" in gen and "data-identity" not in gen
+
+
+@pytest.mark.parametrize("card_name,emblem", [(stage.STYLE_JAM, 'data-identity="sax"'), (stage.GENERATOR, "jb-dice")])
+def test_without_a_band_to_vouch_for_the_stage_is_neutral_musical_artwork(card_name, emblem):
+    svg = stage.jam_stage_svg(card_name, playing=[], not_yet=[], style="Jazz", mood="Mellow")
+    assert _instruments(svg) == []  # no instrument that might not be heard
+    assert svg.count('class="jb-neutral"') == 2 and emblem in svg  # music stand + metronome, and the card's identity
+    xml.dom.minidom.parseString(svg)
+
+
+def test_the_rock_trio_piano_fallback_draws_the_piano_not_a_guitar():
+    svg = stage.jam_stage_svg(stage.GENERATOR, playing=["Piano (for the guitar)", "Bass", "Drums"], style="Rock")
+    assert sorted(_instruments(svg)) == ["bass_guitar", "drums", "keys"] and "jb-ghost" not in svg
+    assert 'data-instrument="amp"' not in svg  # no amp without a guitar
 
 
 @pytest.mark.parametrize("mood,intensity,level", [("Mellow", "Light", 0), ("Mellow", "Medium", 0), ("", "Medium", 1),

@@ -374,6 +374,48 @@ def _place(drawing: str, cx: float, slot: float, palette: dict[str, str], *, gho
             f'stroke-dasharray="6 5" class="jb-ghost" data-instrument="{drawing}">{body}</g>{tag}')
 
 
+def _identity_sax(palette: dict[str, str]) -> str:
+    """Style Jam's saxophone as the card's emblem: small, on a lit disc at the front-left edge, not in the band row."""
+    markup, (x0, y0, w, h), _n = _DRAWINGS["sax"]
+    scale = 0.62
+    cx, floor = 368.0, 262.0
+    tx, ty = cx - (x0 + w / 2) * scale, floor - (y0 + h) * scale
+    return (f'<g class="jb-identity" data-identity="sax"><ellipse cx="{cx:.0f}" cy="{floor - 2:.0f}" rx="40" ry="8" fill="#ffffff" opacity=".45"/>'
+            f'<g transform="translate({tx:.1f} {ty:.1f}) scale({scale})">{markup.format(**palette)}</g></g>')
+
+
+def _neutral_set(palette: dict[str, str]) -> str:
+    """A music stand with its chart, a metronome and notes in the light: a stage ready to play, with no instrument."""
+    ink, acc, lite = palette["ink"], palette["acc"], palette["lite"]
+    stand = (
+        f'<g class="jb-neutral" transform="translate(520 92)">'
+        f'<line x1="40" y1="70" x2="40" y2="160" stroke="{ink}" stroke-width="5" stroke-linecap="round"/>'
+        f'<line x1="40" y1="160" x2="14" y2="166" stroke="{ink}" stroke-width="4" stroke-linecap="round"/>'
+        f'<line x1="40" y1="160" x2="66" y2="166" stroke="{ink}" stroke-width="4" stroke-linecap="round"/>'
+        f'<path d="M-6 6 L86 0 L90 70 L-2 76 Z" fill="{ink}"/>'
+        f'<path d="M2 10 L80 5 L83 64 L5 69 Z" fill="#fffdf5"/>'
+        + "".join(f'<path d="M10 {18 + 9 * k} L76 {14 + 9 * k}" stroke="#94a3b8" stroke-width="1"/>' for k in range(5))
+        + f'<g fill="{ink}"><ellipse cx="24" cy="38" rx="4.5" ry="3.4"/><ellipse cx="44" cy="31" rx="4.5" ry="3.4"/><ellipse cx="62" cy="40" rx="4.5" ry="3.4"/></g>'
+        f'<g stroke="{ink}" stroke-width="1.6"><line x1="28" y1="38" x2="28" y2="22"/><line x1="48" y1="31" x2="48" y2="15"/><line x1="66" y1="40" x2="66" y2="24"/></g>'
+        "</g>"
+    )
+    metronome = (
+        f'<g class="jb-neutral" transform="translate(700 168)">'
+        f'<path d="M20 0 L44 0 L62 86 L2 86 Z" fill="#92400e" stroke="{ink}" stroke-width="2"/>'
+        f'<path d="M26 10 L38 10 L50 70 L14 70 Z" fill="#fde68a" opacity=".85"/>'
+        f'<line x1="32" y1="76" x2="46" y2="16" stroke="{ink}" stroke-width="3" stroke-linecap="round"/>'
+        f'<rect x="38" y="30" width="10" height="7" rx="2" fill="{acc}"/>'
+        f'<rect x="0" y="84" width="64" height="6" rx="2" fill="{ink}"/>'
+        "</g>"
+    )
+    notes = "".join(
+        f'<g transform="translate({x} {y}) rotate({r})" fill="{c}" opacity="{o}"><ellipse cx="0" cy="0" rx="9" ry="6.5"/>'
+        f'<rect x="7" y="-34" width="3" height="34"/><path d="M10 -34 q14 6 8 22 q2 -12 -8 -14 z"/></g>'
+        for x, y, r, c, o in ((640, 92, -12, acc, ".75"), (820, 70, 10, lite, ".7"), (880, 140, -6, acc, ".55"), (600, 200, 8, lite, ".5"))
+    )
+    return stand + metronome + notes
+
+
 def _sound(energy: int, card: str, centers: Sequence[float]) -> str:
     """Sound in the air over the band: none on a calm jam, a few arcs on a steady one, more on an intense one."""
     if not energy or not centers:
@@ -408,8 +450,9 @@ def jam_stage_svg(
     """The card's artwork, one line of inline SVG.
 
     ``playing`` / ``not_yet``: the band by name (as the Backing engine plays it, and members it cannot play yet, drawn in
-    outline). ``featured``: an instrument drawn at the front (Style Jam's own saxophone). Empty band: the card's own
-    instruments."""
+    outline). Each card wears its emblem at the front-left edge, apart from the band (Style Jam's saxophone, the
+    Generator's dice); ``featured`` is accepted for older callers and draws nothing more. Empty band: neutral musical
+    artwork (music stand, metronome, notes), never an instrument."""
     card = GENERATOR if card == GENERATOR else STYLE_JAM
     return _stage_svg(card, tuple(playing), tuple(not_yet), str(style or ""), str(groove or ""), str(mood or ""), str(intensity or ""),
                       str(featured or ""), str(label or ""))
@@ -422,29 +465,25 @@ def _stage_svg(card: str, playing: tuple[str, ...], not_yet: tuple[str, ...], st
     family = style_family(style, groove)
     energy = energy_level(mood, intensity)
     band = [(d, False) for d in stage_members(playing)] + [(d, True) for d in stage_members(not_yet)]
-    if not band:
-        # No band to vouch for: the stage's own instruments, drawn as a set, not named as the band that plays.
-        band = [(d, False) for d in ("keys", "drums", "bass_guitar")]
     band.sort(key=lambda item: _STAGE_ORDER.index(item[0]) if item[0] in _STAGE_ORDER else len(_STAGE_ORDER))
-    feature = instrument_drawing(featured) if featured else ""
-    if feature and any(d == feature and not ghost for d, ghost in band):
-        feature = ""  # the band already has it
-    slots = len(band) + (1 if feature else 0)
-    width = (_STAGE_RIGHT - _STAGE_LEFT) / max(1, slots)
     parts, centers = [], []
-    order = list(band)
-    if feature:
-        # The featured instrument at the front of the band, just left of centre.
-        order.insert(max(0, len(order) // 2), (feature, False))
-    for i, (drawing, ghost) in enumerate(order):
-        cx = _STAGE_LEFT + width * (i + 0.5)
-        if not ghost:
-            centers.append(cx)  # the sound rises only over instruments that play
-        parts.append(_place(drawing, cx, width, palette, ghost=ghost))
-    if card == GENERATOR:
-        parts.append(_DICE)
-    if family == "rock" and "electric_guitar" in {d for d, _ in order} and slots < 5:
-        parts.insert(0, _place("amp", _STAGE_LEFT - 10, 70, palette, ghost=False))
+    if band:
+        # The band row: exactly the instruments the engine plays (and, greyed, the ones it cannot).
+        width = (_STAGE_RIGHT - _STAGE_LEFT) / len(band)
+        for i, (drawing, ghost) in enumerate(band):
+            cx = _STAGE_LEFT + width * (i + 0.5)
+            if not ghost:
+                centers.append(cx)  # the sound rises only over instruments that play
+            parts.append(_place(drawing, cx, width, palette, ghost=ghost))
+        if family == "rock" and "electric_guitar" in {d for d, ghost in band if not ghost} and len(band) < 5:
+            parts.insert(0, _place("amp", _STAGE_LEFT - 10, 70, palette, ghost=False))
+    else:
+        # No band the card can vouch for (user, 2026-11-26): neutral musical artwork -- a music stand with its chart,
+        # a metronome, notes in the light -- never an instrument that might not be heard.
+        parts.append(_neutral_set(palette))
+        centers = [560.0, 760.0]
+    # The card's identity at the front-left edge, apart from the band: Style Jam's saxophone, the Generator's dice.
+    parts.append(_DICE if card == GENERATOR else _identity_sax(palette))
     aria = label or "A stage with the band"
     body = _backdrop(card, family, energy, mood) + _sound(energy, card, centers) + "".join(parts)
     svg = (
