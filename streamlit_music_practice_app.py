@@ -24574,6 +24574,14 @@ elif _studio_page == "backing":
         _had_playable = bool(backing_wav_is_present(st.session_state))
         _show_regen_warning = bool(key_changed_this_run or _had_playable or _regen_reasons)
         try:
+            from backing_key_cycle import is_cycle_active as _rw_kc_on
+
+            # A running Key Cycling pass applies the change itself and keeps playing: "press Play" would be wrong.
+            if _rw_kc_on(st.session_state) and transport_intent(st.session_state) == "playing":
+                _show_regen_warning = False
+        except Exception:
+            pass
+        try:
             import json
             import os
             import time
