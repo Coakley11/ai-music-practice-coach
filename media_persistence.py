@@ -127,21 +127,32 @@ def _save_local_catalog(catalog: dict[str, Any], *, st: Any | None = None) -> tu
 
 
 def _load_cloud_catalog(*, st: Any | None = None) -> tuple[dict[str, Any], str | None]:
+    """This workspace's catalog row, read by its own key: ``(payload, None)``, ``({}, None)`` when there is no row,
+    or ``({}, error)`` when what the cloud holds cannot be determined.
+
+    It used to list the newest 10 rows of the type and look for the key, so a row outside them read as "no catalog"
+    with no error, and the next save replaced it (2026-11-25). An error here makes a save keep its change locally
+    instead of writing (``save_media_catalog``).
+    """
     try:
-        from studio_history_cloud import cloud_enabled, list_history_items
+        from studio_history_cloud import active_workspace_id, cloud_enabled
 
         if not cloud_enabled():
             return {}, None
-        rows, err = list_history_items(item_type=MEDIA_ITEM_TYPE, st=st, limit=10)
-        for row in rows or []:
-            if str(row.get("item_key") or "") != MEDIA_ITEM_KEY:
-                continue
-            payload = row.get("payload")
-            if isinstance(payload, dict):
-                return payload, err
-        return {}, err
+        from suite_account import load_saved_item_state
+
+        row = load_saved_item_state(MEDIA_ITEM_TYPE, MEDIA_ITEM_KEY, app=APP_ID)
+        if row is None or not row.get("valid", True):
+            return {}, None  # no catalog yet, or one deliberately removed: nothing to keep
+        payload = row.get("payload")
+        if not isinstance(payload, dict):
+            return {}, "cloud_catalog_unreadable"
+        row_ws = str(payload.get("workspace_id") or "daniel").strip().lower()
+        if row_ws != str(active_workspace_id(st=st) or "daniel").strip().lower():
+            return {}, "cloud_catalog_other_workspace"
+        return payload, None
     except Exception as exc:
-        return {}, str(exc)
+        return {}, str(exc) or type(exc).__name__
 
 
 def _save_cloud_catalog(catalog: dict[str, Any], *, st: Any | None = None) -> tuple[bool, str]:
