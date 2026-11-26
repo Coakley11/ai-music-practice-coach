@@ -68,7 +68,9 @@ def test_each_uploaded_panel_is_a_keyed_expander_the_controller_recognises():
     assert "st-key-" + bmm.UPLOADED_PANEL_KEY_PREFIX == lpf.UPLOADED_PANEL_CLASS_PREFIX
     assert bmm.uploaded_panel_key("doc 1/x").startswith(bmm.UPLOADED_PANEL_KEY_PREFIX)
     src = (ROOT / "backing_melody_modes.py").read_text(encoding="utf-8")
-    assert "expanded=False, key=uploaded_panel_key(did)" in src                  # every panel starts closed
+    # closed, except the panels an explicit "Open in Backing" on Practice just sent here (Slice 2, 2026-11-25)
+    assert "expanded=did in opened, key=uploaded_panel_key(did)" in src
+    assert bmm.panels_open_from_practice({}, "catalog|shallow") == set()
 
 
 def test_uploaded_melodies_never_follow_or_highlight():
@@ -175,3 +177,33 @@ def test_in_normal_voice_the_full_height_sheet_follows_the_lyrics_when_the_lead_
     # A lyric line or the singing panel itself (a song without lyrics) is the singing target (user rule 2026-11-21).
     assert "toLyric = !!(lyricLead && window.__karaokeIsPanelTarget && window.__karaokeIsPanelTarget(lyricLead))" in branch
     assert 'request("lead-sheet", toLyric ? lyricLead : currentCell, {{ why: toLyric ? "karaoke-lyric" : "chord" }})' in branch
+
+
+def test_open_in_backing_opens_the_panels_for_one_backing_visit_only():
+    """QA 2026-11-26 (browser): Songs -> Backing reopened both panels, even one the musician had closed."""
+    s = {}
+    bmm.open_in_backing(s, "custom|trial", ["a", "b"])
+    bmm.note_studio_page(s, "practice")              # the run that pressed it: still wanted
+    assert bmm.panels_open_from_practice(s, "custom|trial") == {"a", "b"}
+    bmm.note_studio_page(s, "backing")
+    assert bmm.panels_open_from_practice(s, "custom|trial") == {"a", "b"}
+    bmm.mark_open_from_practice_shown(s)             # Backing drew them
+    bmm.note_studio_page(s, "backing")               # reruns on the same visit keep the request
+    assert bmm.panels_open_from_practice(s, "custom|trial") == {"a", "b"}
+    bmm.note_studio_page(s, "picker")                # left Backing: the visit is over
+    assert bmm.panels_open_from_practice(s, "custom|trial") == set()
+    bmm.note_studio_page(s, "backing")
+    assert bmm.panels_open_from_practice(s, "custom|trial") == set()
+
+
+def test_a_request_backing_never_drew_survives_other_pages():
+    s = {}
+    bmm.open_in_backing(s, "custom|trial", ["a"])
+    bmm.note_studio_page(s, "songs")
+    assert bmm.panels_open_from_practice(s, "custom|trial") == {"a"}
+
+
+def test_the_app_tells_backing_melody_modes_which_page_is_drawn():
+    src = (Path(__file__).resolve().parents[1] / "streamlit_music_practice_app.py").read_text(encoding="utf-8")
+    i = src.index("note_page_visit(st.session_state, _studio_page)")
+    assert "_bmm_note_studio_page(st.session_state, _studio_page)" in src[i:i + 400]

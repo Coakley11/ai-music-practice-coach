@@ -33,6 +33,9 @@ PAGE_KEY = f"{KEY_PREFIX}page"
 UPLOAD_KEY = f"{KEY_PREFIX}upload"
 NOTICE_KEY = f"{KEY_PREFIX}notice"
 PICKER_KEY = f"{KEY_PREFIX}picker"
+#: The PDF page buttons: the words the musician sees, plus an invisible word joiner (see _preview).
+PAGE_PREVIOUS_LABEL = "Previous\u2060"
+PAGE_NEXT_LABEL = "Next\u2060"
 
 # Wide enough to read a stave on a laptop, small enough not to cost a megabyte a page.
 _RENDER_WIDTH_DESKTOP = 1100
@@ -108,6 +111,93 @@ def _render_page_png(data: bytes, page_index: int, width: int) -> bytes | None:
         return None
 
 
+def _render_image_jpeg(data: bytes, mime: str, width: int) -> bytes | None:
+    """A photographed page drawn for reading: upright, undistorted, at most ``width`` wide and within the
+    render budget. ``None`` when it cannot be drawn here (a HEIC photo without ``pillow-heif``, or an
+    undecodable file); the caller falls back.
+
+    Phones store a portrait page as a landscape image plus an EXIF "rotate" note, so the note is applied
+    (``exif_transpose``) or the music lies on its side. The aspect ratio is never changed. The stored file
+    is untouched - this is only the picture the reader sees.
+    """
+    import io
+
+    from upload_media import DOCUMENT_MAX_RENDER_PIXELS, heif_support
+
+    try:
+        from PIL import Image, ImageOps
+    except ImportError:
+        return None
+    if str(mime).lower() in ("image/heic", "image/heif") and not heif_support():
+        return None
+    try:
+        with Image.open(io.BytesIO(data)) as im:
+            if im.format == "JPEG":
+                im.draft("RGB", (max(1, int(width)), max(1, int(width))))
+            im = ImageOps.exif_transpose(im)
+            if im.mode not in ("RGB", "L"):
+                bg = Image.new("RGB", im.size, (255, 255, 255))
+                rgba = im.convert("RGBA")
+                bg.paste(rgba, mask=rgba.split()[-1])
+                im = bg
+            w, h = im.size
+            scale = min(1.0, float(width) / max(1, w), (DOCUMENT_MAX_RENDER_PIXELS / max(1, w * h)) ** 0.5)
+            if scale < 1.0:
+                im = im.resize((max(1, round(w * scale)), max(1, round(h * scale))), Image.LANCZOS)
+            buf = io.BytesIO()
+            im.convert("RGB").save(buf, "JPEG", quality=88, optimize=True)
+            return buf.getvalue()
+    except Exception:
+        return None
+
+
+#: Reading size (2026-11-22, Slice 1): Fit shows the whole page; Large / Extra large draw it wider than the
+#: screen and let it scroll sideways, so notation photographed on a phone can be read on a phone.
+ZOOM_KEY = f"{KEY_PREFIX}zoom"
+ZOOM_LEVELS = {"Fit": 1.0, "Large": 1.6, "Extra large": 2.2}
+
+
+def _reader_slug(reader: str) -> str:
+    import re as _re
+
+    return _re.sub(r"[^A-Za-z0-9_-]", "_", str(reader or "main"))[-60:] or "main"
+
+
+def _zoom_choice(st: Any, reader: str) -> float:
+    if st.session_state.get(ZOOM_KEY + _reader_slug(reader)) not in ZOOM_LEVELS:
+        st.session_state[ZOOM_KEY + _reader_slug(reader)] = "Fit"
+    choice = st.radio("Reading size", list(ZOOM_LEVELS), key=ZOOM_KEY + _reader_slug(reader), horizontal=True,
+                      label_visibility="collapsed")
+    return float(ZOOM_LEVELS.get(str(choice), 1.0))
+
+
+def _show_page_image(st: Any, img: bytes, zoom: float, reader: str) -> None:
+    """Fit: the page fills the panel's width. Larger: it is drawn that much wider than the panel inside a
+    box that scrolls sideways (and pinch-zoom still works on a phone). Never stretched out of shape."""
+    if zoom <= 1.0:
+        st.image(img, use_container_width=True)
+        return
+    box = f"{KEY_PREFIX}zoombox_{_reader_slug(reader)}"
+    pct = int(round(zoom * 100))
+    st.markdown(
+        f"<style>.st-key-{box}{{overflow-x:auto!important;overflow-y:hidden;-webkit-overflow-scrolling:touch;}}"
+        # Streamlit 1.61 puts the image block in a flex row, where it would shrink back to the panel's width: it
+        # must not shrink, and only this outer block is widened (its inner container fills it, once).
+        f".st-key-{box} [data-testid='stImage']"
+        f"{{flex:0 0 auto!important;width:{pct}%!important;min-width:{pct}%!important;max-width:none!important;"
+        f"align-self:flex-start!important;margin-left:0!important;}}"
+        # Its wrapper centres it, which pushed the left part of a wider page out of reach of the scroll.
+        f".st-key-{box} :has(> [data-testid='stImage'])"
+        f"{{justify-content:flex-start!important;align-items:flex-start!important;}}"
+        f".st-key-{box} [data-testid='stImageContainer']"
+        f"{{flex:1 0 100%!important;width:100%!important;max-width:none!important;}}"
+        f".st-key-{box} img{{width:100%!important;max-width:none!important;height:auto!important;}}</style>",
+        unsafe_allow_html=True,
+    )
+    with st.container(key=box):
+        st.image(img, use_container_width=True)
+
+
 def _cached_helpers(st: Any):
     """Build the cached fetch/render pair once, keyed on content rather than identity.
 
@@ -129,6 +219,13 @@ def _cached_helpers(st: Any):
             return None
         return _render_page_png(data, page_index, width)
 
+    @st.cache_data(show_spinner=False, max_entries=24)
+    def render_image(document_id: str, digest: str, mime: str, width: int) -> bytes | None:
+        data = fetch(document_id, digest)
+        if not data:
+            return None
+        return _render_image_jpeg(data, mime, width)
+
     @st.cache_data(show_spinner=False, max_entries=8)
     def pages(document_id: str, digest: str, fallback: int) -> int:
         data = fetch(document_id, digest)
@@ -136,7 +233,7 @@ def _cached_helpers(st: Any):
             return max(1, int(fallback or 1))
         return _page_count(data, fallback)
 
-    return fetch, render, pages
+    return fetch, render, pages, render_image
 
 
 def _upload_form(st: Any, session: Any, owner: dict) -> None:
@@ -150,7 +247,7 @@ def _upload_form(st: Any, session: Any, owner: dict) -> None:
 
     with st.form(f"{KEY_PREFIX}form", clear_on_submit=True):
         files = st.file_uploader(
-            "Add PDFs for this song",
+            "Add sheet music for this song (PDF or photo)",
             type=list(UPLOAD_DOCUMENT_FILE_TYPES),
             accept_multiple_files=True,
             key=UPLOAD_KEY,
@@ -187,7 +284,7 @@ def _upload_form(st: Any, session: Any, owner: dict) -> None:
         if not st.form_submit_button(_save_label, use_container_width=True):
             return
         if not files:
-            st.warning("Choose at least one PDF first.")
+            st.warning("Choose at least one file first.")
             return
         saved, failed, local_only = 0, [], 0
         for i, item in enumerate(files):
@@ -249,6 +346,9 @@ def _explain_failure(filename: Any, error: Any, size_bytes: Any = 0) -> str:
 def _explain(error: Any) -> str:
     return {
         "not_a_pdf": "that file is not a PDF.",
+        "unsupported_document_type": "that file is not a PDF or a JPEG, PNG or HEIC photo.",
+        "image_unreadable": "that photo could not be read - it may be damaged or incomplete.",
+        "image_too_many_pixels": "that photo has too many pixels to keep as a reference (over 50 megapixels).",
         "pdf_truncated": "that PDF looks incomplete - try uploading it again.",
         "document_too_large": "that file is too large.",
         "too_many_pages": "that PDF has too many pages to keep as a reference.",
@@ -334,7 +434,28 @@ def _preview(st: Any, row: dict, *, compact: bool, reader: str = "") -> None:
     (still under this panel's prefix), so several references can be open at once."""
     did = str(row.get("document_id") or "")
     digest = str(row.get("sha256") or "")
-    fetch, render, pages = _cached_helpers(st)
+    fetch, render, pages, render_image = _cached_helpers(st)
+    mime = str(row.get("mime_type") or "application/pdf").strip().lower()
+    base_width = 760 if compact else _RENDER_WIDTH_DESKTOP
+    if mime.startswith("image/"):
+        zoom = _zoom_choice(st, reader)
+        img = render_image(did, digest, mime, int(base_width * zoom))
+        if img:
+            _show_page_image(st, img, zoom, reader)
+            return
+        data = fetch(did, digest)
+        if not data:
+            st.error("That reference could not be loaded from storage.")
+            return
+        if mime in ("image/jpeg", "image/png"):
+            st.image(data, use_container_width=True)
+            return
+        # HEIC/HEIF that this server cannot decode: say so and hand the photo over, exactly as uploaded.
+        st.info("This photo is in HEIC format, which cannot be shown here. Download it to view it.")
+        st.download_button("Download this reference", data=data,
+                           file_name=str(row.get("filename") or "reference.heic"),
+                           mime=mime, key=f"{KEY_PREFIX}dl_{did}")
+        return
 
     total = pages(did, digest, row.get("page_count") or 1)
     page = int(st.session_state.get(PAGE_KEY + reader) or 0)
@@ -343,22 +464,26 @@ def _preview(st: Any, row: dict, *, compact: bool, reader: str = "") -> None:
 
     if total > 1:
         nav = st.columns([1, 2, 1])
-        if nav[0].button("Previous", key=f"{key_prefix}prev", disabled=page <= 0,
+        # The labels read "Previous" / "Next" as before, followed by an invisible WORD JOINER (U+2060). On Backing, Key
+        # Cycling's page script takes any button whose label is exactly "Previous" or "Next" as its own step control
+        # and cancels the click (backing_key_cycle __kcStepBtnHandler label fallback), so without it a page turn during
+        # a cycle stepped the key instead. The marker keeps the look unchanged and the label no longer exact.
+        if nav[0].button(PAGE_PREVIOUS_LABEL, key=f"{key_prefix}prev", disabled=page <= 0,
                          use_container_width=True):
             st.session_state[PAGE_KEY + reader] = page - 1
             st.rerun()
         nav[1].markdown(
             f"<div style='text-align:center;padding-top:0.45rem'>Page {page + 1} "
             f"of {total}</div>", unsafe_allow_html=True)
-        if nav[2].button("Next", key=f"{key_prefix}next", disabled=page >= total - 1,
+        if nav[2].button(PAGE_NEXT_LABEL, key=f"{key_prefix}next", disabled=page >= total - 1,
                          use_container_width=True):
             st.session_state[PAGE_KEY + reader] = page + 1
             st.rerun()
 
-    width = 760 if compact else _RENDER_WIDTH_DESKTOP
-    png = render(did, digest, page, width)
+    zoom = _zoom_choice(st, reader)
+    png = render(did, digest, page, int(base_width * zoom))
     if png:
-        st.image(png, use_container_width=True)
+        _show_page_image(st, png, zoom, reader)
         return
 
     data = fetch(did, digest)

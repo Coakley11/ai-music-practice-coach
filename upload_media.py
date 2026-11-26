@@ -33,8 +33,89 @@ UPLOAD_MAX_SIZE_BYTES = UPLOAD_MAX_SIZE_MB * 1024 * 1024
 # Practice reference documents (My Uploaded Melodies) - sheet music, licks, exercises and
 # notes a musician keeps beside a song. A separate list from the recording types above:
 # these go to a different store and are never fed to the analysis pipeline.
-UPLOAD_DOCUMENT_FILE_TYPES: list[str] = ["pdf"]
+#: PDFs plus what a phone camera and a screenshot actually produce. HEIC/HEIF are included
+#: because an iPhone photograph is HEIC by default, and asking a musician to convert a picture of
+#: a page before they can keep it beside the song is work the app should be doing.
+UPLOAD_DOCUMENT_FILE_TYPES: list[str] = ["pdf", "jpg", "jpeg", "png", "heic", "heif"]
 UPLOAD_DOCUMENT_FILE_TYPES_SET = frozenset(UPLOAD_DOCUMENT_FILE_TYPES)
+UPLOAD_DOCUMENT_IMAGE_TYPES_SET = frozenset({"jpg", "jpeg", "png", "heic", "heif"})
+
+#: The first bytes of each accepted format. The type a file IS matters more than the type its
+#: name claims: the private cloud store refuses an upload whose declared MIME type is not one it
+#: allows, so a .png that is really a JPEG must be declared as a JPEG.
+_DOCUMENT_MAGIC: tuple[tuple[bytes, str], ...] = (
+    (b"%PDF-", "application/pdf"),
+    (b"\x89PNG\r\n\x1a\n", "image/png"),
+    (b"\xff\xd8\xff", "image/jpeg"),
+)
+_DOCUMENT_MIME_BY_EXTENSION: dict[str, str] = {
+    "pdf": "application/pdf",
+    "jpg": "image/jpeg",
+    "jpeg": "image/jpeg",
+    "png": "image/png",
+    "heic": "image/heic",
+    "heif": "image/heif",
+}
+
+
+def document_mime_type(data: Any = None, *, filename: str = "") -> str:
+    """The MIME type of a reference, from its CONTENT first and its name second.
+
+    Returns "" when neither the bytes nor the name identify an accepted format, so a caller can
+    refuse the file rather than guess at it.
+    """
+    blob = bytes(data or b"")[:32]
+    for prefix, mime in _DOCUMENT_MAGIC:
+        if blob.startswith(prefix):
+            return mime
+    # HEIC/HEIF carry their brand inside an ISO-BMFF box rather than at byte 0.
+    if len(blob) >= 12 and blob[4:8] == b"ftyp":
+        brand = blob[8:12]
+        if brand in (b"heic", b"heix", b"hevc", b"hevx", b"heim", b"heis"):
+            return "image/heic"
+        if brand in (b"mif1", b"msf1", b"heif"):
+            return "image/heif"
+    ext = file_extension(filename).lstrip(".")
+    return _DOCUMENT_MIME_BY_EXTENSION.get(ext, "")
+
+
+def is_document_image_mime(mime_type: Any) -> bool:
+    return str(mime_type or "").strip().lower().startswith("image/")
+
+
+#: A photographed page is one big image; a phone's 48 MP sensor is the largest a musician will
+#: send. Above this a "photo" is a decompression bomb or a scan at a resolution nobody can read on a
+#: screen anyway, and decoding it would hold hundreds of MB on the server.
+DOCUMENT_MAX_IMAGE_PIXELS = 50_000_000
+
+_HEIF_READY: bool | None = None
+
+
+def heif_support() -> bool:
+    """True when HEIC/HEIF photos can be decoded here (``pillow-heif`` installed and registered).
+
+    Registered once. Without it a HEIC photo is still kept exactly as uploaded; it just cannot be
+    drawn by the server, and the viewer says so and offers the file instead.
+    """
+    global _HEIF_READY
+    if _HEIF_READY is None:
+        try:
+            import pillow_heif  # type: ignore[import-not-found]
+
+            pillow_heif.register_heif_opener()
+            _HEIF_READY = True
+        except Exception:
+            _HEIF_READY = False
+    return bool(_HEIF_READY)
+
+
+def document_mime_types_accepted() -> tuple[str, ...]:
+    """Every MIME type a saved reference can legitimately carry.
+
+    Named here so the one list serves the uploader, the cloud upload and anything that has to
+    state which types the private store must allow.
+    """
+    return tuple(dict.fromkeys(_DOCUMENT_MIME_BY_EXTENSION.values()))
 
 # A page of sheet music is a fraction of a recording, and the limit is what a musician is
 # told, so it is stated here with the rest rather than at a call site. It must stay at or
@@ -92,8 +173,8 @@ def document_limit_caption() -> str:
     apply to documents. Reads the configured value, so an override changes this text too.
     """
     return (
-        "Upload PDF reference sheets, exercises or handwritten music — maximum "
-        f"{DOCUMENT_MAX_SIZE_MB} MB per file."
+        "Upload sheet music, photographs, screenshots or PDFs — PDF, JPG, PNG or HEIC, "
+        f"maximum {DOCUMENT_MAX_SIZE_MB} MB per file."
     )
 
 
