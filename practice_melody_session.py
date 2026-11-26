@@ -6,43 +6,19 @@ Kept separate from the Streamlit rendering code (in
 unit-testable without a live Streamlit session — ``session_state`` here is
 any plain ``dict``-like object.
 
-Policy (see ``resolve_practice_melody`` for the authoritative statement):
-
-* The cached melody is keyed by ``(song identity, level)``. As long as both
-  match the live Practice context, the same cached
-  ``practice_melody_model.PracticeMelody`` is returned on every call — so
-  ordinary Streamlit reruns triggered by *unrelated* Practice controls never
-  regenerate or replace it.
-* The moment either the active song/source identity or the active level
-  changes, the cache is treated as stale and a fresh, deterministic
-  *baseline* melody (``alt_index=0``) is generated for the new context —
-  never the previous context's melody, and never a silently mismatched
-  level label.
-* "Generate Another Melody" is the only thing that advances ``alt_index``
-  for an unchanged identity, via the accepted
-  ``practice_melody_generator.generate_another_practice_melody`` — a new
-  composition.
-* A ``key_center`` change with the song/level identity otherwise unchanged
-  is a *different* operation: the cached melody is transposed in place
-  (``practice_melody_transpose.transpose_practice_melody``), never
-  regenerated. Same composition (``melody_id``/``seed``/``alt_index``
-  unchanged), new projection key — see Slice F1.
-* Song identity uses ``songs.music_source.resolve_active_song_identity`` —
-  the same canonical identity string the rest of the app already uses to
-  detect song/source changes — so this cache cannot be fooled by the same
-  class of stale-source bugs the rest of Practice/Backing is being
-  stabilized against. This module never reads or writes canonical song,
-  key, instrument, or level state; it only ever reads the values the caller
-  passes in and writes its own three session keys below.
+The store and the composing / projecting policy are ``practice_melody_library``'s: one melody per song or jam
+and per style, level and Practice Focus, transposed (never recomposed) for a key, refitted (never recomposed) for
+an instrument, with every alternative kept. This module feeds it the Practice page's live context, including the
+instrument's register, and holds the melody now on that page. It never reads or writes canonical song, key,
+instrument or level state.
 """
 
 from __future__ import annotations
 
 from typing import Any, Mapping, MutableMapping, Sequence
 
-from practice_melody_generator import generate_another_practice_melody, generate_practice_melody
+import practice_melody_library as library
 from practice_melody_model import PracticeMelody
-from practice_melody_transpose import transpose_practice_melody
 
 RESULT_KEY = "practice_melody_result"
 IDENTITY_KEY = "practice_melody_identity"
@@ -114,72 +90,32 @@ def resolve_practice_melody(
     focus: str = "",
     instrument: str = "",
 ) -> PracticeMelody | None:
-    """Return the Practice Melody to display for the current live context.
-
-    Returns ``None`` when there isn't enough structured chord/section data
-    to generate from (the caller should render a graceful "unavailable"
-    state) — any previously cached melody is cleared in that case rather
-    than left on screen for a source it no longer belongs to.
-    """
+    """The Practice Melody for the current live context (None without chord data: nothing from another source
+    is left on screen). ``sections`` are in ``key_center``. ``regenerate`` composes another alternative."""
     if not sections:
         clear_practice_melody_state(session_state)
         return None
-
     register_args = instrument_register_args(session_state, instrument)
-    register_tag = f"{register_args['instrument']}@{register_args['written_offset']}" if register_args else ""
-    token = identity_token(song_identity, level, focus, register_tag)
-    cached_token = session_state.get(IDENTITY_KEY)
-    cached_melody = current_cached_melody(session_state)
-    identity_matches = cached_token == token and cached_melody is not None
-
-    if regenerate and identity_matches:
-        next_melody = generate_another_practice_melody(
-            cached_melody,
-            sections={name: list(chords) for name, chords in sections.items()},
-            section_order=list(section_order) if section_order else list(sections.keys()),
-            key_center=key_center,
-            tempo_bpm=tempo_bpm,
-            style=style,
-            meter=meter,
-            focus=focus,
-            **register_args,
-        )
-        session_state[RESULT_KEY] = next_melody
-        session_state[IDENTITY_KEY] = token
-        session_state[ALT_INDEX_KEY] = next_melody.alt_index
-        return next_melody
-
-    if identity_matches:
-        target_key = str(key_center or "").strip()
-        if target_key and cached_melody.key_center != target_key:
-            # Same song/level, different key: transpose the existing
-            # composition rather than generating an unrelated new one.
-            transposed = transpose_practice_melody(cached_melody, new_key_center=target_key)
-            session_state[RESULT_KEY] = transposed
-            session_state[IDENTITY_KEY] = token
-            session_state[ALT_INDEX_KEY] = transposed.alt_index
-            return transposed
-        return cached_melody
-
-    # No cached melody, or the song/level identity moved on: resolve
-    # deliberately to a fresh, deterministic baseline for the *new*
-    # context rather than showing (or silently keeping) anything from the
-    # old one.
-    melody = generate_practice_melody(
-        song_id=song_id_for_generation,
-        song_title=song_title,
+    melody = library.resolve(
+        session_state,
+        identity=song_id_for_generation or song_identity,
+        title=song_title,
         sections={name: list(chords) for name, chords in sections.items()},
-        section_order=list(section_order) if section_order else list(sections.keys()),
-        key_center=key_center,
+        section_order=list(section_order) if section_order else list(sections),
+        sections_key=str(key_center or "C"),
         level=level,
         tempo_bpm=tempo_bpm,
         style=style,
         meter=meter,
-        alt_index=0,
         focus=focus,
-        **register_args,
+        instrument=str(register_args.get("instrument") or instrument or ""),
+        written_offset=int(register_args.get("written_offset") or 0),
+        another=bool(regenerate and library.has_melody(session_state, song_id_for_generation or song_identity)),
     )
+    if melody is None:
+        clear_practice_melody_state(session_state)
+        return None
     session_state[RESULT_KEY] = melody
-    session_state[IDENTITY_KEY] = token
-    session_state[ALT_INDEX_KEY] = 0
+    session_state[IDENTITY_KEY] = identity_token(song_identity, level, focus)
+    session_state[ALT_INDEX_KEY] = melody.alt_index
     return melody

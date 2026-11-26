@@ -84,6 +84,28 @@ def transpose_events(events: list[dict[str, Any]], semitones: int) -> list[dict[
     return out
 
 
+def _guitar_capo_fret(practice_key: str, instrument: str, session_state: Any) -> int:
+    """How far below the sounding notes the fingered (shape) notes lie: the capo fret, 0 outside Shape Mode."""
+    if str(instrument or "").strip() != "Guitar" or not session_state:
+        return 0
+    try:
+        from guitar_capo import CAPO_ENABLED_KEY, CAPO_SHAPE_KEY, capo_fret_for_shape
+
+        shape = str(session_state.get(CAPO_SHAPE_KEY) or "").strip()
+        if not session_state.get(CAPO_ENABLED_KEY) or not shape or not str(practice_key or "").strip():
+            return 0
+        return int(capo_fret_for_shape(practice_key, shape)) % 12
+    except Exception:
+        return 0
+
+
+def concert_melody_events(
+    events: list[dict[str, Any]], *, original_key: str, practice_key: str
+) -> list[dict[str, Any]]:
+    """The melody as it sounds in the Practice Key (no instrument, clef or capo shift): what audio plays."""
+    return transpose_events(events, signed_semitone_delta(original_key, practice_key))
+
+
 def project_melody_events(
     events: list[dict[str, Any]],
     *,
@@ -108,6 +130,7 @@ def project_melody_events(
     inst_shift = int(composition_written_pitch_semitones(instrument, session_state) or 0) if written else 0
     if clef_for_instrument(instrument) == "treble-8":
         inst_shift += 12  # guitar is written an octave above where it sounds
+        inst_shift -= _guitar_capo_fret(practice_key, instrument, session_state)  # the shapes played behind a capo
     return transpose_events(events, key_shift + inst_shift), key_shift, inst_shift
 
 

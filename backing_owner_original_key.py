@@ -260,6 +260,25 @@ def resolve_original_key_for_pick(
     return _catalog_original(session, pick, str(expected_title or "").strip())
 
 
+def _generated_home_key(session: Any, ctx: Any) -> str:
+    """The key a jam was generated in, from the jam's own record ("" when it has no generated progression)."""
+    if str(getattr(ctx, "source", "") or "") != "entry_jam":
+        return ""
+    try:
+        from jam_control_ownership import owner_record
+        from music_theory import key_center_token
+
+        generator = str(getattr(ctx, "entry_mode", "") or "") == "Jam Session Generator"
+        rec = owner_record(session, "jam_session_generator" if generator else "style_jam")
+        keys = getattr(rec, "keys", None) if rec is not None else None
+        if keys is None or not getattr(rec, "section_map", None):
+            return ""
+        tonic = str(getattr(keys, "original_tonic", "") or "").strip()
+        return key_center_token(tonic, str(getattr(keys, "original_mode", "") or "major")) if tonic else ""
+    except Exception:
+        return ""
+
+
 def resolve_owner_original_key(session: Any, ctx: Any) -> OwnerOriginalKey:
     """The Original Key of the song this Backing owner is playing.
 
@@ -273,7 +292,9 @@ def resolve_owner_original_key(session: Any, ctx: Any) -> OwnerOriginalKey:
         getattr(ctx, "key", "") or getattr(ctx, "concert_key", "") or ""
     ).strip()
     if source in GENERATED_SOURCES:
-        # Generated material: the key it was generated in is its home key.
+        # Generated material: the key it was generated in is its home key. A Practice Key chosen later moves the
+        # working key, not the key the jam was generated in (its own record keeps that).
+        working = _generated_home_key(session, ctx) or working
         if not working:
             return _unresolved("generated_without_key", kind="generated")
         return OwnerOriginalKey(

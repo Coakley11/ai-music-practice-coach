@@ -159,7 +159,8 @@ class TestGuitarCapoOwnerAndShapes(unittest.TestCase):
         render_creative_progression_block(st, ss, {"Verse": ["G7", "C7", "D7"]}, concert_key="G")
         text = "\n".join(st.out)
         self.assertIn("Practice concert key: <strong>G</strong>", text)
-        self.assertIn("Concert Practice Key Progression:</strong> G7 · C7 · D7", text)
+        # Shape Mode shows the playable shapes only (user, 2026-11-25).
+        self.assertNotIn("Concert Practice Key Progression", text)
         self.assertIn("Guitar Shape Progression (C shapes, capo 7):</strong> C7 · F7 · G7", text)
         self.assertNotIn("Written Key Progression", text)
 

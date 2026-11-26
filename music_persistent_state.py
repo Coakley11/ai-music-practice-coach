@@ -662,6 +662,10 @@ _PERSIST_KEYS: tuple[str, ...] = (
     "backing_track_single_section",
     "backing_groove_style",
     "backing_lead_sheet_open",
+    # Practice Melodies: which alternatives each song / jam has, which is shown, and the kept ones
+    # (practice_melody_library); and which melody panels the musician closed.
+    "practice_melody_library",
+    "_backing_melody_panels_open",
     # The Backing card's Lead sheet On / Off (Play opens the sheet while On).
     "backing_lead_sheet_on_play",
     # Strings layer on/off (arrangement choice; default on when absent).

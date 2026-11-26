@@ -70,7 +70,7 @@ def test_non_cycling_sheet_projects_concert_grid_and_timeline_once() -> None:
     assert "and not _wr_cycling" in grid
     assert "and not _chart_sections_projected" in grid
     assert "chart_sections, _sheet_written_from, chart_display_key" in grid
-    tl = APP[APP.index("            if _sheet_written_from and isinstance(_follow_timeline, list):"):][:1200]
+    tl = APP[APP.index("            if _grid_from and _grid_to and isinstance(_follow_timeline, list):"):][:1200]
     assert '"chordSpace": _WR_TL_SPACE' in tl
 
 

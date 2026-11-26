@@ -6788,8 +6788,10 @@ def live_follow_along_component_html(
     function _localTransposeChord(ch, steps) {{
       const m = String(ch || '').match(/^([A-G][#b]?)(.*)/);
       if (!m) return ch;
-      const root = m[1]; const rest = m[2];
-      const names = (_localReadingKey && /b/.test(_localReadingKey)) ? _FLAT : _SHARP;
+      const root = m[1];
+      const rest = m[2].replace(/[/]([A-G][#b]?)$/, (_s, b) => '/' + _localTransposeChord(b, steps));
+      const names = (_localReadingKey && (/^.b/.test(_localReadingKey) || /^(F|Dm|Gm|Cm|Fm)$/.test(_localReadingKey)))
+        ? _FLAT : _SHARP;
       let idx = names.indexOf(root);
       if (idx < 0) {{
         const alt = root.length === 2
@@ -11298,7 +11300,7 @@ def _mark_backing_playback_ended() -> None:
 _backing_art_identity: Any = None
 
 
-def _create_backing_card_slots(art: bool = False) -> tuple[Any, tuple | None]:
+def _create_backing_card_slots(art: bool = False, jam: str = "") -> tuple[Any, tuple | None]:
     """Card head slot plus its controls row: Original / Practice key | BPM | Play.
 
     The row is ordinary page flow directly under the card (the card reserves the
@@ -11310,11 +11312,12 @@ def _create_backing_card_slots(art: bool = False) -> tuple[Any, tuple | None]:
     below jumped up 300-500 px and back. A container re-sent at the same place
     keeps the previous card on screen until the new one replaces it.
     """
-    if art:
+    if art or jam:
         # Album-cover card: artwork, then keys, facts, then BPM and Play, all inside one framed container.
         # The same widgets with the same keys; only where they sit changes. Slots: keys, BPM, Play, facts.
+        # A generated jam's card (``jam``) is the same layout in its own container.
         try:
-            with st.container(key="backing_art_card"):
+            with (st.container(key=jam) if jam else st.container(key="backing_art_card")):
                 head = st.container()
                 with st.container(key="backing_card_controls"):
                     keys = st.container()
@@ -11335,6 +11338,16 @@ def _create_backing_card_slots(art: bool = False) -> tuple[Any, tuple | None]:
         return head, tuple(cols)
     except Exception:
         return head, None
+
+
+def _backing_jam_card_key(ctx: Any) -> str:
+    """The container of a generated jam's own Backing card ("" for everything else)."""
+    try:
+        from backing_jam_card import jam_card_key
+
+        return jam_card_key(ctx)
+    except Exception:
+        return ""
 
 
 def _backing_art_wanted(kind: str, creative_source: str = "") -> bool:
@@ -18853,7 +18866,15 @@ def _on_backing_filter_change() -> None:
         if transport_intent(st.session_state) != "playing":
             # A prior Play's remount marker cannot suppress a stopped/paused edit.
             st.session_state.pop("_kc_settings_applied_this_play", None)
+        _kc_noise = False
         if st.session_state.get("_kc_settings_applied_this_play"):
+            from backing_key_cycle import settings_change_is_remount_noise
+
+            _kc_noise = settings_change_is_remount_noise(st.session_state)
+            if not _kc_noise:
+                # The musician's own edit. Undoing it put the previous groove / tempo back moments later.
+                st.session_state.pop("_kc_settings_applied_this_play", None)
+        if _kc_noise:
             try:
                 _canon = canonical_backing_filters(st.session_state) or {}
                 _cg = normalize_backing_groove(_canon.get("backing_groove_style"))
@@ -21274,14 +21295,11 @@ elif _studio_page == "practice":
                         )
                         from chord_tone_hints import apply_chord_tone_hints, hints_enabled, hints_level
 
-                        # A capo chart's cells show shapes; the hints name what sounds.
-                        _hints_capo = bool(_capo_ctx.enabled and instrument == "Guitar")
+                        # A capo chart shows shapes only; its hints name the tones of the shape on the page.
                         _chart_html = apply_chord_tone_hints(
                             _chart_html,
                             hints_enabled(st.session_state),
                             level=hints_level(st.session_state),
-                            sounding_steps=int(_capo_ctx.capo_fret) if _hints_capo else 0,
-                            reference_key=(str(_capo_ctx.sounding_key or "") or None) if _hints_capo else None,
                         )
                         st.markdown(_chart_html, unsafe_allow_html=True)
 
@@ -21558,6 +21576,7 @@ elif _studio_page == "practice":
                                 practice_melody_full_song_abc,
                                 practice_melody_section_abc,
                             )
+                            from practice_melody_library import melody_clef as _pm_clef
                             from practice_melody_session import resolve_practice_melody
                             from songs.music_source import resolve_active_song_identity
 
@@ -21667,7 +21686,7 @@ elif _studio_page == "practice":
                                     _pm_section = _pm_melody.section_by_id(_active_section)
                                     if _pm_section is not None:
                                         render_abc(
-                                            practice_melody_section_abc(_pm_melody, _pm_section)
+                                            practice_melody_section_abc(_pm_melody, _pm_section, clef=_pm_clef(str(instrument or "")))
                                         )
                                     else:
                                         st.caption(
@@ -21675,7 +21694,7 @@ elif _studio_page == "practice":
                                             f"**{_active_section_display}** yet."
                                         )
                                 else:
-                                    render_abc(practice_melody_full_song_abc(_pm_melody))
+                                    render_abc(practice_melody_full_song_abc(_pm_melody, clef=_pm_clef(str(instrument or ""))))
 
                 with st.expander(
                     feature_label("practice_melody_uploaded", "My Uploaded Melodies"),
@@ -21727,6 +21746,7 @@ elif _studio_page == "practice":
                         _cm_clef = _cm_clef_for(instrument)
                         _cm_display_key = str(
                             (written_key if (_cm_written and _cm_inst_semitones) else "")
+                            or (_capo_ctx.shape_key if _capo_ctx.enabled and instrument == "Guitar" else "")
                             or concert_key or original_key or "C"
                         )
                         _comp_pg = _composition_doc.get("global") if isinstance(
@@ -21783,14 +21803,24 @@ elif _studio_page == "practice":
                                             from composition_preview import generate_preview_wav
                                             from composition_playback_sync import build_playback_bundle
                                             from composition_lyrics_alignment import alignment_syllable_timeline
+                                            from composition_melody_projection import concert_melody_events
+                                            from effective_practice_context import musician_facing_chords
 
+                                            # What sounds is concert pitch: the shown notes and chords may be
+                                            # guitar shapes or an instrument's written key.
                                             _cm_wav = generate_preview_wav(
                                                 _composition_doc,
                                                 scope="section",
                                                 section_id=None,
                                                 include_melody=True,
-                                                melody_override=_cm_render_events,
-                                                chord_override=_cm_chords or None,
+                                                melody_override=concert_melody_events(
+                                                    _cm_events, original_key=_cm_orig_key, practice_key=_cm_practice_key
+                                                ),
+                                                chord_override=musician_facing_chords(
+                                                    _cm_chords,
+                                                    concert_key=str(_practice_chart_key or _cm_practice_key),
+                                                    chart_key=_cm_practice_key,
+                                                ) or None,
                                                 loops=1,
                                                 count_in_bars=0,
                                             )
@@ -23470,7 +23500,8 @@ elif _studio_page == "backing":
             art=_backing_art_wanted(
                 _backing_card_kind,
                 str(getattr(_creative_backing_ctx, "source", "") or "") if _backing_card_kind == "creative" else "",
-            )
+            ),
+            jam=_backing_jam_card_key(_creative_backing_ctx) if _backing_card_kind == "creative" else "",
         )
         _set_backing_art_actions_slot(_backing_card_cols)
     except Exception as _backing_card_err:
@@ -24006,7 +24037,54 @@ elif _studio_page == "backing":
         except Exception:
             pass
         _art_slots = bool(_backing_card_cols is not None and len(_backing_card_cols) > 3)
-        if _backing_card_slot is not None and _art_slots:
+        _jam_card = _backing_jam_card_key(_creative_backing_ctx) if _backing_card_kind == "creative" else ""
+        if _backing_card_slot is not None and _art_slots and _jam_card:
+            with _backing_card_slot.container():
+                try:
+                    from backing_context_ui import creative_live_style_meter as _jam_live
+                    from backing_jam_card import render_backing_jam_card
+                    from backing_musical_state import resolve_current_backing_musical_state as _jam_state
+                    from backing_play_session import current_backing_play_bpm as _jam_bpm
+
+                    _jam_musical = _backing_musical or _jam_state(st.session_state, applied_bpm=int(_status_bpm))
+                    _jam_now = _jam_live(
+                        _creative_backing_ctx,
+                        st.session_state,
+                        state=_jam_musical,
+                        applied_groove=str(default_groove_style or ""),
+                        applied_meter=str(_applied_meter_pre or ""),
+                    )
+                    render_backing_jam_card(
+                        st,
+                        _creative_backing_ctx,
+                        st.session_state,
+                        state=_jam_musical,
+                        groove=str(_jam_now.get("live_groove") or default_groove_style or ""),
+                        meter=str(_jam_now.get("live_meter") or _applied_meter_pre or ""),
+                        bpm=int(
+                            _jam_bpm(
+                                st.session_state,
+                                default=0,
+                                sync_id=str(st.session_state.get("_backing_page_bpm_sync_id") or ""),
+                            )
+                            or _status_bpm
+                        ),
+                    )
+                except Exception as _jam_card_err:
+                    if _developer_mode_enabled():
+                        st.caption(f"Developer · jam card: {_jam_card_err}")
+                    render_backing_creative_context_card(
+                        st,
+                        _creative_backing_ctx,
+                        st.session_state,
+                        applied_bpm=int(_status_bpm),
+                        applied_groove=default_groove_style,
+                        applied_meter=_applied_meter_pre,
+                        practice_key=_backing_practice_key,
+                        written_key=_backing_written_key,
+                        musical_state=_backing_musical,
+                    )
+        elif _backing_card_slot is not None and _art_slots:
             _creative_art = None
             if _backing_card_kind == "creative" and _creative_backing_ctx is not None:
                 try:
@@ -24508,6 +24586,14 @@ elif _studio_page == "backing":
         _had_playable = bool(backing_wav_is_present(st.session_state))
         _show_regen_warning = bool(key_changed_this_run or _had_playable or _regen_reasons)
         try:
+            from backing_key_cycle import is_cycle_active as _rw_kc_on
+
+            # A running Key Cycling pass applies the change itself and keeps playing: "press Play" would be wrong.
+            if _rw_kc_on(st.session_state) and transport_intent(st.session_state) == "playing":
+                _show_regen_warning = False
+        except Exception:
+            pass
+        try:
             import json
             import os
             import time
@@ -24897,7 +24983,11 @@ elif _studio_page == "backing":
         try:
             from backing_key_cycle import arm_key_cycle_for_explicit_play
 
-            arm_key_cycle_for_explicit_play(st.session_state)
+            # A take that finished building in the background (a new setting, a cold key) is not a Play press:
+            # the cycle goes on at its current key. Only Play itself starts again from the first key.
+            arm_key_cycle_for_explicit_play(
+                st.session_state, keep_position=bool(_async_wav_ready and not _play_clicked)
+            )
         except Exception:
             st.session_state.pop("_backing_transport_user_stopped", None)
             st.session_state.pop("_kc_hard_stop", None)
@@ -25571,6 +25661,11 @@ elif _studio_page == "backing":
                         ).strip()
                         if _prep_html:
                             st.session_state["_kc_audible_chart_html"] = _prep_html
+                            try:
+                                from backing_key_cycle import cycle_display_signature as _kc_disp_w
+                                st.session_state["_kc_audible_chart_display"] = _kc_disp_w(st.session_state)
+                            except Exception:
+                                pass
                             st.session_state["_kc_last_open_chart_html"] = _prep_html
                     except Exception:
                         pass
@@ -26950,6 +27045,15 @@ elif _studio_page == "backing":
             )
 
             _audible_chart = str(st.session_state.get("_kc_audible_chart_html") or "").strip()
+            try:
+                from backing_key_cycle import cycle_display_signature as _kc_disp
+
+                # A sheet held from before Shape Mode / written charts were switched is in the old reading.
+                _held_disp = st.session_state.get("_kc_audible_chart_display")
+                if _held_disp is not None and list(_held_disp) != _kc_disp(st.session_state):
+                    _audible_chart = ""
+            except Exception:
+                pass
             # Clear Pending only when the installed arrangement matches widgets.
             _kc_clear_if_applied(
                 st.session_state,
@@ -27126,6 +27230,11 @@ elif _studio_page == "backing":
                     _current_backing_signature,
                 ):
                     st.session_state["_kc_audible_chart_html"] = chart_html
+                    try:
+                        from backing_key_cycle import cycle_display_signature as _kc_disp_w
+                        st.session_state["_kc_audible_chart_display"] = _kc_disp_w(st.session_state)
+                    except Exception:
+                        pass
     if chart_html:
         # Hint lines are added to the finished grid (cached and held charts alike) from the
         # chord symbols it displays -- so they follow Practice Key, Written and Shape -- and
@@ -27482,8 +27591,12 @@ elif _studio_page == "backing":
             st.session_state["_kc_follow_timeline"] = _follow_timeline
         else:
             st.session_state.pop("_kc_follow_timeline", None)
-            if _sheet_written_from and isinstance(_follow_timeline, list):
-                # Current / Next read the grid's written key, not the concert take.
+            # Current / Next read the grid: its written key or its guitar shapes, not the concert take.
+            _grid_from, _grid_to = _sheet_written_from, chart_display_key
+            if _capo_ctx.enabled and instrument == "Guitar":
+                _grid_from = str(_audio_signature_key or _capo_ctx.sounding_key or "").strip()
+                _grid_to = str(_capo_ctx.shape_key or "").strip()
+            if _grid_from and _grid_to and isinstance(_follow_timeline, list):
                 try:
                     from backing_key_cycle import (
                         FOLLOW_TIMELINE_SPACE_DISPLAY as _WR_TL_SPACE,
@@ -27495,8 +27608,8 @@ elif _studio_page == "backing":
                             **ev,
                             "chord": _wr_project(
                                 str(ev.get("chord") or ""),
-                                from_key=_sheet_written_from,
-                                to_key=chart_display_key,
+                                from_key=_grid_from,
+                                to_key=_grid_to,
                             ),
                             "chordSpace": _WR_TL_SPACE,
                         }
@@ -27787,11 +27900,18 @@ elif _studio_page == "backing":
     # transposes the melody in place; it never regenerates it.
     try:
         from practice_melody_backing import consume_pending_practice_melody_handoff
+        from practice_melody_library import melody_clef as _pmb_clef
         from practice_melody_notation import practice_melody_sections_abc
         from songs.music_source import resolve_active_song_identity
 
-        _pmb_song_identity = resolve_active_song_identity(st.session_state)
-        _pmb_target_key = str(chart_key or "").strip()
+        # A jam on Backing is its own melody source: its chords, key and identity, never the active song's.
+        from practice_melody_source import jam_melody_source
+
+        _pmb_jam = jam_melody_source(_creative_backing_ctx, _backing_musical)
+        _pmb_song_identity = (
+            _pmb_jam.identity if _pmb_jam is not None else resolve_active_song_identity(st.session_state)
+        )
+        _pmb_target_key = str((_pmb_jam.display_key if _pmb_jam is not None else chart_key) or "").strip()
         try:
             from backing_key_cycle import is_cycle_active, project_cycle_display_key, temporary_playback_key
 
@@ -27810,7 +27930,7 @@ elif _studio_page == "backing":
             current_key_center=_pmb_target_key,
         )
     except Exception:
-        _pmb_melody = None
+        _pmb_melody, _pmb_jam, _pmb_song_identity, _pmb_target_key = None, None, "", str(chart_key or "")
     if _pmb_melody is not None:
         # The Backing BPM the musician chose (the same key Practice reads): re-timed, never regenerated.
         try:
@@ -27820,10 +27940,66 @@ elif _studio_page == "backing":
         except Exception:
             pass
 
-    if _bk_melody_mode == _BK_MODE_PRACTICE and _pmb_melody is not None:
-        with st.expander(
-            f"{FEATURE_ICONS['backing']} Practice Melody", expanded=True
+    # What is shown comes from the song's / jam's own melodies (practice_melody_library): the one chosen, for the
+    # groove, level and focus selected now, in the key that sounds, for this instrument. A groove or focus change
+    # selects its own melody; a key, instrument or tempo change only re-projects the same one.
+    _pmb_recipe, _pmb_chords, _pmb_order, _pmb_chords_key, _pmb_choose = "", {}, [], "", None
+    try:
+        import practice_melody_library as _pml
+        from composition_hum_transcription import parse_meter as _pmb_parse_meter
+        from practice_melody_session import instrument_register_args as _pmb_register_args
+        from songs.playback_defaults import normalize_groove_label as _pmb_groove
+
+        if _pmb_jam is not None:
+            _pmb_chords, _pmb_chords_key = _pmb_jam.sections, _pmb_jam.concert_key
+            _pmb_order, _pmb_title = list(_pmb_chords), _pmb_jam.title
+            _pmb_level = _pmb_jam.level or level
+        else:
+            # In Guitar Shape Mode the song's chords here are the concert ones.
+            _pmb_chords = sections if isinstance(sections, dict) else {}
+            _pmb_chords_key = str(
+                (_capo_ctx.sounding_key if _capo_ctx.enabled and instrument == "Guitar" else chart_key) or "C"
+            )
+            _pmb_order = list((song_data or {}).get("section_order") or _pmb_chords)
+            _pmb_title, _pmb_level = song, level
+        _pmb_style = str(resolved_groove or "")
+        if _pmb_jam is not None and _pmb_jam.style and _pmb_groove(_pmb_jam.style) == _pmb_groove(_pmb_style):
+            _pmb_style = _pmb_jam.style  # the jam's own style name (Neo Soul, Modal Vamp ...), not only its groove
+        _pmb_meter = _pmb_parse_meter(str(backing_time_signature or "4/4"))
+        _pmb_recipe = _pml.recipe_for(_pmb_level, _pmb_style, focus, _pmb_meter)
+        _pmb_reg = _pmb_register_args(st.session_state, str(instrument or ""))
+
+        def _pmb_choose(**_kw):
+            return _pml.resolve(
+                st.session_state,
+                identity=_pmb_song_identity,
+                title=_pmb_title,
+                sections=_pmb_chords,
+                section_order=_pmb_order,
+                sections_key=_pmb_chords_key,
+                key_center=_pmb_target_key,
+                level=_pmb_level,
+                tempo_bpm=float(st.session_state.get("backing_track_bpm") or bpm or 100),
+                style=_pmb_style,
+                meter=_pmb_meter,
+                focus=focus,
+                instrument=str(_pmb_reg.get("instrument") or instrument or ""),
+                written_offset=int(_pmb_reg.get("written_offset") or 0),
+                **_kw,
+            )
+
+        if _bk_melody_mode == _BK_MODE_PRACTICE and (
+            _pmb_melody is not None or _pml.shown_on_backing(st.session_state, _pmb_song_identity)
         ):
+            _pmb_melody = _pmb_choose() or _pmb_melody
+            _pml.show_on_backing(st.session_state, _pmb_song_identity)
+    except Exception:
+        _pmb_choose = None
+
+    if _bk_melody_mode == _BK_MODE_PRACTICE and _pmb_melody is not None:
+        from melody_panel_visibility import PRACTICE as _PMB_PANEL, melody_expander as _pmb_expander
+
+        with _pmb_expander(st, f"{FEATURE_ICONS['backing']} Practice Melody", _PMB_PANEL, _pmb_song_identity):
             # Section-Focus-scoped display (Slice F1): if Backing is looping
             # specific section(s), show the matching melody section(s) --
             # the same structured sections from Slice A, never a second
@@ -27845,13 +28021,27 @@ elif _studio_page == "backing":
                 else "Full song"
             )
             st.caption(
-                f"Song **{song}** · section **{_pmb_scope_label}** · "
+                f"{'Jam' if _pmb_jam is not None else 'Song'} **{_pmb_melody.song_title or song}** · "
+                f"section **{_pmb_scope_label}** · "
                 f"level **{level_label(_pmb_melody.level)}** · "
                 f"key **{_pmb_melody.key_center}** · "
                 f"{_pmb_melody.tempo_bpm:g} BPM · "
                 f"alternative #{_pmb_melody.alt_index + 1} — composed for this "
                 "song's harmony/form, not the original recorded melody."
             )
+            if _pmb_choose is not None:
+                from practice_melody_panel import render_melody_controls
+
+                render_melody_controls(
+                    st,
+                    identity=_pmb_song_identity,
+                    recipe=_pmb_recipe,
+                    melody=_pmb_melody,
+                    sections=_pmb_chords,
+                    section_order=_pmb_order,
+                    sections_key=_pmb_chords_key,
+                    choose=_pmb_choose,
+                )
             # Measure highlighting (Slice F2): join against Backing's own
             # follow_timeline -- the same playback truth driving Backing's
             # chord-chart follow-along -- never a second clock. Silently
@@ -27873,7 +28063,7 @@ elif _studio_page == "backing":
             except Exception:
                 _pmb_measure_sync = None
             render_abc(
-                practice_melody_sections_abc(_pmb_melody, _pmb_display_sections),
+                practice_melody_sections_abc(_pmb_melody, _pmb_display_sections, clef=_pmb_clef(str(instrument or ""))),
                 measure_sync=_pmb_measure_sync,
             )
     elif _bk_melody_mode == _BK_MODE_PRACTICE:
@@ -27881,40 +28071,22 @@ elif _studio_page == "backing":
         # generator and level the Practice page uses (the melody then also shows on Practice). It never changes
         # the song, key, instrument or backing settings, and never starts or stops playback.
         if st.button(
-            f"{FEATURE_ICONS['backing']} Show a Practice Melody for this song",
+            f"{FEATURE_ICONS['backing']} Show a Practice Melody for this {'jam' if _pmb_jam is not None else 'song'}",
             key="backing_practice_melody_create",
         ):
             _pmb_created = None
             try:
-                from composition_hum_transcription import parse_meter as _pmb_parse_meter
-                from practice_melody_backing import begin_practice_melody_backing_handoff
-                from practice_melody_session import resolve_practice_melody
-
-                _pmb_sections = sections if isinstance(sections, dict) else {}
-                _pmb_created = resolve_practice_melody(
-                    st.session_state,
-                    song_identity=_pmb_song_identity,
-                    song_id_for_generation=_pmb_song_identity,
-                    song_title=song,
-                    sections=_pmb_sections,
-                    section_order=(song_data or {}).get("section_order") or list(_pmb_sections.keys()),
-                    key_center=_pmb_target_key,
-                    level=level,
-                    tempo_bpm=float(st.session_state.get("backing_track_bpm") or bpm or 100),
-                    style=str(st.session_state.get("backing_groove_style") or ""),
-                    meter=_pmb_parse_meter(str(backing_time_signature or "4/4")),
-                    focus=focus,
-                    instrument=str(instrument or ""),
-                )
+                _pmb_created = _pmb_choose() if _pmb_choose is not None else None
                 if _pmb_created is not None:
-                    begin_practice_melody_backing_handoff(
-                        st.session_state, melody=_pmb_created, song_identity=_pmb_song_identity
-                    )
+                    from melody_panel_visibility import PRACTICE as _PMB_PANEL, show as _pmb_show
+
+                    _pml.show_on_backing(st.session_state, _pmb_song_identity)
+                    _pmb_show(st.session_state, _PMB_PANEL, _pmb_song_identity)
             except Exception:
                 _pmb_created = None
             if _pmb_created is not None:
                 st.rerun()
-            st.info("This song has no structured chord/section data yet, so a Practice Melody can't be made for it.")
+            st.info("There is no structured chord/section data here yet, so a Practice Melody can't be made for it.")
     elif _bk_melody_mode == _BK_MODE_UPLOADED:
         try:
             from backing_melody_modes import render_uploaded_references
@@ -27979,9 +28151,13 @@ elif _studio_page == "backing":
             from composition_songs_bridge import composition_section_lyrics_alignment as _bk_lyrics_alignment
 
             _bk_align_by_sec = _bk_lyrics_alignment(_bk_comp_doc)
-        with st.expander(
+        from melody_panel_visibility import ORIGINAL as _BK_OM_PANEL, melody_expander as _bk_om_expander
+
+        with _bk_om_expander(
+            st,
             feature_label("practice_melody_original", "Original Melody"),
-            expanded=True,
+            _BK_OM_PANEL,
+            f"{_bk_om_source}::{song}",
         ):
             st.caption(
                 f"The {'composed' if _bk_om_source == 'composition' else 'original'} melody for **{song}** · "
@@ -28002,8 +28178,10 @@ elif _studio_page == "backing":
                 written=_bk_written,
             )[2]
             _bk_clef = _bk_clef_for(instrument)
+            _bk_shape = bool(_capo_ctx.enabled and instrument == "Guitar")
             _bk_display_key = str(
                 (written_key if (_bk_written and _bk_inst_semitones) else "")
+                or (_capo_ctx.shape_key if _bk_shape else "")
                 or concert_key or original_key or "C"
             )
             _bk_comp_pg = (_bk_comp_doc or {}).get("global") if isinstance(
@@ -28027,7 +28205,8 @@ elif _studio_page == "backing":
                 st.caption(_bk_notice)
 
             for _bk_sec_name, _bk_render_events in _bk_projected.items():
-                _bk_sec_chords = (chart_sections or {}).get(_bk_sec_name, [])
+                # (The open Lead Sheet may hold the concert chords in chart_sections and draw the shapes itself.)
+                _bk_sec_chords = ((_capo_ctx.shape_sections if _bk_shape else chart_sections) or {}).get(_bk_sec_name, [])
                 # Lyrics sit under the notes only for a singer. Instrumentalists read the
                 # melody alone; the stored lyrics and alignment are never touched.
                 _bk_voice = str(instrument or "").strip() == "Voice"

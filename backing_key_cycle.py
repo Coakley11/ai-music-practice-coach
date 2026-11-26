@@ -10,6 +10,7 @@ plus the temporary-cycle-session correction:
 
 from __future__ import annotations
 
+import time
 from copy import deepcopy
 from typing import Any
 
@@ -468,9 +469,8 @@ def cycle_shape_projection(
 
     The one place the cycle derives the shape chart key and capo fret: the
     playbar capo line, the cycle Lead Sheet and the in-app sheet all read it, so
-    a key advance moves the capo fret everywhere at once. The sheet keeps the
-    sounding concert chords as its cells and shows the fixed shape as hints,
-    the same layout as the non-cycling capo sheet.
+    a key advance moves the capo fret everywhere at once. The sheet's cells are
+    the fixed shapes, the same layout as the non-cycling capo sheet.
     """
     if cycle_chart_mode(session) != "shape":
         return None
@@ -700,10 +700,8 @@ def display_projection_bundle(
         project_cycle_display_key(session, sounding, owner=owner) if sounding else ""
     )
     mode = cycle_chart_mode(session)
-    # Shape mode reads concert chords with the fixed shape as hints (see
-    # cycle_shape_projection), so Current/Next stay concert like the sheet
-    # cells. readingKey still names the shape chart key for the playbar.
-    label_reading = sounding if mode == "shape" else reading
+    # Current/Next read what the sheet's cells show: the written key, or the fixed guitar shapes.
+    label_reading = reading
     semis = 0
     try:
         if sounding and label_reading and sounding != label_reading:
@@ -1416,13 +1414,9 @@ def reanchor_key_cycle_from_practice_key(
     old_base = str(old.get("base_practice_key") or "").strip()
     old_start = str(old.get("start_cycle_key") or "").strip()
     old_cur = str(old.get("current_playback_key") or "").strip()
-    already = (
-        _keys_equivalent(old_base, base)
-        and _keys_equivalent(old_start, base)
-        and _keys_equivalent(old_cur, base)
-        and int(old.get("offset_semitones") or 0) == 0
-    )
-    if already:
+    # Only a CHANGE of the Practice Key restarts the sequence. The same key committed again (a remounted control,
+    # an instrument or spelling change, a restore) used to send a running cycle back to its first key.
+    if _keys_equivalent(old_base, base) and (not old_start or _keys_equivalent(old_start, base)):
         return old
 
     mag = normalize_cycle_interval(old.get("interval"))
@@ -2132,7 +2126,36 @@ def clear_settings_pending_if_arrangement_applied(
                 sig
             )
     session["_kc_settings_applied_this_play"] = True
+    session["_kc_settings_applied_at"] = time.time()
     return True
+
+
+# How long after a take was installed its redrawn controls may still report their start-up value.
+_REMOUNT_NOISE_SECONDS = 8.0
+
+
+def settings_change_is_remount_noise(session: dict[str, Any]) -> bool:
+    """True when a Backing control's change is the redrawn control, not the musician.
+
+    Right after Play installs a changed arrangement, a redrawn Feel control can report the song's default
+    (Pop) over the chosen one (Blues). Only exactly that counts: the default groove, over a different chosen
+    groove, within moments of the install. Any other groove, a tempo, loops or scope change is the musician's
+    and is kept.
+    """
+    if not session.get("_kc_settings_applied_this_play"):
+        return False
+    try:
+        if time.time() - float(session.get("_kc_settings_applied_at") or 0) > _REMOUNT_NOISE_SECONDS:
+            return False
+        from backing_context import backing_page_transport_defaults
+        from backing_track_state import canonical_backing_filters, normalize_backing_groove
+
+        shown = normalize_backing_groove(session.get("backing_groove_style"))
+        chosen = normalize_backing_groove((canonical_backing_filters(session) or {}).get("backing_groove_style"))
+        default = normalize_backing_groove(backing_page_transport_defaults(session)[1])
+    except Exception:
+        return False
+    return bool(shown and chosen and shown != chosen and shown == default)
 
 
 def note_key_cycle_arrangement_settings_changed(session: dict[str, Any]) -> None:
@@ -2759,6 +2782,9 @@ def store_prepared_cycle_audio(
         "path": path,
         "static_url": url,
         "chart_html": html,
+        # How the sheet is read (concert / written key / guitar shapes): a sheet prepared before Shape Mode or
+        # written charts were switched is rebuilt, never shown in the old reading (browser 2026-11-25).
+        "display": cycle_display_signature(session),
         "loops": loops_in_sig,
         # Concert-space follow timeline for this sounding key — required so
         # Current/Next Chord update on seamless handoff (not the prior key).
@@ -2881,6 +2907,68 @@ def _prepared_entry_current(session: dict[str, Any], entry: dict[str, Any]) -> b
     return take_install_allowed(session, request)
 
 
+def cycle_display_signature(session: dict[str, Any]) -> list[str]:
+    """How cycle sheets are read now: the reading mode and what it depends on."""
+    mode = cycle_chart_mode(session)
+    detail = ""
+    try:
+        if mode == "shape":
+            from guitar_capo import CAPO_SHAPE_KEY, shape_tonic_only
+
+            detail = shape_tonic_only(str(session.get(CAPO_SHAPE_KEY) or ""))
+        elif mode == "written":
+            from instrument_transposition import selected_transposing_type
+
+            detail = str(selected_transposing_type(dict(session), str(session.get("instrument") or "")) or "")
+    except Exception:
+        detail = ""
+    return [mode, detail]
+
+
+def _sections_from_timeline(timeline: Any) -> dict[str, list[str]]:
+    out: dict[str, list[str]] = {}
+    seen: set[tuple[str, int]] = set()
+    for ev in timeline or []:
+        if not isinstance(ev, dict):
+            continue
+        name = str(ev.get("section") or "").strip()
+        bar = int(ev.get("bar_in_section") or 0)
+        if not name or not bar or (name, bar) in seen:
+            continue
+        seen.add((name, bar))
+        out.setdefault(name, []).append(str(ev.get("chord") or ""))
+    return out
+
+
+def _restate_prepared_chart(session: dict[str, Any], key: str, entry: dict[str, Any]) -> str:
+    """The prepared key's sheet in the current reading (its concert chords are in its timeline)."""
+    sections = _sections_from_timeline(entry.get("timeline"))
+    if not sections:
+        return ""
+    try:
+        from backing_key_cycle_handoff import build_cycle_lead_sheet_html
+
+        html = str(build_cycle_lead_sheet_html(
+            sounding_key=key,
+            sections=sections,
+            song_name=str(session.get("_kc_chart_song_name") or ""),
+            song_data=session.get("_kc_chart_song_data"),
+            selected_section_names=session.get("_kc_chart_selected_sections"),
+            level=str(session.get("_kc_chart_level") or "Intermediate"),
+            groove_style=str(session.get("_kc_chart_groove") or "Pop groove"),
+            bpm=int(session.get("_kc_chart_bpm") or 100),
+            time_signature=str(session.get("_kc_chart_meter") or "4/4"),
+            session=session,
+            chart_display_key=project_cycle_display_key(session, key),
+        ) or "").strip()
+    except Exception:
+        return ""
+    if html:
+        entry["chart_html"] = html
+        entry["display"] = cycle_display_signature(session)
+    return html
+
+
 def prepared_cycle_chart_html(session: dict[str, Any], sounding_key: str) -> str:
     key = str(sounding_key or "").strip()
     bag = session.get(BACKING_KEY_CYCLE_PREPARED_KEY)
@@ -2890,6 +2978,11 @@ def prepared_cycle_chart_html(session: dict[str, Any], sounding_key: str) -> str
     if not isinstance(entry, dict) or not _prepared_entry_current(session, entry):
         return ""
     html = str(entry.get("chart_html") or "").strip()
+    if entry.get("display") is not None and list(entry.get("display") or []) != cycle_display_signature(session):
+        # Prepared in another reading (Shape Mode / written charts switched since): rebuilt, or not used.
+        html = _restate_prepared_chart(session, key, entry)
+        if not html:
+            return ""
     if "chord-tone-hints" not in html:
         return html
     # A sheet prepared before a Level change still carries that level's hint lines.
@@ -3957,8 +4050,13 @@ def resume_key_cycle(session: dict[str, Any]) -> dict[str, Any] | None:
     return data
 
 
-def arm_key_cycle_for_explicit_play(session: dict[str, Any]) -> dict[str, Any] | None:
+def arm_key_cycle_for_explicit_play(
+    session: dict[str, Any], *, keep_position: bool = False
+) -> dict[str, Any] | None:
     """Play Backing Track with cycling On: fresh cycle at the FIRST key.
+
+    ``keep_position``: a take that was being built for the key now sounding is ready. The
+    running cycle goes on at that key; nothing is rewound.
 
     Always restarts from the first chord of the first sequence key using all
     current settings (including pending PK / direction / interval / spelling).
@@ -3977,9 +4075,15 @@ def arm_key_cycle_for_explicit_play(session: dict[str, Any]) -> dict[str, Any] |
         seq = cycle_key_sequence(session, owner)
         if seq:
             start = str(seq[0] or start).strip() or start
+        stays = bool(
+            keep_position
+            and str(data.get("status") or "") == STATUS_RUNNING
+            and str(data.get("current_playback_key") or "").strip()
+        )
         if start:
-            data["current_playback_key"] = start
-            data["offset_semitones"] = 0
+            if not stays:
+                data["current_playback_key"] = start
+                data["offset_semitones"] = 0
             if not str(data.get("start_cycle_key") or "").strip():
                 data["start_cycle_key"] = start
         data["status"] = STATUS_RUNNING
