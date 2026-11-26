@@ -322,3 +322,74 @@ def test_on_a_phone_nothing_covers_the_band_and_the_controls_stay_short():
     assert ".jb-id{position:relative;left:auto;right:auto;bottom:auto" in phone
     assert "st-key-backing_card_key_row [data-testid=\"stHorizontalBlock\"]{flex-direction:row !important" in phone
     assert "st-key-backing_art_actions [data-testid=\"stHorizontalBlock\"]{flex-direction:row !important;flex-wrap:wrap !important" in phone
+
+
+# --- the lineup is the engine's, switch by switch (user, 2026-11-26: never an assumed or unavailable instrument) ---
+
+
+def _gen_facts(ensemble, groove, **ctx_kw):
+    ctx = _ctx(ensemble=ensemble, groove=groove, **ctx_kw)
+    return card.jam_card_facts(ctx, state=_state(), groove=groove, meter="4/4", bpm=120)
+
+
+def test_a_quartets_horn_plays_only_while_the_recorded_horns_are_on(monkeypatch):
+    import backing_horns
+
+    monkeypatch.setattr(backing_horns, "enabled", lambda: False)
+    off = _gen_facts("Jazz quartet", "Jazz swing", style="Jazz")
+    assert "Tenor sax" in off["not_yet"] and "Tenor sax" not in off["playing"]
+    head = card.jam_card_head_html(off)
+    assert head.count("data-instrument=") == 4 and head.count('class="jb-ghost"') == 1 and "SOUND OFF" in head
+    monkeypatch.setattr(backing_horns, "enabled", lambda: True)
+    monkeypatch.setattr(backing_horns, "available", lambda name="tenor": True)
+    on = _gen_facts("Jazz quartet", "Jazz swing", style="Jazz")
+    assert "Tenor sax" in on["playing"] and not on["not_yet"]
+    head = card.jam_card_head_html(on)
+    assert head.count("data-instrument=") == 4 and "jb-ghost" not in head and "SOUND OFF" not in head
+
+
+def test_a_horn_whose_pack_is_missing_is_not_heard_even_with_the_switch_on(monkeypatch):
+    import backing_horns
+
+    monkeypatch.setattr(backing_horns, "enabled", lambda: True)
+    monkeypatch.setattr(backing_horns, "available", lambda name="tenor": name != "trumpet")
+    facts = _gen_facts("Jazz quintet", "Jazz swing", style="Jazz")
+    assert "Trumpet" not in facts["playing"]  # never claimed without every horn
+
+
+def test_a_rock_trios_guitar_follows_the_recorded_guitar(monkeypatch):
+    import backing_rock_guitar
+
+    monkeypatch.setattr(backing_rock_guitar, "enabled", lambda: False)
+    off = _gen_facts("Rock trio", "Rock groove", style="Rock")
+    assert "Electric guitar" not in off["playing"] and any("Piano" in n for n in off["playing"])  # the piano covers it
+    monkeypatch.setattr(backing_rock_guitar, "enabled", lambda: True)
+    on = _gen_facts("Rock trio", "Rock groove", style="Rock")
+    assert "Electric guitar" in on["playing"] and not on["not_yet"]
+
+
+def test_latin_percussion_is_named_playing_only_while_its_percussionist_plays(monkeypatch):
+    import backing_latin_percussion
+
+    monkeypatch.setattr(backing_latin_percussion, "plays", lambda style: False)
+    off = _gen_facts("Latin quartet", "Bossa nova", style="Latin")
+    assert "Latin percussion" in off["not_yet"] and "Latin percussion" not in off["playing"]
+    monkeypatch.setattr(backing_latin_percussion, "plays", lambda style: True)
+    on = _gen_facts("Latin quartet", "Bossa nova", style="Latin")
+    assert "Latin percussion" in on["playing"] and "Latin percussion" not in on["not_yet"]
+
+
+def test_with_the_jam_performance_plan_off_the_card_names_no_band(monkeypatch):
+    monkeypatch.setenv("MUSIC_JAM_PERFORMANCE", "off")
+    facts = _gen_facts("Jazz quintet", "Jazz swing", style="Jazz")
+    assert facts["playing"] == [] and facts["not_yet"] == []
+    head, body = card.jam_card_head_html(facts), card.jam_card_facts_html(facts)
+    assert "players" not in head and "Your band" not in body and "jb-ghost" not in head
+
+
+def test_the_default_switches_are_off_in_tests():
+    import os
+
+    for name in ("MUSIC_HORNS", "MUSIC_LATIN_GROOVES", "MUSIC_LATIN_PERCUSSION", "MUSIC_BAND_BALANCE", "MUSIC_SAMBA_ENSEMBLE",
+                 "MUSIC_SAMBA_AUTHENTIC", "MUSIC_ARRANGEMENT_PLAN", "MUSIC_ROCK_GUITAR"):
+        assert not os.environ.get(name), name

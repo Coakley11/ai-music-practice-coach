@@ -111,10 +111,20 @@ def jam_card_facts(
         sections = {n: sections[n] for n in wanted}
     playing: list[str] = []
     later: list[str] = []
-    if generator and ensemble:
+    try:
+        from backing_performance_plan import jam_performance_enabled
+
+        follows_plan = bool(jam_performance_enabled())
+    except Exception:
+        follows_plan = False
+    if not follows_plan:
+        # MUSIC_JAM_PERFORMANCE off: the engine renders its ordinary band, not the jam's plan. The card draws no
+        # ensemble it cannot vouch for (user, 2026-11-26: never show an instrument as playing that is not).
+        playing, later = [], []
+    elif generator and ensemble:
         on, off = art.ensemble_lineup(ensemble, live_groove)
         playing, later = [n for _, n in on], [n for _, n in off]
-    if not playing:
+    if follows_plan and not playing:
         try:
             from backing_performance_plan import performance_plan_for_backing_context
 

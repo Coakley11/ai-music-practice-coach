@@ -423,7 +423,8 @@ def _stage_svg(card: str, playing: tuple[str, ...], not_yet: tuple[str, ...], st
     energy = energy_level(mood, intensity)
     band = [(d, False) for d in stage_members(playing)] + [(d, True) for d in stage_members(not_yet)]
     if not band:
-        band = [(d, False) for d in (("keys", "drums", "upright_bass") if card == STYLE_JAM else ("electric_guitar", "keys", "drums", "bass_guitar"))]
+        # No band to vouch for: the stage's own instruments, drawn as a set, not named as the band that plays.
+        band = [(d, False) for d in ("keys", "drums", "bass_guitar")]
     band.sort(key=lambda item: _STAGE_ORDER.index(item[0]) if item[0] in _STAGE_ORDER else len(_STAGE_ORDER))
     feature = instrument_drawing(featured) if featured else ""
     if feature and any(d == feature and not ghost for d, ghost in band):
