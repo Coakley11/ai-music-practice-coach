@@ -16839,6 +16839,12 @@ try:
 except Exception:
     pass
 note_page_visit(st.session_state, _studio_page)
+try:  # "Open in Backing" opens the chosen uploaded panels for that one Backing visit only
+    from backing_melody_modes import note_studio_page as _bmm_note_studio_page
+
+    _bmm_note_studio_page(st.session_state, _studio_page)
+except Exception:
+    pass
 
 if _studio_page == "openai" and not _openai_api_key:
     navigate_studio_page(st.session_state, "practice")

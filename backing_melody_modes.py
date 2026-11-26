@@ -46,7 +46,8 @@ PICKER_KEY_PREFIX = "backing_upref_pick__"
 #: The same choice on the Practice page. Both widgets only show and edit SELECTED_REFERENCES_KEY.
 PRACTICE_PICKER_KEY_PREFIX = "practice_upref_pick__"
 #: Panels to show open on Backing after "Open in Backing" on Practice: {"owner": identity, "ids": [...]}. Every other
-#: visit starts with the panels closed. Cleared when Practice draws its panel again.
+#: visit starts with the panels closed: the first Backing draw marks it "shown", and the first run on any other page
+#: then clears it (``note_studio_page``). Also cleared when Practice draws its panel again.
 OPEN_FROM_PRACTICE_KEY = "_backing_uploaded_open_from_practice"
 #: Each uploaded panel is ``st.expander(key=UPLOADED_PANEL_KEY_PREFIX + <id>)``; the controller looks for it.
 UPLOADED_PANEL_KEY_PREFIX = "bk_upref_"
@@ -58,6 +59,8 @@ __all__ = [
     "MODE_PRACTICE",
     "MODE_UPLOADED",
     "OPEN_FROM_PRACTICE_KEY",
+    "mark_open_from_practice_shown",
+    "note_studio_page",
     "PENDING_MODE_KEY",
     "PRACTICE_PICKER_KEY_PREFIX",
     "SELECTED_REFERENCES_KEY",
@@ -224,6 +227,29 @@ def panels_open_from_practice(session: Any, owner_ident: str) -> set[str]:
     return {str(d) for d in ids} if isinstance(ids, (list, tuple)) else set()
 
 
+def mark_open_from_practice_shown(session: Any) -> None:
+    """Backing drew the panels "Open in Backing" asked for: they belong to this visit only."""
+    stored = _get(session, OPEN_FROM_PRACTICE_KEY)
+    if isinstance(stored, Mapping) and not stored.get("shown"):
+        try:
+            session[OPEN_FROM_PRACTICE_KEY] = {**dict(stored), "shown": True}
+        except Exception:
+            pass
+
+
+def note_studio_page(session: Any, page_id: str) -> None:
+    """Every run, with the page being drawn. Leaving Backing ends the "Open in Backing" visit, so the next visit
+    starts with every uploaded panel closed (one the musician closed must not come back open)."""
+    if str(page_id or "") == "backing":
+        return
+    stored = _get(session, OPEN_FROM_PRACTICE_KEY)
+    if isinstance(stored, Mapping) and stored.get("shown"):
+        try:
+            session.pop(OPEN_FROM_PRACTICE_KEY, None)
+        except Exception:
+            pass
+
+
 def render_practice_reference_choice(st: Any, session: Any, *, owner: Mapping[str, Any], rows: list) -> bool:
     """Practice page: choose which of this song's references Backing shows. True when "Open in Backing" was pressed
     (the caller navigates)."""
@@ -354,6 +380,8 @@ def render_uploaded_references(st: Any, session: Any) -> int:
         "open); close them all and the Lead Sheet follows the music again."
     )
     opened = panels_open_from_practice(session, ident)
+    if opened:
+        mark_open_from_practice_shown(session)
     for did in picked:
         row = by_id[did]
         with st.expander(f"📄 {_reference_title(row)}", expanded=did in opened, key=uploaded_panel_key(did)):
