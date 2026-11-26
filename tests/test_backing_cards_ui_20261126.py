@@ -313,3 +313,12 @@ def test_next_selects_an_existing_melody_and_only_new_melody_composes_one():
     assert (at.session_state["at"], at.session_state["count"]) == (3, 4)  # a deliberate new one, the others kept
     at.button(key="backing_practice_melody_prev").click().run()
     assert at.session_state["calls"] == [{"step": 1}, {"another": True}, {"step": -1}]
+
+
+def test_on_a_phone_nothing_covers_the_band_and_the_controls_stay_short():
+    css = card.backing_jam_css()
+    phone = css[css.index("@container jamcard (max-width:640px)"):]
+    assert ".jb-art{position:relative;inset:auto;height:176px}" in phone  # the name strip sits under the art
+    assert ".jb-id{position:relative;left:auto;right:auto;bottom:auto" in phone
+    assert "st-key-backing_card_key_row [data-testid=\"stHorizontalBlock\"]{flex-direction:row !important" in phone
+    assert "st-key-backing_art_actions [data-testid=\"stHorizontalBlock\"]{flex-direction:row !important;flex-wrap:wrap !important" in phone
