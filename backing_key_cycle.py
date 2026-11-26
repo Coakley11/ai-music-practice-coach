@@ -2978,7 +2978,7 @@ def prepared_cycle_chart_html(session: dict[str, Any], sounding_key: str) -> str
     if not isinstance(entry, dict) or not _prepared_entry_current(session, entry):
         return ""
     html = str(entry.get("chart_html") or "").strip()
-    if list(entry.get("display") or []) != cycle_display_signature(session):
+    if entry.get("display") is not None and list(entry.get("display") or []) != cycle_display_signature(session):
         # Prepared in another reading (Shape Mode / written charts switched since): rebuilt, or not used.
         html = _restate_prepared_chart(session, key, entry)
         if not html:

@@ -27037,7 +27037,8 @@ elif _studio_page == "backing":
                 from backing_key_cycle import cycle_display_signature as _kc_disp
 
                 # A sheet held from before Shape Mode / written charts were switched is in the old reading.
-                if list(st.session_state.get("_kc_audible_chart_display") or []) != _kc_disp(st.session_state):
+                _held_disp = st.session_state.get("_kc_audible_chart_display")
+                if _held_disp is not None and list(_held_disp) != _kc_disp(st.session_state):
                     _audible_chart = ""
             except Exception:
                 pass
