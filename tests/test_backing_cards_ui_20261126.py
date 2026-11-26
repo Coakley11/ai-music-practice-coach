@@ -135,6 +135,30 @@ def test_style_and_groove_are_labelled_tiles_on_the_artwork_and_never_repeated_b
     assert "<details class=\"jb-prog\">" in body  # the chords are folded away, not a block of text
 
 
+@pytest.mark.parametrize("style, groove, tiles", [
+    ("Bossa Nova", "Bossa Nova", ["Style: Latin", "Groove: Bossa Nova"]),
+    ("Jazz Swing", "Jazz Swing", ["Style: Jazz", "Groove: Jazz Swing"]),
+    ("Blues", "Blues", ["Style: Blues"]),
+    ("Rock", "Rock", ["Style: Rock"]),
+])
+def test_a_jam_styled_by_a_groove_name_shows_it_as_the_groove_under_its_style(style, groove, tiles):
+    # Browser check 2026-11-26: the Bossa Nova jams showed "Style: Bossa Nova" and no groove (rule: Bossa is a groove,
+    # Latin a style).
+    facts = card.jam_card_facts(_ctx(style=style, groove=groove), state=_state(), groove=groove, meter="4/4", bpm=120)
+    head = card.jam_card_head_html(facts)
+    assert re.findall(r'class="jb-logo[^"]*" title="([^"]*)"', head) == tiles
+    if "Bossa" in style:
+        assert f"<b>{groove_logo('Bossa nova')}</b><small>Bossa Nova</small>" in head and f"<b>{style_logo('Latin')}</b>" in head
+
+
+def test_the_key_row_sits_on_the_cards_own_panels_not_the_songs_strip():
+    # Browser check 2026-11-26: on the night (Generator) card the Songs strip's pale ground made the Original Key a pale
+    # value on near-white.
+    css = card.backing_jam_css()
+    for key in (card.BACKING_GENERATOR_CARD, card.BACKING_STYLE_JAM_CARD):
+        assert f".st-key-{key} .st-key-backing_card_key_row{{background:transparent !important;border:0 !important}}" in css
+
+
 def test_a_member_whose_sound_is_off_is_grey_tagged_and_named_as_not_heard(monkeypatch):
     import backing_horns
 

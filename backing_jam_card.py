@@ -190,6 +190,10 @@ def _member_icon(name: str) -> str:
     return instrument_icon(name)
 
 
+_GROOVE_NAMED_STYLES = ("bossa", "samba", "swing")
+_GROOVE_STYLE_PARENT = {"latin": "Latin", "jazz": "Jazz"}
+
+
 def _logo(glyph: str, caption: str, cls: str = "", kind: str = "") -> str:
     if not glyph or not caption:
         return ""
@@ -234,7 +238,13 @@ def jam_card_head_html(facts: Mapping[str, Any]) -> str:
     )
     crest = _logo(DICE_ICON, "Generated", "jb-crest") if generator else _logo(SAX_ICON, "Style Jam", "jb-crest")
     same = groove.lower() == style.lower()
-    logos = _logo(style_logo(style), style, kind="Style") + ("" if same else _logo(groove_logo(groove), groove, kind="Groove"))
+    if same:
+        # A jam whose style is itself a Backing groove ("Bossa Nova", "Jazz Swing", "Samba") shows that name as the
+        # groove, with the groove's logo, under its style family (Latin, Jazz): Bossa is a groove, Latin a style.
+        parent = _GROOVE_STYLE_PARENT.get(stage.style_family(style))
+        if parent and any(t in style.lower() for t in _GROOVE_NAMED_STYLES) and groove_logo(groove):
+            style, same = parent, False
+    logos =_logo(style_logo(style), style, kind="Style") + ("" if same else _logo(groove_logo(groove), groove, kind="Groove"))
     size_pill = ""
     if count:
         size = band_size_word(count)
@@ -459,6 +469,9 @@ def _card_rules(key: str) -> str:
         "padding-top:.2rem !important;padding-bottom:0 !important;background:transparent !important;border:0 !important;overflow:visible !important;"
         "z-index:auto;gap:.6rem}"
         f"{c} .st-key-backing_card_controls [data-testid=\"stHorizontalBlock\"]{{height:auto !important;flex-direction:row;flex-wrap:nowrap}}"
+        # the Songs strip's pale ground (app_ui) would sit under the card's own panels: on the night card that made
+        # the Original Key a pale value on near-white (browser check 2026-11-26) -- the card's panels are the ground
+        f"{k}{{background:transparent !important;border:0 !important}}"
         f"{k} [data-testid=\"stHorizontalBlock\"]{{gap:.7rem !important;align-items:stretch !important}}"
         f"{k} [data-testid=\"stHorizontalBlock\"]>[data-testid=\"stColumn\"],{k} [data-testid=\"stHorizontalBlock\"]>[data-testid=\"stColumn\"]:first-child"
         "{flex:1 1 0 !important;min-width:0 !important;padding:.6rem .8rem .65rem !important;border-radius:14px;"
