@@ -361,17 +361,29 @@ class TestPracticeMelodyLevelAndStyle(unittest.TestCase):
     def test_pop_advanced_does_not_match_jazz_advanced_chromatic_rate(self) -> None:
         """A Pop song's Advanced melody must not silently inherit the same
         chromatic vocabulary as a Jazz Swing song at the same level."""
-        from practice_melody_generator import _CHROMATIC_APPROACH_PROB, _is_jazz_style, _JAZZ_ADVANCED_CHROMATIC_APPROACH_PROB
+        from practice_melody_generator import generate_practice_melody
 
-        self.assertFalse(_is_jazz_style("Pop groove"))
-        self.assertNotEqual(_CHROMATIC_APPROACH_PROB["Advanced"], _JAZZ_ADVANCED_CHROMATIC_APPROACH_PROB)
+        def approaches(style: str) -> int:
+            m = generate_practice_melody(
+                song_id="x", song_title="x", sections={"A": ATTYA_B * 8}, key_center="Ab", level="Advanced", tempo_bpm=160, style=style
+            )
+            return sum(1 for s in m.sections for e in s.events if e.tone_role == "approach")
+
+        self.assertGreater(approaches("Jazz swing"), 2 * approaches("Pop groove"))
 
     def test_level_sophistication_increases_structurally(self) -> None:
-        from practice_melody_generator import _MAX_LEAP_SEMITONES, _PASSING_TONE_PROB
+        from practice_melody_generator import generate_practice_melody
 
-        self.assertLess(_PASSING_TONE_PROB["Beginner"], _PASSING_TONE_PROB["Intermediate"])
-        self.assertLess(_PASSING_TONE_PROB["Intermediate"], _PASSING_TONE_PROB["Advanced"])
-        self.assertLess(_MAX_LEAP_SEMITONES["Beginner"], _MAX_LEAP_SEMITONES["Advanced"])
+        def notes(level: str) -> int:
+            return sum(
+                sum(not e.is_rest for s in generate_practice_melody(
+                    song_id=f"x{i}", song_title="x", sections={"A": ATTYA_B * 4}, key_center="Ab", level=level, style="Jazz swing"
+                ).sections for e in s.events)
+                for i in range(6)
+            )
+
+        self.assertLess(notes("Beginner"), notes("Intermediate"))
+        self.assertLess(notes("Intermediate"), notes("Advanced"))
 
 
 class TestBackingScopeDoesNotMutatePracticeFocusSection(unittest.TestCase):
