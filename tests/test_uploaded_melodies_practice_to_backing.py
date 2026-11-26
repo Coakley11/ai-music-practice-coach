@@ -4,6 +4,7 @@ from __future__ import annotations
 from contextlib import nullcontext
 
 import pytest
+from pathlib import Path
 
 import backing_melody_modes as bmm
 
@@ -194,14 +195,18 @@ def test_the_practice_page_offers_the_choice_and_the_panel_stays_free_of_backing
     assert bmm.render_active_song_reference_choice(_St(s, press=True), s) is False
 
 
-def test_page_buttons_are_not_taken_for_key_cycling_steps():
-    """Key Cycling's page script claims a Backing button labelled just Previous / Next (optional arrow) and cancels it."""
-    import re
-    from pathlib import Path
+def test_page_buttons_look_unchanged_and_are_not_taken_for_key_cycling_steps():
+    """Key Cycling's page script claims a Backing button labelled just Previous / Next (optional arrow) and cancels it.
 
-    src = (Path(__file__).resolve().parents[1] / "song_document_panel.py").read_text(encoding="utf-8")
-    labels = re.findall(r'\.button\(\s*"([^"]+)"', src)
+    The owner wants the page buttons to look exactly as before, so only an invisible marker tells them apart."""
+    import re
+
+    import song_document_panel as panel
+
     kc_prev = re.compile(r"^([◀⏮]\s*)?Previous( key)?$", re.I)
     kc_next = re.compile(r"^([▶⏭]\s*)?Next( key)?(\s*[▶⏭])?$", re.I)
-    assert "◀ Previous page" in labels and "Next page ▶" in labels
-    assert not [lab for lab in labels if kc_prev.match(lab) or kc_next.match(lab)]
+    labels = (panel.PAGE_PREVIOUS_LABEL, panel.PAGE_NEXT_LABEL)
+    assert [lab.replace("\u2060", "") for lab in labels] == ["Previous", "Next"]          # what the musician reads
+    assert not any(kc_prev.match(lab.strip()) or kc_next.match(lab.strip()) for lab in labels)  # what KC's regex sees
+    src = (Path(__file__).resolve().parents[1] / "song_document_panel.py").read_text(encoding="utf-8")
+    assert not re.findall(r'\.button\(\s*"(Previous|Next)"', src)

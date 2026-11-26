@@ -33,6 +33,9 @@ PAGE_KEY = f"{KEY_PREFIX}page"
 UPLOAD_KEY = f"{KEY_PREFIX}upload"
 NOTICE_KEY = f"{KEY_PREFIX}notice"
 PICKER_KEY = f"{KEY_PREFIX}picker"
+#: The PDF page buttons: the words the musician sees, plus an invisible word joiner (see _preview).
+PAGE_PREVIOUS_LABEL = "Previous\u2060"
+PAGE_NEXT_LABEL = "Next\u2060"
 
 # Wide enough to read a stave on a laptop, small enough not to cost a megabyte a page.
 _RENDER_WIDTH_DESKTOP = 1100
@@ -453,16 +456,18 @@ def _preview(st: Any, row: dict, *, compact: bool, reader: str = "") -> None:
 
     if total > 1:
         nav = st.columns([1, 2, 1])
-        # Not bare "Previous" / "Next": on Backing, Key Cycling's page script takes any button with exactly that label
-        # as its own step control and cancels the click (backing_key_cycle __kcStepBtnHandler label fallback).
-        if nav[0].button("◀ Previous page", key=f"{key_prefix}prev", disabled=page <= 0,
+        # The labels read "Previous" / "Next" as before, followed by an invisible WORD JOINER (U+2060). On Backing, Key
+        # Cycling's page script takes any button whose label is exactly "Previous" or "Next" as its own step control
+        # and cancels the click (backing_key_cycle __kcStepBtnHandler label fallback), so without it a page turn during
+        # a cycle stepped the key instead. The marker keeps the look unchanged and the label no longer exact.
+        if nav[0].button(PAGE_PREVIOUS_LABEL, key=f"{key_prefix}prev", disabled=page <= 0,
                          use_container_width=True):
             st.session_state[PAGE_KEY + reader] = page - 1
             st.rerun()
         nav[1].markdown(
             f"<div style='text-align:center;padding-top:0.45rem'>Page {page + 1} "
             f"of {total}</div>", unsafe_allow_html=True)
-        if nav[2].button("Next page ▶", key=f"{key_prefix}next", disabled=page >= total - 1,
+        if nav[2].button(PAGE_NEXT_LABEL, key=f"{key_prefix}next", disabled=page >= total - 1,
                          use_container_width=True):
             st.session_state[PAGE_KEY + reader] = page + 1
             st.rerun()
