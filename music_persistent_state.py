@@ -739,6 +739,8 @@ _PERSIST_KEYS: tuple[str, ...] = (
     "_cpl_library_saved_song_id",
     "_cpl_editing_display_key",
     "cpl_last_display_key",
+    # Uploaded Melodies Slice 3: which of each song's uploaded references Backing shows ({song owner: [ids]}).
+    "_backing_uploaded_reference_selection",
     "mt_track_filenames",
     "mt_tracks",
     "mixed_track_wav",
@@ -3598,6 +3600,10 @@ def apply_music_disk_state(
                         continue
                 except Exception:
                     pass
+            if key == "_backing_uploaded_reference_selection":
+                # This tab's own choice outranks a mid-session re-apply of an older save; a damaged value is ignored.
+                if not isinstance(val, dict) or (not authoritative_restore and key in ss):
+                    continue
             if mid_session_reapply and key in device_view_keys:
                 continue
             if key in {"picker_song_editor_open", "picker_editor_tab", "chart_edit_mode"} and ss.get(
@@ -5679,6 +5685,7 @@ def apply_music_session_defaults(st: Any) -> None:
     "creative_improv_intelligence_tab",
         "workspace_genre_filters",
         "backing_track_multi_sections",
+        "_backing_uploaded_reference_selection",
         "karaoke_queue",
         "catalog_favorite_pick_keys",
         "song_picker_favorites_only",

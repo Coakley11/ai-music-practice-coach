@@ -119,7 +119,8 @@ class ContentIsCheckedNotTheFilename(StoreCase):
     def test_a_file_that_is_not_a_pdf_is_rejected_however_it_is_named(self):
         res = self.save(data=b"MZ\x90\x00 this is an executable", filename="exercise.pdf")
         self.assertFalse(res["ok"])
-        self.assertEqual(res["error"], "not_a_pdf")
+        # A reference may now be a PDF or a photo; this is neither, whatever its name says.
+        self.assertEqual(res["error"], "unsupported_document_type")
 
     def test_a_truncated_pdf_is_rejected(self):
         res = self.save(data=b"%PDF-1.4\n1 0 obj\n<< /Type /Page >>\n")

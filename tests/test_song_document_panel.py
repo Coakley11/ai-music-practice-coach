@@ -48,7 +48,8 @@ class ItTouchesNothingMusical(unittest.TestCase):
             "instrument\"]", "instrument']", "backing", "bpm", "groove",
         ):
             with self.subTest(forbidden=forbidden):
-                self.assertNotIn(forbidden, CODE)
+                # exif_transpose turns a photographed page upright (Slice 1): an image operation, not a musical one.
+                self.assertNotIn(forbidden, CODE.replace("ImageOps . exif_transpose", ""))
 
     def test_every_session_key_it_writes_is_its_own(self):
         """Any st.session_state[...] assignment must use the panel's own prefix."""
@@ -58,13 +59,13 @@ class ItTouchesNothingMusical(unittest.TestCase):
             with self.subTest(key=expr):
                 self.assertTrue(
                     expr.strip().rstrip(")").endswith("_KEY")
-                    or expr.strip().startswith(("SELECTED", "CONFIRM", "PAGE", "NOTICE")),
+                    or expr.strip().startswith(("SELECTED", "CONFIRM", "PAGE", "NOTICE", "ZOOM")),
                     f"{expr} is not one of the panel's own keys",
                 )
 
     def test_its_key_constants_all_share_the_panel_prefix(self):
         for name in ("SELECTED_KEY", "CONFIRM_KEY", "PAGE_KEY", "UPLOAD_KEY",
-                     "NOTICE_KEY", "PICKER_KEY"):
+                     "NOTICE_KEY", "PICKER_KEY", "ZOOM_KEY"):
             with self.subTest(constant=name):
                 self.assertTrue(getattr(panel, name).startswith(panel.KEY_PREFIX))
 
@@ -112,20 +113,25 @@ class ItNeverHandsOutAUrl(unittest.TestCase):
 
     def test_every_preview_path_passes_bytes(self):
         """Image, st.pdf and download all take the data, never a location."""
-        self.assertIn("st.image(png", SOURCE)
+        # PDF pages and photos go through _show_page_image, which hands st.image the drawn bytes (Slice 1, 2026-11-22).
+        self.assertIn("_show_page_image(st, png, zoom, reader)", SOURCE)
+        self.assertIn("_show_page_image(st, img, zoom, reader)", SOURCE)
+        self.assertIn("st.image(img, use_container_width=True)", SOURCE)
         self.assertIn("st.pdf(data", SOURCE)
         self.assertIn("data=data", SOURCE)
 
 
 class ItDecodesOncePerPage(unittest.TestCase):
     def test_the_fetch_and_the_render_are_both_cached(self):
-        self.assertEqual(SOURCE.count("@st.cache_data"), 3)
+        # fetch, render (PDF page), pages and render_image (a photo, Slice 1 2026-11-22)
+        self.assertEqual(SOURCE.count("@st.cache_data"), 4)
 
     def test_the_cache_key_includes_the_content_hash(self):
         """A document id alone is not safe: the bytes behind it can change."""
         for signature in ("def fetch(document_id: str, digest: str)",
                           "def render(document_id: str, digest: str, page_index: int, width: int)",
-                          "def pages(document_id: str, digest: str, fallback: int)"):
+                          "def pages(document_id: str, digest: str, fallback: int)",
+                          "def render_image(document_id: str, digest: str, mime: str, width: int)"):
             with self.subTest(signature=signature):
                 self.assertIn(signature, SOURCE)
 
