@@ -135,6 +135,13 @@ def resolve_mission_projection_state(
                 snap_ch = str((snap or {}).get("concert_chord") or "").strip()
                 click_ch = ""
                 click = session.get("_mission_chord_click_authority")
+                try:
+                    from creative_chord_selection_authority import click_names_another_song
+
+                    if click_names_another_song(session, click):
+                        click = None  # Issue 85: another song's chord is not this Mission's identity
+                except ImportError:
+                    pass
                 if isinstance(click, dict):
                     click_ch = str(click.get("chord") or "").strip()
                 keep_identity = bool(
