@@ -178,3 +178,33 @@ class ReadingSizeAndWording(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+
+class LargeReallyDrawsWider(unittest.TestCase):
+    """Browser QA 2026-11-26 on Streamlit 1.61: the image block shrank back to the panel width as a flex item."""
+
+    def _css(self, zoom):
+        import song_document_panel as panel
+        out = []
+
+        class _Ctx:
+            def __enter__(self): return self
+            def __exit__(self, *a): return False
+
+        class _St:
+            def markdown(self, html, **k): out.append(html)
+            def container(self, **k): return _Ctx()
+            def image(self, *a, **k): out.append("<image>")
+
+        panel._show_page_image(_St(), b"png", zoom, "")
+        return "".join(out)
+
+    def test_large_blocks_do_not_shrink_and_are_widened_once(self):
+        css = self._css(1.6)
+        self.assertIn("[data-testid='stImage']{flex:0 0 auto!important;width:160%!important;min-width:160%!important", css)
+        self.assertIn("[data-testid='stImageContainer']{flex:1 0 100%!important;width:100%!important", css)
+        self.assertNotIn("[data-testid='stImageContainer']{max-width:none!important;width:160%", css)
+
+    def test_fit_adds_no_zoom_rules(self):
+        self.assertEqual(self._css(1.0), "<image>")

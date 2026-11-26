@@ -181,8 +181,12 @@ def _show_page_image(st: Any, img: bytes, zoom: float, reader: str) -> None:
     pct = int(round(zoom * 100))
     st.markdown(
         f"<style>.st-key-{box}{{overflow-x:auto!important;overflow-y:hidden;-webkit-overflow-scrolling:touch;}}"
-        f".st-key-{box} [data-testid='stImage'],.st-key-{box} [data-testid='stImageContainer']"
-        f"{{max-width:none!important;width:{pct}%!important;}}"
+        # Streamlit 1.61 puts the image block in a flex row, where it would shrink back to the panel's width: it
+        # must not shrink, and only this outer block is widened (its inner container fills it, once).
+        f".st-key-{box} [data-testid='stImage']"
+        f"{{flex:0 0 auto!important;width:{pct}%!important;min-width:{pct}%!important;max-width:none!important;}}"
+        f".st-key-{box} [data-testid='stImageContainer']"
+        f"{{flex:1 0 100%!important;width:100%!important;max-width:none!important;}}"
         f".st-key-{box} img{{width:100%!important;max-width:none!important;height:auto!important;}}</style>",
         unsafe_allow_html=True,
     )
