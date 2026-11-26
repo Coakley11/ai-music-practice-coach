@@ -184,7 +184,11 @@ def _show_page_image(st: Any, img: bytes, zoom: float, reader: str) -> None:
         # Streamlit 1.61 puts the image block in a flex row, where it would shrink back to the panel's width: it
         # must not shrink, and only this outer block is widened (its inner container fills it, once).
         f".st-key-{box} [data-testid='stImage']"
-        f"{{flex:0 0 auto!important;width:{pct}%!important;min-width:{pct}%!important;max-width:none!important;}}"
+        f"{{flex:0 0 auto!important;width:{pct}%!important;min-width:{pct}%!important;max-width:none!important;"
+        f"align-self:flex-start!important;margin-left:0!important;}}"
+        # Its wrapper centres it, which pushed the left part of a wider page out of reach of the scroll.
+        f".st-key-{box} :has(> [data-testid='stImage'])"
+        f"{{justify-content:flex-start!important;align-items:flex-start!important;}}"
         f".st-key-{box} [data-testid='stImageContainer']"
         f"{{flex:1 0 100%!important;width:100%!important;max-width:none!important;}}"
         f".st-key-{box} img{{width:100%!important;max-width:none!important;height:auto!important;}}</style>",

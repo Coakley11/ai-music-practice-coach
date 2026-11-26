@@ -206,5 +206,10 @@ class LargeReallyDrawsWider(unittest.TestCase):
         self.assertIn("[data-testid='stImageContainer']{flex:1 0 100%!important;width:100%!important", css)
         self.assertNotIn("[data-testid='stImageContainer']{max-width:none!important;width:160%", css)
 
+    def test_a_wider_page_starts_at_the_left_edge_so_all_of_it_can_be_scrolled_to(self):
+        css = self._css(1.6)
+        self.assertIn("align-self:flex-start!important;margin-left:0!important;", css)
+        self.assertIn(":has(> [data-testid='stImage']){justify-content:flex-start!important;align-items:flex-start!important;}", css)
+
     def test_fit_adds_no_zoom_rules(self):
         self.assertEqual(self._css(1.0), "<image>")
