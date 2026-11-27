@@ -104,12 +104,41 @@ class TestNavButtonKeys(unittest.TestCase):
         self.assertIn('"Song-Based Improvisation"', block)
         self.assertIn('navigate_studio_page(session_state, "creative")', block)
 
-    def test_jam_sets_entry_mode(self) -> None:
+    def test_jam_button_opens_song_aware_coaching(self) -> None:
+        """The fourth nav button is Song-Aware Coaching now, not Style Jam.
+
+        Changed deliberately in 5bd8d47c, "Fix SAC navigation to land on coaching tab":
+        the unlock caption under these buttons reads "Practice, Backing, SBI and
+        Song-Aware Coaching", and Style Jam is not a Composition Studio destination at
+        all. The legacy widget key composer_nav_jam was kept on purpose - renaming a
+        Streamlit widget key resets that widget's state.
+
+        The old assertion also looked the wrong way. A button's label is an argument
+        BEFORE its key=, so a slice running only forward from key= could never contain
+        it, which is why the sibling test below slices backwards. This one spans both
+        sides of the key.
+        """
         src = Path("composition_studio_page.py").read_text(encoding="utf-8")
         jam_start = src.index('key="composer_nav_jam"')
-        jam_block = src[jam_start:jam_start + 500]
-        self.assertIn('"Style Jam Mode"', jam_block)
+        jam_block = src[max(0, jam_start - 400):jam_start + 500]
+        self.assertIn('feature_label("song_aware_coaching"', jam_block)
+        self.assertIn("request_song_aware_coaching(session_state)", jam_block)
         self.assertIn('navigate_studio_page(session_state, "creative")', jam_block)
+        self.assertNotIn("Style Jam", jam_block)
+
+    def test_song_aware_coaching_sets_the_coaching_destination(self) -> None:
+        """Behaviour rather than source text: where that button actually sends you.
+
+        Song-Aware Coaching is a tab inside Improvisation Intelligence, not one of the
+        Entry / Style Jam / SBI entry modes, so request_creative_entry_mode is not the
+        right call here - its absence is correct rather than missing.
+        """
+        from studio_page_state import request_song_aware_coaching
+
+        session: dict = {}
+        request_song_aware_coaching(session)
+        self.assertEqual(session["creative_lab_analysis_mode"], "Improvisation Intelligence")
+        self.assertEqual(session["improv_intelligence_tab"], "Song-Aware Coaching")
 
     def test_sbi_jam_disabled_when_not_active(self) -> None:
         src = Path("composition_studio_page.py").read_text(encoding="utf-8")

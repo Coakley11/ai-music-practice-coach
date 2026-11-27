@@ -1003,13 +1003,71 @@ class TestBackingContextChordConstruction(unittest.TestCase):
 # Backing: composed melody panel
 # ---------------------------------------------------------------------------
 class TestBackingComposedMelodyPanel(unittest.TestCase):
-    def test_source_code_has_backing_melody_panel(self):
+    def _panel_block(self) -> str:
+        """The Original Melody panel's source, located structurally.
+
+        Both of the old assertions were dead, not one. The comment it searched for,
+        "Original Melody panel (Composition songs only)", lost its qualifier when the
+        panel stopped being Composition-only - it now also accepts a Catalog or Custom
+        song's synchronized melody - and ``_bk_melody_events`` had been renamed to
+        ``_bk_melody_by_sec``, a per-section mapping. Searching the whole file for
+        either could only fail.
+
+        So the panel is found by its section marker and bounded by the next marker at
+        the same indentation, and the block is required to be substantial, so that a
+        boundary which stops working fails loudly instead of quietly matching nothing.
+        """
+        import re
         from pathlib import Path
-        src = Path(__file__).resolve().parent.parent / "streamlit_music_practice_app.py"
-        text = src.read_text(encoding="utf-8")
-        self.assertIn("Original Melody panel (Composition songs only)", text)
-        self.assertIn("_bk_comp_doc", text)
-        self.assertIn("_bk_melody_events", text)
+
+        src = (
+            Path(__file__).resolve().parent.parent / "streamlit_music_practice_app.py"
+        ).read_text(encoding="utf-8")
+        head = re.search(r"^([ \t]*)#\s*-+\s*Original Melody panel[^\n]*$", src, re.M)
+        self.assertIsNotNone(head, "the Original Melody panel section marker is gone")
+        after = src[head.end():]
+        ends = []
+        nxt = re.search(r"^" + re.escape(head.group(1)) + r"#\s*-+\s", after, re.M)
+        if nxt:
+            ends.append(nxt.start())
+        feature = after.find("enable_backing_user_edits")
+        if feature != -1:
+            ends.append(feature)
+        block = src[head.start(): head.end() + min(ends)] if ends else src[head.start():]
+        self.assertGreater(
+            block.count("\n"), 40,
+            "the panel block looks truncated - revisit the boundary rule, not the app",
+        )
+        return block
+
+    def test_source_code_has_backing_melody_panel(self):
+        """The panel exists and is wired to draw the song's synchronized melody."""
+        block = self._panel_block()
+        self.assertIn("original_melody_sections", block)
+        self.assertIn("_bk_comp_doc", block)
+        self.assertIn("_bk_melody_by_sec", block)
+        self.assertIn("project_melody_events", block)
+        self.assertIn("measure_sync", block)
+
+    def test_the_panel_reads_the_melody_through_the_one_shared_reader(self):
+        """Behaviour, not text: the component the panel depends on works as declared."""
+        from backing_melody_modes import original_melody_sections
+
+        sections, source = original_melody_sections(composition_doc=None, song_data=None)
+        self.assertEqual(sections, {})
+        self.assertEqual(source, "")
+
+        sections, source = original_melody_sections(
+            composition_doc=None,
+            song_data={
+                "original_melody": {
+                    "synchronized": True,
+                    "sections": {"Verse": [{"beat": 0.0, "midi": 62, "duration_beats": 1.0}]},
+                }
+            },
+        )
+        self.assertEqual(source, "song")
+        self.assertEqual(list(sections), ["Verse"])
 
     def test_backing_panel_uses_alignment(self):
         from pathlib import Path
