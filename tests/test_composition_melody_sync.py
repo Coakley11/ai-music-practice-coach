@@ -121,11 +121,46 @@ class TestBackingOriginalMelodyPanelInSource(unittest.TestCase):
     """
 
     def _block(self) -> str:
+        """The Original Melody panel's source, found structurally rather than by exact wording.
+
+        Two things used to make this brittle, and both had already broken it:
+
+        * the start was the literal comment "Original Melody panel (Composition songs only)".
+          That qualifier was deliberately dropped when Original Melody stopped being
+          Composition-only (it now also accepts a Catalog or Custom song's synchronised
+          melody), so all four tests died in ValueError before reaching an assertion. The
+          start is now a tolerant regex on the section marker, which survives rewording.
+        * the end was the first "\n    try:" AFTER the start - but the panel's own body opens
+          a try: block within a few lines, so the slice silently returned six lines and the
+          assertions below failed for entirely the wrong reason. The end is now the next
+          section marker at the same indentation, or the start of the next distinct feature,
+          and the block is required to be substantial so a truncated slice fails loudly
+          instead of passing or failing by accident.
+        """
+        import re
         from pathlib import Path
+
         src = Path("streamlit_music_practice_app.py").read_text(encoding="utf-8")
-        panel_start = src.index("Original Melody panel (Composition songs only)")
-        panel_end = src.index("\n    try:", panel_start + 100)
-        return src[panel_start:panel_end]
+        head = re.search(r"^([ \t]*)#\s*-+\s*Original Melody panel[^\n]*$", src, re.M)
+        self.assertIsNotNone(head, "the Original Melody panel section marker is gone")
+        indent = head.group(1)
+        after = src[head.end():]
+
+        ends = []
+        nxt_section = re.search(r"^" + re.escape(indent) + r"#\s*-+\s", after, re.M)
+        if nxt_section:
+            ends.append(nxt_section.start())
+        # The next distinct feature on the Backing page, as a fallback boundary.
+        nxt_feature = after.find("enable_backing_user_edits")
+        if nxt_feature != -1:
+            ends.append(nxt_feature)
+        block = src[head.start(): head.end() + min(ends)] if ends else src[head.start():]
+
+        self.assertGreater(
+            block.count("\n"), 40,
+            "the panel block looks truncated - the boundary rule needs revisiting, not the app",
+        )
+        return block
 
     def test_backing_panel_has_measure_sync(self):
         block = self._block()

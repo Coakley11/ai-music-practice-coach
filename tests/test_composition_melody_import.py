@@ -629,12 +629,19 @@ class TestExplicitSaveDurability(unittest.TestCase):
         sidebar = sidebar[:sidebar.index("\n        with st.expander")]
         self.assertIn("_music_force_save_ok", sidebar)
 
-    def test_library_sidebar_retries_with_st(self):
+    def test_library_sidebar_gives_the_recovery_ui_a_streamlit_handle(self):
+        """Save recovery has to be able to draw. It is handed st positionally now, not st=st."""
         import composition_studio_page as csp
         src = Path(csp.__file__).read_text(encoding="utf-8")
         sidebar = src[src.index("def _render_library_sidebar"):]
         sidebar = sidebar[:sidebar.index("\n        with st.expander")]
-        self.assertIn("st=st", sidebar)
+        self.assertIn("render_save_recovery(", sidebar)
+        call = sidebar[sidebar.index("render_save_recovery("):]
+        call = call[:call.index(")") + 1]
+        self.assertTrue(
+            "st=st" in call or call.startswith("render_save_recovery(st"),
+            f"recovery UI is not given st: {call!r}",
+        )
 
     def test_library_sidebar_clears_error_flags_before_save(self):
         import composition_studio_page as csp
@@ -654,19 +661,40 @@ class TestExplicitSaveDurability(unittest.TestCase):
         success_idx = sidebar.index("st.success")
         self.assertIn("disk_ok", sidebar[:success_idx])
 
-    def test_local_only_save_reports_cloud_limitation(self):
-        import inspect
-        import composition_studio_page as csp
-        helper = inspect.getsource(csp._library_save_feedback)
-        self.assertIn("Saved locally", helper)
-        self.assertIn("cloud sync was not confirmed", helper)
+    def test_local_only_save_reports_the_cloud_limitation(self):
+        """Behaviour, not the helper's source: the logic now lives in save_feedback."""
+        from composition_studio_page import _library_save_feedback
 
-    def test_cloud_only_save_reports_local_disk_limitation(self):
-        import inspect
-        import composition_studio_page as csp
-        helper = inspect.getsource(csp._library_save_feedback)
-        self.assertIn("cloud Composition Library", helper)
-        self.assertIn("local disk write was not confirmed", helper)
+        level, message = _library_save_feedback(
+            saved=True, success_message="ignored", force_ok=False,
+            disk_ok=True, cloud_ok=False, cloud_required=True,
+        )
+        self.assertEqual(level, "warning")
+        low = message.lower()
+        self.assertIn("not confirmed", low)
+        self.assertTrue(
+            "cloud" in low, f"a local-only save must say the cloud is unconfirmed: {message!r}"
+        )
+        self.assertNotIn("verified." , message.split("Cloud")[0].lower())
+
+    def test_a_cloud_verified_save_claims_only_what_it_verified(self):
+        """Approved semantics: the cloud copy is the durable one, so this is success.
+
+        What the message must NOT do is claim a local or disk guarantee that was not checked -
+        the disk leg was unconfirmed in this scenario.
+        """
+        from composition_studio_page import _library_save_feedback
+
+        level, message = _library_save_feedback(
+            saved=True, success_message="ignored", force_ok=True,
+            disk_ok=False, cloud_ok=True, cloud_required=True,
+        )
+        self.assertEqual(level, "success")
+        low = message.lower()
+        self.assertIn("cloud", low)
+        self.assertIn("verified", low)
+        for overclaim in ("saved locally", "this app server", "local disk"):
+            self.assertNotIn(overclaim, low, f"success message overclaims: {message!r}")
 
     def test_disk_and_required_cloud_confirmed_is_success(self):
         from composition_studio_page import _library_save_feedback
@@ -680,7 +708,9 @@ class TestExplicitSaveDurability(unittest.TestCase):
             cloud_required=True,
         )
         self.assertEqual(level, "success")
-        self.assertEqual(message, "Saved to Composition Library.")
+        low = message.lower()
+        self.assertIn("cloud", low)
+        self.assertIn("verified", low)
 
     def test_disk_confirmed_cloud_unconfirmed_is_local_warning(self):
         from composition_studio_page import _library_save_feedback
@@ -694,10 +724,18 @@ class TestExplicitSaveDurability(unittest.TestCase):
             cloud_required=True,
         )
         self.assertEqual(level, "warning")
-        self.assertIn("Saved locally", message)
-        self.assertIn("cloud sync was not confirmed", message)
+        low = message.lower()
+        self.assertIn("not confirmed", low)
+        self.assertIn("cloud", low)
+        self.assertNotIn("cloud and its complete contents verified", low)
 
-    def test_cloud_confirmed_disk_unconfirmed_is_cloud_warning(self):
+    def test_cloud_confirmed_disk_unconfirmed_is_success(self):
+        """Kept deliberately, with the outcome updated rather than the coverage removed.
+
+        This scenario used to be a warning, on the older rule that every leg had to confirm.
+        The approved rule is that a verified cloud copy is durable by itself, so the local disk
+        leg no longer downgrades it. The scenario still matters, which is why it stays.
+        """
         from composition_studio_page import _library_save_feedback
 
         level, message = _library_save_feedback(
@@ -708,9 +746,9 @@ class TestExplicitSaveDurability(unittest.TestCase):
             cloud_ok=True,
             cloud_required=True,
         )
-        self.assertEqual(level, "warning")
-        self.assertIn("cloud Composition Library", message)
-        self.assertIn("local disk write was not confirmed", message)
+        self.assertEqual(level, "success")
+        self.assertIn("cloud", message.lower())
+        self.assertIn("verified", message.lower())
 
     def test_neither_confirmed_is_error(self):
         from composition_studio_page import _library_save_feedback
@@ -724,7 +762,87 @@ class TestExplicitSaveDurability(unittest.TestCase):
             cloud_required=True,
         )
         self.assertEqual(level, "error")
-        self.assertIn("Could not save", message)
+        low = message.lower()
+        self.assertIn("no persistent save was verified", low)
+        self.assertNotIn("verified.", low.replace("no persistent save was verified", ""))
+
+
+class TestSuccessRequiresRealCloudVerification(unittest.TestCase):
+    """Success must mean a verified cloud readback, never a successful upload request.
+
+    composition_save_verification.verify_checkpoint only sets cloud_verified after forcing a
+    fresh cloud read (load_cloud_full_session(force=True)) and comparing the COMPLETE content
+    fingerprint of what came back against what was expected; a mismatch is recorded as
+    cloud_content_readback_mismatch instead. _library_save_feedback additionally requires the
+    attempt's own acknowledgement (force_ok), so a stale or unacknowledged transaction cannot
+    be reported as a durable save. These pin the part a wording change could quietly undo.
+    """
+
+    SCENARIOS = (
+        # force_ok, disk_ok, cloud_ok, expected level
+        (True, True, True, "success"),
+        (True, False, True, "success"),
+        (False, True, False, "warning"),
+        (True, True, False, "warning"),
+        (False, False, False, "error"),
+        (True, False, False, "error"),
+    )
+
+    def test_every_outcome_is_what_the_approved_rule_says(self) -> None:
+        from composition_studio_page import _library_save_feedback
+
+        for force_ok, disk_ok, cloud_ok, expected in self.SCENARIOS:
+            with self.subTest(force_ok=force_ok, disk_ok=disk_ok, cloud_ok=cloud_ok):
+                level, _msg = _library_save_feedback(
+                    saved=True, success_message="ignored", force_ok=force_ok,
+                    disk_ok=disk_ok, cloud_ok=cloud_ok, cloud_required=True,
+                )
+                self.assertEqual(level, expected)
+
+    def test_success_never_appears_without_cloud_verification(self) -> None:
+        from composition_studio_page import _library_save_feedback
+
+        for force_ok in (False, True):
+            for disk_ok in (False, True):
+                with self.subTest(force_ok=force_ok, disk_ok=disk_ok):
+                    level, message = _library_save_feedback(
+                        saved=True, success_message="ignored", force_ok=force_ok,
+                        disk_ok=disk_ok, cloud_ok=False, cloud_required=True,
+                    )
+                    self.assertNotEqual(level, "success")
+                    self.assertNotIn("complete contents verified", message.lower())
+
+    def test_an_unacknowledged_transaction_cannot_report_success(self) -> None:
+        """cloud_ok without this attempt's force_ok is a stale acknowledgement, not a save."""
+        from composition_studio_page import _library_save_feedback
+
+        level, message = _library_save_feedback(
+            saved=True, success_message="ignored", force_ok=False,
+            disk_ok=False, cloud_ok=True, cloud_required=True,
+        )
+        self.assertEqual(level, "error")
+        self.assertNotIn("complete contents verified", message.lower())
+
+    def test_nothing_saved_at_all_is_never_success(self) -> None:
+        from composition_studio_page import _library_save_feedback
+
+        level, _msg = _library_save_feedback(
+            saved=False, success_message="ignored", force_ok=True,
+            disk_ok=True, cloud_ok=True, cloud_required=True,
+        )
+        self.assertNotEqual(level, "success")
+
+    def test_cloud_verification_compares_the_whole_content(self) -> None:
+        """A fingerprint mismatch must not count as verified."""
+        from composition_save_verification import content_fingerprint, save_feedback
+
+        a = {"active_document": {"id": "doc1", "title": "One"}}
+        b = {"active_document": {"id": "doc1", "title": "Two"}}
+        self.assertNotEqual(content_fingerprint(a), content_fingerprint(b))
+        self.assertEqual(save_feedback({"cloud_verified": False, "disk_verified": False})[0],
+                         "error")
+        self.assertEqual(save_feedback({"cloud_verified": True, "disk_verified": False})[0],
+                         "success")
 
 
 if __name__ == "__main__":
