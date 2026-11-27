@@ -190,6 +190,7 @@ from composition_melody_improve import (
     improve_undo_button_key,
     pop_improve_undo,
     preserve_original_take,
+    original_take_label,
     push_improve_undo,
     restore_original_take,
 )
@@ -4630,6 +4631,23 @@ def _render_active_melody_phrase_editor(session_state: dict, doc: dict[str, Any]
             session_state[draft_key] = copy.deepcopy(active_events)
             session_state.pop(choice_key, None)
             st.rerun()
+        # A recorded melody has one more place to go back to than a generated one: what the
+        # recording itself transcribed to, before any refinement or hand edit. Reset proposal
+        # only returns to the accepted melody, so without this the musician who edits a take
+        # a few times cannot get back to their own playing. It loads the draft rather than the
+        # active melody, so it is previewable and still needs Accept changes - and the
+        # recorded audio itself is never touched by any of this.
+        _orig = restore_original_take(session_state, section_id)
+        if _orig and _orig != list(draft):
+            if st.button(
+                original_take_label("Restore original transcription"),
+                key=f"composer_melody_ed_restore_orig_{section_id}",
+                help="Back to the notes your recording transcribed to, before any edits",
+            ):
+                push_improve_undo(session_state, section_id, list(draft))
+                session_state[draft_key] = copy.deepcopy(_orig)
+                session_state.pop(choice_key, None)
+                st.rerun()
 
 
 def _render_melody_phrases_editor(session_state: dict, doc: dict[str, Any], section_id: str) -> None:

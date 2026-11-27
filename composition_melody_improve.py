@@ -31,6 +31,16 @@ QUICK_ACTIONS: tuple[tuple[str, str], ...] = (
 )
 
 
+#: The app's "original" glyph (FEATURE_ICONS["practice_melody_original"]). Distinct from the
+#: undo arrow on purpose: stepping back one adjustment and going all the way back to what was
+#: played are different acts, and they sit next to each other.
+ORIGINAL_TAKE_ICON = "💿"
+
+
+def original_take_label(text: str) -> str:
+    return f"{ORIGINAL_TAKE_ICON} {text}"
+
+
 def original_take_key(section_id: str) -> str:
     return f"{ORIGINAL_TAKE_PREFIX}{section_id}"
 
