@@ -263,7 +263,10 @@ def record_project_save_status(session_state: Any, fields: dict) -> dict:
 def project_save_message(status: dict | None, success_label: str) -> tuple[str, str]:
     """(level, text). Success only when every layer is confirmed in the account."""
     if not isinstance(status, dict):
-        return "success", success_label
+        # MT-1: no recorded status (an exception before it was written, an older code path) is not
+        # evidence that anything reached the account - it used to read as a plain success.
+        return "warning", (f"{success_label}, but where the recordings were stored could not be confirmed. "
+                           "Press Save Changes to try again; until then a restart of the app can lose them.")
     layers = status.get("layers") or {}
     if not status.get("cloud_enabled"):
         return "info", (f"{success_label}. Cloud storage is not set up for this app, so the recordings are "
