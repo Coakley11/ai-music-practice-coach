@@ -314,7 +314,8 @@ def test_practice_melody_controls_are_a_slim_row_of_small_buttons():
     assert "◀" in labels and "▶" in labels and "☆ Keep" in labels and "★ Kept" in labels
     assert not [x for x in labels if "Previous" in x or "Next" in x or "Generate Another Melody" in x]
     assert 'horizontal=True' in panel and "st.popover(" in panel and 'key="backing_practice_melody_steps"' in panel
-    assert "FEATURE_ICONS['practice_melody_generated']} Practice Melody" in APP
+    # The Backing expander's title: the Practice page's icon (380c71e0's feature_label form, kept in the merge).
+    assert 'feature_label("practice_melody_generated", "Practice Melody")' in APP
 
 
 def _melody_row_app():
@@ -326,9 +327,8 @@ def _melody_row_app():
     st.session_state.setdefault("at", 1)
     st.session_state.setdefault("count", 3)
     st.session_state.setdefault("calls", [])
-    lib.alternatives = lambda s, i, r: (st.session_state["at"], st.session_state["count"])
-    lib.viewing = lambda s, i: ""
-    lib.kept_melodies = lambda s, i: []
+    # The library's lookups are stubbed by the test (monkeypatch, so nothing leaks into other tests' modules).
+    assert getattr(lib, "_pm_row_stub", False)
 
     def choose(**kw):
         st.session_state["calls"].append(kw)
@@ -342,9 +342,16 @@ def _melody_row_app():
                                  sections_key="k", choose=choose)
 
 
-def test_next_selects_an_existing_melody_and_only_new_melody_composes_one():
+def test_next_selects_an_existing_melody_and_only_new_melody_composes_one(monkeypatch):
+    import streamlit as st
     from streamlit.testing.v1 import AppTest
 
+    import practice_melody_library as lib
+
+    monkeypatch.setattr(lib, "alternatives", lambda s, i, r: (st.session_state["at"], st.session_state["count"]))
+    monkeypatch.setattr(lib, "viewing", lambda s, i: "")
+    monkeypatch.setattr(lib, "kept_melodies", lambda s, i: [])
+    monkeypatch.setattr(lib, "_pm_row_stub", True, raising=False)
     at = AppTest.from_function(_melody_row_app).run(timeout=60)
     assert not at.exception
     at.button(key="backing_practice_melody_next").click().run()

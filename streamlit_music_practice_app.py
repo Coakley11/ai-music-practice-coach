@@ -24078,6 +24078,11 @@ elif _studio_page == "backing":
         # Lead sheet On (the card's toggle, or an Open lead sheet click): Play opens it for the take it makes.
         # Read first -- a new source's presentation starts with the sheet closed.
         _sheet_on_play = backing_lead_sheet_preference(st.session_state)
+        # A fresh Play starts its own take from the top: the sheet it opens never takes over a playhead. A hand-off
+        # flag left by an earlier Lead sheet press whose sheet never drew (a jam whose take was already made, before
+        # its first Play) made the sheet pause itself at 0:00 -- "opened while nothing was playing" -- so the first
+        # Play was silent (browser 2026-11-26, 1500 px: 3 of 4 fresh Generator jams with Lead sheet: Opens on Play).
+        st.session_state.pop("_backing_sheet_open_handoff", None)
         initialize_backing_presentation(st.session_state, _bpm_sync_id)
         # Voice is an instrument like any other (user, 2026-11-16): only an active Karaoke Set (started with
         # Start Karaoke Set) has its own presentation. Measured on dev 6e9da78b: with Voice selected and Lead sheet
