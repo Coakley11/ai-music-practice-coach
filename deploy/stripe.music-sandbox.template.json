@@ -1,0 +1,66 @@
+{
+  "review_only_not_an_api_request": true,
+  "stripe_api_version": "2026-10-28.endive",
+  "sandbox_account_id": "acct_1Ub8HEGSM5yahQur",
+  "existing_plan": "Pro",
+  "product": {
+    "name": "Music Practice Coach Pro",
+    "metadata": {
+      "app": "music"
+    }
+  },
+  "monthly_price": {
+    "product": "prod_VcN6OfXRAvZTFw",
+    "currency": "usd",
+    "unit_amount": 1499,
+    "recurring": {
+      "interval": "month",
+      "interval_count": 1
+    },
+    "metadata": {
+      "app": "music"
+    },
+    "id": "price_1Ub8MiGSM5yahQursL7MlBcs"
+  },
+  "pricing_note": "Existing active test Price verified through Stripe GET: USD 14.99 monthly. Reuse it; do not create another Price. Tax behavior is unspecified.",
+  "portal_configuration": {
+    "name": "Music Practice Coach Staging",
+    "metadata": {
+      "app": "music",
+      "environment": "staging"
+    },
+    "features": {
+      "invoice_history": {
+        "enabled": true
+      },
+      "payment_method_update": {
+        "enabled": true
+      },
+      "subscription_cancel": {
+        "enabled": true,
+        "mode": "at_period_end",
+        "proration_behavior": "none"
+      },
+      "subscription_update": {
+        "enabled": false
+      }
+    },
+    "login_page": {
+      "enabled": false
+    }
+  },
+  "webhook": {
+    "url": null,
+    "api_version": "2026-10-28.endive",
+    "enabled_events": [
+      "checkout.session.completed",
+      "customer.subscription.created",
+      "customer.subscription.updated",
+      "customer.subscription.deleted",
+      "invoice.paid",
+      "invoice.payment_failed"
+    ]
+  },
+  "sandbox_identity_status": "Dashboard general-sandbox identity and Baseball separation still require confirmation",
+  "portal_approval_note": "PROPOSED ONLY: request approval before creating a non-default configuration. Existing bpc_1Ub8nFGSM5yahQurK0dnmcGe remains unselected pending exclusive sandbox provenance. Never update the default."
+}

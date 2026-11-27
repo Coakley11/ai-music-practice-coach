@@ -7,16 +7,18 @@ their verified Supabase JWT and row-level security.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Mapping
+from dataclasses import asdict
 
 import requests
 
 from monetization_billing import (
     BillingError,
+    event_fingerprint,
     CustomerRecord,
     DerivedEntitlement,
-    EventClaim,
+    WebhookBusy,
     SubscriptionRecord,
 )
 from monetization_config import BillingConfig
@@ -26,10 +28,6 @@ from monetization_entitlements import (
     Plan,
     SubscriptionStatus,
 )
-
-
-def _iso(value: datetime | None) -> str | None:
-    return value.isoformat() if value is not None else None
 
 
 def _parse_datetime(value: Any) -> datetime | None:
@@ -97,7 +95,7 @@ class SupabaseBillingStore:
         row = _first(
             self.client.request(
                 "GET",
-                "billing_customers",
+                "music_billing_customers",
                 params={"app_user_id": f"eq.{app_user_id}", "select": "*", "limit": "1"},
             )
         )
@@ -107,7 +105,7 @@ class SupabaseBillingStore:
         row = _first(
             self.client.request(
                 "GET",
-                "billing_customers",
+                "music_billing_customers",
                 params={
                     "stripe_customer_id": f"eq.{stripe_customer_id}",
                     "select": "*",
@@ -128,100 +126,61 @@ class SupabaseBillingStore:
         )
 
     def upsert_customer(self, customer: CustomerRecord) -> None:
-        self.client.request(
-            "POST",
-            "billing_customers",
-            json_body={
-                "app_user_id": customer.app_user_id,
-                "stripe_customer_id": customer.stripe_customer_id,
-                "email": customer.email or None,
-            },
-            prefer="resolution=merge-duplicates,return=minimal",
-        )
+        self.client.request("POST", "rpc/music_billing_attach_customer", json_body={
+            "p_user_id": customer.app_user_id,
+            "p_customer_id": customer.stripe_customer_id,
+        })
 
-    def claim_event(
-        self,
-        event_id: str,
-        event_type: str,
-        created: int,
-        payload: Mapping[str, Any],
-    ) -> EventClaim:
-        value = self.client.request(
-            "POST",
-            "rpc/billing_claim_webhook_event",
-            json_body={
-                "p_event_id": event_id,
-                "p_event_type": event_type,
-                "p_event_created": created,
-                "p_payload": dict(payload),
-            },
-        )
-        if isinstance(value, list) and value:
-            value = value[0]
-        if isinstance(value, Mapping):
-            value = value.get("claim") or value.get("billing_claim_webhook_event")
-        return EventClaim(str(value).strip('"'))
+        # A concurrent request may have inserted a different binding. Never
+        # continue Checkout with a customer that did not win persistence.
+        stored = self.customer_for_user(customer.app_user_id)
+        if stored is None or stored.stripe_customer_id != customer.stripe_customer_id:
+            raise BillingError("Customer ownership conflict")
 
-    def apply_subscription_if_newer(self, subscription: SubscriptionRecord) -> bool:
-        value = self.client.request(
-            "POST",
-            "rpc/billing_apply_subscription",
-            json_body={
-                "p_app_user_id": subscription.app_user_id,
-                "p_customer_id": subscription.stripe_customer_id,
-                "p_subscription_id": subscription.stripe_subscription_id,
-                "p_product_id": subscription.stripe_product_id or None,
-                "p_price_id": subscription.stripe_price_id or None,
-                "p_status": subscription.provider_status,
-                "p_current_period_end": _iso(subscription.current_period_end),
-                "p_cancel_at_period_end": subscription.cancel_at_period_end,
-                "p_trial_end": _iso(subscription.trial_end),
-                "p_event_id": subscription.latest_event_id,
-                "p_event_created": subscription.latest_event_created,
-            },
-        )
-        return bool(value[0] if isinstance(value, list) and value else value)
+    def reserve_checkout(self, user_id: str, price_id: str) -> Mapping[str, Any]:
+        value = self.client.request("POST", "rpc/music_billing_reserve_checkout", json_body={
+            "p_user_id": user_id, "p_price_id": price_id})
+        if not isinstance(value, Mapping) or not value.get("token") or not value.get("expires_at"):
+            raise BillingError("Invalid Checkout reservation")
+        return value
 
-    def save_entitlement(self, entitlement: DerivedEntitlement) -> None:
-        self.client.request(
-            "POST",
-            "rpc/billing_save_entitlement",
-            json_body={
-                "p_app_user_id": entitlement.app_user_id,
-                "p_plan": entitlement.plan.value,
-                "p_status": entitlement.status.value,
-                "p_current_period_end": _iso(entitlement.current_period_end),
-                "p_subscription_id": entitlement.source_subscription_id,
-                "p_event_id": entitlement.source_event_id,
-                "p_event_created": entitlement.source_event_created,
-                "p_reason": entitlement.reason,
-            },
-            prefer="return=minimal",
-        )
+    def claim_delivery(self, event: Mapping[str, Any], customer_id: str) -> str:
+        fingerprint = event_fingerprint(event)
+        value = self.client.request("POST", "rpc/music_billing_claim_delivery", json_body={
+            "p_event_id": event["id"], "p_event_type": event["type"],
+            "p_created": event["created"], "p_fingerprint": fingerprint,
+            "p_customer_id": customer_id})
+        if value == "busy":
+            raise WebhookBusy("Billing reconciliation is already running")
+        if value == "collision":
+            raise BillingError("Webhook event identity conflict")
+        if value == "":
+            return ""
+        from uuid import UUID
+        try:
+            return str(UUID(str(value)))
+        except (ValueError, TypeError) as exc:
+            raise BillingError("Invalid webhook lease response") from exc
 
-    def mark_event_processed(self, event_id: str) -> None:
-        self.client.request(
-            "PATCH",
-            "billing_webhook_events",
-            params={"stripe_event_id": f"eq.{event_id}"},
-            json_body={"processing_state": "processed", "last_error": None},
-            prefer="return=minimal",
-        )
+    def complete_delivery(self, event_id: str, token: str, record: SubscriptionRecord,
+                          entitlement: DerivedEntitlement) -> None:
+        def serial(value: Any) -> Any:
+            return value.isoformat() if isinstance(value, datetime) else value
+        self.client.request("POST", "rpc/music_billing_complete_delivery", json_body={
+            "p_event_id": event_id, "p_token": token,
+            "p_record": {k: serial(v) for k, v in asdict(record).items()},
+            "p_entitlement": {k: serial(v) for k, v in asdict(entitlement).items()},
+        })
 
-    def mark_event_failed(self, event_id: str, error: str) -> None:
-        self.client.request(
-            "PATCH",
-            "billing_webhook_events",
-            params={"stripe_event_id": f"eq.{event_id}"},
-            json_body={"processing_state": "failed", "last_error": error[:1000]},
-            prefer="return=minimal",
-        )
+    def fail_delivery(self, event_id: str, token: str) -> None:
+        self.client.request("POST", "rpc/music_billing_fail_delivery", json_body={
+            "p_event_id": event_id, "p_token": token})
 
     def entitlement_for_user(self, app_user_id: str) -> DerivedEntitlement | None:
         row = _first(
             self.client.request(
                 "GET",
-                "billing_entitlements",
+                "music_billing_entitlements",
                 params={"app_user_id": f"eq.{app_user_id}", "select": "*", "limit": "1"},
             )
         )
@@ -236,6 +195,9 @@ def _derived(row: Mapping[str, Any] | None) -> DerivedEntitlement | None:
         status = SubscriptionStatus(str(row.get("status") or "authenticated_free"))
     except ValueError:
         return None
+    end = _parse_datetime(row.get("current_period_end"))
+    if plan is Plan.PRO and (end is None or end.tzinfo is None or end <= datetime.now(timezone.utc)):
+        plan, status = Plan.FREE, SubscriptionStatus.EXPIRED
     return DerivedEntitlement(
         app_user_id=str(row.get("app_user_id") or ""),
         plan=plan,
@@ -262,7 +224,7 @@ class SupabaseEntitlementProvider:
         row = _first(
             self.client.request(
                 "GET",
-                "billing_entitlements",
+                "music_billing_entitlements",
                 params={"app_user_id": f"eq.{subject.user_id}", "select": "*", "limit": "1"},
             )
         )

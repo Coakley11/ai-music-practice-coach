@@ -55,6 +55,9 @@ class FakeStripe:
     def create_customer(self, *, app_user_id: str, email: str) -> str:
         return f"cus_{app_user_id}"
 
+    def has_open_subscription(self, customer_id: str) -> bool:
+        return any(s.get("customer") == customer_id and s.get("status") not in {"canceled", "incomplete_expired"} for s in self.subscriptions.values())
+
     def create_subscription_checkout(self, **kwargs: Any) -> Mapping[str, Any]:
         self.checkout_calls.append(dict(kwargs))
         return {"id": "cs_test_1", "url": "https://checkout.stripe.test/session"}
@@ -72,6 +75,7 @@ def _subscription(
 ) -> dict[str, Any]:
     return {
         "id": "sub_1",
+        "livemode": False,
         "customer": "cus_1",
         "status": status,
         "current_period_end": 1_900_000_000,
@@ -85,6 +89,7 @@ def _subscription(
 def _event(subscription: Mapping[str, Any], *, event_id: str, created: int) -> dict[str, Any]:
     return {
         "id": event_id,
+        "livemode": False,
         "type": "customer.subscription.updated",
         "created": created,
         "data": {"object": dict(subscription)},
@@ -166,8 +171,11 @@ def test_subscription_lifecycle_mapping(
     status: SubscriptionStatus,
 ) -> None:
     store = InMemoryBillingStore()
-    processor = WebhookProcessor(_config(), store, FakeStripe())
+    store.upsert_customer(CustomerRecord("user-1", "cus_1"))
+    stripe = FakeStripe()
+    processor = WebhookProcessor(_config(), store, stripe)
 
+    stripe.subscriptions["sub_1"] = _subscription(status=provider_status, cancel_at_period_end=cancel_at_period_end)
     result = processor.process(
         _event(
             _subscription(status=provider_status, cancel_at_period_end=cancel_at_period_end),
@@ -185,8 +193,11 @@ def test_subscription_lifecycle_mapping(
 
 def test_unknown_price_fails_closed() -> None:
     store = InMemoryBillingStore()
-    processor = WebhookProcessor(_config(), store, FakeStripe())
+    store.upsert_customer(CustomerRecord("user-1", "cus_1"))
+    stripe = FakeStripe()
+    processor = WebhookProcessor(_config(), store, stripe)
 
+    stripe.subscriptions["sub_1"] = _subscription(status="active", price="price_attacker")
     processor.process(
         _event(_subscription(status="active", price="price_attacker"), event_id="evt_unknown", created=100)
     )
@@ -199,9 +210,12 @@ def test_unknown_price_fails_closed() -> None:
 
 def test_duplicate_event_is_idempotent() -> None:
     store = InMemoryBillingStore()
-    processor = WebhookProcessor(_config(), store, FakeStripe())
+    store.upsert_customer(CustomerRecord("user-1", "cus_1"))
+    stripe = FakeStripe()
+    processor = WebhookProcessor(_config(), store, stripe)
     event = _event(_subscription(status="active"), event_id="evt_same", created=100)
 
+    stripe.subscriptions["sub_1"] = _subscription(status="active")
     assert processor.process(event) == "processed"
     assert processor.process(event) == "duplicate"
     assert len(store.events) == 1
@@ -209,21 +223,25 @@ def test_duplicate_event_is_idempotent() -> None:
 
 def test_out_of_order_event_cannot_restore_old_entitlement() -> None:
     store = InMemoryBillingStore()
-    processor = WebhookProcessor(_config(), store, FakeStripe())
+    store.upsert_customer(CustomerRecord("user-1", "cus_1"))
+    stripe = FakeStripe()
+    processor = WebhookProcessor(_config(), store, stripe)
 
+    stripe.subscriptions["sub_1"] = _subscription(status="canceled")
     processor.process(_event(_subscription(status="canceled"), event_id="evt_new", created=200))
     processor.process(_event(_subscription(status="active"), event_id="evt_old", created=100))
 
     entitlement = store.entitlement_for_user("user-1")
     assert entitlement is not None
     assert entitlement.status is SubscriptionStatus.EXPIRED
-    assert entitlement.source_event_id == "evt_new"
+    assert entitlement.source_event_id == "evt_old"  # Fresh provider read, not stale event payload.
 
 
 def test_customer_ownership_conflict_fails_without_rebinding() -> None:
     store = InMemoryBillingStore()
     store.upsert_customer(CustomerRecord("real-user", "cus_1"))
-    processor = WebhookProcessor(_config(), store, FakeStripe())
+    stripe = FakeStripe()
+    processor = WebhookProcessor(_config(), store, stripe)
 
     with pytest.raises(Exception, match="conflicts"):
         processor.process(

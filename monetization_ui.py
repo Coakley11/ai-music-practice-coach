@@ -154,9 +154,40 @@ def render_entitlement_sidebar(st: Any) -> None:
     ):
         open_pricing_surface(st.session_state)
         st.rerun()
+    if config.client_enabled and entitlement.subject.authenticated:
+        if st.sidebar.button("Manage Subscription", key="monetization_manage_subscription"):
+            try:
+                url = request_portal(st.session_state)
+                st.sidebar.link_button("Open Stripe Customer Portal", url)
+            except RuntimeError as exc:
+                st.sidebar.warning(str(exc))
     if development_controls_visible():
         with st.sidebar.expander("Entitlement preview (dev)", expanded=False):
             render_development_entitlement_control(st)
+
+
+def request_portal(session_state: Mapping[str, Any]) -> str:
+    from monetization_config import BillingConfig
+    from suite_auth import AUTH_TOKENS_KEY
+    from urllib.parse import urlparse
+    config = BillingConfig.from_environ()
+    tokens = session_state.get(AUTH_TOKENS_KEY) or {}
+    token = str(tokens.get("access_token") or "") if isinstance(tokens, Mapping) else ""
+    if not config.client_enabled or not token:
+        raise RuntimeError("Sign in to manage your subscription.")
+    try:
+        response = requests.post(f"{config.billing_service_url}/billing/portal",
+            headers={"Authorization": f"Bearer {token}"}, timeout=15)
+        if not response.ok:
+            raise RuntimeError("Subscription management is unavailable for this account.")
+        payload = response.json()
+    except (requests.RequestException, ValueError) as exc:
+        raise RuntimeError("Subscription management is temporarily unavailable.") from exc
+    url = str(payload.get("url") or "") if isinstance(payload, Mapping) else ""
+    parsed = urlparse(url)
+    if parsed.scheme != "https" or parsed.hostname != "billing.stripe.com":
+        raise RuntimeError("Invalid subscription management response.")
+    return url
 
 
 def render_locked_feature(
@@ -200,7 +231,7 @@ def render_locked_feature(
     ):
         open_pricing_surface(st.session_state, feature=feature)
         st.rerun()
-    st.caption("Checkout is not connected in M1. Viewing plans does not start or complete a payment.")
+    st.caption("Viewing plans does not start or complete a payment.")
     return value
 
 
@@ -264,7 +295,7 @@ def request_checkout(
     config = BillingConfig.from_environ(os.environ if environ is None else environ)
     tokens = session_state.get(AUTH_TOKENS_KEY) or {}
     access_token = str(tokens.get("access_token") or "") if isinstance(tokens, Mapping) else ""
-    if not config.checkout_enabled or not config.billing_service_url or not access_token:
+    if not config.client_enabled or not config.billing_service_url or not access_token:
         raise RuntimeError("Subscription checkout is not available for this deployment or session.")
     response = requests.post(
         f"{config.billing_service_url}/billing/checkout",
@@ -302,7 +333,7 @@ def _render_plan_card(st: Any, plan: Plan, *, current: bool) -> None:
         config = BillingConfig.from_environ()
         if current:
             st.button("Current Pro access", disabled=True, use_container_width=True)
-        elif config.checkout_enabled and config.billing_service_url:
+        elif config.client_enabled and config.billing_service_url:
             if st.button("Start monthly Pro", key="monetization_pro_checkout", use_container_width=True):
                 try:
                     st.session_state[CHECKOUT_URL_KEY] = request_checkout(
@@ -349,7 +380,7 @@ def render_pricing_surface(st: Any) -> bool:
     from monetization_config import BillingConfig
 
     config = BillingConfig.from_environ()
-    if config.checkout_enabled:
+    if config.client_enabled:
         st.caption("Checkout is created by the trusted billing service; access changes only after a verified webhook.")
     else:
         st.caption("Billing enforcement and checkout are not enabled for this deployment.")
@@ -393,6 +424,7 @@ __all__ = (
     "pricing_surface_is_open",
     "pricing_surface_should_render",
     "request_checkout",
+    "request_portal",
     "render_development_entitlement_control",
     "render_entitlement_sidebar",
     "render_locked_feature",

@@ -1,4 +1,4 @@
-"""Trusted subscription domain for Monetization M2.
+"""Trusted test-mode subscription lifecycle and customer boundaries.
 
 The Streamlit application consumes derived entitlements only. Stripe objects are
 handled behind this module's server-side checkout and webhook boundaries.
@@ -10,10 +10,11 @@ import hashlib
 import hmac
 import json
 import time
-from dataclasses import dataclass
+import uuid
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
-from enum import Enum
 from typing import Any, Mapping, Protocol
+from urllib.parse import urlparse
 
 from monetization_config import BillingConfig
 from monetization_entitlements import (
@@ -36,14 +37,12 @@ class BillingUnavailable(BillingError):
     pass
 
 
-class InvalidWebhookSignature(BillingError):
+class WebhookBusy(BillingUnavailable):
     pass
 
 
-class EventClaim(str, Enum):
-    NEW = "new"
-    RETRY = "retry"
-    DUPLICATE = "duplicate"
+class InvalidWebhookSignature(BillingError):
+    pass
 
 
 @dataclass(frozen=True)
@@ -108,21 +107,14 @@ class BillingStore(Protocol):
 
     def upsert_customer(self, customer: CustomerRecord) -> None: ...
 
-    def claim_event(
-        self,
-        event_id: str,
-        event_type: str,
-        created: int,
-        payload: Mapping[str, Any],
-    ) -> EventClaim: ...
+    def reserve_checkout(self, user_id: str, price_id: str) -> Mapping[str, Any]: ...
 
-    def apply_subscription_if_newer(self, subscription: SubscriptionRecord) -> bool: ...
+    def claim_delivery(self, event: Mapping[str, Any], customer_id: str) -> str: ...
 
-    def save_entitlement(self, entitlement: DerivedEntitlement) -> None: ...
+    def complete_delivery(self, event_id: str, token: str, record: SubscriptionRecord,
+                          entitlement: DerivedEntitlement) -> None: ...
 
-    def mark_event_processed(self, event_id: str) -> None: ...
-
-    def mark_event_failed(self, event_id: str, error: str) -> None: ...
+    def fail_delivery(self, event_id: str, token: str) -> None: ...
 
     def entitlement_for_user(self, app_user_id: str) -> DerivedEntitlement | None: ...
 
@@ -138,9 +130,22 @@ class StripeGateway(Protocol):
         app_user_id: str,
         success_url: str,
         cancel_url: str,
+        idempotency_key: str,
+        expires_at: int,
     ) -> Mapping[str, Any]: ...
 
+    def has_open_subscription(self, customer_id: str) -> bool: ...
+
+    def create_portal(self, *, customer_id: str, return_url: str) -> Mapping[str, Any]: ...
+
     def retrieve_subscription(self, subscription_id: str) -> Mapping[str, Any]: ...
+
+
+def event_fingerprint(event: Mapping[str, Any]) -> str:
+    """Hash immutable event identity, excluding delivery bookkeeping counters."""
+    identity = {key: event.get(key) for key in
+                ("id", "type", "created", "livemode", "account", "api_version", "data")}
+    return hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()
 
 
 class InMemoryBillingStore:
@@ -152,6 +157,8 @@ class InMemoryBillingStore:
         self.subscriptions: dict[str, SubscriptionRecord] = {}
         self.entitlements: dict[str, DerivedEntitlement] = {}
         self.events: dict[str, dict[str, Any]] = {}
+        self.projections: dict[str, DerivedEntitlement] = {}
+        self.checkouts: dict[str, dict[str, Any]] = {}
 
     def customer_for_user(self, app_user_id: str) -> CustomerRecord | None:
         return self.customers_by_user.get(app_user_id)
@@ -160,60 +167,88 @@ class InMemoryBillingStore:
         return self.customers_by_stripe.get(stripe_customer_id)
 
     def upsert_customer(self, customer: CustomerRecord) -> None:
+        if not customer.app_user_id.strip() or not customer.stripe_customer_id.strip():
+            raise BillingError("Customer ownership requires nonempty identifiers")
+        owner = self.customers_by_stripe.get(customer.stripe_customer_id)
+        if owner and owner.app_user_id != customer.app_user_id:
+            raise BillingError("Stripe customer already belongs to another user")
         prior = self.customers_by_user.get(customer.app_user_id)
         if prior and prior.stripe_customer_id != customer.stripe_customer_id:
             raise BillingError("A user may not be rebound to a different Stripe customer")
         self.customers_by_user[customer.app_user_id] = customer
         self.customers_by_stripe[customer.stripe_customer_id] = customer
 
-    def claim_event(
-        self,
-        event_id: str,
-        event_type: str,
-        created: int,
-        payload: Mapping[str, Any],
-    ) -> EventClaim:
-        prior = self.events.get(event_id)
-        if prior is not None:
-            return EventClaim.DUPLICATE if prior["state"] == "processed" else EventClaim.RETRY
-        self.events[event_id] = {
-            "type": event_type,
-            "created": created,
-            "payload": dict(payload),
-            "state": "processing",
-            "error": "",
-        }
-        return EventClaim.NEW
+    def reserve_checkout(self, user_id: str, price_id: str) -> Mapping[str, Any]:
+        if not self.customer_for_user(user_id):
+            raise BillingError("Missing customer mapping")
+        if any(r.app_user_id == user_id and r.provider_status not in {"canceled", "incomplete_expired"}
+               for r in self.subscriptions.values()):
+            raise BillingError("Use subscription management for an existing subscription")
+        prior = self.checkouts.get(user_id)
+        if prior and prior["expires_at"] > time.time():
+            if prior["price_id"] != price_id:
+                raise BillingUnavailable("Another Checkout is pending")
+            return dict(prior)
+        value = dict(token=str(uuid.uuid4()), expires_at=int(time.time()) + 3600, price_id=price_id)
+        self.checkouts[user_id] = value
+        return dict(value)
 
-    def apply_subscription_if_newer(self, subscription: SubscriptionRecord) -> bool:
-        prior = self.subscriptions.get(subscription.stripe_subscription_id)
-        if prior and prior.latest_event_created > subscription.latest_event_created:
-            return False
-        if (
-            prior
-            and prior.latest_event_created == subscription.latest_event_created
-            and prior.latest_event_id >= subscription.latest_event_id
-        ):
-            return False
-        self.subscriptions[subscription.stripe_subscription_id] = subscription
-        return True
+    def claim_delivery(self, event: Mapping[str, Any], customer_id: str) -> str:
+        now = time.time()
+        fingerprint = event_fingerprint(event)
+        prior = self.events.get(event["id"])
+        if prior and prior["fingerprint"] != fingerprint:
+            raise BillingError("Webhook event identity conflict")
+        if prior and prior["state"] == "processed":
+            return ""
+        for row in self.events.values():
+            if row["customer"] == customer_id and row["state"] == "processing" and row["expires"] > now:
+                raise WebhookBusy("Billing reconciliation is already running")
+        token = str(uuid.uuid4())
+        self.events[event["id"]] = dict(fingerprint=fingerprint, customer=customer_id,
+            state="processing", token=token, expires=now + 300, created=event["created"])
+        return token
 
-    def save_entitlement(self, entitlement: DerivedEntitlement) -> None:
-        prior = self.entitlements.get(entitlement.app_user_id)
-        if prior and prior.source_event_created > entitlement.source_event_created:
+    def _owned(self, event_id: str, token: str) -> dict[str, Any]:
+        row = self.events[event_id]
+        if row["state"] != "processing" or row["token"] != token or row["expires"] <= time.time():
+            raise WebhookBusy("Webhook lease expired or ownership lost")
+        return row
+
+    def complete_delivery(self, event_id: str, token: str, record: SubscriptionRecord,
+                          entitlement: DerivedEntitlement) -> None:
+        row = self._owned(event_id, token)
+        owner = self.customer_by_stripe_id(record.stripe_customer_id)
+        if not owner or owner.app_user_id != record.app_user_id or row["customer"] != record.stripe_customer_id:
+            raise BillingError("Customer ownership conflict")
+        if record.latest_event_id != event_id or record.latest_event_created != row["created"]:
+            raise BillingError("Event identity conflict")
+        prior = self.subscriptions.get(record.stripe_subscription_id)
+        if prior and (prior.app_user_id != record.app_user_id or prior.stripe_customer_id != record.stripe_customer_id):
+            raise BillingError("Subscription ownership conflict")
+        # Commit the snapshot and projection together. A user lease serializes
+        # provider reads, so event timestamps and opaque IDs never order state.
+        projections = self.projections | {record.stripe_subscription_id: entitlement}
+        candidates = [e for e in projections.values() if e.app_user_id == record.app_user_id
+                      and e.as_product_entitlement().grants_pro]
+        chosen = max(candidates, key=lambda e: (e.current_period_end, e.source_subscription_id)) if candidates else entitlement
+        self.subscriptions[record.stripe_subscription_id] = record
+        self.projections = projections
+        self.entitlements[record.app_user_id] = chosen
+        row.update(state="processed", token="", expires=0)
+
+    def fail_delivery(self, event_id: str, token: str) -> None:
+        try:
+            row = self._owned(event_id, token)
+        except WebhookBusy:
             return
-        self.entitlements[entitlement.app_user_id] = entitlement
-
-    def mark_event_processed(self, event_id: str) -> None:
-        self.events[event_id]["state"] = "processed"
-        self.events[event_id]["error"] = ""
-
-    def mark_event_failed(self, event_id: str, error: str) -> None:
-        self.events[event_id]["state"] = "failed"
-        self.events[event_id]["error"] = error[:1000]
+        row.update(state="failed", token="", expires=0)
 
     def entitlement_for_user(self, app_user_id: str) -> DerivedEntitlement | None:
-        return self.entitlements.get(app_user_id)
+        value = self.entitlements.get(app_user_id)
+        if value and value.plan is Plan.PRO and not value.as_product_entitlement().grants_pro:
+            return replace(value, plan=Plan.FREE, status=SubscriptionStatus.EXPIRED, reason="period_expired")
+        return value
 
 
 class CheckoutService:
@@ -227,7 +262,7 @@ class CheckoutService:
     def create(self, user: VerifiedUser, *, interval: str) -> Mapping[str, Any]:
         if not user.valid:
             raise AuthenticationRequired("A verified account is required for checkout")
-        if not self.config.checkout_enabled:
+        if not self.config.test_mode or not self.config.checkout_enabled:
             raise BillingUnavailable("Subscription checkout is not enabled")
         price_id = self.config.price_for_interval(interval)
         if not price_id or price_id not in self.config.known_price_ids:
@@ -242,7 +277,14 @@ class CheckoutService:
                 ),
                 email=user.email,
             )
+            if not customer.stripe_customer_id.strip():
+                raise BillingError("Stripe customer creation failed")
             self.store.upsert_customer(customer)
+        if customer.app_user_id != user.user_id or not customer.stripe_customer_id.strip():
+            raise BillingError("Invalid customer ownership mapping")
+        if self.stripe.has_open_subscription(customer.stripe_customer_id):
+            raise BillingError("Use subscription management for an existing subscription")
+        reservation = self.store.reserve_checkout(user.user_id, price_id)
         base = self.config.public_base_url
         return self.stripe.create_subscription_checkout(
             customer_id=customer.stripe_customer_id,
@@ -250,7 +292,27 @@ class CheckoutService:
             app_user_id=user.user_id,
             success_url=f"{base}?billing=success&session_id={{CHECKOUT_SESSION_ID}}",
             cancel_url=f"{base}?billing=cancelled",
+            idempotency_key="music-checkout-v1-" + str(reservation["token"]),
+            expires_at=int(reservation["expires_at"]),
         )
+
+    def portal(self, user: VerifiedUser) -> Mapping[str, Any]:
+        if not user.valid:
+            raise AuthenticationRequired("A verified account is required")
+        if not self.config.test_mode or not self.config.checkout_enabled:
+            raise BillingUnavailable("Test billing is not enabled")
+        customer = self.store.customer_for_user(user.user_id)
+        if not customer or customer.app_user_id != user.user_id or not customer.stripe_customer_id.startswith("cus_"):
+            raise BillingError("No valid billing customer exists")
+        reverse = self.store.customer_by_stripe_id(customer.stripe_customer_id)
+        if not reverse or reverse.app_user_id != user.user_id:
+            raise BillingError("Customer ownership conflict")
+        session = self.stripe.create_portal(customer_id=customer.stripe_customer_id,
+                                            return_url=self.config.public_base_url)
+        url = urlparse(str(session.get("url") or ""))
+        if url.scheme != "https" or url.hostname != "billing.stripe.com":
+            raise BillingError("Invalid portal session response")
+        return {"url": session["url"]}
 
 
 def verify_stripe_signature(
@@ -296,15 +358,26 @@ def _object_id(value: Any) -> str:
     return str(value or "").strip()
 
 
-def _subscription_price(subscription: Mapping[str, Any]) -> tuple[str, str]:
+def _subscription_terms(subscription: Mapping[str, Any], known_prices: frozenset[str]) -> tuple[str, str, datetime | None]:
     items = subscription.get("items") or {}
-    data = items.get("data") if isinstance(items, Mapping) else []
-    first = data[0] if isinstance(data, list) and data else {}
-    price = first.get("price") if isinstance(first, Mapping) else {}
-    if not isinstance(price, Mapping):
-        return "", ""
-    product = price.get("product")
-    return _object_id(product), _object_id(price)
+    if not isinstance(items, Mapping):
+        raise BillingError("Malformed subscription items")
+    rows = items.get("data", [])
+    if items.get("has_more"):
+        raise BillingError("Subscription items require pagination")
+    for item in rows:
+        if not isinstance(item, Mapping):
+            raise BillingError("Malformed subscription item")
+        price = item.get("price") or {}
+        if isinstance(price, Mapping) and _object_id(price) in known_prices:
+            end = _unix_datetime(item.get("current_period_end") or subscription.get("current_period_end"))
+            if subscription.get("status") == "trialing":
+                end = _unix_datetime(subscription.get("trial_end")) or end
+            cancel_at = _unix_datetime(subscription.get("cancel_at"))
+            if cancel_at and end:
+                end = min(end, cancel_at)
+            return _object_id(price.get("product")), _object_id(price), end
+    return "", "", None
 
 
 def derive_entitlement(
@@ -337,6 +410,9 @@ def derive_entitlement(
         "paused",
     }:
         plan, status, reason = Plan.FREE, SubscriptionStatus.EXPIRED, raw
+    end = subscription.current_period_end
+    if plan is Plan.PRO and (end is None or end.tzinfo is None or end <= datetime.now(timezone.utc)):
+        plan, status, reason = Plan.FREE, SubscriptionStatus.EXPIRED, "period_expired"
     return DerivedEntitlement(
         app_user_id=subscription.app_user_id,
         plan=plan,
@@ -372,51 +448,62 @@ class WebhookProcessor:
     def process(self, event: Mapping[str, Any]) -> str:
         event_id = str(event.get("id") or "").strip()
         event_type = str(event.get("type") or "").strip()
-        created = int(event.get("created") or 0)
-        if not event_id or not event_type or created <= 0:
-            raise BillingError("Malformed Stripe event envelope")
-        claim = self.store.claim_event(event_id, event_type, created, event)
-        if claim is EventClaim.DUPLICATE:
+        try:
+            created = int(event.get("created") or 0)
+        except (TypeError, ValueError) as exc:
+            raise BillingError("Malformed Stripe event") from exc
+        if not event_id or not event_type or created <= 0 or event.get("livemode") is not False:
+            raise BillingError("Malformed or non-test Stripe event")
+        if not self.config.test_mode or not self.config.webhook_enabled:
+            raise BillingUnavailable("Test webhooks are not enabled")
+        if event_type not in SUPPORTED_WEBHOOK_EVENTS:
+            return "ignored"
+        obj = (event.get("data") or {}).get("object")
+        if not isinstance(obj, Mapping):
+            raise BillingError("Malformed Stripe object")
+        app = (obj.get("metadata") or {}).get("app")
+        if app and app != "music":
+            return "ignored"  # Explicit foreign-app signed event; unknown untagged owners still retry.
+        customer_id = _object_id(obj.get("customer"))
+        owner = self.store.customer_by_stripe_id(customer_id)
+        if not owner:
+            raise BillingError("Stripe customer has no trusted owner")
+        for claimed_user in (obj.get("client_reference_id"), (obj.get("metadata") or {}).get("app_user_id")):
+            if claimed_user and claimed_user != owner.app_user_id:
+                raise BillingError("Event metadata conflicts with customer ownership")
+        if event_type.startswith("customer.subscription."):
+            sub_id = _object_id(obj.get("id"))
+        else:
+            parent = obj.get("parent") or {}
+            sub_id = _object_id(obj.get("subscription") or (parent.get("subscription_details") or {}).get("subscription"))
+            if not sub_id:
+                for line in (obj.get("lines") or {}).get("data", []):
+                    sub_id = _object_id(line.get("subscription") or
+                        ((line.get("parent") or {}).get("subscription_item_details") or {}).get("subscription"))
+                    if sub_id:
+                        break
+        if not sub_id:
+            if event_type.startswith("invoice."):
+                return "ignored"  # One-off invoice has no subscription entitlement.
+            raise BillingError("Subscription id is required")
+        token = self.store.claim_delivery(event, customer_id)
+        if not token:
             return "duplicate"
         try:
-            if event_type not in SUPPORTED_WEBHOOK_EVENTS:
-                self.store.mark_event_processed(event_id)
-                return "ignored"
-            subscription = self._subscription_from_event(event)
-            if subscription is None:
-                self.store.mark_event_processed(event_id)
-                return "ignored"
+            # Fetch while holding the customer lease, including for old deliveries
+            # and deletions. Stripe retains canceled subscription resources.
+            subscription = self.stripe.retrieve_subscription(sub_id)
+            if subscription.get("livemode") is not False or _object_id(subscription.get("id")) != sub_id:
+                raise BillingError("Stripe subscription identity or mode mismatch")
+            if _object_id(subscription.get("customer")) != customer_id:
+                raise BillingError("Subscription customer ownership conflict")
             record = self._record(subscription, event_id=event_id, created=created)
-            if self.store.apply_subscription_if_newer(record):
-                self.store.save_entitlement(
-                    derive_entitlement(record, known_price_ids=self.config.known_price_ids)
-                )
-            self.store.mark_event_processed(event_id)
+            self.store.complete_delivery(event_id, token, record,
+                derive_entitlement(record, known_price_ids=self.config.known_price_ids))
             return "processed"
-        except Exception as exc:
-            self.store.mark_event_failed(event_id, str(exc))
+        except Exception:
+            self.store.fail_delivery(event_id, token)
             raise
-
-    def _subscription_from_event(self, event: Mapping[str, Any]) -> Mapping[str, Any] | None:
-        event_type = str(event.get("type") or "")
-        data = event.get("data") or {}
-        obj = data.get("object") if isinstance(data, Mapping) else {}
-        if not isinstance(obj, Mapping):
-            return None
-        if event_type.startswith("customer.subscription."):
-            return obj
-        if event_type == "checkout.session.completed":
-            subscription_id = _object_id(obj.get("subscription"))
-        else:
-            subscription_id = _object_id(obj.get("subscription"))
-            if not subscription_id:
-                lines = obj.get("lines") or {}
-                rows = lines.get("data") if isinstance(lines, Mapping) else []
-                first = rows[0] if isinstance(rows, list) and rows else {}
-                subscription_id = _object_id(
-                    first.get("subscription") if isinstance(first, Mapping) else ""
-                )
-        return self.stripe.retrieve_subscription(subscription_id) if subscription_id else None
 
     def _record(
         self,
@@ -429,6 +516,8 @@ class WebhookProcessor:
         subscription_id = _object_id(subscription.get("id"))
         metadata = subscription.get("metadata") or {}
         user_id = str(metadata.get("app_user_id") or "").strip() if isinstance(metadata, Mapping) else ""
+        if isinstance(metadata, Mapping) and metadata.get("app") not in (None, "", "music"):
+            raise BillingError("Subscription belongs to another application")
         customer = self.store.customer_by_stripe_id(customer_id)
         if customer is not None:
             if user_id and user_id != customer.app_user_id:
@@ -437,8 +526,8 @@ class WebhookProcessor:
         if not user_id or not customer_id or not subscription_id:
             raise BillingError("Subscription cannot be bound to a verified application user")
         if customer is None:
-            self.store.upsert_customer(CustomerRecord(user_id, customer_id))
-        product_id, price_id = _subscription_price(subscription)
+            raise BillingError("Stripe customer has no trusted owner")
+        product_id, price_id, period_end = _subscription_terms(subscription, self.config.known_price_ids)
         return SubscriptionRecord(
             app_user_id=user_id,
             stripe_customer_id=customer_id,
@@ -446,7 +535,7 @@ class WebhookProcessor:
             stripe_product_id=product_id,
             stripe_price_id=price_id,
             provider_status=str(subscription.get("status") or "").strip().lower(),
-            current_period_end=_unix_datetime(subscription.get("current_period_end")),
+            current_period_end=period_end,
             cancel_at_period_end=bool(subscription.get("cancel_at_period_end")),
             trial_end=_unix_datetime(subscription.get("trial_end")),
             latest_event_id=event_id,
@@ -473,7 +562,6 @@ __all__ = (
     "CheckoutService",
     "CustomerRecord",
     "DerivedEntitlement",
-    "EventClaim",
     "InMemoryBillingStore",
     "InvalidWebhookSignature",
     "StripeGateway",
@@ -481,6 +569,7 @@ __all__ = (
     "SUPPORTED_WEBHOOK_EVENTS",
     "VerifiedUser",
     "WebhookProcessor",
+    "WebhookBusy",
     "derive_entitlement",
     "parse_verified_event",
     "verify_stripe_signature",

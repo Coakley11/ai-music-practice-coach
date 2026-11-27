@@ -64,6 +64,7 @@ class BillingConfig:
     supabase_url: str
     supabase_service_role_key: str
     supabase_anon_key: str
+    portal_configuration_id: str = ""
 
     @classmethod
     def from_environ(
@@ -72,6 +73,7 @@ class BillingConfig:
     ) -> "BillingConfig":
         env = os.environ if environ is None else environ
         return cls(
+            portal_configuration_id=_clean(env.get("MUSIC_STRIPE_PORTAL_CONFIGURATION_ID")),
             rollout=rollout_mode(env),
             stripe_mode=_clean(env.get(STRIPE_MODE_ENV)).lower() or "test",
             stripe_secret_key=_clean(env.get(STRIPE_SECRET_KEY_ENV)),
@@ -122,8 +124,14 @@ class BillingConfig:
         return False
 
     @property
+    def client_enabled(self) -> bool:
+        """Public UI readiness; server credentials never belong on Streamlit."""
+        return self.test_mode and bool(self.billing_service_url.startswith("https://")
+            and self.supabase_url and self.supabase_anon_key)
+
+    @property
     def checkout_enabled(self) -> bool:
-        if not (self.test_mode or self.live_mode):
+        if not self.test_mode:
             return False
         return self.credentials_match_mode and bool(self.known_price_ids) and all(
             (
@@ -138,7 +146,7 @@ class BillingConfig:
     @property
     def webhook_enabled(self) -> bool:
         return (
-            (self.test_mode or self.live_mode)
+            self.test_mode
             and self.credentials_match_mode
             and self.stripe_webhook_secret.startswith("whsec_")
             and bool(self.known_price_ids)
@@ -161,6 +169,7 @@ class BillingConfig:
             "stripe_mode": self.stripe_mode,
             "enforcement_enabled": self.enforcement_enabled,
             "checkout_enabled": self.checkout_enabled,
+            "client_enabled": self.client_enabled,
             "webhook_enabled": self.webhook_enabled,
             "credentials_match_mode": self.credentials_match_mode,
             "monthly_price_configured": bool(self.monthly_price_id),

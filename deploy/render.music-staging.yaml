@@ -1,0 +1,38 @@
+# REVIEW ONLY. Applying this creates/deploys an external service; approval required.
+# Never attach an existing Suite/Baseball service or shared environment group.
+services:
+  - type: web
+    name: music-billing-staging
+    runtime: python
+    repo: https://github.com/Coakley11/ai-music-practice-coach
+    branch: feature/music-billing-resume-20261127
+    plan: free
+    autoDeployTrigger: "off"
+    buildCommand: pip install -r requirements-billing.txt
+    startCommand: python -m uvicorn monetization_staging:app --host 0.0.0.0 --port $PORT --workers 1 --no-access-log
+    healthCheckPath: /billing/health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.8
+      - key: MUSIC_BILLING_ROLLOUT
+        value: test
+      - key: MUSIC_STRIPE_MODE
+        value: test
+      - key: MUSIC_BILLING_SUPABASE_URL
+        value: https://smpyutzfktjgpdibdbqb.supabase.co
+      - key: MUSIC_BILLING_SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: MUSIC_BILLING_SUPABASE_ANON_KEY
+        sync: false
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: STRIPE_PRO_MONTHLY_PRICE_ID
+        sync: false
+      - key: MUSIC_STRIPE_PORTAL_CONFIGURATION_ID
+        sync: false
+      - key: MUSIC_PUBLIC_BASE_URL
+        sync: false
+      - key: MUSIC_BILLING_SERVICE_URL
+        sync: false

@@ -1,5 +1,7 @@
 # Monetization M2: trusted subscriptions
 
+> Phase 2 supersedes the webhook ordering, transaction and live-mode descriptions below. See [Phase 2 review](MONETIZATION_PHASE2_REVIEW.md) before configuring a test service.
+
 M2 keeps the M1 product API (`access_decision` / `can_use`) and moves Stripe
 state behind a trusted service and database boundary. The checked-in defaults do
 not enable billing or lock existing users out of Composition Studio.

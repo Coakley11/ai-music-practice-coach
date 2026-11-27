@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Mapping, Protocol
 
@@ -179,6 +179,10 @@ class Entitlement:
 
     @property
     def grants_pro(self) -> bool:
+        if self.source == "billing_database":
+            end = self.current_period_end
+            if end is None or end.tzinfo is None or end <= datetime.now(timezone.utc):
+                return False
         if self.plan is not Plan.PRO:
             return False
         return self.status in {
