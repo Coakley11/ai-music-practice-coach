@@ -11,7 +11,8 @@ Pure state helpers (no Streamlit import) so the rules are unit-testable.
 
 from __future__ import annotations
 
-from typing import Any, MutableMapping
+import hashlib
+from typing import Any, Mapping, MutableMapping
 
 TAKE_SAVED_PREFIX = "mt_take_saved_"
 TAKE_NONCE_PREFIX = "mt_take_nonce_"
@@ -71,6 +72,102 @@ def discard_take(session_state: MutableMapping[str, Any], slot: str) -> bool:
         for n in range(max(0, take_nonce(session_state, slot))):
             session_state.pop(f"mt_{kind}_{slot}__take{n}", None)
     return had
+
+
+#: Input events already adopted (or superseded) for one slot. A Streamlit uploader and the fallback
+#: recorder keep handing back their last value on every rerun, so "the widget holds a file" is not a
+#: user action. Only an event this slot has not seen yet is.
+CONSUMED_INPUTS_PREFIX = "_mt_consumed_inputs::"
+_CONSUMED_CAP = 40
+
+
+def input_event_id(obj: Any) -> str:
+    """Identity of ONE upload or fallback recording.
+
+    Streamlit gives every uploaded file (and every ``st.audio_input`` recording) its own ``file_id``:
+    it stays the same across reruns and changes when the musician removes and adds the file again,
+    so re-uploading the same file on purpose is a new event. Without one, the content stands in.
+    """
+    if obj is None:
+        return ""
+    fid = str(getattr(obj, "file_id", "") or "").strip()
+    if fid:
+        return f"fid:{fid}"
+    try:
+        data = bytes(obj.getvalue())
+    except Exception:
+        return ""
+    if not data:
+        return ""
+    name = str(getattr(obj, "name", "") or "")
+    return f"sha:{hashlib.sha256(data).hexdigest()[:32]}:{len(data)}:{name}"
+
+
+def _consumed(session_state: MutableMapping[str, Any], slot: str) -> list[str]:
+    raw = session_state.get(f"{CONSUMED_INPUTS_PREFIX}{slot}")
+    return [str(x) for x in raw] if isinstance(raw, (list, tuple)) else []
+
+
+def choose_landed_take(
+    session_state: MutableMapping[str, Any],
+    slot: str,
+    *,
+    live_take: Mapping[str, Any] | None = None,
+    recorded: Any = None,
+    uploaded: Any = None,
+    live_name: str = "layer-take.wav",
+) -> dict[str, Any] | None:
+    """The take that lands on THIS run, or None. Reads nothing but this slot's inputs; writes nothing.
+
+    * A take from the synchronized recorder always wins: the recorder returns it once, on the run it
+      arrives, and whatever the uploader or fallback recorder still hold is older than it.
+    * Otherwise the fallback recorder, then the uploader - but only an input EVENT this slot has not
+      adopted yet. The old rule landed "recorded or uploaded" on every rerun, so one rerun after a new
+      microphone take the uploader's earlier file overwrote it.
+
+    The caller validates the bytes and, only if it adopts them, calls :func:`consume_landed_take`; a
+    rejected input therefore stays the musician's latest action instead of being silently swallowed.
+    """
+    held = [(obj, src) for obj, src in ((recorded, "basic-recorder"), (uploaded, "upload")) if obj is not None]
+    held_ids = [i for i in (input_event_id(obj) for obj, _ in held) if i]
+    if isinstance(live_take, Mapping) and live_take.get("wav"):
+        return {
+            "bytes": bytes(live_take["wav"]),
+            "name": str(live_name or "layer-take.wav"),
+            "source": "shared-clock",
+            "event": f"live:{live_take.get('take_id') or ''}",
+            "supersedes": held_ids,
+        }
+    seen = set(_consumed(session_state, slot))
+    for obj, src in held:
+        event = input_event_id(obj)
+        if not event or event in seen:
+            continue
+        try:
+            data = bytes(obj.getvalue())
+        except Exception:
+            continue
+        return {
+            "bytes": data,
+            "name": str(getattr(obj, "name", "") or f"{slot}.wav"),
+            "source": src,
+            "event": event,
+            # Adopting the fallback recording also retires an upload held at the same moment, and the
+            # reverse: neither may come back later over the take that was chosen.
+            "supersedes": [i for i in held_ids if i != event],
+        }
+    return None
+
+
+def consume_landed_take(session_state: MutableMapping[str, Any], slot: str, choice: Mapping[str, Any] | None) -> None:
+    """Record that this slot adopted ``choice``: its event, and every widget value it supersedes, never land again."""
+    if not isinstance(choice, Mapping):
+        return
+    seen = _consumed(session_state, slot)
+    for event in [str(choice.get("event") or "")] + [str(x) for x in choice.get("supersedes") or ()]:
+        if event and not event.startswith("live:") and event not in seen:
+            seen.append(event)
+    session_state[f"{CONSUMED_INPUTS_PREFIX}{slot}"] = seen[-_CONSUMED_CAP:]
 
 
 AUTO_OPEN_DECIDED_KEY = "_mt_auto_open_decided"
@@ -178,6 +275,10 @@ __all__ = [
     "TAKE_NONCE_PREFIX",
     "auto_open_slot",
     "adopt_restored_layers_as_saved",
+    "CONSUMED_INPUTS_PREFIX",
+    "choose_landed_take",
+    "consume_landed_take",
+    "input_event_id",
     "TAKE_SAVED_PREFIX",
     "discard_button_label",
     "discard_take",

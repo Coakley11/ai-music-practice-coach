@@ -30551,6 +30551,8 @@ elif _studio_page == "multitrack":
                         from upload_media import UPLOAD_AUDIO_FILE_TYPES, UPLOAD_MAX_SIZE_MB
 
                         from multitrack_takes import (
+                            choose_landed_take,
+                            consume_landed_take,
                             discard_button_label,
                             discard_take,
                             mark_take_saved,
@@ -30719,28 +30721,35 @@ elif _studio_page == "multitrack":
                                 recorded = None
                                 st.caption("Recording unavailable in this build — upload still works.")
 
-                        _mt_audio_obj = recorded if recorded is not None else uploaded
-                        # Which recorder produced this, so the take can say so for the rest of its
-                        # life. Only the first of these was measured on the recording clock.
-                        _mt_landed_source = ""
-                        if _mt_live_take is not None:
-                            _mt_landed_bytes = _mt_live_take["wav"]
-                            _mt_landed_source = "shared-clock"
-                            try:
-                                from multitrack_live_recorder import take_filename
+                        # MT-1: which take lands on THIS run is decided by input EVENTS. The uploader
+                        # and the fallback recorder hand back their last value on every rerun, and
+                        # the synchronized recorder returns a take only once - so "recorded or
+                        # uploaded" here put the earlier upload back over a new microphone take one
+                        # rerun after it arrived. choose_landed_take lands each event once; the
+                        # source still says which recorder produced the take (only the shared-clock
+                        # one was measured on the recording clock).
+                        try:
+                            from multitrack_live_recorder import take_filename as _mt_take_filename
 
-                                _mt_landed_name = take_filename(slot)
-                            except Exception:
-                                _mt_landed_name = "layer-take.wav"
-                        elif _mt_audio_obj is not None:
-                            _mt_landed_bytes = _mt_audio_obj.getvalue()
-                            _mt_landed_name = getattr(_mt_audio_obj, "name", f"{slot}.wav")
-                            _mt_landed_source = (
-                                "basic-recorder" if recorded is not None else "upload"
-                            )
+                            _mt_live_name = _mt_take_filename(slot)
+                        except Exception:
+                            _mt_live_name = "layer-take.wav"
+                        _mt_choice = choose_landed_take(
+                            st.session_state,
+                            slot,
+                            live_take=_mt_live_take,
+                            recorded=recorded,
+                            uploaded=uploaded,
+                            live_name=_mt_live_name,
+                        )
+                        if _mt_choice is not None:
+                            _mt_landed_bytes = _mt_choice["bytes"]
+                            _mt_landed_name = _mt_choice["name"]
+                            _mt_landed_source = _mt_choice["source"]
                         else:
                             _mt_landed_bytes = None
                             _mt_landed_name = ""
+                            _mt_landed_source = ""
                         # A recording that produced no usable audio must never replace a layer the
                         # musician has already kept. A WAV header alone is 44 bytes, so anything
                         # this small is a failed capture, not a take.
@@ -30803,6 +30812,9 @@ elif _studio_page == "multitrack":
                                 pass
                         if _mt_landed_bytes is not None:
                             _mt_bytes = _mt_landed_bytes
+                            # Adopted: this event (and any older widget value it supersedes) never
+                            # lands again on a later rerun. A rejected one above was not consumed.
+                            consume_landed_take(st.session_state, slot, _mt_choice)
                             if st.session_state.mt_tracks.get(slot) != _mt_bytes:
                                 from multitrack_activity import retain_project_source
                                 retain_project_source(st.session_state)
