@@ -190,7 +190,9 @@ from composition_melody_improve import (
     improve_undo_button_key,
     pop_improve_undo,
     preserve_original_take,
+    original_take_label,
     push_improve_undo,
+    quick_action_label,
     restore_original_take,
 )
 from composition_melody_repeats import (
@@ -291,6 +293,38 @@ def inject_composition_studio_styles() -> None:
 body[data-studio-page="composer"] .block-container {
   max-width: 1280px;
 }
+/* Compact preview transport. The player renders Play, Stop and the progress bar at the BOTTOM
+   of its own frame, so Close preview belongs tight underneath them - one group of three
+   controls - instead of sitting a full Streamlit row away with a blank band between. Only the
+   button's own block is touched: the frame height is measured elsewhere, so notation cannot be
+   clipped by this. */
+div[class*="st-key-composer_preview_close_"] {
+  margin-top: -14px !important;
+  margin-bottom: 0 !important;
+}
+div[class*="st-key-composer_preview_close_"] button {
+  /* This button carries a `help` tooltip, and at touch widths Streamlit renders the tooltip
+     wrapper TWICE - the first copy inside a display:none div. A measurement that takes the
+     first match therefore reads 0x0 and cannot click it, which looks exactly like a broken
+     control and is not one (browser round 2026-11-27; the visible copy is the second).
+     Anything measuring this button must select the VISIBLE one. */
+  width: auto !important;
+  min-height: 0 !important;
+  padding: 1px 10px !important;
+  font-size: 0.82rem !important;
+  line-height: 1.6 !important;
+}
+/* The preview player's frame and the card above it do not need a full gap between them. */
+body[data-studio-page="composer"] div[data-testid="stCustomComponentV1"] {
+  margin-bottom: 0 !important;
+}
+/* MEASURED RESIDUAL (1440px, 2026-11-27): the Close button sits 2px below its preceding
+   Streamlit block, so Play / Stop / Close are grouped as intended. But that block is a
+   312px stElementContainer holding a 231px iframe, so ~79px of empty space remains between
+   the visible transport and Close preview. Targeting stCustomComponentV1 does not change it -
+   the height is on the element container - and a rule broad enough to reach that container
+   would affect every custom component on the page, so it is left alone and reported rather
+   than fixed blind. */
 /* Desktop-only: keep Composition split as a true left/right row.
    Phone stacks via Mobile M6 (nowrap here was clipping controls off-screen). */
 @media (min-width: 721px) {
@@ -2494,6 +2528,20 @@ def prepare_vision_widget_state(session_state: dict, doc: dict[str, Any]) -> Non
             session_state["composer_vision_meter_custom"] = custom
 
 
+def _melody_icon() -> str:
+    """The app's one Melody glyph - the same 🎶 the Songs card and the Melody phase show.
+
+    Read from the shared registry rather than written inline, so a melody heading in
+    Composition can never drift from the melody label everywhere else.
+    """
+    try:
+        from music_feature_icons import FEATURE_ICONS
+
+        return str(FEATURE_ICONS.get("phase_melody") or "🎶")
+    except Exception:
+        return "🎶"
+
+
 def _edit_icon() -> str:
     """The app's own edit glyph — the same pencil the Chords editor's "✏️ Edit" buttons use."""
     try:
@@ -3467,7 +3515,7 @@ def _render_hum_sing_panel(
     if not isinstance(proposal, dict):
         proposal = None
 
-    st.markdown("**Hum or sing your melody**")
+    st.markdown(f"**{_melody_icon()} Hum or sing your melody**")
     st.caption(
         "Hum, sing, or play one melodic line. Words are optional — we capture the pitch contour as sheet music, not lyrics."
     )
@@ -3574,34 +3622,88 @@ def _render_hum_sing_panel(
             "Recording still works as a capture marker; explore melody ideas below."
         )
 
-    try:
-        audio = st.audio_input(
-            "Hum or sing your melody (or play one melodic line)",
-            key=f"composer_melody_record_{active_id}",
-        )
-    except Exception:
-        audio = None
-        st.caption("Audio recording will appear here when your browser supports it.")
+    from composition_shared_recorder import (
+        recording_scope,
+        recording_status,
+        render_shared_recorder,
+        shared_recorder_enabled,
+    )
 
-    if audio is not None:
+    # One take belongs to one section of one song: section ids are unique within a document,
+    # not across documents, so the scope carries both.
+    rec_scope = recording_scope(doc.get("id"), active_id)
+    raw = b""
+    if shared_recorder_enabled(session_state):
+        # The shared-clock route, off unless deliberately enabled. One Record click arms the
+        # microphone and starts this section's chords on the same AudioContext, so where bar
+        # 1 beat 1 sits inside the take is a frame counter rather than the gap between two
+        # human button presses. The st.audio_input route below is still what everyone gets
+        # until browser acceptance shows this one really records in time.
         try:
-            raw = audio.getvalue() if hasattr(audio, "getvalue") else b""
+            _bpb = max(1, int(str(meter).split("/")[0]))
+        except (TypeError, ValueError):
+            _bpb = 4
+        take = render_shared_recorder(
+            st,
+            session_state,
+            scope=rec_scope,
+            # No cached WAV is passed in: the recorder prepares this section's own
+            # accompaniment, so recording against the chords works from a cold start and
+            # never inherits another section's or another song's render.
+            chords=flat_chords,
+            bpm=bpm,
+            meter=meter,
+            section_key=key,
+            beats_per_bar=_bpb,
+            count_in_bars=count_in_bars,
+            generate_backing=(
+                lambda: generate_preview_wav(
+                    doc,
+                    section_id=active_id,
+                    loops=1,
+                    include_melody=False,
+                    count_in_bars=count_in_bars,
+                    chord_override=flat_chords,
+                )
+            )
+            if flat_chords
+            else None,
+        )
+        if take and take.get("wav"):
+            raw = bytes(take["wav"])
+        _status = recording_status(session_state, rec_scope)
+        if _status.get("has_audio"):
+            st.caption(str(_status.get("caption") or ""))
+    else:
+        try:
+            audio = st.audio_input(
+                "Hum or sing your melody (or play one melodic line)",
+                key=f"composer_melody_record_{active_id}",
+            )
         except Exception:
-            raw = b""
-        if raw:
-            session_state[_hum_audio_key(active_id)] = raw
-            intent = section.setdefault("melody", {}).setdefault("intent", {})
-            capture = intent.setdefault("hum_capture", {})
-            capture["captured"] = True
-            capture["bytes_len"] = len(raw)
-            capture["analysis_status"] = "ready_to_analyze"
-            capture["note_detection"] = False
+            audio = None
+            st.caption("Audio recording will appear here when your browser supports it.")
+
+        if audio is not None:
+            try:
+                raw = audio.getvalue() if hasattr(audio, "getvalue") else b""
+            except Exception:
+                raw = b""
+
+    if raw:
+        session_state[_hum_audio_key(active_id)] = raw
+        intent = section.setdefault("melody", {}).setdefault("intent", {})
+        capture = intent.setdefault("hum_capture", {})
+        capture["captured"] = True
+        capture["bytes_len"] = len(raw)
+        capture["analysis_status"] = "ready_to_analyze"
+        capture["note_detection"] = False
 
     has_audio = bool(session_state.get(_hum_audio_key(active_id)))
     a1, a2 = st.columns(2)
     with a1:
         analyze = st.button(
-            "Analyze recording",
+            action_label("analyze", "Analyze recording"),
             type="primary",
             key=f"composer_hum_analyze_{active_id}",
             disabled=not has_audio,
@@ -3615,13 +3717,38 @@ def _render_hum_sing_panel(
     if analyze:
         audio_bytes = session_state.get(_hum_audio_key(active_id)) or b""
         cin_bars = int(session_state.get(f"composer_hum_count_in_{active_id}") or COUNT_IN_ONE_BAR)
-        result = transcribe_hum_audio(
-            audio_bytes,
-            bpm=bpm,
-            meter=meter,
-            key=key,
-            count_in_bars=cin_bars,
+        # A take recorded on the shared clock reports where bar 1 beat 1 is; hand that over
+        # instead of assuming the take began with the count-in. A take from the old route
+        # reports nothing, so the transcriber applies its own evidence rule rather than
+        # trusting a number nobody measured.
+        from composition_recording_timing import (
+            count_in_sec_for_transcription,
+            stored_timing,
         )
+
+        _decided = count_in_sec_for_transcription(
+            stored_timing(session_state, rec_scope),
+            requested_sec=float(
+                session_state.get(f"composer_hum_count_in_sec_{active_id}") or 0.0
+            ),
+        )
+        if _decided.get("measured"):
+            result = transcribe_hum_audio(
+                audio_bytes,
+                bpm=bpm,
+                meter=meter,
+                key=key,
+                count_in_sec=float(_decided["count_in_sec"] or 0.0),
+                count_in_measured=True,
+            )
+        else:
+            result = transcribe_hum_audio(
+                audio_bytes,
+                bpm=bpm,
+                meter=meter,
+                key=key,
+                count_in_bars=cin_bars,
+            )
         session_state[_hum_proposal_key(active_id)] = result
         intent = section.setdefault("melody", {}).setdefault("intent", {})
         capture = intent.setdefault("hum_capture", {})
@@ -3629,6 +3756,7 @@ def _render_hum_sing_panel(
         capture["note_detection"] = bool(result.get("events"))
         capture["count_in_bars"] = cin_bars
         capture["count_in_sec"] = float(result.get("count_in_sec") or 0.0)
+        capture["count_in_applied"] = bool(result.get("count_in_applied"))
         _save_doc(session_state, doc)
         st.rerun()
 
@@ -3667,8 +3795,15 @@ def _render_hum_sing_panel(
                 ):
                     cin_bars = int(session_state.get(f"composer_hum_count_in_{active_id}") or COUNT_IN_ONE_BAR)
                     recorded = session_state.get(_hum_audio_key(active_id)) or b""
+                    # The transcriber decides whether this take really begins with a
+                    # count-in, and the preview must trim the same amount it removed from
+                    # the notation. Falling back to the REQUESTED count-in whenever the
+                    # applied value was zero cut the first bar off the audio while the
+                    # staff still showed it - the recording and the chords disagreed by a
+                    # bar. Only proposals saved before the transcriber recorded its
+                    # decision need the old fallback.
                     trim_sec = float(proposal.get("count_in_sec") or 0.0)
-                    if trim_sec <= 0:
+                    if trim_sec <= 0 and "count_in_applied" not in proposal:
                         trim_sec = float(session_state.get(f"composer_hum_count_in_sec_{active_id}") or 0.0)
                     preview_label = (
                         "Playing · your recording + chords"
@@ -3795,7 +3930,11 @@ def _render_hum_sing_panel(
             qcols = st.columns(2)
             for qi, (qid, qlabel) in enumerate(QUICK_ACTIONS):
                 with qcols[qi % 2]:
-                    if st.button(qlabel, key=f"composer_hum_quick_{active_id}_{qid}", use_container_width=True):
+                    if st.button(
+                        quick_action_label(qid, qlabel),
+                        key=f"composer_hum_quick_{active_id}_{qid}",
+                        use_container_width=True,
+                    ):
                         push_improve_undo(session_state, active_id, events)
                         result = apply_quick_action(events, qid, key=key, meter=meter)
                         if result.get("needs_clarification"):
@@ -3812,7 +3951,11 @@ def _render_hum_sing_panel(
             )
             i1, i2, i3 = st.columns(3)
             with i1:
-                if st.button("Apply adjustment", key=f"composer_hum_nl_go_{active_id}", use_container_width=True):
+                if st.button(
+                    action_label("apply_text", "Apply adjustment"),
+                    key=f"composer_hum_nl_go_{active_id}",
+                    use_container_width=True,
+                ):
                     push_improve_undo(session_state, active_id, events)
                     result = apply_plain_language_improvement(events, instruction, key=key, meter=meter)
                     if result.get("needs_clarification"):
@@ -3824,7 +3967,7 @@ def _render_hum_sing_panel(
                         st.rerun()
             with i2:
                 if st.button(
-                    "Undo previous adjustment",
+                    action_label("reset", "Undo previous adjustment"),
                     key=improve_undo_button_key(active_id),
                     use_container_width=True,
                 ):
@@ -3834,7 +3977,11 @@ def _render_hum_sing_panel(
                         session_state[_hum_proposal_key(active_id)] = proposal
                         st.rerun()
             with i3:
-                if st.button("Restore original take", key=f"composer_hum_restore_orig_{active_id}", use_container_width=True):
+                if st.button(
+                    original_take_label("Restore original take"),
+                    key=f"composer_hum_restore_orig_{active_id}",
+                    use_container_width=True,
+                ):
                     orig = restore_original_take(session_state, active_id)
                     if orig is not None:
                         proposal["events"] = orig
@@ -4543,6 +4690,23 @@ def _render_active_melody_phrase_editor(session_state: dict, doc: dict[str, Any]
             session_state[draft_key] = copy.deepcopy(active_events)
             session_state.pop(choice_key, None)
             st.rerun()
+        # A recorded melody has one more place to go back to than a generated one: what the
+        # recording itself transcribed to, before any refinement or hand edit. Reset proposal
+        # only returns to the accepted melody, so without this the musician who edits a take
+        # a few times cannot get back to their own playing. It loads the draft rather than the
+        # active melody, so it is previewable and still needs Accept changes - and the
+        # recorded audio itself is never touched by any of this.
+        _orig = restore_original_take(session_state, section_id)
+        if _orig and _orig != list(draft):
+            if st.button(
+                original_take_label("Restore original transcription"),
+                key=f"composer_melody_ed_restore_orig_{section_id}",
+                help="Back to the notes your recording transcribed to, before any edits",
+            ):
+                push_improve_undo(session_state, section_id, list(draft))
+                session_state[draft_key] = copy.deepcopy(_orig)
+                session_state.pop(choice_key, None)
+                st.rerun()
 
 
 def _render_melody_phrases_editor(session_state: dict, doc: dict[str, Any], section_id: str) -> None:
@@ -4624,7 +4788,7 @@ def _render_phase_melody(session_state: dict, doc: dict[str, Any], *, host_side_
         if current_style not in style_ids:
             current_style = "simple"
 
-        st.markdown("**Melody Feel & Notes**")
+        st.markdown(f"**{_melody_icon()} Melody Feel & Notes**")
         st.caption("Set your musical direction before recording or exploring AI ideas.")
         remember = st.text_input(
             "What should listeners remember?",
@@ -4689,7 +4853,7 @@ def _render_phase_melody(session_state: dict, doc: dict[str, Any], *, host_side_
             _render_melody_upload_panel(session_state, doc, section, active_id=active_id)
 
             # 3) AI melody suggestions (consume Feel & Notes + full chords when present)
-            st.markdown("**AI Melody Suggestions**")
+            st.markdown(f"**{_melody_icon()} AI Melody Suggestions**")
             if has_harmony:
                 st.caption(
                     "Preview to hear · Use this melody to accept. "
@@ -6094,7 +6258,7 @@ def _render_active_melody_repeat_controls(
     repeats = get_melody_repeats(section)
     active_slot = f"melody:{section_id}:active_loop"
 
-    st.markdown("**Melody repeats**")
+    st.markdown(f"**{_melody_icon()} Melody repeats**")
     if editable:
         st.caption(
             "How many times this phrase covers the section (1–4). "
@@ -6237,62 +6401,284 @@ def _render_active_melody_inplace_tools(
 
     _render_active_melody_repeat_controls(session_state, doc, section, active_id)
 
-    st.markdown("**Shape / refine active melody**")
+    # ---- What an edit is allowed to touch -------------------------------------------------
+    # A section whose chords repeat is several passes of the same bars. Shaping the whole thing
+    # and developing one pass are both things a writer wants, and the difference has to be
+    # visible before the edit rather than discovered after it.
+    from composition_melody_passes import (
+        SCOPE_BARS,
+        SCOPE_ENTIRE,
+        SCOPE_LABELS,
+        SCOPE_ONE_PASS,
+        apply_to_scope,
+        bar_beats,
+        copy_pass,
+        coverage_report,
+        pass_count,
+        restore_pass,
+        scope_caption,
+    )
+    from composition_melody_shape import timeline_span as _timeline_span
+
+    _events_now = list(section_melody_events(section) or [])
+    _meter = str(playback_globals(doc).get("time_signature") or "4/4")
+    _passes = pass_count(_events_now)
+    _bar = bar_beats(_meter) or 4.0
+    _total_bars = max(1, int(round(_timeline_span(_events_now) / _bar))) if _events_now else 1
+    _flat_chords = list(chords_for_playback(doc, scope="section", section_id=active_id) or [])
+
+    _scope_key = f"composer_melody_scope_{active_id}"
+    _scope_options = [SCOPE_ENTIRE] + ([SCOPE_ONE_PASS] if _passes > 1 else []) + [SCOPE_BARS]
+    # A melody replaced by one that no longer repeats can leave a stale One Pass choice behind.
+    # Seed the widget before it is drawn rather than hand Streamlit a value it cannot show.
+    if session_state.get(_scope_key) not in _scope_options:
+        session_state[_scope_key] = SCOPE_ENTIRE
+    scope = st.radio(
+        "Editing scope",
+        options=_scope_options,
+        format_func=lambda s: SCOPE_LABELS.get(s, s),
+        horizontal=True,
+        key=_scope_key,
+        help=(
+            "Entire Section shapes the whole melody, repeats included. One Pass and Selected "
+            "Bars leave everything outside them exactly as it is."
+        ),
+    )
+    pass_index = 0
+    bars = None
+    if scope == SCOPE_ONE_PASS:
+        pass_index = int(
+            st.selectbox(
+                "Which pass",
+                options=list(range(_passes)),
+                format_func=lambda i: f"Pass {i + 1} of {_passes}",
+                key=f"composer_melody_scope_pass_{active_id}",
+            )
+        )
+    elif scope == SCOPE_BARS:
+        _b1, _b2 = st.columns(2)
+        with _b1:
+            _from = st.number_input(
+                "From bar",
+                min_value=1,
+                max_value=_total_bars,
+                value=1,
+                step=1,
+                key=f"composer_melody_scope_bar_from_{active_id}",
+            )
+        with _b2:
+            _to = st.number_input(
+                "To bar",
+                min_value=1,
+                max_value=_total_bars,
+                value=min(_total_bars, 4),
+                step=1,
+                key=f"composer_melody_scope_bar_to_{active_id}",
+            )
+        bars = (int(_from), int(_to))
+    # Prominent on purpose: a caption would be read after the click, not before it.
+    st.info(
+        f"**{SCOPE_LABELS.get(scope, scope)}** - "
+        f"{scope_caption(scope, pass_index, _passes, bars)}"
+    )
+
+    # Chords with no melody over them is a defect; a phrase that breathes is not. Only the
+    # first of those is worth saying anything about.
+    if _events_now and _flat_chords:
+        _cov = coverage_report(_events_now, _flat_chords, meter=_meter)
+        if _cov.get("verdict") == "truncated":
+            # Said once, as an observation. An ending held open deliberately looks identical
+            # from here, so nothing is filled, lengthened or changed on the strength of it.
+            st.info(
+                f"{_cov['message']} If that is how you want it to end, nothing needs doing. "
+                "Otherwise shape the Entire Section, or copy a pass into the gap."
+            )
+
+    st.markdown(f"**{_melody_icon()} Shape / refine active melody**")
     st.caption(
-        "Creates a proposal from the full highlighted active melody "
-        "(all repeats). Preview leaves it active; Accept replaces it."
+        "Creates a proposal - Preview leaves the accepted melody alone, Accept replaces it."
     )
     pg = playback_globals(doc)
     key_center = str(pg.get("key_center") or "C")
+
+    def _scoped_proposal(events: list[dict[str, Any]], label: str, **extra: Any) -> None:
+        """Store a PROPOSAL. The accepted melody is never written here."""
+        payload = {
+            "events": list(events),
+            "from_source": get_active_melody_source_id(section) or active_melody_source,
+            "label": label,
+            "scope": scope,
+            "scope_note": scope_caption(scope, pass_index, _passes, bars),
+            "summary": describe_melody_from_events(
+                list(events), chord_count=len(list(section.get("chords") or []))
+            ),
+        }
+        payload.update(extra)
+        session_state[_refine_proposal_key(active_id)] = payload
+        st.rerun()
+
+    def _propose_scoped(rid: str, label: str) -> None:
+        """Refine inside the chosen scope only."""
+        before = list(section_melody_events(section) or [])
+        if not before:
+            return
+        said: dict[str, Any] = {"summary": "", "changed": False}
+
+        def _tx(evs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+            res = propose_melody_refinement(evs, rid, key=key_center)
+            said["summary"] = str(res.get("summary") or "")
+            if res.get("unchanged") or not res.get("ok"):
+                return list(evs)
+            said["changed"] = True
+            return list(res.get("events") or evs)
+
+        after = apply_to_scope(
+            before, _tx, scope=scope, pass_index=pass_index, bars=bars, meter=_meter
+        )
+        if not said["changed"] or not after:
+            st.warning(said["summary"] or "No musical change from that shape.")
+            return
+        _scoped_proposal(after, label, refinement_id=rid)
     ref_cols = st.columns(min(4, len(MELODY_REFINEMENTS)))
     for i, (rid, label, _) in enumerate(MELODY_REFINEMENTS[:4]):
         with ref_cols[i % len(ref_cols)]:
             if st.button(f"🪄 {label}", key=f"composer_melody_ref_{active_id}_{rid}", use_container_width=True):
-                before = list(section_melody_events(section) or [])
-                src = get_active_melody_source_id(section) or active_melody_source
-                result = propose_melody_refinement(before, rid, key=key_center)
-                if result.get("unchanged") or not result.get("ok"):
-                    st.warning(str(result.get("summary") or "No musical change from that shape."))
-                else:
-                    prop_events = list(result.get("events") or [])
-                    session_state[_refine_proposal_key(active_id)] = {
-                        "events": prop_events,
-                        "from_source": src,
-                        "refinement_id": rid,
-                        "label": label,
-                        "summary": describe_melody_from_events(
-                            prop_events, chord_count=len(list(section.get("chords") or []))
-                        ),
-                    }
-                    st.rerun()
+                _propose_scoped(rid, label)
     with st.expander("🪄 More local refinements", expanded=False):
         more_cols = st.columns(min(3, max(1, len(MELODY_REFINEMENTS) - 4)))
         for i, (rid, label, _) in enumerate(MELODY_REFINEMENTS[4:]):
             with more_cols[i % len(more_cols)]:
                 if st.button(f"🪄 {label}", key=f"composer_melody_ref_more_{active_id}_{rid}", use_container_width=True):
-                    before = list(section_melody_events(section) or [])
-                    src = get_active_melody_source_id(section) or active_melody_source
-                    result = propose_melody_refinement(before, rid, key=key_center)
-                    if result.get("unchanged") or not result.get("ok"):
-                        st.warning(str(result.get("summary") or "No musical change from that shape."))
+                    _propose_scoped(rid, label)
+
+
+    # ---- Working pass by pass ------------------------------------------------------------
+    # Develop one phrase, then decide what the later passes do with it: take it as it stands,
+    # take it with a difference, or go back to what they were.
+    if _passes > 1:
+        with st.expander(f"{_melody_icon()} Work pass by pass", expanded=False):
+            st.caption(
+                f"This section plays its chords {_passes} times. Each copy fills the pass it "
+                "lands in, so the song does not get longer."
+            )
+            _src_pass = int(
+                st.selectbox(
+                    "Copy this pass",
+                    options=list(range(_passes)),
+                    index=min(pass_index, _passes - 1),
+                    format_func=lambda i: f"Pass {i + 1}",
+                    key=f"composer_melody_copy_src_{active_id}",
+                )
+            )
+            _targets = st.multiselect(
+                "Into",
+                options=[i for i in range(_passes) if i != _src_pass],
+                default=[i for i in range(_passes) if i != _src_pass],
+                format_func=lambda i: f"Pass {i + 1}",
+                key=f"composer_melody_copy_dst_{active_id}",
+            )
+            _vary_options = [""] + [rid for rid, _lab, _why in MELODY_REFINEMENTS]
+            _vary = st.selectbox(
+                "Repeat with a variation",
+                options=_vary_options,
+                format_func=lambda rid: (
+                    "Exact copy"
+                    if not rid
+                    else next(lab for r, lab, _w in MELODY_REFINEMENTS if r == rid)
+                ),
+                key=f"composer_melody_copy_vary_{active_id}",
+                help="An exact repeat is a real musical choice; so is the same phrase with one difference.",
+            )
+            _adapt = st.checkbox(
+                "Adapt copied notes to the chords they land on",
+                value=True,
+                key=f"composer_melody_copy_adapt_{active_id}",
+                help=(
+                    "Only notes outside both the chord and the key, and long enough to "
+                    "stand out, move - by one or two semitones. Every change is listed "
+                    "before you Accept. Chromatic approaches, suspensions and tensions "
+                    "are left as written. Turn this off to repeat the phrase exactly as it is."
+                ),
+            )
+            _c1, _c2 = st.columns(2)
+            with _c1:
+                if st.button(
+                    action_label("add", "Copy into the chosen passes"),
+                    key=f"composer_melody_copy_go_{active_id}",
+                    use_container_width=True,
+                    disabled=not _targets,
+                ):
+                    _before = list(section_melody_events(section) or [])
+                    _variation = (
+                        (
+                            lambda evs: list(
+                                propose_melody_refinement(evs, _vary, key=key_center).get(
+                                    "events"
+                                )
+                                or evs
+                            )
+                        )
+                        if _vary
+                        else None
+                    )
+                    _after, _changes = copy_pass(
+                        _before,
+                        _src_pass,
+                        list(_targets),
+                        chords=_flat_chords,
+                        key=key_center,
+                        meter=_meter,
+                        fit_to_chords=bool(_adapt),
+                        variation=_variation,
+                    )
+                    if not _after or _after == _before:
+                        st.warning("That copy would not change anything.")
                     else:
-                        prop_events = list(result.get("events") or [])
-                        session_state[_refine_proposal_key(active_id)] = {
-                            "events": prop_events,
-                            "from_source": src,
-                            "refinement_id": rid,
-                            "label": label,
-                            "summary": describe_melody_from_events(
-                                prop_events, chord_count=len(list(section.get("chords") or []))
-                            ),
-                        }
-                        st.rerun()
+                        _label = f"Pass {_src_pass + 1} copied into " + ", ".join(
+                            f"pass {t + 1}" for t in sorted(_targets)
+                        )
+                        _scoped_proposal(_after, _label, harmony_changes=list(_changes))
+            with _c2:
+                if st.button(
+                    original_take_label(f"Restore pass {pass_index + 1}"),
+                    key=f"composer_melody_restore_pass_{active_id}",
+                    use_container_width=True,
+                    disabled=scope != SCOPE_ONE_PASS,
+                    help="Put this pass back the way the accepted melody has it, leaving the others alone",
+                ):
+                    _accepted = list(section_melody_events(section) or [])
+                    _proposal = session_state.get(_refine_proposal_key(active_id))
+                    _current = (
+                        list(_proposal.get("events") or [])
+                        if isinstance(_proposal, dict) and _proposal.get("events")
+                        else _accepted
+                    )
+                    _back = restore_pass(_current, _accepted, pass_index)
+                    if _back == _current:
+                        st.info(f"Pass {pass_index + 1} already matches the accepted melody.")
+                    else:
+                        _scoped_proposal(_back, f"Pass {pass_index + 1} restored")
 
     proposal = session_state.get(_refine_proposal_key(active_id))
     if isinstance(proposal, dict) and proposal.get("events"):
         st.markdown("**Refinement proposal**")
+        if proposal.get("scope_note"):
+            st.caption(str(proposal.get("scope_note")))
         if proposal.get("summary"):
             st.caption(str(proposal.get("summary")))
+        _adapted = list(proposal.get("harmony_changes") or [])
+        if _adapted:
+            # Every one of them, before Accept: a pitch change the musician did not see is a
+            # pitch change they did not agree to.
+            st.caption(
+                f"{len(_adapted)} note(s) adapted to the chords they landed on - "
+                "turn that off above to repeat the phrase exactly:"
+            )
+            for _chg in _adapted:
+                st.caption(
+                    f"- pass {_chg.get('pass')}, beat {_chg.get('beat')}: "
+                    f"{_chg.get('from')} to {_chg.get('to')} over {_chg.get('chord')}"
+                )
         prop_events = list(proposal.get("events") or [])
         prop_name = str(proposal.get("label") or "Refined melody")
         _render_melody_staff(

@@ -46,19 +46,19 @@ class TestMelodyFinalUx(unittest.TestCase):
 
     def test_no_score_above_feel_and_notes(self) -> None:
         phase = inspect.getsource(_render_phase_melody)
-        feel_i = phase.index("**Melody Feel & Notes**")
+        feel_i = phase.index("Melody Feel & Notes**")
         # Top score view removed from before Feel
         self.assertNotIn('_render_section_score_view(\n                session_state,\n                doc,\n                section,\n                play_key=f"composer_melody_hear_structure_', phase[:feel_i])
-        self.assertLess(feel_i, phase.index("**AI Melody Suggestions**"))
-        self.assertLess(phase.index("_render_hum_sing_panel"), phase.index("**AI Melody Suggestions**"))
+        self.assertLess(feel_i, phase.index("AI Melody Suggestions**"))
+        self.assertLess(phase.index("_render_hum_sing_panel"), phase.index("AI Melody Suggestions**"))
         # No separate top Active Melody block — tools attach in-place under the chosen card
         early = phase[:feel_i]
         self.assertNotIn("_render_active_melody_inplace_tools", early)
         self.assertNotIn("_render_active_melody_workspace", early)
         self.assertIn("_render_active_melody_inplace_tools", phase)
         tools = inspect.getsource(_render_active_melody_inplace_tools)
-        self.assertLess(tools.index("_render_active_melody_repeat_controls"), tools.index("**Shape / refine active melody**"))
-        self.assertLess(tools.index("**Shape / refine active melody**"), tools.index("Advanced Phrase Editor"))
+        self.assertLess(tools.index("_render_active_melody_repeat_controls"), tools.index("Shape / refine active melody**"))
+        self.assertLess(tools.index("Shape / refine active melody**"), tools.index("Advanced Phrase Editor"))
         self.assertNotIn('st.markdown("**Active Melody**")', tools)
 
     def test_friendly_recording_warning(self) -> None:

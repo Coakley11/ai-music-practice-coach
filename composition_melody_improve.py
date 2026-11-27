@@ -31,6 +31,36 @@ QUICK_ACTIONS: tuple[tuple[str, str], ...] = (
 )
 
 
+#: One glyph per take adjustment, so the six buttons read as six different kinds of change
+#: rather than six sentences. Every glyph is one this app already uses - the registry's own
+#: verbs plus two feature icons - because a new glyph here would mean the same action looked
+#: different in Composition than everywhere else.
+QUICK_ACTION_ICONS: dict[str, str] = {
+    "smoother_last_measure": "✨",      # ACTION_ICONS["feel"] - an expressive change
+    "more_rhythm": "➕",                # ACTION_ICONS["add"] - more rhythmic activity
+    "shorten_first": "⏱️",       # timing_tempo_metronome - a duration change
+    "lengthen_last": "⏱️",       # the same kind of change, the other direction
+    "move_final_later": "➡️",    # AMI_ACTION_ICONS["next"] - it moves later
+    "simplify_second_measure": "🌱",  # ACTION_ICONS["easier"] - one step gentler
+}
+
+
+def quick_action_label(action_id: str, text: str) -> str:
+    """``"<icon> <text>"`` for a take adjustment, or the text alone if it has no glyph."""
+    icon = QUICK_ACTION_ICONS.get(str(action_id or "").strip())
+    return f"{icon} {text}" if icon else str(text)
+
+
+#: The app's "original" glyph (FEATURE_ICONS["practice_melody_original"]). Distinct from the
+#: undo arrow on purpose: stepping back one adjustment and going all the way back to what was
+#: played are different acts, and they sit next to each other.
+ORIGINAL_TAKE_ICON = "💿"
+
+
+def original_take_label(text: str) -> str:
+    return f"{ORIGINAL_TAKE_ICON} {text}"
+
+
 def original_take_key(section_id: str) -> str:
     return f"{ORIGINAL_TAKE_PREFIX}{section_id}"
 

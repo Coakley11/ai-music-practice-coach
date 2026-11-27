@@ -26,6 +26,22 @@ _REST_GAP_SEC = 0.18
 _CENTS_MERGE = 55.0  # vibrato / wobble within one note
 _OCTAVE_JUMP_CENTS = 900.0  # ~7.5 semitones — keep legitimate leaps, filter wild spikes
 _MIN_VOICED_RATIO = 0.12
+# How early the first note may start and the take still count as beginning with the
+# count-in: a musician who anticipates the downbeat slightly has still played to it.
+_COUNT_IN_EVIDENCE_TOL_SEC = 0.25
+# A note the tracker places a hair before the first chord IS the downbeat note. pyin
+# reports an onset a frame or two early, so an exact boundary made the opening note of
+# a correctly counted-in take a coin flip: land 10 ms early and it was classified as
+# count-in material and dropped from the phrase.
+_DOWNBEAT_GRACE_SEC = 0.12
+# How far the first note may be nudged to sit on the grid. One sixteenth absorbs the
+# tracker's own onset lag and nothing more. It used to be a whole beat, which dragged a
+# deliberate off-beat entrance onto the downbeat: a phrase sung on the second eighth of
+# every bar came back squarely on the beat, with the syncopation silently removed. The
+# recorder-start skew that a wide snap appeared to rescue is not knowable from the audio
+# at all - it needs the measured recording clock - so guessing it here is not a trade
+# worth the rhythm.
+_ORIGIN_SNAP_MAX_BEATS = 0.25
 _MIN_EVENTS = 1
 
 # Duration grid in beats (1.0 = one BPM pulse).
@@ -58,9 +74,33 @@ def duration_grid_for_meter(meter: str) -> tuple[float, ...]:
 
 
 def quantize_beats(value: float, *, meter: str = "4/4") -> float:
+    """Snap a note LENGTH to the legal durations for this meter.
+
+    Durations only. A start position is not a note length - see ``quantize_onset``,
+    which exists because using this grid to place a note capped every onset at 4.0.
+    """
     grid = duration_grid_for_meter(meter)
     v = max(0.25, float(value))
     return float(min(grid, key=lambda g: abs(g - v)))
+
+
+# Onsets are positions on the section timeline, not note lengths. A note may begin
+# anywhere on the sixteenth grid and a section runs for many bars, so the duration
+# grid above must never place one: its largest value, 4.0, acted as a ceiling, so
+# every note after the first bar collapsed onto beat 4 and the melody stopped
+# advancing while the chords played on. Its smallest value, 0.5, also made beat 0
+# unreachable and beat 2.5 inexpressible.
+ONSET_GRID_BEATS = 0.25
+
+
+def quantize_onset(value: float, *, meter: str = "4/4") -> float:
+    """Snap a start position to the sixteenth grid - no ceiling, no floor.
+
+    The sign is preserved: a note that began during the count-in must stay negative
+    so the caller can recognise it instead of reading it as a note on beat 0.
+    """
+    step = float(ONSET_GRID_BEATS)
+    return round(float(value) / step) * step
 
 
 def midi_from_hz(hz: float) -> float:
@@ -274,8 +314,8 @@ def segments_to_melody_events(
         if dur_beats < 0.5 and seg.get("kind") == "rest":
             continue
         raw_start = float(seg.get("start_sec") or 0.0) - cin
-        start_beat = quantize_beats(raw_start / sec_per_beat, meter=meter)
-        early = raw_start < -1e-6
+        start_beat = quantize_onset(raw_start / sec_per_beat, meter=meter)
+        early = raw_start < -_DOWNBEAT_GRACE_SEC
         if seg.get("kind") == "rest":
             events.append(
                 {
@@ -339,9 +379,10 @@ def apply_count_in_offset_to_events(
     if not valid:
         return []
     origin = min(float(e.get("beat") or 0.0) for e in valid)
-    # Snap near-downbeat entrances to beat 0 (pyin onset lag after count-in).
-    # Notes that clearly start later keep absolute section beats.
-    shift = origin if origin < 1.01 else 0.0
+    # Snap a near-downbeat entrance to beat 0 to absorb pyin's onset lag. Anything
+    # further out is music the musician played: an off-beat or late entrance keeps its
+    # absolute section beat rather than being pulled onto the downbeat.
+    shift = origin if origin <= _ORIGIN_SNAP_MAX_BEATS else 0.0
     out: list[dict[str, Any]] = []
     bpb = _beats_per_bar(meter)
     for e in valid:
@@ -354,6 +395,11 @@ def apply_count_in_offset_to_events(
     # Attach early notes as metadata on the first event for tests/UI if needed.
     if early and out:
         out[0]["early_count_in_notes"] = len(early)
+    # Disclose the re-anchoring. Snapping a near-downbeat entrance to beat 0 hides
+    # however much of it was latency, so the amount is reported rather than silently
+    # applied: a shift close to a whole beat means the take was not aligned.
+    if out:
+        out[0]["origin_shift_beats"] = round(float(shift), 4)
     return out
 
 
@@ -372,6 +418,7 @@ def transcribe_hum_audio(
     sr: int = 22050,
     count_in_sec: float = 0.0,
     count_in_bars: int = 0,
+    count_in_measured: bool = False,
 ) -> dict[str, Any]:
     """Full hum → proposal events. Never mutates a Composition document."""
     result: dict[str, Any] = {
@@ -383,6 +430,10 @@ def transcribe_hum_audio(
         "available": hum_analysis_available(),
         "monophonic": True,
         "count_in_sec": 0.0,
+        "count_in_requested_sec": 0.0,
+        "count_in_applied": False,
+        "count_in_measured": False,
+        "first_note_sec": 0.0,
     }
     if not hum_analysis_available():
         result["status"] = "unavailable"
@@ -436,7 +487,30 @@ def transcribe_hum_audio(
             cin = count_in_seconds(bpm=int(bpm), meter=str(meter), bars=int(count_in_bars))
         except Exception:
             cin = float(int(count_in_bars)) * (60.0 / max(40.0, float(bpm))) * float(parse_meter(meter)[0])
+    # Only remove a count-in the recording actually contains. The count-in is played
+    # by the chord transport in its own iframe, while the microphone is armed by a
+    # separate control, so nothing guarantees the take begins with it - and if the
+    # musician simply hummed without pressing Play, there is no count-in in the audio
+    # at all. Subtracting one regardless pushed the opening bars before beat 0, where
+    # apply_count_in_offset_to_events drops them: the first bar of a real melody was
+    # deleted, and the "your recording + chords" preview trimmed the same seconds off
+    # the audio. If the first note starts before the count-in could have ended, the
+    # take evidently did not begin with it, so nothing is removed and the proposal
+    # says so instead of quietly discarding music.
+    first_note_sec = min((float(s.get("start_sec") or 0.0) for s in note_segs), default=0.0)
+    count_in_requested = cin
+    # ``count_in_measured`` means the recorder reported where bar 1 beat 1 actually sits in
+    # this take, from frame counters on the shared clock. The evidence rule below exists for
+    # takes with no such measurement; applying it to a measured one would throw the
+    # measurement away whenever the musician plays a pickup before the downbeat, which is
+    # exactly the expressive playing the measurement makes transcribable.
+    if cin > 0 and not count_in_measured and first_note_sec < cin - _COUNT_IN_EVIDENCE_TOL_SEC:
+        cin = 0.0
     result["count_in_sec"] = cin
+    result["count_in_requested_sec"] = count_in_requested
+    result["count_in_applied"] = bool(cin > 0)
+    result["count_in_measured"] = bool(count_in_measured)
+    result["first_note_sec"] = round(first_note_sec, 4)
 
     events = segments_to_melody_events(
         segments,
