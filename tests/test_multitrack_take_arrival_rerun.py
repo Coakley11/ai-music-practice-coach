@@ -113,7 +113,9 @@ class ANewTakeAsksForARerun(unittest.TestCase):
 
     def test_the_sibling_save_layer_branch_still_reruns(self):
         """The precedent this follows. If it goes, the two paths have diverged again."""
-        saved = self.text.index("mark_take_saved(st.session_state, slot)")
+        # MT-1: Save layer now calls save_layer_take (which marks the take saved once its kept copy
+        # reads back); the branch must still rerun after it.
+        saved = self.text.index("save_layer_take(st.session_state, slot")
         tail = self.text[saved:saved + 1200]
         self.assertIn("st.rerun()", tail)
 

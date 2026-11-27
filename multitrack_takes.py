@@ -14,6 +14,9 @@ from __future__ import annotations
 import hashlib
 from typing import Any, Mapping, MutableMapping
 
+# The recorder module owns these names (a take's timing record is keyed by them); never respell them here.
+from multitrack_live_recorder import SOURCE_BASIC_RECORDER, SOURCE_SHARED_CLOCK, SOURCE_UPLOAD
+
 TAKE_SAVED_PREFIX = "mt_take_saved_"
 TAKE_NONCE_PREFIX = "mt_take_nonce_"
 
@@ -128,13 +131,13 @@ def choose_landed_take(
     The caller validates the bytes and, only if it adopts them, calls :func:`consume_landed_take`; a
     rejected input therefore stays the musician's latest action instead of being silently swallowed.
     """
-    held = [(obj, src) for obj, src in ((recorded, "basic-recorder"), (uploaded, "upload")) if obj is not None]
+    held = [(obj, src) for obj, src in ((recorded, SOURCE_BASIC_RECORDER), (uploaded, SOURCE_UPLOAD)) if obj is not None]
     held_ids = [i for i in (input_event_id(obj) for obj, _ in held) if i]
     if isinstance(live_take, Mapping) and live_take.get("wav"):
         return {
             "bytes": bytes(live_take["wav"]),
             "name": str(live_name or "layer-take.wav"),
-            "source": "shared-clock",
+            "source": SOURCE_SHARED_CLOCK,
             "event": f"live:{live_take.get('take_id') or ''}",
             "supersedes": held_ids,
         }

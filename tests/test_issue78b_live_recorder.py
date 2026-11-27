@@ -535,8 +535,23 @@ class TheRecorderNeverFallsBackSilently(unittest.TestCase):
         self.assertEqual(SOURCE_SHARED_CLOCK, "shared-clock")
         self.assertEqual(SOURCE_BASIC_RECORDER, "basic-recorder")
         self.assertEqual(SOURCE_UPLOAD, "upload")
-        self.assertIn('_mt_landed_source = "shared-clock"', APP)
-        self.assertIn('"basic-recorder" if recorded is not None else "upload"', APP)
+        # MT-1 moved the landing decision into multitrack_takes.choose_landed_take, which takes these
+        # names from this module rather than respelling them; the app stamps whatever it returns.
+        import io
+
+        from multitrack_takes import choose_landed_take
+
+        class _In(io.BytesIO):
+            def __init__(self, data, fid):
+                super().__init__(data)
+                self.file_id, self.name = fid, "t.wav"
+
+        self.assertEqual(choose_landed_take({}, "Guitar", live_take={"take_id": "t", "wav": b"x" * 600})["source"],
+                         SOURCE_SHARED_CLOCK)
+        self.assertEqual(choose_landed_take({}, "Guitar", recorded=_In(b"r" * 600, "r1"))["source"],
+                         SOURCE_BASIC_RECORDER)
+        self.assertEqual(choose_landed_take({}, "Guitar", uploaded=_In(b"u" * 600, "u1"))["source"], SOURCE_UPLOAD)
+        self.assertIn('_mt_landed_source = _mt_choice["source"]', APP)
 
     def test_the_measurement_travels_with_the_saved_project(self) -> None:
         from studio_page_persistence import _PAGE_LOCAL_KEYS
