@@ -170,6 +170,79 @@ def consume_landed_take(session_state: MutableMapping[str, Any], slot: str, choi
     session_state[f"{CONSUMED_INPUTS_PREFIX}{slot}"] = seen[-_CONSUMED_CAP:]
 
 
+#: One message from the last Save layer press, shown on the next run (the press reruns the page).
+LAYER_SAVE_FLASH_PREFIX = "_mt_layer_save_flash::"
+
+
+def save_layer_take(session_state: MutableMapping[str, Any], slot: str, *, st: Any = None) -> dict[str, Any]:
+    """Save layer: keep THIS slot's current audio. Success only once the kept copy reads back as it.
+
+    The kept copy is this layer's file on the app's server (multitrack_draft_store) - a refresh brings
+    it back, a restart of the app can lose it. The account copy is made by saving the project, so this
+    never reports ``where="account"``. On any failure the take stays in the session untouched and is
+    not marked saved.
+
+    Returns ``{ok, where, error, bytes}``; ``where`` is ``server_only`` | ``session_only`` | ``none``.
+    """
+    tracks = session_state.get("mt_tracks")
+    data = tracks.get(slot) if isinstance(tracks, dict) else None
+    if not data:
+        return {"ok": False, "where": "none", "error": "no_audio", "bytes": 0}
+    try:
+        data = bytes(data)
+    except Exception:
+        return {"ok": False, "where": "session_only", "error": "the recording could not be read", "bytes": 0}
+    try:
+        from multitrack_draft_store import mark_draft_saved, read_draft, write_draft
+    except ImportError:
+        return {"ok": False, "where": "session_only", "error": "the layer store is not available", "bytes": len(data)}
+    fail = {"ok": False, "where": "session_only", "bytes": len(data)}
+    try:
+        kept, _meta, _why = read_draft(session_state, slot, st=st)
+        if kept != data:
+            # The file on disk is an older take (or none): the kept copy must be what the layer holds now.
+            written = write_draft(session_state, slot, data, st=st)
+            if not written.get("ok"):
+                return {**fail, "error": str(written.get("error") or "the recording could not be written")}
+        if not mark_draft_saved(session_state, slot, st=st):
+            return {**fail, "error": "the kept copy could not be marked as saved"}
+        kept, meta, why = read_draft(session_state, slot, st=st)
+    except Exception as exc:
+        return {**fail, "error": f"{type(exc).__name__}: {str(exc)[:120]}"}
+    if kept != data or not (meta or {}).get("saved"):
+        return {**fail, "error": why or "the kept copy did not read back as this recording"}
+    mark_take_saved(session_state, slot)
+    return {"ok": True, "where": "server_only", "error": "", "bytes": len(data)}
+
+
+def layer_save_message(result: Mapping[str, Any] | None, layer_name: str) -> tuple[str, str]:
+    """(level, text) for a Save layer result. Never "success": a layer is not in the account until the project is."""
+    name = str(layer_name or "This layer").strip() or "This layer"
+    if not isinstance(result, Mapping):
+        return ("warning", f"**{name}**: the save could not be confirmed. The recording is still here in this "
+                           "session - press **Save layer** again.")
+    if result.get("ok"):
+        return ("warning", f"**{name}** is saved as a layer on this app's server, so it comes back after a refresh. "
+                           "It is **not in your account** yet: a restart of the app can lose it. To keep it in "
+                           "your account, save the project in **Project Library**.")
+    if str(result.get("error") or "") == "no_audio":
+        return ("warning", "Record or upload audio first.")
+    return ("error", f"**{name}** could not be saved ({result.get('error') or 'unknown error'}). The recording is "
+                     "still here in this session - nothing was deleted. Press **Save layer** again, or save the "
+                     "project in **Project Library**.")
+
+
+def set_layer_save_flash(session_state: MutableMapping[str, Any], slot: str, message: tuple[str, str]) -> None:
+    session_state[f"{LAYER_SAVE_FLASH_PREFIX}{slot}"] = list(message)
+
+
+def pop_layer_save_flash(session_state: MutableMapping[str, Any], slot: str) -> tuple[str, str] | None:
+    raw = session_state.pop(f"{LAYER_SAVE_FLASH_PREFIX}{slot}", None)
+    if isinstance(raw, (list, tuple)) and len(raw) == 2:
+        return str(raw[0]), str(raw[1])
+    return None
+
+
 AUTO_OPEN_DECIDED_KEY = "_mt_auto_open_decided"
 AUTO_OPEN_SLOT_KEY = "_mt_auto_open_slot"
 
@@ -279,6 +352,11 @@ __all__ = [
     "choose_landed_take",
     "consume_landed_take",
     "input_event_id",
+    "LAYER_SAVE_FLASH_PREFIX",
+    "layer_save_message",
+    "pop_layer_save_flash",
+    "save_layer_take",
+    "set_layer_save_flash",
     "TAKE_SAVED_PREFIX",
     "discard_button_label",
     "discard_take",

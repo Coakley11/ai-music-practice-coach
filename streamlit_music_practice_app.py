@@ -30910,6 +30910,14 @@ elif _studio_page == "multitrack":
                                 # the same reason.
                                 st.rerun()
 
+                        try:
+                            from multitrack_takes import pop_layer_save_flash
+
+                            _mt_flash = pop_layer_save_flash(st.session_state, slot)
+                        except ImportError:
+                            _mt_flash = None
+                        if _mt_flash:
+                            {"error": st.error, "success": st.success}.get(_mt_flash[0], st.warning)(_mt_flash[1])
                         _take_line = take_status_line(st.session_state, slot)
                         if _take_line:
                             st.caption(_take_line)
@@ -30957,45 +30965,31 @@ elif _studio_page == "multitrack":
                         if _save_col.button(
                             action_label("save", f"Save layer — {slot}"), key=f"mt_save_{slot}", use_container_width=True
                         ):
-                            audio_obj = recorded if recorded is not None else uploaded
-                            if audio_obj is None and st.session_state.mt_tracks.get(slot):
-                                # The take is already held for playback; saving keeps it for good.
-                                mark_take_saved(st.session_state, slot)
-                                try:
-                                    from multitrack_draft_store import mark_draft_saved
+                            # MT-1: Save layer keeps what this layer holds NOW. It used to take the
+                            # uploader's file first - an older take than a later microphone one - and
+                            # printed "saved." whatever happened (and a rerun wiped even that). Any new
+                            # input already landed above on this run, so the layer's audio is current.
+                            from multitrack_takes import (
+                                layer_save_message,
+                                save_layer_take,
+                                set_layer_save_flash,
+                            )
 
-                                    mark_draft_saved(st.session_state, slot, st=st)
-                                except Exception:
-                                    pass
-                                st.success(f"{layer_name} saved.")
-                                try:
-                                    from music_persistent_state import force_save_music_state
-
-                                    force_save_music_state(st, reason="multitrack_layer_save")
-                                except Exception:
-                                    pass
-                                st.rerun()
-                            if audio_obj is not None:
-                                st.session_state.mt_tracks[slot] = audio_obj.getvalue()
-                                st.session_state.mt_track_filenames[slot] = getattr(
-                                    audio_obj, "name", f"{slot}.wav"
+                            _mt_save_res = save_layer_take(st.session_state, slot, st=st)
+                            if _mt_save_res.get("error") == "no_audio":
+                                st.warning(layer_save_message(_mt_save_res, layer_name)[1])
+                            else:
+                                set_layer_save_flash(
+                                    st.session_state, slot, layer_save_message(_mt_save_res, layer_name)
                                 )
-                                mark_take_saved(st.session_state, slot)
-                                try:
-                                    from multitrack_draft_store import mark_draft_saved
+                                if _mt_save_res.get("ok"):
+                                    try:
+                                        from music_persistent_state import force_save_music_state
 
-                                    mark_draft_saved(st.session_state, slot, st=st)
-                                except Exception:
-                                    pass
-                                st.success(f"{layer_name} saved.")
-                                try:
-                                    from music_persistent_state import force_save_music_state
-
-                                    force_save_music_state(st, reason="multitrack_layer_save")
-                                except Exception:
-                                    pass
+                                        force_save_music_state(st, reason="multitrack_layer_save")
+                                    except Exception:
+                                        pass
                                 st.rerun()
-                            st.warning("Record or upload audio first.")
 
                     with c2:
                         # st.slider falls back to min_value when no value= is given, so
