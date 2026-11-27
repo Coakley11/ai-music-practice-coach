@@ -6401,62 +6401,284 @@ def _render_active_melody_inplace_tools(
 
     _render_active_melody_repeat_controls(session_state, doc, section, active_id)
 
-    st.markdown("**Shape / refine active melody**")
+    # ---- What an edit is allowed to touch -------------------------------------------------
+    # A section whose chords repeat is several passes of the same bars. Shaping the whole thing
+    # and developing one pass are both things a writer wants, and the difference has to be
+    # visible before the edit rather than discovered after it.
+    from composition_melody_passes import (
+        SCOPE_BARS,
+        SCOPE_ENTIRE,
+        SCOPE_LABELS,
+        SCOPE_ONE_PASS,
+        apply_to_scope,
+        bar_beats,
+        copy_pass,
+        coverage_report,
+        pass_count,
+        restore_pass,
+        scope_caption,
+    )
+    from composition_melody_shape import timeline_span as _timeline_span
+
+    _events_now = list(section_melody_events(section) or [])
+    _meter = str(playback_globals(doc).get("time_signature") or "4/4")
+    _passes = pass_count(_events_now)
+    _bar = bar_beats(_meter) or 4.0
+    _total_bars = max(1, int(round(_timeline_span(_events_now) / _bar))) if _events_now else 1
+    _flat_chords = list(chords_for_playback(doc, scope="section", section_id=active_id) or [])
+
+    _scope_key = f"composer_melody_scope_{active_id}"
+    _scope_options = [SCOPE_ENTIRE] + ([SCOPE_ONE_PASS] if _passes > 1 else []) + [SCOPE_BARS]
+    # A melody replaced by one that no longer repeats can leave a stale One Pass choice behind.
+    # Seed the widget before it is drawn rather than hand Streamlit a value it cannot show.
+    if session_state.get(_scope_key) not in _scope_options:
+        session_state[_scope_key] = SCOPE_ENTIRE
+    scope = st.radio(
+        "Editing scope",
+        options=_scope_options,
+        format_func=lambda s: SCOPE_LABELS.get(s, s),
+        horizontal=True,
+        key=_scope_key,
+        help=(
+            "Entire Section shapes the whole melody, repeats included. One Pass and Selected "
+            "Bars leave everything outside them exactly as it is."
+        ),
+    )
+    pass_index = 0
+    bars = None
+    if scope == SCOPE_ONE_PASS:
+        pass_index = int(
+            st.selectbox(
+                "Which pass",
+                options=list(range(_passes)),
+                format_func=lambda i: f"Pass {i + 1} of {_passes}",
+                key=f"composer_melody_scope_pass_{active_id}",
+            )
+        )
+    elif scope == SCOPE_BARS:
+        _b1, _b2 = st.columns(2)
+        with _b1:
+            _from = st.number_input(
+                "From bar",
+                min_value=1,
+                max_value=_total_bars,
+                value=1,
+                step=1,
+                key=f"composer_melody_scope_bar_from_{active_id}",
+            )
+        with _b2:
+            _to = st.number_input(
+                "To bar",
+                min_value=1,
+                max_value=_total_bars,
+                value=min(_total_bars, 4),
+                step=1,
+                key=f"composer_melody_scope_bar_to_{active_id}",
+            )
+        bars = (int(_from), int(_to))
+    # Prominent on purpose: a caption would be read after the click, not before it.
+    st.info(
+        f"**{SCOPE_LABELS.get(scope, scope)}** - "
+        f"{scope_caption(scope, pass_index, _passes, bars)}"
+    )
+
+    # Chords with no melody over them is a defect; a phrase that breathes is not. Only the
+    # first of those is worth saying anything about.
+    if _events_now and _flat_chords:
+        _cov = coverage_report(_events_now, _flat_chords, meter=_meter)
+        if _cov.get("verdict") == "truncated":
+            # Said once, as an observation. An ending held open deliberately looks identical
+            # from here, so nothing is filled, lengthened or changed on the strength of it.
+            st.info(
+                f"{_cov['message']} If that is how you want it to end, nothing needs doing. "
+                "Otherwise shape the Entire Section, or copy a pass into the gap."
+            )
+
+    st.markdown(f"**{_melody_icon()} Shape / refine active melody**")
     st.caption(
-        "Creates a proposal from the full highlighted active melody "
-        "(all repeats). Preview leaves it active; Accept replaces it."
+        "Creates a proposal - Preview leaves the accepted melody alone, Accept replaces it."
     )
     pg = playback_globals(doc)
     key_center = str(pg.get("key_center") or "C")
+
+    def _scoped_proposal(events: list[dict[str, Any]], label: str, **extra: Any) -> None:
+        """Store a PROPOSAL. The accepted melody is never written here."""
+        payload = {
+            "events": list(events),
+            "from_source": get_active_melody_source_id(section) or active_melody_source,
+            "label": label,
+            "scope": scope,
+            "scope_note": scope_caption(scope, pass_index, _passes, bars),
+            "summary": describe_melody_from_events(
+                list(events), chord_count=len(list(section.get("chords") or []))
+            ),
+        }
+        payload.update(extra)
+        session_state[_refine_proposal_key(active_id)] = payload
+        st.rerun()
+
+    def _propose_scoped(rid: str, label: str) -> None:
+        """Refine inside the chosen scope only."""
+        before = list(section_melody_events(section) or [])
+        if not before:
+            return
+        said: dict[str, Any] = {"summary": "", "changed": False}
+
+        def _tx(evs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+            res = propose_melody_refinement(evs, rid, key=key_center)
+            said["summary"] = str(res.get("summary") or "")
+            if res.get("unchanged") or not res.get("ok"):
+                return list(evs)
+            said["changed"] = True
+            return list(res.get("events") or evs)
+
+        after = apply_to_scope(
+            before, _tx, scope=scope, pass_index=pass_index, bars=bars, meter=_meter
+        )
+        if not said["changed"] or not after:
+            st.warning(said["summary"] or "No musical change from that shape.")
+            return
+        _scoped_proposal(after, label, refinement_id=rid)
     ref_cols = st.columns(min(4, len(MELODY_REFINEMENTS)))
     for i, (rid, label, _) in enumerate(MELODY_REFINEMENTS[:4]):
         with ref_cols[i % len(ref_cols)]:
             if st.button(f"🪄 {label}", key=f"composer_melody_ref_{active_id}_{rid}", use_container_width=True):
-                before = list(section_melody_events(section) or [])
-                src = get_active_melody_source_id(section) or active_melody_source
-                result = propose_melody_refinement(before, rid, key=key_center)
-                if result.get("unchanged") or not result.get("ok"):
-                    st.warning(str(result.get("summary") or "No musical change from that shape."))
-                else:
-                    prop_events = list(result.get("events") or [])
-                    session_state[_refine_proposal_key(active_id)] = {
-                        "events": prop_events,
-                        "from_source": src,
-                        "refinement_id": rid,
-                        "label": label,
-                        "summary": describe_melody_from_events(
-                            prop_events, chord_count=len(list(section.get("chords") or []))
-                        ),
-                    }
-                    st.rerun()
+                _propose_scoped(rid, label)
     with st.expander("🪄 More local refinements", expanded=False):
         more_cols = st.columns(min(3, max(1, len(MELODY_REFINEMENTS) - 4)))
         for i, (rid, label, _) in enumerate(MELODY_REFINEMENTS[4:]):
             with more_cols[i % len(more_cols)]:
                 if st.button(f"🪄 {label}", key=f"composer_melody_ref_more_{active_id}_{rid}", use_container_width=True):
-                    before = list(section_melody_events(section) or [])
-                    src = get_active_melody_source_id(section) or active_melody_source
-                    result = propose_melody_refinement(before, rid, key=key_center)
-                    if result.get("unchanged") or not result.get("ok"):
-                        st.warning(str(result.get("summary") or "No musical change from that shape."))
+                    _propose_scoped(rid, label)
+
+
+    # ---- Working pass by pass ------------------------------------------------------------
+    # Develop one phrase, then decide what the later passes do with it: take it as it stands,
+    # take it with a difference, or go back to what they were.
+    if _passes > 1:
+        with st.expander(f"{_melody_icon()} Work pass by pass", expanded=False):
+            st.caption(
+                f"This section plays its chords {_passes} times. Each copy fills the pass it "
+                "lands in, so the song does not get longer."
+            )
+            _src_pass = int(
+                st.selectbox(
+                    "Copy this pass",
+                    options=list(range(_passes)),
+                    index=min(pass_index, _passes - 1),
+                    format_func=lambda i: f"Pass {i + 1}",
+                    key=f"composer_melody_copy_src_{active_id}",
+                )
+            )
+            _targets = st.multiselect(
+                "Into",
+                options=[i for i in range(_passes) if i != _src_pass],
+                default=[i for i in range(_passes) if i != _src_pass],
+                format_func=lambda i: f"Pass {i + 1}",
+                key=f"composer_melody_copy_dst_{active_id}",
+            )
+            _vary_options = [""] + [rid for rid, _lab, _why in MELODY_REFINEMENTS]
+            _vary = st.selectbox(
+                "Repeat with a variation",
+                options=_vary_options,
+                format_func=lambda rid: (
+                    "Exact copy"
+                    if not rid
+                    else next(lab for r, lab, _w in MELODY_REFINEMENTS if r == rid)
+                ),
+                key=f"composer_melody_copy_vary_{active_id}",
+                help="An exact repeat is a real musical choice; so is the same phrase with one difference.",
+            )
+            _adapt = st.checkbox(
+                "Adapt copied notes to the chords they land on",
+                value=True,
+                key=f"composer_melody_copy_adapt_{active_id}",
+                help=(
+                    "Only notes outside both the chord and the key, and long enough to "
+                    "stand out, move - by one or two semitones. Every change is listed "
+                    "before you Accept. Chromatic approaches, suspensions and tensions "
+                    "are left as written. Turn this off to repeat the phrase exactly as it is."
+                ),
+            )
+            _c1, _c2 = st.columns(2)
+            with _c1:
+                if st.button(
+                    action_label("add", "Copy into the chosen passes"),
+                    key=f"composer_melody_copy_go_{active_id}",
+                    use_container_width=True,
+                    disabled=not _targets,
+                ):
+                    _before = list(section_melody_events(section) or [])
+                    _variation = (
+                        (
+                            lambda evs: list(
+                                propose_melody_refinement(evs, _vary, key=key_center).get(
+                                    "events"
+                                )
+                                or evs
+                            )
+                        )
+                        if _vary
+                        else None
+                    )
+                    _after, _changes = copy_pass(
+                        _before,
+                        _src_pass,
+                        list(_targets),
+                        chords=_flat_chords,
+                        key=key_center,
+                        meter=_meter,
+                        fit_to_chords=bool(_adapt),
+                        variation=_variation,
+                    )
+                    if not _after or _after == _before:
+                        st.warning("That copy would not change anything.")
                     else:
-                        prop_events = list(result.get("events") or [])
-                        session_state[_refine_proposal_key(active_id)] = {
-                            "events": prop_events,
-                            "from_source": src,
-                            "refinement_id": rid,
-                            "label": label,
-                            "summary": describe_melody_from_events(
-                                prop_events, chord_count=len(list(section.get("chords") or []))
-                            ),
-                        }
-                        st.rerun()
+                        _label = f"Pass {_src_pass + 1} copied into " + ", ".join(
+                            f"pass {t + 1}" for t in sorted(_targets)
+                        )
+                        _scoped_proposal(_after, _label, harmony_changes=list(_changes))
+            with _c2:
+                if st.button(
+                    original_take_label(f"Restore pass {pass_index + 1}"),
+                    key=f"composer_melody_restore_pass_{active_id}",
+                    use_container_width=True,
+                    disabled=scope != SCOPE_ONE_PASS,
+                    help="Put this pass back the way the accepted melody has it, leaving the others alone",
+                ):
+                    _accepted = list(section_melody_events(section) or [])
+                    _proposal = session_state.get(_refine_proposal_key(active_id))
+                    _current = (
+                        list(_proposal.get("events") or [])
+                        if isinstance(_proposal, dict) and _proposal.get("events")
+                        else _accepted
+                    )
+                    _back = restore_pass(_current, _accepted, pass_index)
+                    if _back == _current:
+                        st.info(f"Pass {pass_index + 1} already matches the accepted melody.")
+                    else:
+                        _scoped_proposal(_back, f"Pass {pass_index + 1} restored")
 
     proposal = session_state.get(_refine_proposal_key(active_id))
     if isinstance(proposal, dict) and proposal.get("events"):
         st.markdown("**Refinement proposal**")
+        if proposal.get("scope_note"):
+            st.caption(str(proposal.get("scope_note")))
         if proposal.get("summary"):
             st.caption(str(proposal.get("summary")))
+        _adapted = list(proposal.get("harmony_changes") or [])
+        if _adapted:
+            # Every one of them, before Accept: a pitch change the musician did not see is a
+            # pitch change they did not agree to.
+            st.caption(
+                f"{len(_adapted)} note(s) adapted to the chords they landed on - "
+                "turn that off above to repeat the phrase exactly:"
+            )
+            for _chg in _adapted:
+                st.caption(
+                    f"- pass {_chg.get('pass')}, beat {_chg.get('beat')}: "
+                    f"{_chg.get('from')} to {_chg.get('to')} over {_chg.get('chord')}"
+                )
         prop_events = list(proposal.get("events") or [])
         prop_name = str(proposal.get("label") or "Refined melody")
         _render_melody_staff(
