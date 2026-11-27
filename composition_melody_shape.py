@@ -61,6 +61,127 @@ def _repack_beats(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return out
 
 
+def timeline_span(events: list[dict[str, Any]] | None) -> float:
+    """Beat the melody ends on.
+
+    This is the length of the section the melody was written for: the chords define
+    the grid, so a refinement may change how the notes sound but must not change how
+    long the music lasts. Re-laying events end-to-end from beat 0 after shortening or
+    deleting any of them is what used to leave a repeated progression's later bars
+    playing chords with no melody over them.
+    """
+    end = 0.0
+    for ev in list(events or []):
+        if not isinstance(ev, dict):
+            continue
+        stop = float(ev.get("beat") or 0.0) + float(ev.get("duration_beats") or 0.0)
+        if stop > end:
+            end = stop
+    return end
+
+
+def _fill_to_span(events: list[dict[str, Any]], span: float) -> list[dict[str, Any]]:
+    """Keep every onset and stretch each note up to the next one, the last to ``span``.
+
+    Used where a refinement removes notes. The notes that remain hold their place in
+    the bar and simply last longer, which is what "fewer notes, one clear shape" means
+    musically - rather than every later note sliding earlier and the phrase ending
+    before its chords do.
+    """
+    rows = [dict(e) for e in list(events or []) if isinstance(e, dict)]
+    if not rows:
+        return rows
+    rows.sort(key=lambda e: float(e.get("beat") or 0.0))
+    target = float(span) if span and span > 0 else timeline_span(rows)
+    for n, row in enumerate(rows):
+        start = float(row.get("beat") or 0.0)
+        stop = float(rows[n + 1].get("beat") or 0.0) if n + 1 < len(rows) else target
+        if stop > start:
+            row["duration_beats"] = round((stop - start) * 4) / 4
+    return rows
+
+
+def _absorb_from_next(
+    events: list[dict[str, Any]], index: int, extra: float, span: float
+) -> list[dict[str, Any]]:
+    """Lengthen one note by taking time from a neighbour, never from the section.
+
+    A sustained peak needs room. Taking that room from its neighbour keeps the phrase
+    the same length, so the melody still reaches the final bar; growing the phrase
+    instead would push its tail past the last chord.
+    """
+    rows = [dict(e) for e in list(events or []) if isinstance(e, dict)]
+    if not rows or not (0 <= index < len(rows)) or extra <= 0:
+        return rows
+    start = float(rows[index].get("beat") or 0.0)
+    own = float(rows[index].get("duration_beats") or 1.0)
+    if index + 1 >= len(rows):
+        # The peak is the final note. It grows into whatever the section has left, and
+        # if that is not enough it starts earlier instead, borrowing from the note
+        # before it: the climax sings longer either way, and the phrase still ends on
+        # the last chord rather than running past it.
+        room = max(0.0, float(span) - start - own)
+        gained = min(extra, room)
+        if gained < extra and index > 0:
+            before = rows[index - 1]
+            before_dur = float(before.get("duration_beats") or 1.0)
+            borrowed = max(0.0, min(extra - gained, before_dur - 0.25))
+            if borrowed > 0:
+                before["duration_beats"] = before_dur - borrowed
+                rows[index]["beat"] = start - borrowed
+                own += borrowed
+        rows[index]["duration_beats"] = own + gained
+        return rows
+    nxt = rows[index + 1]
+    nxt_start = float(nxt.get("beat") or 0.0)
+    nxt_dur = float(nxt.get("duration_beats") or 1.0)
+    # Never shorten the neighbour below a sixteenth, and never swallow it whole.
+    take = max(0.0, min(extra, nxt_dur - 0.25))
+    if take <= 0:
+        return rows
+    rows[index]["duration_beats"] = own + take
+    nxt["beat"] = nxt_start + take
+    nxt["duration_beats"] = nxt_dur - take
+    return rows
+
+
+def _hold_last_note_to_span(
+    events: list[dict[str, Any]], span: float
+) -> list[dict[str, Any]]:
+    """Let the closing note sustain to the end of the section.
+
+    Shortening notes is what makes a line crisper, but doing it to the LAST note stops the
+    melody before its final chord: with eight bars of D | Bm | G | A | D | Bm | G | A the
+    singer runs out three quarters of a beat early and the chords finish alone. Onsets and
+    every other duration are untouched - only the note that ends the phrase is held.
+    """
+    rows = [dict(e) for e in list(events or []) if isinstance(e, dict)]
+    target = float(span or 0.0)
+    if not rows or target <= 0:
+        return rows
+    last = None
+    for n, row in enumerate(rows):
+        if row.get("is_rest"):
+            continue
+        if last is None or float(row.get("beat") or 0.0) >= float(rows[last].get("beat") or 0.0):
+            last = n
+    if last is None:
+        return rows
+    start = float(rows[last].get("beat") or 0.0)
+    # The note may only grow into silence that belongs to nobody. A rest written after it is a
+    # musical decision - a phrase that breathes before the section ends - so the limit is the
+    # next event's onset, not the end of the section. Without this, a deliberate closing rest
+    # was sung straight through.
+    limit = target
+    for row in rows:
+        onset = float(row.get("beat") or 0.0)
+        if onset > start and onset < limit:
+            limit = onset
+    if limit > start:
+        rows[last]["duration_beats"] = round((limit - start) * 4) / 4
+    return rows
+
+
 def propose_melody_refinement(
     events: list[dict[str, Any]],
     refinement_id: str,
@@ -81,6 +202,8 @@ def propose_melody_refinement(
     label = next((lab for i, lab, _ in MELODY_REFINEMENTS if i == rid), rid)
     updated = [dict(e) for e in src]
     sounding = _sounding(updated)
+    # The section the musician is refining is this long, and must stay this long.
+    target_span = timeline_span(src)
 
     if rid == "smoother":
         if len(sounding) < 3:
@@ -111,7 +234,9 @@ def propose_melody_refinement(
             midi = int(updated[peak].get("midi") or 60) + 2
             updated[peak]["midi"] = midi
             updated[peak]["pitch"] = _pitch_label(midi, key)
-        updated = _repack_beats(updated)
+        # Each note is crisper where it already sat, and the closing note still sings to the
+        # final chord rather than being clipped with the rest.
+        updated = _hold_last_note_to_span(updated, target_span)
 
     elif rid == "rhythm":
         if not sounding:
@@ -129,7 +254,9 @@ def propose_melody_refinement(
                 if n % 2 == 1:
                     d = float(updated[i].get("duration_beats") or 1.0)
                     updated[i]["duration_beats"] = max(0.25, d * 0.5)
-            updated = _repack_beats(updated)
+            # Same reason as "energetic": whichever note ends the phrase keeps the section's
+            # length, however the halving happened to fall.
+            updated = _hold_last_note_to_span(updated, target_span)
         else:
             half = dur / 2.0
             updated[longest_i]["duration_beats"] = half
@@ -140,7 +267,7 @@ def propose_melody_refinement(
             insert["midi"] = midi
             insert["pitch"] = _pitch_label(midi, key)
             updated.insert(longest_i + 1, insert)
-            updated = _repack_beats(updated)
+            # The split halves fill the original note's slot, so the span is unchanged.
 
     elif rid == "simplify":
         if len(sounding) <= 3:
@@ -153,10 +280,14 @@ def propose_melody_refinement(
             }
         keep = set(sounding[::2])
         keep.add(sounding[-1])
+        # Rests are not clutter: simplifying means fewer NOTES, one clear shape. Dropping the
+        # rest rows let the surviving notes stretch across silences the musician asked for -
+        # including a deliberate closing rest.
+        keep.update(i for i, ev in enumerate(updated) if ev.get("is_rest"))
         updated = [ev for i, ev in enumerate(updated) if i in keep]
         if len(_sounding(updated)) < 2:
             updated = [dict(e) for e in src][::2]
-        updated = _repack_beats(updated)
+        updated = _fill_to_span(updated, target_span)
 
     elif rid == "emotional":
         if not sounding:
@@ -168,9 +299,10 @@ def propose_melody_refinement(
                 "refinement_id": rid,
             }
         peak = max(sounding, key=lambda j: int(updated[j].get("midi") or 60))
-        updated[peak]["duration_beats"] = min(
-            4.0, float(updated[peak].get("duration_beats") or 1.0) + 1.0
-        )
+        peak_dur = float(updated[peak].get("duration_beats") or 1.0)
+        want = min(4.0, peak_dur + 1.0) - peak_dur
+        if want > 0:
+            updated = _absorb_from_next(updated, peak, want, target_span)
         idx = sounding.index(peak)
         if idx > 0:
             prev = sounding[idx - 1]
@@ -180,7 +312,6 @@ def propose_melody_refinement(
                 mid = midi + (1 if peak_m > midi else -1) * 2
                 updated[prev]["midi"] = mid
                 updated[prev]["pitch"] = _pitch_label(mid, key)
-        updated = _repack_beats(updated)
 
     elif rid == "range_up":
         if not sounding:
