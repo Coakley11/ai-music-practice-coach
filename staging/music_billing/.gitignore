@@ -1,0 +1,3 @@
+﻿secrets.toml
+*.local.toml
+.streamlit/secrets.toml
