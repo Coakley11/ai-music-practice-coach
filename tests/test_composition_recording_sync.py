@@ -217,6 +217,63 @@ class TestCountInIsOnlyRemovedWhenItIsThere(unittest.TestCase):
         self.assertGreaterEqual(beats[0], 1.5, f"late entrance was re-anchored: {beats}")
 
 
+@unittest.skipUnless(hum_analysis_available(), "librosa not installed")
+class TestAMeasurementIsNotSecondGuessed(unittest.TestCase):
+    """A measured offset outranks the evidence rule.
+
+    The evidence rule exists for takes nobody measured: it removes a count-in only when the
+    audio really starts after one. A take from the shared clock reports where bar 1 beat 1
+    is from frame counters, and applying the evidence rule to that would discard the
+    measurement whenever the musician plays a pickup BEFORE the downbeat - the very
+    expressive playing the measurement makes transcribable.
+    """
+
+    def _pickup_take(self) -> bytes:
+        # One bar of count-in, a pickup note 0.5 beats early, then the phrase.
+        notes = [(3.5, 71, 0.5)] + [(4.0 + i, m, 1.0) for i, m in enumerate(SCALE_8[:4])]
+        spb = 60.0 / BPM
+        end = max(b + d for b, _m, d in notes) * spb + 0.3
+        buf = _quiet(end)
+        for start_beat, midi, dur in notes:
+            seg = _tone(midi, dur * spb - 0.03)
+            i0 = int(start_beat * spb * SR)
+            i1 = min(len(buf), i0 + len(seg))
+            buf[i0:i1] += seg[: i1 - i0]
+        pcm = (np.clip(buf, -1, 1) * 32767).astype(np.int16)
+        out = io.BytesIO()
+        with wave.open(out, "wb") as w:
+            w.setnchannels(1)
+            w.setsampwidth(2)
+            w.setframerate(SR)
+            w.writeframes(pcm.tobytes())
+        return out.getvalue()
+
+    def test_a_measured_count_in_survives_a_pickup_note(self) -> None:
+        res = transcribe_hum_audio(
+            self._pickup_take(),
+            bpm=BPM,
+            meter=METER,
+            key="C",
+            count_in_sec=BAR_SEC,
+            count_in_measured=True,
+        )
+        self.assertTrue(res.get("count_in_measured"))
+        self.assertTrue(res.get("count_in_applied"), "the measurement was discarded")
+        self.assertEqual(res.get("count_in_sec"), BAR_SEC)
+
+    def test_without_a_measurement_the_evidence_rule_still_applies(self) -> None:
+        res = transcribe_hum_audio(
+            self._pickup_take(),
+            bpm=BPM,
+            meter=METER,
+            key="C",
+            count_in_sec=BAR_SEC,
+        )
+        self.assertFalse(res.get("count_in_measured"))
+        self.assertFalse(res.get("count_in_applied"))
+        self.assertEqual(res.get("count_in_sec"), 0.0)
+
+
 def _synth(notes: list[tuple[float, int, float]], *, bpm: int, gap: float = 0.03,
            tail: float = 0.3) -> bytes:
     """WAV bytes for ``[(start_beat, midi, duration_beats)]`` laid on one timeline."""

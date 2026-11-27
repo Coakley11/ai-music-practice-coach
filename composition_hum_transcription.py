@@ -418,6 +418,7 @@ def transcribe_hum_audio(
     sr: int = 22050,
     count_in_sec: float = 0.0,
     count_in_bars: int = 0,
+    count_in_measured: bool = False,
 ) -> dict[str, Any]:
     """Full hum → proposal events. Never mutates a Composition document."""
     result: dict[str, Any] = {
@@ -431,6 +432,7 @@ def transcribe_hum_audio(
         "count_in_sec": 0.0,
         "count_in_requested_sec": 0.0,
         "count_in_applied": False,
+        "count_in_measured": False,
         "first_note_sec": 0.0,
     }
     if not hum_analysis_available():
@@ -497,11 +499,17 @@ def transcribe_hum_audio(
     # says so instead of quietly discarding music.
     first_note_sec = min((float(s.get("start_sec") or 0.0) for s in note_segs), default=0.0)
     count_in_requested = cin
-    if cin > 0 and first_note_sec < cin - _COUNT_IN_EVIDENCE_TOL_SEC:
+    # ``count_in_measured`` means the recorder reported where bar 1 beat 1 actually sits in
+    # this take, from frame counters on the shared clock. The evidence rule below exists for
+    # takes with no such measurement; applying it to a measured one would throw the
+    # measurement away whenever the musician plays a pickup before the downbeat, which is
+    # exactly the expressive playing the measurement makes transcribable.
+    if cin > 0 and not count_in_measured and first_note_sec < cin - _COUNT_IN_EVIDENCE_TOL_SEC:
         cin = 0.0
     result["count_in_sec"] = cin
     result["count_in_requested_sec"] = count_in_requested
     result["count_in_applied"] = bool(cin > 0)
+    result["count_in_measured"] = bool(count_in_measured)
     result["first_note_sec"] = round(first_note_sec, 4)
 
     events = segments_to_melody_events(

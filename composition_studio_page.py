@@ -3574,34 +3574,88 @@ def _render_hum_sing_panel(
             "Recording still works as a capture marker; explore melody ideas below."
         )
 
-    try:
-        audio = st.audio_input(
-            "Hum or sing your melody (or play one melodic line)",
-            key=f"composer_melody_record_{active_id}",
-        )
-    except Exception:
-        audio = None
-        st.caption("Audio recording will appear here when your browser supports it.")
+    from composition_shared_recorder import (
+        recording_scope,
+        recording_status,
+        render_shared_recorder,
+        shared_recorder_enabled,
+    )
 
-    if audio is not None:
+    # One take belongs to one section of one song: section ids are unique within a document,
+    # not across documents, so the scope carries both.
+    rec_scope = recording_scope(doc.get("id"), active_id)
+    raw = b""
+    if shared_recorder_enabled(session_state):
+        # The shared-clock route, off unless deliberately enabled. One Record click arms the
+        # microphone and starts this section's chords on the same AudioContext, so where bar
+        # 1 beat 1 sits inside the take is a frame counter rather than the gap between two
+        # human button presses. The st.audio_input route below is still what everyone gets
+        # until browser acceptance shows this one really records in time.
         try:
-            raw = audio.getvalue() if hasattr(audio, "getvalue") else b""
+            _bpb = max(1, int(str(meter).split("/")[0]))
+        except (TypeError, ValueError):
+            _bpb = 4
+        take = render_shared_recorder(
+            st,
+            session_state,
+            scope=rec_scope,
+            # No cached WAV is passed in: the recorder prepares this section's own
+            # accompaniment, so recording against the chords works from a cold start and
+            # never inherits another section's or another song's render.
+            chords=flat_chords,
+            bpm=bpm,
+            meter=meter,
+            section_key=key,
+            beats_per_bar=_bpb,
+            count_in_bars=count_in_bars,
+            generate_backing=(
+                lambda: generate_preview_wav(
+                    doc,
+                    section_id=active_id,
+                    loops=1,
+                    include_melody=False,
+                    count_in_bars=count_in_bars,
+                    chord_override=flat_chords,
+                )
+            )
+            if flat_chords
+            else None,
+        )
+        if take and take.get("wav"):
+            raw = bytes(take["wav"])
+        _status = recording_status(session_state, rec_scope)
+        if _status.get("has_audio"):
+            st.caption(str(_status.get("caption") or ""))
+    else:
+        try:
+            audio = st.audio_input(
+                "Hum or sing your melody (or play one melodic line)",
+                key=f"composer_melody_record_{active_id}",
+            )
         except Exception:
-            raw = b""
-        if raw:
-            session_state[_hum_audio_key(active_id)] = raw
-            intent = section.setdefault("melody", {}).setdefault("intent", {})
-            capture = intent.setdefault("hum_capture", {})
-            capture["captured"] = True
-            capture["bytes_len"] = len(raw)
-            capture["analysis_status"] = "ready_to_analyze"
-            capture["note_detection"] = False
+            audio = None
+            st.caption("Audio recording will appear here when your browser supports it.")
+
+        if audio is not None:
+            try:
+                raw = audio.getvalue() if hasattr(audio, "getvalue") else b""
+            except Exception:
+                raw = b""
+
+    if raw:
+        session_state[_hum_audio_key(active_id)] = raw
+        intent = section.setdefault("melody", {}).setdefault("intent", {})
+        capture = intent.setdefault("hum_capture", {})
+        capture["captured"] = True
+        capture["bytes_len"] = len(raw)
+        capture["analysis_status"] = "ready_to_analyze"
+        capture["note_detection"] = False
 
     has_audio = bool(session_state.get(_hum_audio_key(active_id)))
     a1, a2 = st.columns(2)
     with a1:
         analyze = st.button(
-            "Analyze recording",
+            action_label("analyze", "Analyze recording"),
             type="primary",
             key=f"composer_hum_analyze_{active_id}",
             disabled=not has_audio,
@@ -3615,13 +3669,38 @@ def _render_hum_sing_panel(
     if analyze:
         audio_bytes = session_state.get(_hum_audio_key(active_id)) or b""
         cin_bars = int(session_state.get(f"composer_hum_count_in_{active_id}") or COUNT_IN_ONE_BAR)
-        result = transcribe_hum_audio(
-            audio_bytes,
-            bpm=bpm,
-            meter=meter,
-            key=key,
-            count_in_bars=cin_bars,
+        # A take recorded on the shared clock reports where bar 1 beat 1 is; hand that over
+        # instead of assuming the take began with the count-in. A take from the old route
+        # reports nothing, so the transcriber applies its own evidence rule rather than
+        # trusting a number nobody measured.
+        from composition_recording_timing import (
+            count_in_sec_for_transcription,
+            stored_timing,
         )
+
+        _decided = count_in_sec_for_transcription(
+            stored_timing(session_state, rec_scope),
+            requested_sec=float(
+                session_state.get(f"composer_hum_count_in_sec_{active_id}") or 0.0
+            ),
+        )
+        if _decided.get("measured"):
+            result = transcribe_hum_audio(
+                audio_bytes,
+                bpm=bpm,
+                meter=meter,
+                key=key,
+                count_in_sec=float(_decided["count_in_sec"] or 0.0),
+                count_in_measured=True,
+            )
+        else:
+            result = transcribe_hum_audio(
+                audio_bytes,
+                bpm=bpm,
+                meter=meter,
+                key=key,
+                count_in_bars=cin_bars,
+            )
         session_state[_hum_proposal_key(active_id)] = result
         intent = section.setdefault("melody", {}).setdefault("intent", {})
         capture = intent.setdefault("hum_capture", {})
