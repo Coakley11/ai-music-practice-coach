@@ -8,7 +8,9 @@ import io
 from typing import Any
 
 from media_multitrack_export_catalog import (
+    _LAST_EXPORT_SAVE_STATUS_KEY,
     delete_multitrack_export_entry,
+    export_save_message,
     export_catalog_diagnostics,
     export_row_summary,
     list_multitrack_exports,
@@ -23,6 +25,7 @@ from multitrack_session_persistence import resolve_mixed_export_wav_bytes
 
 MT_EXPORT_SAVE_NAME_KEY = "mt_export_save_name"
 MT_MIXED_EXPORT_SIG_KEY = "_mt_mixed_export_sig"
+MT_EXPORT_SAVE_FLASH_KEY = "_mt_export_save_flash"
 
 
 def _dev_mode(st: Any, session_state: dict[str, Any]) -> bool:
@@ -83,6 +86,12 @@ def render_step4_save_export_panel(
     except Exception:
         pass
 
+    # MT-1: the outcome of the last press, shown after its rerun. "Export saved" used to appear for any
+    # ok - including no stored audio - and the rerun wiped it straight away.
+    _flash = session_state.pop(MT_EXPORT_SAVE_FLASH_KEY, None)
+    if isinstance(_flash, (list, tuple)) and len(_flash) == 2:
+        {"success": st_module.success, "error": st_module.error}.get(str(_flash[0]), st_module.warning)(str(_flash[1]))
+
     export_name = st_module.text_input("Export name", key=MT_EXPORT_SAVE_NAME_KEY)
     if st_module.button(action_label("save", "Save Export"), key="mt_export_save_btn", type="primary", use_container_width=True):
         ok, eid, err = save_multitrack_export_from_session(
@@ -95,11 +104,17 @@ def render_step4_save_export_panel(
             backing_volume=backing_volume,
             st=st_module,
         )
-        if ok:
-            st_module.success("Export saved to your Export Library.")
-            st_module.rerun()
-        else:
-            st_module.error(f"Could not save export: {err or 'unknown error'}")
+        _status = session_state.get(_LAST_EXPORT_SAVE_STATUS_KEY)
+        try:
+            _status = getattr(st_module, "session_state", {}).get(_LAST_EXPORT_SAVE_STATUS_KEY) or _status
+        except Exception:
+            pass
+        if not isinstance(_status, dict):
+            _status = {"ok": bool(ok), "where": "none" if not ok else "", "error": err}
+        session_state[MT_EXPORT_SAVE_FLASH_KEY] = list(
+            export_save_message(_status, str(_status.get("export_name") or export_name or ""))
+        )
+        st_module.rerun()
 
 
 def render_multitrack_export_library(

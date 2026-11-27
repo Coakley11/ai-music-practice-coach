@@ -1067,9 +1067,14 @@ def upload_mix_export_cloud(
             audio,
             file_options={"content-type": content_type, "upsert": "true"},
         )
-        return build_storage_ref(bucket, object_key), ""
+        ref = build_storage_ref(bucket, object_key)
     except Exception as exc:
         return "", str(exc)
+    # MT-1: an accepted upload is not yet a stored one. As for project layers (persist_track_audio),
+    # the export is in the account only once the bucket lists it at the size that was sent.
+    if not verify_uploaded_object(client, bucket, object_key, len(audio)):
+        return ref, "upload_not_verified"
+    return ref, ""
 
 
 def persist_mix_export_audio(
@@ -1103,6 +1108,7 @@ def persist_mix_export_audio(
     )
 
     local_ok = bool(local_path) and not local_err
+    # cloud_ok is a VERIFIED account copy: upload_mix_export_cloud reports upload_not_verified otherwise.
     cloud_ok = bool(storage_ref) and not cloud_err
     if local_ok or cloud_ok:
         status = PLAYBACK_PLAYABLE

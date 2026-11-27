@@ -277,65 +277,159 @@ def save_multitrack_export_from_session(
     backing_volume: float = 0.75,
     st: Any | None = None,
 ) -> tuple[bool, str, str]:
-    if not audio_bytes:
-        ss = _session_state(st) or session_state
-        ss[_LAST_EXPORT_SAVE_STATUS_KEY] = {"ok": False, "error": "missing_audio"}
-        return False, "", "missing_audio"
+    """Save the mixed WAV to the Export Library. ``ok`` only when its audio is really stored somewhere.
 
-    fields = build_multitrack_export_fields(
-        session_state,
-        audio_bytes,
-        export_name=export_name,
-        song_title=song_title,
-        track_items=track_items,
-        include_backing=include_backing,
-        backing_volume=backing_volume,
-        st=st,
-    )
-    # Facts describe the rendered WAV, not edits made since it was mixed.
-    from multitrack_activity import saved_mix_facts
-    mix_facts = saved_mix_facts(session_state, audio_bytes)
-    if mix_facts:
-        fields.update({k: v for k, v in mix_facts.items() if k != "audio_digest"})
-    row = add_multitrack_export(st, fields)
-    eid = str(row.get("export_id") or "")
-    if not eid:
-        ss = _session_state(st) or session_state
-        ss[_LAST_EXPORT_SAVE_STATUS_KEY] = {"ok": False, "error": "catalog_save_failed"}
-        return False, "", "catalog_save_failed"
+    MT-1. This used to return ``(True, eid, "")`` - and the UI said "Export saved" - when no audio was
+    stored at all (the catalog row was already written), and a failed account upload was invisible.
+    Now the status records WHERE the audio is (``where``: ``account`` = a size-verified upload,
+    ``server_only`` = a file on this app's server, ``none``), a save that stored nothing leaves no
+    usable library entry, and pressing Save Export again for the same mix re-stores that entry rather
+    than adding a duplicate.
+    """
+    ss = _session_state(st) or session_state
+    if not audio_bytes:
+        ss[_LAST_EXPORT_SAVE_STATUS_KEY] = {"ok": False, "where": "none", "error": "missing_audio"}
+        return False, "", "missing_audio"
+    digest = hashlib.sha256(bytes(audio_bytes)).hexdigest()
+    try:
+        import media_storage as _ms
+
+        cloud_on = bool(_ms._cloud_storage_enabled())
+    except Exception:
+        cloud_on = False
+
+    prev = ss.get(_LAST_EXPORT_SAVE_STATUS_KEY)
+    reused: dict[str, Any] | None = None
+    if isinstance(prev, dict) and prev.get("ok") and prev.get("digest") == digest and prev.get("export_id"):
+        reused = _live_export_row(str(prev["export_id"]), st=st)
+
+    if reused is not None:
+        row = reused
+        eid = str(row.get("export_id") or "")
+        name = str(row.get("export_name") or "export")
+    else:
+        fields = build_multitrack_export_fields(
+            session_state,
+            audio_bytes,
+            export_name=export_name,
+            song_title=song_title,
+            track_items=track_items,
+            include_backing=include_backing,
+            backing_volume=backing_volume,
+            st=st,
+        )
+        # Facts describe the rendered WAV, not edits made since it was mixed.
+        from multitrack_activity import saved_mix_facts
+        mix_facts = saved_mix_facts(session_state, audio_bytes)
+        if mix_facts:
+            fields.update({k: v for k, v in mix_facts.items() if k != "audio_digest"})
+        row = add_multitrack_export(st, fields)
+        eid = str(row.get("export_id") or "")
+        name = str(fields.get("export_name") or "export")
+        if not eid:
+            ss[_LAST_EXPORT_SAVE_STATUS_KEY] = {"ok": False, "where": "none", "error": "catalog_save_failed",
+                                                "digest": digest}
+            return False, "", "catalog_save_failed"
 
     stored = persist_mix_export_audio(
         st,
         eid,
         audio_bytes,
-        filename=f"{fields.get('export_name') or 'export'}.wav",
+        filename=f"{name or 'export'}.wav",
         mime_type="audio/wav",
     )
-    if stored.get("local_path") or stored.get("storage_ref"):
-        row = update_multitrack_export(
-            st,
-            eid,
-            {
-                "local_path": stored.get("local_path"),
-                "storage_ref": stored.get("storage_ref"),
-                "playback_status": stored.get("playback_status"),
-                "storage_error": stored.get("storage_error") or "",
-                "updated_at": _utc_now_iso(),
-            },
-        )
+    if stored.get("cloud_ok"):
+        where = "account"
+    elif stored.get("local_ok") or (stored.get("ok") and stored.get("local_path")):
+        where = "server_only"
+    else:
+        where = "none"
 
-    ss = _session_state(st) or session_state
+    if where == "none":
+        err = str(stored.get("storage_error") or stored.get("error") or "audio_not_stored")
+        if reused is None and _live_export_row(eid, st=st) is not None:
+            # No usable Export Library entry may point at missing audio: retire the row this save made
+            # (and any unverified upload it left), so the library and the Upload handoff never offer it.
+            try:
+                delete_multitrack_export_entry(
+                    st,
+                    eid,
+                    row={**row, "local_path": stored.get("local_path"), "storage_ref": stored.get("storage_ref")},
+                )
+            except Exception:
+                pass
+        ss[_LAST_EXPORT_SAVE_STATUS_KEY] = {"ok": False, "where": "none", "error": err,
+                                            "cloud_enabled": cloud_on, "digest": digest, "export_name": name}
+        return False, "", err
+
+    row = update_multitrack_export(
+        st,
+        eid,
+        {
+            "local_path": stored.get("local_path"),
+            "storage_ref": stored.get("storage_ref"),
+            "playback_status": stored.get("playback_status"),
+            "storage_error": stored.get("storage_error") or "",
+            "cloud_verified": where == "account",
+            "updated_at": _utc_now_iso(),
+        },
+    ) or row
     ss[_LAST_EXPORT_SAVE_STATUS_KEY] = {
         "ok": True,
         "export_id": eid,
+        "export_name": name,
+        "where": where,
+        "cloud_enabled": cloud_on,
+        "cloud_error": str(stored.get("cloud_error") or "") if where != "account" else "",
+        "reused": reused is not None,
+        "digest": digest,
         "playback_status": row.get("playback_status"),
         "storage_ref": bool(row.get("storage_ref")),
         "local_path": bool(row.get("local_path")),
     }
-    if stored.get("ok") and (row.get("local_path") or row.get("storage_ref")):
+    if reused is None and stored.get("ok") and (row.get("local_path") or row.get("storage_ref")):
         from multitrack_activity import report_export_saved
         report_export_saved(st, session_state, row)
     return True, eid, ""
+
+
+def _live_export_row(export_id: str, *, st: Any | None = None) -> dict[str, Any] | None:
+    """The catalog row for ``export_id`` if it still exists (not deleted)."""
+    eid = str(export_id or "").strip()
+    if not eid:
+        return None
+    try:
+        catalog = load_media_catalog(st=st)
+    except Exception:
+        return None
+    for candidate in catalog.get("multitrack_exports") or []:
+        if isinstance(candidate, dict) and str(candidate.get("export_id") or "") == eid:
+            row = migrate_multitrack_export(candidate)
+            return None if row.get("deleted") else row
+    return None
+
+
+def export_save_message(status: dict[str, Any] | None, export_name: str = "") -> tuple[str, str]:
+    """(level, text) for the last Save Export. "success" only for a size-verified copy in the account."""
+    name = f"**{export_name}**" if str(export_name or "").strip() else "The export"
+    if not isinstance(status, dict):
+        return ("warning", f"{name}: where it was stored could not be confirmed. The mix is still here - "
+                           "use **Download mixed track WAV** to keep a copy, or press **Save Export** again.")
+    if not status.get("ok"):
+        return ("error", f"Could not save {name.lower() if name == 'The export' else name} "
+                         f"({status.get('error') or 'unknown error'}). Nothing was added to your Export Library. "
+                         "The mix is still here - use **Download mixed track WAV** to keep a copy, then press **Save Export** again.")
+    again = " It was already in your Export Library; its storage was checked again." if status.get("reused") else ""
+    where = status.get("where")
+    if where == "account":
+        return ("success", f"{name} is saved to your Export Library and stored in your account.{again}")
+    if status.get("cloud_enabled"):
+        why = f" ({status.get('cloud_error')})" if status.get("cloud_error") else ""
+        return ("warning", f"{name} is in your Export Library, but its audio did **not** reach your account "
+                           f"storage{why}: it is kept on this app's server only, and a restart of the app can lose "
+                           f"it. Use **Download mixed track WAV** to keep a copy, or press **Save Export** again to retry.{again}")
+    return ("warning", f"{name} is in your Export Library on this app's server. Cloud storage is not set up for "
+                       f"this app, so a restart of the app can lose it - use **Download mixed track WAV** to keep a copy.{again}")
 
 
 def list_multitrack_exports(
