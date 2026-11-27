@@ -89,3 +89,42 @@ def test_staging_wrapper_exports_existing_app(monkeypatch):
     spec=importlib.util.spec_from_file_location('staging_fixture',root/'monetization_staging.py')
     module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
     assert module.app is app
+
+
+def test_health_only_rejects_payment_routes_without_provider_calls(monkeypatch):
+    import os
+    import requests
+    for name in list(os.environ):
+        if name.startswith(('STRIPE_', 'MUSIC_STRIPE_', 'SUITE_')):
+            monkeypatch.delenv(name)
+    for name, value in env().items():
+        monkeypatch.setenv(name, value)
+    def unexpected_network(*args, **kwargs):
+        pytest.fail('Health-only routes must not contact a provider')
+    monkeypatch.setattr(requests, 'request', unexpected_network)
+    monkeypatch.setattr(requests, 'get', unexpected_network)
+    with TestClient(app) as client:
+        status = client.get('/billing/health').json()
+        assert status['checkout_enabled'] is False
+        assert status['webhook_enabled'] is False
+        for route in ('checkout', 'portal', 'webhooks/stripe'):
+            assert client.post('/billing/' + route, json={}).status_code == 503
+
+
+def test_health_only_blueprint_has_no_stripe_credentials():
+    import re
+    root = Path(__file__).resolve().parents[1]
+    text = (root / 'deploy/render.music-staging-health-only.yaml').read_text()
+    for setting in ('plan: free', 'autoDeployTrigger: "off"',
+                    'branch: feature/music-billing-resume-20261127',
+                    'healthCheckPath: /billing/health', 'monetization_staging:app'):
+        assert setting in text
+    assert set(re.findall(r'- key: (\w+)', text)) == {
+        'PYTHON_VERSION', 'MUSIC_BILLING_ROLLOUT', 'MUSIC_STRIPE_MODE',
+        'MUSIC_BILLING_SUPABASE_URL', 'MUSIC_BILLING_SUPABASE_ANON_KEY',
+        'MUSIC_BILLING_SUPABASE_SERVICE_ROLE_KEY'}
+    assert 'value: ' + ISOLATED_SUPABASE_URL in text
+    for name in ('MUSIC_BILLING_ROLLOUT', 'MUSIC_STRIPE_MODE'):
+        assert re.search(r'key: ' + name + r'\s+value: test', text)
+    for name in ('MUSIC_BILLING_SUPABASE_ANON_KEY', 'MUSIC_BILLING_SUPABASE_SERVICE_ROLE_KEY'):
+        assert re.search(r'key: ' + name + r'\s+sync: false', text)

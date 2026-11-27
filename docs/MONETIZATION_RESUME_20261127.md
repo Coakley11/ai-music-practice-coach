@@ -1,5 +1,11 @@
 # Music billing resumption ? 2026-11-27
 
+Current update: hosted Auth/JWT/PostgREST checks passed after project resumption.
+The user subsequently confirmed the owner-SQL Editor harness PASS with rollback
+and no retained test fixtures/constraint. See MONETIZATION_HOSTED_RECHECK_20261127.md
+and MUSIC_RENDER_HEALTH_ONLY_READY_20261127.md for current gates and next actions.
+The baseline recovery details below are historical as of initial reconciliation.
+
 Decision: local reconciliation passes; no deployment or payment authorized/executed.
 
 ## Baseline and preservation
