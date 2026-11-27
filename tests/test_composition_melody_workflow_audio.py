@@ -139,9 +139,9 @@ class TestMelodyWorkflowCrashAndAudio(unittest.TestCase):
 
     def test_phase_order_feel_before_hum_before_ai(self) -> None:
         src = inspect.getsource(_render_phase_melody)
-        feel_i = src.index("**Melody Feel & Notes**")
+        feel_i = src.index("Melody Feel & Notes**")
         hum_i = src.index("_render_hum_sing_panel")
-        ai_i = src.index("**AI Melody Suggestions**")
+        ai_i = src.index("AI Melody Suggestions**")
         self.assertLess(feel_i, hum_i)
         self.assertLess(hum_i, ai_i)
         self.assertIn("Continue with this feel", src)

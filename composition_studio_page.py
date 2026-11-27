@@ -192,6 +192,7 @@ from composition_melody_improve import (
     preserve_original_take,
     original_take_label,
     push_improve_undo,
+    quick_action_label,
     restore_original_take,
 )
 from composition_melody_repeats import (
@@ -292,6 +293,38 @@ def inject_composition_studio_styles() -> None:
 body[data-studio-page="composer"] .block-container {
   max-width: 1280px;
 }
+/* Compact preview transport. The player renders Play, Stop and the progress bar at the BOTTOM
+   of its own frame, so Close preview belongs tight underneath them - one group of three
+   controls - instead of sitting a full Streamlit row away with a blank band between. Only the
+   button's own block is touched: the frame height is measured elsewhere, so notation cannot be
+   clipped by this. */
+div[class*="st-key-composer_preview_close_"] {
+  margin-top: -14px !important;
+  margin-bottom: 0 !important;
+}
+div[class*="st-key-composer_preview_close_"] button {
+  /* This button carries a `help` tooltip, and at touch widths Streamlit renders the tooltip
+     wrapper TWICE - the first copy inside a display:none div. A measurement that takes the
+     first match therefore reads 0x0 and cannot click it, which looks exactly like a broken
+     control and is not one (browser round 2026-11-27; the visible copy is the second).
+     Anything measuring this button must select the VISIBLE one. */
+  width: auto !important;
+  min-height: 0 !important;
+  padding: 1px 10px !important;
+  font-size: 0.82rem !important;
+  line-height: 1.6 !important;
+}
+/* The preview player's frame and the card above it do not need a full gap between them. */
+body[data-studio-page="composer"] div[data-testid="stCustomComponentV1"] {
+  margin-bottom: 0 !important;
+}
+/* MEASURED RESIDUAL (1440px, 2026-11-27): the Close button sits 2px below its preceding
+   Streamlit block, so Play / Stop / Close are grouped as intended. But that block is a
+   312px stElementContainer holding a 231px iframe, so ~79px of empty space remains between
+   the visible transport and Close preview. Targeting stCustomComponentV1 does not change it -
+   the height is on the element container - and a rule broad enough to reach that container
+   would affect every custom component on the page, so it is left alone and reported rather
+   than fixed blind. */
 /* Desktop-only: keep Composition split as a true left/right row.
    Phone stacks via Mobile M6 (nowrap here was clipping controls off-screen). */
 @media (min-width: 721px) {
@@ -2495,6 +2528,20 @@ def prepare_vision_widget_state(session_state: dict, doc: dict[str, Any]) -> Non
             session_state["composer_vision_meter_custom"] = custom
 
 
+def _melody_icon() -> str:
+    """The app's one Melody glyph - the same 🎶 the Songs card and the Melody phase show.
+
+    Read from the shared registry rather than written inline, so a melody heading in
+    Composition can never drift from the melody label everywhere else.
+    """
+    try:
+        from music_feature_icons import FEATURE_ICONS
+
+        return str(FEATURE_ICONS.get("phase_melody") or "🎶")
+    except Exception:
+        return "🎶"
+
+
 def _edit_icon() -> str:
     """The app's own edit glyph — the same pencil the Chords editor's "✏️ Edit" buttons use."""
     try:
@@ -3468,7 +3515,7 @@ def _render_hum_sing_panel(
     if not isinstance(proposal, dict):
         proposal = None
 
-    st.markdown("**Hum or sing your melody**")
+    st.markdown(f"**{_melody_icon()} Hum or sing your melody**")
     st.caption(
         "Hum, sing, or play one melodic line. Words are optional — we capture the pitch contour as sheet music, not lyrics."
     )
@@ -3883,7 +3930,11 @@ def _render_hum_sing_panel(
             qcols = st.columns(2)
             for qi, (qid, qlabel) in enumerate(QUICK_ACTIONS):
                 with qcols[qi % 2]:
-                    if st.button(qlabel, key=f"composer_hum_quick_{active_id}_{qid}", use_container_width=True):
+                    if st.button(
+                        quick_action_label(qid, qlabel),
+                        key=f"composer_hum_quick_{active_id}_{qid}",
+                        use_container_width=True,
+                    ):
                         push_improve_undo(session_state, active_id, events)
                         result = apply_quick_action(events, qid, key=key, meter=meter)
                         if result.get("needs_clarification"):
@@ -3900,7 +3951,11 @@ def _render_hum_sing_panel(
             )
             i1, i2, i3 = st.columns(3)
             with i1:
-                if st.button("Apply adjustment", key=f"composer_hum_nl_go_{active_id}", use_container_width=True):
+                if st.button(
+                    action_label("apply_text", "Apply adjustment"),
+                    key=f"composer_hum_nl_go_{active_id}",
+                    use_container_width=True,
+                ):
                     push_improve_undo(session_state, active_id, events)
                     result = apply_plain_language_improvement(events, instruction, key=key, meter=meter)
                     if result.get("needs_clarification"):
@@ -3912,7 +3967,7 @@ def _render_hum_sing_panel(
                         st.rerun()
             with i2:
                 if st.button(
-                    "Undo previous adjustment",
+                    action_label("reset", "Undo previous adjustment"),
                     key=improve_undo_button_key(active_id),
                     use_container_width=True,
                 ):
@@ -3922,7 +3977,11 @@ def _render_hum_sing_panel(
                         session_state[_hum_proposal_key(active_id)] = proposal
                         st.rerun()
             with i3:
-                if st.button("Restore original take", key=f"composer_hum_restore_orig_{active_id}", use_container_width=True):
+                if st.button(
+                    original_take_label("Restore original take"),
+                    key=f"composer_hum_restore_orig_{active_id}",
+                    use_container_width=True,
+                ):
                     orig = restore_original_take(session_state, active_id)
                     if orig is not None:
                         proposal["events"] = orig
@@ -4729,7 +4788,7 @@ def _render_phase_melody(session_state: dict, doc: dict[str, Any], *, host_side_
         if current_style not in style_ids:
             current_style = "simple"
 
-        st.markdown("**Melody Feel & Notes**")
+        st.markdown(f"**{_melody_icon()} Melody Feel & Notes**")
         st.caption("Set your musical direction before recording or exploring AI ideas.")
         remember = st.text_input(
             "What should listeners remember?",
@@ -4794,7 +4853,7 @@ def _render_phase_melody(session_state: dict, doc: dict[str, Any], *, host_side_
             _render_melody_upload_panel(session_state, doc, section, active_id=active_id)
 
             # 3) AI melody suggestions (consume Feel & Notes + full chords when present)
-            st.markdown("**AI Melody Suggestions**")
+            st.markdown(f"**{_melody_icon()} AI Melody Suggestions**")
             if has_harmony:
                 st.caption(
                     "Preview to hear · Use this melody to accept. "
@@ -6199,7 +6258,7 @@ def _render_active_melody_repeat_controls(
     repeats = get_melody_repeats(section)
     active_slot = f"melody:{section_id}:active_loop"
 
-    st.markdown("**Melody repeats**")
+    st.markdown(f"**{_melody_icon()} Melody repeats**")
     if editable:
         st.caption(
             "How many times this phrase covers the section (1–4). "
